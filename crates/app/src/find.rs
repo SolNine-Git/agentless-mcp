@@ -4,7 +4,9 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use facts::{Symbol, SymbolKind};
+mod data;
+
+use facts::{Symbol, SymbolKind, is_data_language};
 use graph::joins_name_graph;
 use kernel::{Bounded, checkpoint};
 use store::{FileText, Served};
@@ -15,6 +17,9 @@ use crate::detached::answered_over;
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::{FileSymbols, SymbolFacts};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped, SymbolCard, symbol_card};
+use data::{DATA_ENTRIES, data_matches};
+
+pub use data::{DataEntry, DataMatches, FoldedFile};
 
 // The longest qualified name, in bytes, that `short_ascii_holds` lowers on the stack.
 const SHORT_QUALNAME: usize = 128;
@@ -35,8 +40,10 @@ pub struct FindRequest {
 pub struct FindResult {
     /// The query as the caller wrote it.
     pub query: String,
-    /// One card per match the limit kept, and how many matched.
+    /// One card per code match the limit kept, and how many code symbols matched.
     pub cards: Bounded<SymbolCard>,
+    /// The matching keys of data files, which rank after every code match.
+    pub data: DataMatches,
     /// The files the scan passed over.
     pub skipped: Vec<Skipped>,
     /// The kind filter's name, if any.
@@ -45,6 +52,16 @@ pub struct FindResult {
     pub other_kinds: Vec<&'static str>,
     /// On a miss, each place the query is spelled where a file did not parse.
     pub unparsed: Vec<(String, u32)>,
+}
+
+impl FindResult {
+    /// Returns whether nothing matched: no code card, no data entry and no unlisted data file.
+    #[must_use]
+    pub fn is_miss(&self) -> bool {
+        self.cards.rows().is_empty()
+            && self.data.entries.is_empty()
+            && self.data.unlisted.is_empty()
+    }
 }
 
 /// Finds the symbols of the repository that `reading` names whose name or qualified name holds
@@ -77,7 +94,7 @@ fn answer(
     limit: usize,
 ) -> Noted<Result<FindResult, Error>> {
     let found = matched(scan, request, limit);
-    if found.cards.total() > 0 {
+    if !found.is_miss() {
         return Noted::new(Ok(found));
     }
     let unparsed = unparsed_mentions(reading, scan, &request.query);
@@ -91,17 +108,24 @@ fn matched(scan: &SymbolFacts, request: &FindRequest, limit: usize) -> FindResul
         let symbols = file.symbols.iter();
         symbols.map(move |symbol| (file, symbol))
     });
-    let matches: Vec<(&FileSymbols, &Symbol)> = symbols
+    let (data, code): (Vec<_>, Vec<_>) = symbols
         .filter(|(_, symbol)| matches(symbol, &needle, request.kind))
-        .collect();
-    let total = matches.len();
+        .partition(|(file, _)| is_data_language(file.language));
+    let (total, code_total) = (code.len() + data.len(), code.len());
     let other_kinds = match request.kind {
         Some(_) if total == 0 => other_kinds(scan, &needle),
         _ => Vec::new(),
     };
+    let cards = top_cards(code, &needle, limit);
+    let room = DATA_ENTRIES.min(limit.saturating_sub(cards.len()));
+    let scanned = scan
+        .files
+        .iter()
+        .any(|file| is_data_language(file.language));
     FindResult {
         query: request.query.clone(),
-        cards: Bounded::with_total(top_cards(matches, &needle, limit), total, limit),
+        cards: Bounded::with_total(cards, code_total, limit),
+        data: data_matches(data, &needle, room, scanned),
         skipped: scan.skipped.clone(),
         kind: request.kind.map(SymbolKind::as_str),
         other_kinds,

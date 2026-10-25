@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use facts::{StableId, Symbol, line_count};
+use facts::{OUTLINE_CAP, StableId, Symbol, is_data_language, line_count};
+use prompts::messages::SPAN_DATA_KEY_UNLISTED;
 use store::{FileText, Served};
 use syntax::Language;
 
@@ -86,9 +87,7 @@ fn span(parsed: &StableId, file: &ParsedFile) -> Result<SymbolSpan, Missed> {
         .find(|symbol| symbol.id_qualname() == qualname)
         .cloned()
     else {
-        return Err(Missed::Reason(format!(
-            "{path} no longer defines {qualname}"
-        )));
+        return Err(Missed::Reason(undefined(language, path, qualname)));
     };
     if language.extraction().prefix != parsed.prefix() {
         let id = StableId::of(language, path, &symbol);
@@ -106,6 +105,14 @@ fn span(parsed: &StableId, file: &ParsedFile) -> Result<SymbolSpan, Missed> {
         symbol,
         source: Arc::clone(source),
     })
+}
+
+// A data file keeps only an outline of its keys, so a key it still holds can miss.
+fn undefined(language: Language, path: &str, qualname: &str) -> String {
+    if is_data_language(language) {
+        return SPAN_DATA_KEY_UNLISTED.render((path, qualname, OUTLINE_CAP));
+    }
+    format!("{path} no longer defines {qualname}")
 }
 
 // The path came from a caller, so a path that resolves outside the root is refused.

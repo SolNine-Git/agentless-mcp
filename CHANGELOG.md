@@ -14,6 +14,27 @@
 
 ### Changed
 
+- **A JSON, TOML or YAML file gives an outline of its keys, not every key.**
+  The outline holds the keys to depth 2 (a TOML table header is one level), at
+  most 500 per file, all depth-1 keys first. Keys in lists are left out. A
+  scalar shows its first 40 characters, and an object or a list shows its type
+  and item count. `find-symbol` ranks every code match before the data keys,
+  folds a file with more than three matching keys into one line, shows at most
+  five data entries, and counts the other files in one line. The overview of a
+  data file prints its outline and counts the keys it leaves out. The id of a
+  key outside the outline gets a refusal that names the outline. The warning
+  for a skipped file no longer names a data file. `FACTS_VERSION` is 5, so
+  every index rebuilds. The patch linter's defined-name and near-miss sets
+  read only the outline keys. Measured with the release binaries of the base
+  and of this change, cold index: this repository 158,189 to 12,474 index
+  rows, 93.5 to 62.2 MB; ansible 278,899 to 66,759 rows, 222.1 to 174.9 MB,
+  median of 3 runs 1.53 to 1.34 s, peak RSS 384 to 327 MB; NodeBB 163,405 to
+  147,624 rows; element 132,909 to 33,701 rows; the #56 repro (four JSON
+  fixtures of 2,000 rows) 96,000 to 0 rows, 26.6 to 7.8 MB. Over the 676
+  recorded bench300 find calls, the answers list 25,282 matches before and
+  11,679 after. One call loses a match in a gold file: rubocop's
+  `AllowModifiersOnAttrs`, at position 2,089 of the outline of
+  `config/default.yml`.
 - **The development commands are cargo's.** `uv sync` installs only the dev
   group (pre-commit, ruff and codespell), and mypy, import-linter, deptry and
   pytest no longer run. The tests run with

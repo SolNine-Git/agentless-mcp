@@ -1,9 +1,10 @@
 //! The symbol views' two forms: the expansion and the lookup as cards in the text, and each
 //! card's fields in the JSON.
 
-use app::{ExpandResult, FindResult, SymbolCard, cards_text, omitted_line};
+use app::{DataEntry, DataMatches, ExpandResult, FindResult, SymbolCard, cards_text, omitted_line};
 use prompts::messages::{
-    EXPAND_BATCH_SHORTENED, FIND_NO_MATCHES, FIND_NO_MATCHES_KIND, FIND_UNPARSED,
+    EXPAND_BATCH_SHORTENED, FIND_DATA_FOLDED, FIND_DATA_NOT_SYMBOLS, FIND_DATA_UNLISTED,
+    FIND_NO_MATCHES, FIND_NO_MATCHES_KIND, FIND_UNPARSED,
 };
 use serde::Serialize;
 use text::one_line;
@@ -14,6 +15,8 @@ use crate::{Rendered, View};
 
 // A missed query names at most this many unparsed places before it counts the rest.
 const UNPARSED_SHOWN: usize = 5;
+// The line for the data files no entry shows names at most this many of them.
+const UNLISTED_NAMED: usize = 3;
 
 impl View for ExpandResult {
     fn rendered(&self) -> Rendered<'_> {
@@ -27,20 +30,24 @@ impl View for FindResult {
     }
 }
 
-// Any skipped-file warning first, then the cards, or why nothing matched and where a lost
-// declaration may sit.
+// Any skipped-file warning first, then the code cards and the data entries, or why nothing
+// matched and where a lost declaration may sit.
 fn find_text(result: &FindResult) -> String {
     let cards = &result.cards;
-    let mut body = if cards.rows().is_empty() {
-        miss_line(result) + "\n"
+    let mut body = if result.is_miss() {
+        miss_text(result)
     } else {
-        cards_text(cards.rows())
+        matches_text(result)
     };
     if cards.omitted() > 0 {
         body.push_str(&omitted_line(cards.omitted(), "matches", cards.limit()));
         body.push('\n');
     }
-    if cards.rows().is_empty() && !result.unparsed.is_empty() {
+    if let Some(line) = unlisted_line(&result.data) {
+        body.push_str(&line);
+        body.push('\n');
+    }
+    if result.is_miss() && !result.unparsed.is_empty() {
         body.push_str(&unparsed_line(result));
         body.push('\n');
     }
@@ -50,6 +57,48 @@ fn find_text(result: &FindResult) -> String {
     } else {
         format!("{warning}\n\n{body}")
     }
+}
+
+// The code cards, then each data entry: a key's card or one line for a folded file.
+fn matches_text(result: &FindResult) -> String {
+    let code = result.cards.rows().iter().map(card_block);
+    let data = result.data.entries.iter().map(|entry| match entry {
+        DataEntry::Card(card) => card_block(card),
+        DataEntry::Folded(file) => FIND_DATA_FOLDED.render((&one_line(&file.path), file.keys)),
+    });
+    let blocks: Vec<String> = code.chain(data).collect();
+    blocks.join("\n\n") + "\n"
+}
+
+fn card_block(card: &SymbolCard) -> String {
+    cards_text(std::slice::from_ref(card)).trim_end().to_owned()
+}
+
+// A miss in a repository with data files says that deep keys are not symbols.
+fn miss_text(result: &FindResult) -> String {
+    let mut text = miss_line(result) + "\n";
+    if result.data.scanned {
+        text.push_str(FIND_DATA_NOT_SYMBOLS);
+        text.push('\n');
+    }
+    text
+}
+
+// The data files no entry shows, with the first few named.
+fn unlisted_line(data: &DataMatches) -> Option<String> {
+    if data.unlisted.is_empty() {
+        return None;
+    }
+    let named = data.unlisted.iter().take(UNLISTED_NAMED);
+    let mut listed: Vec<String> = named
+        .map(|file| format!("{} ({})", one_line(&file.path), file.keys))
+        .collect();
+    if data.unlisted.len() > UNLISTED_NAMED {
+        listed.push("...".to_owned());
+    }
+    let keys = data.unlisted.iter().map(|file| file.keys).sum::<usize>();
+    let listed = listed.join(", ");
+    Some(FIND_DATA_UNLISTED.render((keys, data.unlisted.len(), listed.as_str())))
 }
 
 // A miss that the kind filter caused names the kinds the query does match.
@@ -88,6 +137,7 @@ struct FindJson<'a> {
     limit: usize,
     omitted: usize,
     matches: Vec<CardJson<'a>>,
+    folded: Vec<FoldedJson<'a>>,
     skipped: Vec<SkippedJson<'a>>,
     unparsed: Vec<PlaceJson<'a>>,
 }
@@ -98,6 +148,13 @@ struct PlaceJson<'a> {
     line: u32,
 }
 
+// A data file whose matching keys have no card: a folded entry or an unlisted file.
+#[derive(Clone, Serialize)]
+struct FoldedJson<'a> {
+    path: &'a str,
+    keys: usize,
+}
+
 impl<'a> FindJson<'a> {
     fn of(result: &'a FindResult) -> Self {
         let cards = &result.cards;
@@ -105,16 +162,36 @@ impl<'a> FindJson<'a> {
             .unparsed
             .iter()
             .map(|(path, line)| PlaceJson { path, line: *line });
+        let mut matches: Vec<CardJson<'a>> = cards.rows().iter().map(CardJson::of).collect();
+        let mut folded = Vec::new();
+        for entry in &result.data.entries {
+            match entry {
+                DataEntry::Card(card) => matches.push(CardJson::of(card)),
+                DataEntry::Folded(file) => folded.push(FoldedJson::of(file)),
+            }
+        }
+        folded.extend(result.data.unlisted.iter().map(FoldedJson::of));
+        let total = cards.total() + result.data.total();
         FindJson {
             query: &result.query,
             kind: result.kind,
             other_kinds: &result.other_kinds,
-            total: cards.total(),
+            total,
             limit: cards.limit(),
-            omitted: cards.omitted(),
-            matches: cards.rows().iter().map(CardJson::of).collect(),
+            omitted: total - matches.len(),
+            matches,
+            folded,
             skipped: skipped_json(&result.skipped),
             unparsed: unparsed.collect(),
+        }
+    }
+}
+
+impl<'a> FoldedJson<'a> {
+    fn of(file: &'a app::FoldedFile) -> Self {
+        FoldedJson {
+            path: &file.path,
+            keys: file.keys,
         }
     }
 }
@@ -253,3 +330,6 @@ impl Listing for ExpandJson<'_> {
         prefix
     }
 }
+
+#[cfg(test)]
+mod tests;

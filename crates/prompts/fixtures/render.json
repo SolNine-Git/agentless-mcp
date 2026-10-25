@@ -422,6 +422,25 @@
       },
       "text": "ambiguous: 2 definitions match shared equally; this explains the first in path order. Pass a stable id to explain another."
     },
+    "find_data_folded": {
+      "arguments": {
+        "count": 11,
+        "path": "config/default.yml"
+      },
+      "text": "config/default.yml: 11 data keys match. Grep finds the spellings."
+    },
+    "find_data_not_symbols": {
+      "arguments": {},
+      "text": "Keys below depth 2 and keys in lists of JSON, TOML and YAML files are not symbols. Grep finds them."
+    },
+    "find_data_unlisted": {
+      "arguments": {
+        "count": 62,
+        "listed": "doc/missing-references.json (60), .lgtm.yml (2)",
+        "total": 2
+      },
+      "text": "62 data keys in 2 files match and are not listed: doc/missing-references.json (60), .lgtm.yml (2). Grep finds the spellings."
+    },
     "find_no_matches": {
       "arguments": {
         "query": "rotate_age"
@@ -736,6 +755,13 @@
       },
       "text": "orient operation 'path' is missing: target. This operation accepts: source, target, include_unique, include_ambiguous; required: source, target. Retry naming the missing parameters."
     },
+    "overview_data_unlisted": {
+      "arguments": {
+        "cap": 500,
+        "count": 24000
+      },
+      "text": "24000 more keys are not listed: the outline stops at depth 2, at list items and at 500 keys. Grep finds them."
+    },
     "overview_stable_ids": {
       "arguments": {
         "pattern": "py:src/app/svc.py::<QualifiedName>"
@@ -845,6 +871,14 @@
         "start": 60
       },
       "text": "unsatisfiable: line range 60-30 is not a range in src/app/svc.py: a start of 1 or more, and an end at or after the start"
+    },
+    "span_data_key_unlisted": {
+      "arguments": {
+        "cap": 500,
+        "path": "fixtures/generation.json",
+        "qualname": "cases.generation"
+      },
+      "text": "fixtures/generation.json keeps an outline of its keys, and cases.generation is not in it: the outline stops at depth 2, at list items and at 500 keys. Read the lines with read slice, or Grep for the key."
     },
     "stable_ids_pattern": {
       "arguments": {

@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 129] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 134] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -388,6 +388,24 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 129] = [
     ),
     (
         "messages",
+        "find_data_folded",
+        &["path", "count"],
+        messages::FIND_DATA_FOLDED.pieces(),
+    ),
+    (
+        "messages",
+        "find_data_not_symbols",
+        &[],
+        &[Piece::Text(messages::FIND_DATA_NOT_SYMBOLS)],
+    ),
+    (
+        "messages",
+        "find_data_unlisted",
+        &["count", "total", "listed"],
+        messages::FIND_DATA_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
         "find_no_matches",
         &["query"],
         messages::FIND_NO_MATCHES.pieces(),
@@ -670,6 +688,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 129] = [
     ),
     (
         "messages",
+        "overview_data_unlisted",
+        &["count", "cap"],
+        messages::OVERVIEW_DATA_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
         "overview_stable_ids",
         &["pattern"],
         messages::OVERVIEW_STABLE_IDS.pieces(),
@@ -769,6 +793,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 129] = [
         "slice_range_not_a_range",
         &["path", "start", "end"],
         messages::SLICE_RANGE_NOT_A_RANGE.pieces(),
+    ),
+    (
+        "messages",
+        "span_data_key_unlisted",
+        &["path", "qualname", "cap"],
+        messages::SPAN_DATA_KEY_UNLISTED.pieces(),
     ),
     (
         "messages",

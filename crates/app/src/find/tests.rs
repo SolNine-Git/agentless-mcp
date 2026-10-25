@@ -2,11 +2,111 @@ use facts::{Symbol, SymbolKind};
 use syntax::Language;
 use text::lower;
 
-use super::{match_rank, matches, short_ascii_holds, top_cards, unparsed_mentions};
+use super::{
+    DataEntry, FindRequest, FoldedFile, match_rank, matched, matches, short_ascii_holds, top_cards,
+    unparsed_mentions,
+};
 use crate::clock::{assert_spent, spent};
 use crate::endpoints::scanned::{Scanned, TESTED};
 use crate::scan::{FileSymbols, SymbolFacts};
-use crate::symbol_card;
+use crate::{IntArg, symbol_card};
+
+fn data_file(path: &str, names: &[&str]) -> FileSymbols {
+    let symbols = names
+        .iter()
+        .map(|name| symbol(name, "", SymbolKind::Constant));
+    FileSymbols {
+        path: path.to_owned(),
+        language: Language::Json,
+        symbols: symbols.collect(),
+    }
+}
+
+fn found(files: Vec<FileSymbols>, query: &str, limit: usize) -> super::FindResult {
+    let scan = SymbolFacts {
+        files,
+        skipped: Vec::new(),
+    };
+    let request = FindRequest {
+        query: query.to_owned(),
+        kind: None,
+        limit: IntArg::from_usize(limit),
+    };
+    matched(&scan, &request, limit)
+}
+
+fn folded(path: &str, keys: usize) -> FoldedFile {
+    let path = path.to_owned();
+    FoldedFile { path, keys }
+}
+
+#[test]
+fn every_code_match_ranks_before_an_exact_data_key() {
+    let code = file("a.py", vec![symbol("area_total", "", SymbolKind::Function)]);
+    let result = found(vec![data_file("d.json", &["area"]), code], "area", 20);
+    let names: Vec<&str> = result
+        .cards
+        .rows()
+        .iter()
+        .map(|card| card.stable_id.as_str())
+        .collect();
+    assert_eq!(names, ["py:a.py::area_total"]);
+    let [DataEntry::Card(card)] = result.data.entries.as_slice() else {
+        panic!("one data card: {:?}", result.data.entries);
+    };
+    assert_eq!(card.stable_id, "json:d.json::area");
+}
+
+#[test]
+fn a_data_file_with_more_than_three_matches_folds_to_one_entry() {
+    let names = ["area", "area_a", "area_b", "area_c"];
+    let result = found(vec![data_file("d.json", &names)], "area", 20);
+    assert_eq!(
+        result.data.entries,
+        [DataEntry::Folded(folded("d.json", 4))]
+    );
+    assert_eq!(result.data.total(), 4);
+}
+
+#[test]
+fn the_data_part_shows_five_entries_and_lists_the_other_files_by_count() {
+    let files: Vec<FileSymbols> = (0..7)
+        .map(|at| data_file(&format!("lang/{at}.json"), &["orphan"]))
+        .collect();
+    let result = found(files, "orphan", 20);
+    assert_eq!(result.data.entries.len(), 5);
+    assert_eq!(
+        result.data.unlisted,
+        [folded("lang/5.json", 1), folded("lang/6.json", 1)]
+    );
+}
+
+#[test]
+fn the_code_cards_leave_the_data_part_what_the_limit_has_left() {
+    let code = file("a.py", vec![symbol("pin", "", SymbolKind::Function)]);
+    let files = vec![
+        code,
+        data_file("a.json", &["pin"]),
+        data_file("b.json", &["pin"]),
+    ];
+    let result = found(files, "pin", 2);
+    assert_eq!(
+        (result.cards.rows().len(), result.data.entries.len()),
+        (1, 1)
+    );
+    assert_eq!(result.data.unlisted, [folded("b.json", 1)]);
+}
+
+#[test]
+fn an_answer_of_one_folded_file_is_not_a_miss() {
+    let names: Vec<String> = (0..11).map(|at| format!("darkmode{at}")).collect();
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    let result = found(vec![data_file("configdata.json", &names)], "darkmode", 20);
+    assert!(result.cards.rows().is_empty());
+    assert!(!result.is_miss(), "{:?}", result.data);
+    let miss = found(vec![data_file("configdata.json", &names)], "nothing", 20);
+    assert!(miss.is_miss() && miss.data.scanned);
+}
 
 fn symbol(name: &str, parent: &str, kind: SymbolKind) -> Symbol {
     Symbol {

@@ -24,7 +24,7 @@ const TEXTS: [(&str, &str); 4] = [
 
 // A stored row is served while FACTS_VERSION holds, so these blobs change only with a bump.
 const PINNED: (u32, &str) = (
-    4,
+    5,
     "6b4022b5e3e83aadc8c421a4b5f5ee60b1ed091612eeb4a346904ccd41e0d22d",
 );
 

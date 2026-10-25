@@ -6,13 +6,18 @@ mod locations;
 use std::path::Path;
 use std::sync::Arc;
 
-use facts::{SkeletonOptions, Symbol, line_count, skeletonize, slice_lines};
-use prompts::messages::{SLICE_RANGE_BEYOND_FILE, SLICE_RANGE_NOT_A_RANGE};
+use facts::{
+    DataOutline, OUTLINE_CAP, OutlineRow, SkeletonOptions, Symbol, data_outline, line_count,
+    skeletonize, slice_lines,
+};
+use prompts::messages::{OVERVIEW_DATA_UNLISTED, SLICE_RANGE_BEYOND_FILE, SLICE_RANGE_NOT_A_RANGE};
 use store::{FileText, Served};
-use syntax::Language;
+use syntax::{Language, Parsed};
+use text::one_line;
 
 use crate::bounds::within;
 use crate::ops::limits::MAX_CONTEXT_LINES;
+use crate::rowtext::ROW_INDENT;
 use crate::{Error, IntArg, Noted, Reading};
 
 pub use locations::{LocateRequest, LocationView, LocsRequest, locate_symbol, resolve_locations};
@@ -94,11 +99,45 @@ fn skeleton_view(root: &Path, raw: &str, options: SkeletonOptions) -> FileView {
     };
     match syntax::parse(language, text) {
         Ok(parsed) => FileView {
-            text: skeletonize(&parsed, options),
+            text: overview_text(&parsed, options),
             ..failed(&loaded.path, Some(language), String::new())
         },
         Err(unparsable) => failed(&loaded.path, Some(language), unparsable.to_string()),
     }
+}
+
+// A data file shows its key outline, any other file its skeleton.
+fn overview_text(parsed: &Parsed, options: SkeletonOptions) -> String {
+    data_outline(parsed).map_or_else(
+        || skeletonize(parsed, options),
+        |outline| outline_text(&outline),
+    )
+}
+
+// The shape of a root that is not a mapping, one row per listed key in line order indented by
+// its level, then the count of the keys left out.
+fn outline_text(outline: &DataOutline) -> String {
+    let mut rows: Vec<&OutlineRow> = outline.rows.iter().collect();
+    rows.sort_by_key(|row| row.symbol.line);
+    let root = outline
+        .root
+        .iter()
+        .map(|shape| format!("document = {shape}"));
+    let mut lines: Vec<String> = root.chain(rows.into_iter().map(outline_row)).collect();
+    let unlisted = outline.keys.saturating_sub(outline.rows.len());
+    if unlisted > 0 {
+        lines.push(OVERVIEW_DATA_UNLISTED.render((unlisted, OUTLINE_CAP)));
+    }
+    if lines.is_empty() {
+        return String::new();
+    }
+    lines.join("\n") + "\n"
+}
+
+fn outline_row(row: &OutlineRow) -> String {
+    let indent = ROW_INDENT.repeat(usize::from(row.depth.saturating_sub(1)));
+    let symbol = &row.symbol;
+    format!("{indent}{}  @{}", one_line(&symbol.signature), symbol.line)
 }
 
 fn failed(path: &str, language: Option<Language>, error: String) -> FileView {

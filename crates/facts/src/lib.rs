@@ -11,7 +11,7 @@ mod spelling;
 mod stable_id;
 mod values;
 
-pub use extract::extract;
+pub use extract::{DataOutline, OUTLINE_CAP, OutlineRow, data_outline, extract, is_data_language};
 pub use locs::{
     DEFAULT_CONTEXT_LINES, FileSymbols, LocResolution, LocTarget, UnrecognizedLoc, resolve_locs,
 };

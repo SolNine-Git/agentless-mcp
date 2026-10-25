@@ -476,6 +476,28 @@ pub const EXPLAIN_TIE: Template<(Text, Count)> = Template::new(&[
     ),
 ]);
 
+/// A template that takes (`path`, `count`).
+pub const FIND_DATA_FOLDED: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(1),
+    Piece::Text(" data keys match. Grep finds the spellings."),
+]);
+
+/// A text that takes no values.
+pub const FIND_DATA_NOT_SYMBOLS: &str = "Keys below depth 2 and keys in lists of JSON, TOML and \
+        YAML files are not symbols. Grep finds them.";
+
+/// A template that takes (`count`, `total`, `listed`).
+pub const FIND_DATA_UNLISTED: Template<(Count, Count, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" data keys in "),
+    Piece::Value(1),
+    Piece::Text(" files match and are not listed: "),
+    Piece::Value(2),
+    Piece::Text(". Grep finds the spellings."),
+]);
+
 /// A template that takes `query`.
 pub const FIND_NO_MATCHES: Template<Text> = Template::new(&[
     Piece::Text("no matching symbols: no declared symbol has '"),
@@ -938,6 +960,17 @@ pub const OP_REQUIRES_PARAMETERS: Template<(Text, Text, Text, Text, Text)> = Tem
     Piece::Text(". Retry naming the missing parameters."),
 ]);
 
+/// A template that takes (`count`, `cap`).
+pub const OVERVIEW_DATA_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(
+        " more keys are not listed: the outline stops at depth 2, at \
+        list items and at ",
+    ),
+    Piece::Value(1),
+    Piece::Text(" keys. Grep finds them."),
+]);
+
 /// A template that takes `pattern`.
 pub const OVERVIEW_STABLE_IDS: Template<Text> = Template::new(&[
     Piece::Text("stable ids: "),
@@ -1094,6 +1127,19 @@ pub const SLICE_RANGE_NOT_A_RANGE: Template<(Text, Count, Count)> = Template::ne
     Piece::Text(" is not a range in "),
     Piece::Value(0),
     Piece::Text(": a start of 1 or more, and an end at or after the start"),
+]);
+
+/// A template that takes (`path`, `qualname`, `cap`).
+pub const SPAN_DATA_KEY_UNLISTED: Template<(Text, Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" keeps an outline of its keys, and "),
+    Piece::Value(1),
+    Piece::Text(
+        " is not in it: the outline stops at depth 2, at list items and \
+        at ",
+    ),
+    Piece::Value(2),
+    Piece::Text(" keys. Read the lines with read slice, or Grep for the key."),
 ]);
 
 /// A template that takes `pattern`.

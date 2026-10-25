@@ -1,7 +1,32 @@
-use super::{SliceRequest, load, slice, widen};
+use super::{SkeletonRequest, SliceRequest, load, skeleton, slice, widen};
 use crate::endpoints::scanned::Scanned;
 use crate::testing::{MANIFEST_DIR, Sandbox};
 use crate::{Error, IntArg};
+
+#[test]
+fn the_overview_of_a_data_file_is_its_key_outline_in_line_order() {
+    let toml = "[workspace.package]\nversion = \"0.11.0\"\n[deps]\na = { b = 1 }\n";
+    let files = [
+        ("Cargo.toml", toml),
+        ("rows.json", "[{\"id\": 1}, {\"id\": 2}]\n"),
+    ];
+    let scanned = Scanned::new(&files);
+    let request = SkeletonRequest {
+        paths: vec!["Cargo.toml".to_owned(), "rows.json".to_owned()],
+        docstrings: None,
+        numbered: false,
+    };
+    let views = skeleton(&scanned.reading(), &request);
+    let unlisted = "more keys are not listed: the outline stops at depth 2, at list items and at \
+        500 keys. Grep finds them.\n";
+    let cargo = "table workspace.package, 1 key  @1\n  version = \"0.11.0\"  @2\n\
+        table deps, 1 key  @3\n  a = object, 1 key  @4\n1 ";
+    assert_eq!(views[0].text, format!("{cargo}{unlisted}"));
+    assert_eq!(
+        views[1].text,
+        format!("document = list, 2 items\n2 {unlisted}")
+    );
+}
 
 // The requested ranges, the context, and the reference view text.
 type SliceCase = (Vec<(usize, usize)>, usize, String);

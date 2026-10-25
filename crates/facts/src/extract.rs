@@ -14,12 +14,26 @@ mod rust_items;
 mod rust_uses;
 mod tree;
 
-use syntax::{Extraction, ImportRule, NodeId, Parsed, SymbolRule};
+use syntax::{Extraction, ImportRule, Language, NodeId, Parsed, SymbolRule};
 
 use crate::spelling::normalise_signature;
 use crate::stable_id::disambiguate;
 use crate::values::{Facts, Import, Symbol, SymbolKind};
 use tree::Tree;
+
+pub use data_languages::{DataOutline, OUTLINE_CAP, OutlineRow};
+
+/// Return whether `language` is a data language, whose keys give an outline.
+#[must_use]
+pub fn is_data_language(language: Language) -> bool {
+    language.extraction().symbols == SymbolRule::DataKeys
+}
+
+/// Return the key outline of a parse in a data language, or `None` for any other.
+#[must_use]
+pub fn data_outline(parsed: &Parsed) -> Option<DataOutline> {
+    is_data_language(parsed.language()).then(|| data_languages::outline(&Tree::new(parsed)))
+}
 
 /// Return the symbols, imports, identifier occurrences and error spans of one parse.
 #[must_use]

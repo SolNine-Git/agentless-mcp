@@ -123,6 +123,25 @@ impl core::marker::Unpin for facts::SymbolKind
 impl core::marker::UnsafeUnpin for facts::SymbolKind
 impl core::panic::unwind_safe::RefUnwindSafe for facts::SymbolKind
 impl core::panic::unwind_safe::UnwindSafe for facts::SymbolKind
+pub struct facts::DataOutline
+pub facts::DataOutline::keys: usize
+pub facts::DataOutline::root: core::option::Option<alloc::string::String>
+pub facts::DataOutline::rows: alloc::vec::Vec<facts::OutlineRow>
+impl core::clone::Clone for facts::DataOutline
+pub fn facts::DataOutline::clone(&self) -> Self
+impl core::cmp::Eq for facts::DataOutline
+impl core::cmp::PartialEq for facts::DataOutline
+pub fn facts::DataOutline::eq(&self, &Self) -> bool
+impl core::fmt::Debug for facts::DataOutline
+pub fn facts::DataOutline::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for facts::DataOutline
+impl core::marker::Freeze for facts::DataOutline
+impl core::marker::Send for facts::DataOutline
+impl core::marker::Sync for facts::DataOutline
+impl core::marker::Unpin for facts::DataOutline
+impl core::marker::UnsafeUnpin for facts::DataOutline
+impl core::panic::unwind_safe::RefUnwindSafe for facts::DataOutline
+impl core::panic::unwind_safe::UnwindSafe for facts::DataOutline
 pub struct facts::Facts
 pub facts::Facts::errors: alloc::vec::Vec<kernel::span::Span>
 pub facts::Facts::imports: alloc::vec::Vec<facts::Import>
@@ -230,6 +249,24 @@ impl<'a> core::marker::Unpin for facts::LocTarget<'a>
 impl<'a> core::marker::UnsafeUnpin for facts::LocTarget<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for facts::LocTarget<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for facts::LocTarget<'a>
+pub struct facts::OutlineRow
+pub facts::OutlineRow::depth: u8
+pub facts::OutlineRow::symbol: facts::Symbol
+impl core::clone::Clone for facts::OutlineRow
+pub fn facts::OutlineRow::clone(&self) -> Self
+impl core::cmp::Eq for facts::OutlineRow
+impl core::cmp::PartialEq for facts::OutlineRow
+pub fn facts::OutlineRow::eq(&self, &Self) -> bool
+impl core::fmt::Debug for facts::OutlineRow
+pub fn facts::OutlineRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for facts::OutlineRow
+impl core::marker::Freeze for facts::OutlineRow
+impl core::marker::Send for facts::OutlineRow
+impl core::marker::Sync for facts::OutlineRow
+impl core::marker::Unpin for facts::OutlineRow
+impl core::marker::UnsafeUnpin for facts::OutlineRow
+impl core::panic::unwind_safe::RefUnwindSafe for facts::OutlineRow
+impl core::panic::unwind_safe::UnwindSafe for facts::OutlineRow
 pub struct facts::OutsideFile
 pub facts::OutsideFile::requested: alloc::vec::Vec<(u32, u32)>
 pub facts::OutsideFile::total: u32
@@ -411,8 +448,11 @@ impl core::marker::UnsafeUnpin for facts::UnrecognizedLoc
 impl core::panic::unwind_safe::RefUnwindSafe for facts::UnrecognizedLoc
 impl core::panic::unwind_safe::UnwindSafe for facts::UnrecognizedLoc
 pub const facts::DEFAULT_CONTEXT_LINES: u32
+pub const facts::OUTLINE_CAP: usize
 pub fn facts::base_name(&str) -> &str
+pub fn facts::data_outline(&syntax::parsed::Parsed) -> core::option::Option<facts::DataOutline>
 pub fn facts::extract(&syntax::parsed::Parsed) -> facts::Facts
+pub fn facts::is_data_language(syntax::language::Language) -> bool
 pub fn facts::line_count(&str) -> u32
 pub fn facts::line_prefix(u32) -> alloc::string::String
 pub fn facts::rationale_handle(syntax::language::Language, &str, &facts::Symbol, &facts::Rationale) -> alloc::string::String

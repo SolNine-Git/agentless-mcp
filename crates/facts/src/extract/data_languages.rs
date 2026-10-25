@@ -6,70 +6,165 @@ use std::rc::Rc;
 use syntax::{Language, NodeId};
 
 use super::tree::{Field, Tree};
+use crate::spelling::truncate;
 use crate::values::{Symbol, SymbolKind, qualified};
 
 const PAIRS: [&str; 2] = ["pair", "block_mapping_pair"];
 const TOML_TABLES: [&str; 2] = ["table", "table_array_element"];
-const OWNERS: [&str; 4] = ["pair", "block_mapping_pair", "table", "table_array_element"];
 const KEYS: [&str; 3] = ["bare_key", "quoted_key", "dotted_key"];
 const CONTAINERS: [&str; 4] = ["object", "array", "block_node", "flow_node"];
 const KEY_QUOTES: [char; 2] = ['"', '\''];
+const LISTS: [&str; 3] = ["array", "block_sequence", "flow_sequence"];
+const MAPPINGS: [&str; 4] = ["object", "inline_table", "block_mapping", "flow_mapping"];
+const YAML_NODES: [&str; 2] = ["block_node", "flow_node"];
+const YAML_PROPERTIES: [&str; 2] = ["anchor", "tag"];
+// The deepest level an outline lists: a key of the root mapping is level 1.
+const OUTLINE_DEPTH: u8 = 2;
+const PREVIEW_CHARS: usize = 40;
 
-// TOML tables first, then every pair under the keys of the pairs and tables around it.
+/// The most keys that the outline of one data file lists.
+pub const OUTLINE_CAP: usize = 500;
+
+/// The outline of one data file: the keys it lists with their levels, the count of every key
+/// in the file, and the shape of a root that is not a mapping.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DataOutline {
+    pub rows: Vec<OutlineRow>,
+    pub keys: usize,
+    pub root: Option<String>,
+}
+
+/// One listed key and its level, 1 for a key of the root mapping or a TOML table.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutlineRow {
+    pub depth: u8,
+    pub symbol: Symbol,
+}
+
 pub(super) fn keys(tree: &Tree) -> Vec<Symbol> {
-    let language = tree.parsed.language();
-    let mut symbols = if language == Language::Toml {
-        tree.each_where(
-            |node| tree.is_any(node, &TOML_TABLES),
-            |node| table(tree, node),
-        )
-    } else {
-        Vec::new()
-    };
-    symbols.extend(pairs(tree, language));
-    symbols
+    let rows = outline(tree).rows;
+    rows.into_iter().map(|row| row.symbol).collect()
 }
 
-fn table(tree: &Tree, node: NodeId) -> Option<Symbol> {
-    let key = data_key(tree, node, Language::Toml);
-    if key.is_empty() {
-        return None;
+// TOML tables first, then the pairs, each in document order.
+pub(super) fn outline(tree: &Tree) -> DataOutline {
+    let walked = walk(tree, tree.parsed.language());
+    let mut rows = walked.tables;
+    rows.extend(walked.pairs);
+    DataOutline {
+        rows: capped(rows),
+        keys: walked.keys,
+        root: root_shape(tree),
     }
-    let (parent, name) = key.rsplit_once('.').unwrap_or(("", key));
-    Some(
-        Symbol::at(tree, node, name, SymbolKind::Class)
-            .signed(&format!("table {key}"))
-            .owned_by(parent),
-    )
 }
 
-// One downward walk that carries the owner it derived: re-deriving it per pair costs a deep
-// document far more than its size.
-fn pairs(tree: &Tree, language: Language) -> Vec<Symbol> {
+// The rows past the cap go: every level-1 row first, then level-2 rows in document order.
+fn capped(rows: Vec<OutlineRow>) -> Vec<OutlineRow> {
+    if rows.len() <= OUTLINE_CAP {
+        return rows;
+    }
+    let mut order: Vec<usize> = (0..rows.len()).collect();
+    order.sort_by_key(|&at| (rows[at].depth, rows[at].symbol.line, at));
+    let mut kept = vec![false; rows.len()];
+    for at in order.into_iter().take(OUTLINE_CAP) {
+        kept[at] = true;
+    }
+    let rows = rows.into_iter().zip(kept);
+    rows.filter_map(|(row, keep)| keep.then_some(row)).collect()
+}
+
+// Where a node sits: the owner its keys qualify with, its level, and whether a list holds it.
+#[derive(Clone)]
+struct Level {
+    owner: Rc<str>,
+    depth: u8,
+    in_list: bool,
+}
+
+#[derive(Default)]
+struct Walked {
+    tables: Vec<OutlineRow>,
+    pairs: Vec<OutlineRow>,
+    keys: usize,
+}
+
+// One downward walk that carries the level it derived: re-deriving it per pair costs a deep
+// document far more than its size. Every key counts, and only the outline keys become rows.
+fn walk(tree: &Tree, language: Language) -> Walked {
     let pair = if language == Language::Yaml {
         "block_mapping_pair"
     } else {
         "pair"
     };
-    let mut symbols = Vec::new();
-    let mut frames = vec![(tree.children(tree.root()), Rc::<str>::from(""))];
-    while let Some((children, owner)) = frames.last_mut() {
+    let mut walked = Walked::default();
+    let top = Level {
+        owner: Rc::from(""),
+        depth: 0,
+        in_list: false,
+    };
+    let mut frames = vec![(tree.children(tree.root()), top)];
+    while let Some((children, level)) = frames.last_mut() {
         let Some(node) = children.next() else {
             frames.pop();
             continue;
         };
-        let owner = Rc::clone(owner);
-        if !tree.is_any(node, &OWNERS) {
-            frames.push((tree.children(node), owner));
-            continue;
+        let level = level.clone();
+        let inner = if tree.is_any(node, &LISTS) {
+            Level {
+                in_list: true,
+                ..level
+            }
+        } else if language == Language::Toml && tree.is_any(node, &TOML_TABLES) {
+            walked.table(tree, node)
+        } else if tree.is(node, pair) {
+            walked.pair(tree, node, language, &level)
+        } else {
+            level
+        };
+        frames.push((tree.children(node), inner));
+    }
+    walked
+}
+
+impl Walked {
+    // A TOML table header is level 1 and its pairs level 2, whatever its dotted key spells.
+    fn table(&mut self, tree: &Tree, node: NodeId) -> Level {
+        let key = data_key(tree, node, Language::Toml);
+        if !key.is_empty() {
+            self.keys += 1;
+            let (parent, name) = key.rsplit_once('.').unwrap_or(("", key));
+            let pairs = tree
+                .named_children(node)
+                .filter(|child| tree.is(*child, "pair"));
+            let signature = format!("table {key}, {}", counted(pairs.count(), "key", "keys"));
+            let symbol = Symbol::at(tree, node, name, SymbolKind::Class)
+                .signed(&signature)
+                .owned_by(parent);
+            self.tables.push(OutlineRow { depth: 1, symbol });
         }
-        let key = data_key(tree, node, language);
-        frames.push((tree.children(node), nested_owner(&owner, key)));
-        if tree.is(node, pair) && !key.is_empty() {
-            symbols.push(pair_symbol(tree, node, key, &owner));
+        Level {
+            owner: nested_owner("", key),
+            depth: 1,
+            in_list: false,
         }
     }
-    symbols
+
+    fn pair(&mut self, tree: &Tree, node: NodeId, language: Language, level: &Level) -> Level {
+        let key = data_key(tree, node, language);
+        let depth = level.depth.saturating_add(1);
+        if !key.is_empty() {
+            self.keys += 1;
+            if depth <= OUTLINE_DEPTH && !level.in_list {
+                let symbol = pair_symbol(tree, node, key, &level.owner);
+                self.pairs.push(OutlineRow { depth, symbol });
+            }
+        }
+        Level {
+            owner: nested_owner(&level.owner, key),
+            depth,
+            in_list: level.in_list,
+        }
+    }
 }
 
 fn nested_owner(owner: &str, key: &str) -> Rc<str> {
@@ -94,9 +189,75 @@ fn pair_symbol(tree: &Tree, node: NodeId, key: &str, owner: &str) -> Symbol {
     } else {
         SymbolKind::Constant
     };
+    let shape = pair_value(tree, node).map_or_else(String::new, |value| shape(tree, value));
     Symbol::at(tree, node, key, kind)
-        .signed(tree.text(node))
+        .signed(&format!("{key} = {shape}"))
         .owned_by(owner)
+}
+
+// The value field, or in TOML, whose pairs name no field, the last child that is not a key.
+fn pair_value(tree: &Tree, node: NodeId) -> Option<NodeId> {
+    tree.field(node, Field::Value).or_else(|| {
+        let values = tree
+            .named_children(node)
+            .filter(|child| !tree.is_any(*child, &KEYS));
+        values.last()
+    })
+}
+
+// A mapping or a list by its item count, any other value by its text cut short.
+fn shape(tree: &Tree, value: NodeId) -> String {
+    let inner = unwrapped(tree, value);
+    if tree.is_any(inner, &MAPPINGS) {
+        format!(
+            "object, {}",
+            counted(items(tree, inner).count(), "key", "keys")
+        )
+    } else if tree.is_any(inner, &LISTS) {
+        format!(
+            "list, {}",
+            counted(items(tree, inner).count(), "item", "items")
+        )
+    } else {
+        let words: Vec<&str> = text::split_whitespace(tree.text(value)).collect();
+        truncate(&words.join(" "), PREVIEW_CHARS)
+    }
+}
+
+// The named children that are not comments.
+fn items<'a>(tree: &Tree<'a>, node: NodeId) -> impl Iterator<Item = NodeId> + 'a {
+    let parsed = tree.parsed;
+    parsed
+        .named_children(node)
+        .filter(move |child| !parsed.kind_name(*child).contains("comment"))
+}
+
+fn counted(count: usize, one: &str, many: &str) -> String {
+    format!("{count} {}", if count == 1 { one } else { many })
+}
+
+// The shape of a JSON or YAML root that is not a mapping, such as a list of rows. A TOML root
+// is always a table.
+fn root_shape(tree: &Tree) -> Option<String> {
+    let language = tree.parsed.language();
+    if language == Language::Toml {
+        return None;
+    }
+    let mut document = tree.root();
+    if language == Language::Yaml {
+        document = items(tree, document).find(|child| tree.is(*child, "document"))?;
+    }
+    let value = items(tree, document).next()?;
+    (!tree.is_any(unwrapped(tree, value), &MAPPINGS)).then(|| shape(tree, value))
+}
+
+// A YAML node's content past its anchor and tag, or the value itself in the other languages.
+fn unwrapped(tree: &Tree, value: NodeId) -> NodeId {
+    if !tree.is_any(value, &YAML_NODES) {
+        return value;
+    }
+    let mut content = items(tree, value).filter(|child| !tree.is_any(*child, &YAML_PROPERTIES));
+    content.next().unwrap_or(value)
 }
 
 // The key that one pair or TOML table declares, with one pair of quotes off in JSON and TOML.

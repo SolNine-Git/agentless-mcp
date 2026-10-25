@@ -465,6 +465,24 @@ impl core::marker::Unpin for app::CheckInput
 impl core::marker::UnsafeUnpin for app::CheckInput
 impl core::panic::unwind_safe::RefUnwindSafe for app::CheckInput
 impl core::panic::unwind_safe::UnwindSafe for app::CheckInput
+pub enum app::DataEntry
+pub app::DataEntry::Card(app::SymbolCard)
+pub app::DataEntry::Folded(app::FoldedFile)
+impl core::clone::Clone for app::DataEntry
+pub fn app::DataEntry::clone(&self) -> Self
+impl core::cmp::Eq for app::DataEntry
+impl core::cmp::PartialEq for app::DataEntry
+pub fn app::DataEntry::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::DataEntry
+pub fn app::DataEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::DataEntry
+impl core::marker::Freeze for app::DataEntry
+impl core::marker::Send for app::DataEntry
+impl core::marker::Sync for app::DataEntry
+impl core::marker::Unpin for app::DataEntry
+impl core::marker::UnsafeUnpin for app::DataEntry
+impl core::panic::unwind_safe::RefUnwindSafe for app::DataEntry
+impl core::panic::unwind_safe::UnwindSafe for app::DataEntry
 pub enum app::Error
 pub app::Error::Check(checks::error::Error)
 pub app::Error::Kind(kernel::error::Error)
@@ -1168,6 +1186,29 @@ impl core::marker::Unpin for app::CyclesRequest
 impl core::marker::UnsafeUnpin for app::CyclesRequest
 impl core::panic::unwind_safe::RefUnwindSafe for app::CyclesRequest
 impl core::panic::unwind_safe::UnwindSafe for app::CyclesRequest
+pub struct app::DataMatches
+pub app::DataMatches::entries: alloc::vec::Vec<app::DataEntry>
+pub app::DataMatches::scanned: bool
+pub app::DataMatches::unlisted: alloc::vec::Vec<app::FoldedFile>
+impl app::DataMatches
+pub fn app::DataMatches::total(&self) -> usize
+impl core::clone::Clone for app::DataMatches
+pub fn app::DataMatches::clone(&self) -> Self
+impl core::cmp::Eq for app::DataMatches
+impl core::cmp::PartialEq for app::DataMatches
+pub fn app::DataMatches::eq(&self, &Self) -> bool
+impl core::default::Default for app::DataMatches
+pub fn app::DataMatches::default() -> Self
+impl core::fmt::Debug for app::DataMatches
+pub fn app::DataMatches::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::DataMatches
+impl core::marker::Freeze for app::DataMatches
+impl core::marker::Send for app::DataMatches
+impl core::marker::Sync for app::DataMatches
+impl core::marker::Unpin for app::DataMatches
+impl core::marker::UnsafeUnpin for app::DataMatches
+impl core::panic::unwind_safe::RefUnwindSafe for app::DataMatches
+impl core::panic::unwind_safe::UnwindSafe for app::DataMatches
 pub struct app::DiagramRequest
 pub app::DiagramRequest::focus: core::option::Option<alloc::string::String>
 pub app::DiagramRequest::group_by_communities: bool
@@ -1436,11 +1477,14 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::FindRequest
 impl core::panic::unwind_safe::UnwindSafe for app::FindRequest
 pub struct app::FindResult
 pub app::FindResult::cards: kernel::bounded::Bounded<app::SymbolCard>
+pub app::FindResult::data: app::DataMatches
 pub app::FindResult::kind: core::option::Option<&'static str>
 pub app::FindResult::other_kinds: alloc::vec::Vec<&'static str>
 pub app::FindResult::query: alloc::string::String
 pub app::FindResult::skipped: alloc::vec::Vec<app::Skipped>
 pub app::FindResult::unparsed: alloc::vec::Vec<(alloc::string::String, u32)>
+impl app::FindResult
+pub fn app::FindResult::is_miss(&self) -> bool
 impl core::clone::Clone for app::FindResult
 pub fn app::FindResult::clone(&self) -> Self
 impl core::cmp::Eq for app::FindResult
@@ -1476,6 +1520,24 @@ impl core::marker::Unpin for app::Flowchart
 impl core::marker::UnsafeUnpin for app::Flowchart
 impl core::panic::unwind_safe::RefUnwindSafe for app::Flowchart
 impl core::panic::unwind_safe::UnwindSafe for app::Flowchart
+pub struct app::FoldedFile
+pub app::FoldedFile::keys: usize
+pub app::FoldedFile::path: alloc::string::String
+impl core::clone::Clone for app::FoldedFile
+pub fn app::FoldedFile::clone(&self) -> Self
+impl core::cmp::Eq for app::FoldedFile
+impl core::cmp::PartialEq for app::FoldedFile
+pub fn app::FoldedFile::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::FoldedFile
+pub fn app::FoldedFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::FoldedFile
+impl core::marker::Freeze for app::FoldedFile
+impl core::marker::Send for app::FoldedFile
+impl core::marker::Sync for app::FoldedFile
+impl core::marker::Unpin for app::FoldedFile
+impl core::marker::UnsafeUnpin for app::FoldedFile
+impl core::panic::unwind_safe::RefUnwindSafe for app::FoldedFile
+impl core::panic::unwind_safe::UnwindSafe for app::FoldedFile
 pub struct app::HealthComplexity
 pub app::HealthComplexity::clone_lines: usize
 pub app::HealthComplexity::erosion: f64

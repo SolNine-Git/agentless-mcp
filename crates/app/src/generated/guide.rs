@@ -489,15 +489,21 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         is deliberately fuzzy. It over-reports across\nfiles that share \
         a short name rather than under-reports, because a \
         missed\ncaller is the expensive error.\n\nKeys in JSON, TOML \
-        and YAML files are not definitions. `find-symbol`, \
-        the\noverview and `expand` list them, but a key has no fan-in, \
-        a code spelling of a\nkey is not a reference to the data file, \
-        and a string value in a data file\nreferences nothing. Use \
-        `grep` to find where a key is spelled.\n\nThe tool now **labels \
-        every group with the evidence tier behind it**, so \
-        the\nover-reporting costs you nothing:\n\n```\ncore.py  (1 \
-        references, same-file)\nuser.py  (2 references, \
-        resolved-via-import)\nshadow.py  (2 references, \
+        and YAML files are not definitions. A data file gives \
+        an\noutline, not every key: the keys to depth 2 (a TOML table \
+        header is one\nlevel), at most 500 per file, each with a short \
+        value or its type and item\ncount. Keys in lists and deeper \
+        keys are not symbols. `find-symbol` lists the\nmatching keys \
+        after every code match and folds a file with more than \
+        three\nmatches into one line. The overview of a data file \
+        prints its outline and\ncounts the keys it leaves out. A key \
+        has no fan-in, a code spelling of a key is\nnot a reference to \
+        the data file, and a string value in a data file \
+        references\nnothing. Use `grep` to find where a key is \
+        spelled.\n\nThe tool now **labels every group with the evidence \
+        tier behind it**, so the\nover-reporting costs you \
+        nothing:\n\n```\ncore.py  (1 references, same-file)\nuser.py  \
+        (2 references, resolved-via-import)\nshadow.py  (2 references, \
         name-only-ambiguous)\n```\n\n| Tier | What it means \
         |\n|---|---|\n| `same-file` | the referencing file defines the \
         target itself |\n| `resolved-via-import` | the referencing file \
@@ -1586,7 +1592,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3599, 4432),
     ("stable-ids", 4434, 5752),
     ("the-two-surfaces", 5754, 10809),
-    ("per-tool-usage", 10811, 86938),
+    ("per-tool-usage", 10811, 87308),
     ("claude-code-specifics", 12569, 14200),
     ("map", 14202, 22505),
     ("tree", 22507, 22828),
@@ -1594,22 +1600,22 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("expand", 23945, 25797),
     ("slice", 25799, 26636),
     ("find-symbol", 26638, 27276),
-    ("refs", 27278, 31341),
-    ("history", 31343, 34176),
-    ("explain", 34178, 35760),
-    ("path", 35762, 38336),
-    ("cycles", 38338, 39449),
-    ("communities", 39451, 41696),
-    ("diagram", 41698, 44469),
-    ("health", 44471, 50707),
-    ("html", 50709, 51660),
-    ("resolve-locs", 51662, 52461),
-    ("capabilities", 52463, 53273),
-    ("index", 53275, 55944),
-    ("lint", 55946, 75954),
-    ("validate-vote", 75956, 85337),
-    ("warmup", 85339, 86938),
-    ("project-defaults-agentless-mcp-json", 86940, 90893),
-    ("token-counting", 90895, 91309),
-    ("exit-codes", 91311, 91769),
+    ("refs", 27278, 31711),
+    ("history", 31713, 34546),
+    ("explain", 34548, 36130),
+    ("path", 36132, 38706),
+    ("cycles", 38708, 39819),
+    ("communities", 39821, 42066),
+    ("diagram", 42068, 44839),
+    ("health", 44841, 51077),
+    ("html", 51079, 52030),
+    ("resolve-locs", 52032, 52831),
+    ("capabilities", 52833, 53643),
+    ("index", 53645, 56314),
+    ("lint", 56316, 76324),
+    ("validate-vote", 76326, 85707),
+    ("warmup", 85709, 87308),
+    ("project-defaults-agentless-mcp-json", 87310, 91263),
+    ("token-counting", 91265, 91679),
+    ("exit-codes", 91681, 92139),
 ];

@@ -1,5 +1,21 @@
-use super::{ParsedFiles, resolve_symbol_span, resolve_symbol_span_in};
+use super::{Missed, ParsedFiles, resolve_symbol_span, resolve_symbol_span_in};
 use crate::endpoints::scanned::{LINKED, Scanned};
+
+#[test]
+fn a_data_key_outside_the_outline_names_the_outline_and_grep() {
+    let scanned = Scanned::new(&[("rows.json", "{\"a\": {\"b\": {\"c\": 1}}}\n")]);
+    let reading = scanned.reading();
+    let Err(Missed::Reason(reason)) = resolve_symbol_span(&reading, "json:rows.json::a.b.c").value
+    else {
+        panic!("a key below depth 2 does not resolve");
+    };
+    assert!(reason.starts_with("rows.json keeps an outline of its keys, and a.b.c is not in it"));
+    assert!(
+        resolve_symbol_span(&reading, "json:rows.json::a.b")
+            .value
+            .is_ok()
+    );
+}
 
 #[test]
 fn ids_that_share_parsed_files_resolve_as_each_id_alone_does() {
