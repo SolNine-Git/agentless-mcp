@@ -202,6 +202,16 @@ impl Parsed {
         }
     }
 
+    /// Return the sibling right after the node, or None for a last child or the root.
+    #[must_use]
+    pub fn next_sibling(&self, node: NodeId) -> Option<NodeId> {
+        let parent = self.parent(node)?;
+        // In preorder the record right after a node's subtree is its next sibling while the
+        // parent's subtree still holds it.
+        let next = self.flat.record(node.0).subtree_end;
+        (next < self.flat.record(parent.0).subtree_end).then_some(NodeId(next))
+    }
+
     /// Return the node's children, named and anonymous, in order.
     pub fn children(&self, node: NodeId) -> impl Iterator<Item = NodeId> + '_ {
         self.flat.children(node.0).map(NodeId)

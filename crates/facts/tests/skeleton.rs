@@ -186,8 +186,8 @@ fn a_long_doc_comment_line_is_cut_at_the_docstring_limit() {
 #[test]
 fn lua_comments_go_whole_in_both_modes() {
     let source = "\
---- A LuaDoc summary line.
---- Its second line.
+-- A plain summary line.
+-- Its second line.
 local function scale(a)
   -- inside the body
   return a * 2
@@ -212,6 +212,417 @@ return x
             expected,
             "{options:?}"
         );
+    }
+}
+
+const JSDOC: &str = "\
+/**
+ * A file header above a blank line.
+ */
+
+export class SdkConfig {
+    /**
+     * Resets the config to be completely empty.
+     */
+    static unset() {
+        SdkConfig.setInstance({});
+    }
+
+    /*** A banner, no doc comment. */
+    static add() {}
+
+    /** @param cfg the config */
+    static put(cfg) {}
+}
+";
+
+#[test]
+fn jsdoc_comments_keep_their_opener_and_first_text_line_with_docstrings() {
+    let default = "\
+export class SdkConfig {
+    static unset() { ... }
+
+    static add() { ... }
+
+    static put(cfg) { ... }
+}
+";
+    let kept = "\
+export class SdkConfig {
+    /** Resets the config to be completely empty. */
+    static unset() { ... }
+
+    static add() { ... }
+
+    /** @param cfg the config */
+    static put(cfg) { ... }
+}
+";
+    for language in [Language::Javascript, Language::Typescript, Language::Tsx] {
+        let found = skeleton(language, JSDOC, SkeletonOptions::default());
+        assert_eq!(found, default, "{language:?}");
+        assert_eq!(
+            skeleton(language, JSDOC, docstrings()),
+            kept,
+            "{language:?}"
+        );
+    }
+}
+
+#[test]
+fn go_doc_comments_are_the_comments_right_above_a_declaration() {
+    let source = "\
+// Package shapes draws shapes.
+package shapes
+
+// ----------------------------------------------------------------------------
+// A section comment above a blank line.
+
+// Area returns the area.
+//
+// It never fails.
+//go:noinline
+func Area() int {
+\treturn 1
+}
+
+//go:generate stringer -type=Kind
+type Kind int
+
+// Box holds two sides.
+type Box struct {
+\t// W is the width.
+\tW int // trailing
+}
+
+/* Block doc of V. */
+var V = 1
+";
+    let default = "\
+package shapes
+
+func Area() int { ... }
+
+type Kind int
+
+type Box struct {
+\tW int
+}
+
+var V = 1
+";
+    let kept = "\
+// Package shapes draws shapes.
+package shapes
+
+// Area returns the area.
+func Area() int { ... }
+
+type Kind int
+
+// Box holds two sides.
+type Box struct {
+\t// W is the width.
+\tW int
+}
+
+/* Block doc of V. */
+var V = 1
+";
+    let found = skeleton(Language::Go, source, SkeletonOptions::default());
+    assert_eq!(found, default);
+    assert_eq!(skeleton(Language::Go, source, docstrings()), kept);
+}
+
+#[test]
+fn a_doc_comment_above_a_closing_brace_documents_nothing() {
+    let go = "type T struct {\n\tX int\n\t// Y int (commented out)\n}\n";
+    let expected = "type T struct {\n\tX int\n}\n";
+    assert_eq!(skeleton(Language::Go, go, docstrings()), expected);
+    let javascript = "class A {\n    m() {}\n    /** A note above the closing brace. */\n}\n";
+    let expected = "class A {\n    m() { ... }\n}\n";
+    assert_eq!(
+        skeleton(Language::Javascript, javascript, docstrings()),
+        expected
+    );
+}
+
+#[test]
+fn each_doc_comment_of_a_group_takes_the_answer_of_its_own_group() {
+    let source = "\
+/** Above a blank line. */
+/** The same group. */
+
+/** Above code. */
+/** Also above code. */
+function f() {}
+";
+    let expected = "\
+/** Above code. */
+/** Also above code. */
+function f() { ... }
+";
+    assert_eq!(
+        skeleton(Language::Javascript, source, docstrings()),
+        expected
+    );
+}
+
+#[test]
+fn a_doc_comment_under_another_parent_takes_its_own_answer() {
+    let source = "\
+class A {
+    /** Inside, above a blank line. */
+
+    m() {}
+}
+/** Outside, above code. */
+function f() {}
+class B {
+    /** Inside, above code. */
+    n() {}
+}
+/** Outside, above a blank line. */
+
+function g() {}
+";
+    let expected = "\
+class A {
+
+    m() { ... }
+}
+/** Outside, above code. */
+function f() { ... }
+class B {
+    /** Inside, above code. */
+    n() { ... }
+}
+
+function g() { ... }
+";
+    assert_eq!(
+        skeleton(Language::Javascript, source, docstrings()),
+        expected
+    );
+}
+
+#[test]
+fn java_doc_comments_keep_their_marker_and_first_text_line_with_docstrings() {
+    let source = "\
+/**
+ * A license header above a blank line.
+ */
+
+package app;
+
+/** A shape. */
+@Deprecated
+public class Shape {
+    /// The area, in Markdown.
+    /// Its second line.
+    double area() {
+        return 0;
+    }
+
+    /**
+     * <p>
+     * The side length.
+     */
+    int side;
+}
+";
+    let default = "\
+package app;
+
+@Deprecated
+public class Shape {
+    double area() { ... }
+
+    int side;
+}
+";
+    let kept = "\
+package app;
+
+/** A shape. */
+@Deprecated
+public class Shape {
+    /// The area, in Markdown.
+    double area() { ... }
+
+    /** The side length. */
+    int side;
+}
+";
+    let found = skeleton(Language::Java, source, SkeletonOptions::default());
+    assert_eq!(found, default);
+    assert_eq!(skeleton(Language::Java, source, docstrings()), kept);
+}
+
+#[test]
+fn csharp_doc_comments_skip_the_lines_that_hold_only_xml_tags() {
+    let source = "\
+namespace App
+{
+    /// <summary>
+    /// Gets the name.
+    /// </summary>
+    public class Named
+    {
+        //// Four slashes are no doc comment.
+        public int A;
+
+        /** Block doc of B. */
+        public int B;
+
+        /// <param name=\"x\">The x.</param>
+        public int F(int x) { return x; }
+    }
+}
+";
+    let default = "\
+namespace App
+{
+    public class Named
+    {
+        public int A;
+
+        public int B;
+
+        public int F(int x) { ... }
+    }
+}
+";
+    let kept = "\
+namespace App
+{
+    /// Gets the name.
+    public class Named
+    {
+        public int A;
+
+        /** Block doc of B. */
+        public int B;
+
+        /// <param name=\"x\">The x.</param>
+        public int F(int x) { ... }
+    }
+}
+";
+    let found = skeleton(Language::Csharp, source, SkeletonOptions::default());
+    assert_eq!(found, default);
+    assert_eq!(skeleton(Language::Csharp, source, docstrings()), kept);
+}
+
+#[test]
+fn ldoc_comments_open_with_three_hyphens_and_go_on_over_comment_lines() {
+    let source = "\
+--- A module summary above a blank line.
+-- @module shapes
+
+local M = {}
+
+--- Scales a value.
+-- More text.
+-- @param a the value
+function M.scale(a)
+  return a * 2
+end
+
+-----------------
+-- Heading text.
+local x = 1
+
+---@param b number
+local function inner(b)
+  return b
+end
+
+--[[-- Block doc of y.
+ more ]]
+local y = 2
+return M
+";
+    let default = "\
+local M = {}
+
+function M.scale(a)
+  ...
+end
+
+local x = 1
+
+local function inner(b)
+  ...
+end
+
+local y = 2
+return M
+";
+    let kept = "\
+local M = {}
+
+--- Scales a value.
+function M.scale(a)
+  ...
+end
+
+--- Heading text.
+local x = 1
+
+--- @param b number
+local function inner(b)
+  ...
+end
+
+--[[-- Block doc of y. ]]
+local y = 2
+return M
+";
+    let found = skeleton(Language::Lua, source, SkeletonOptions::default());
+    assert_eq!(found, default);
+    assert_eq!(skeleton(Language::Lua, source, docstrings()), kept);
+}
+
+#[test]
+fn a_long_jsdoc_line_is_cut_at_the_docstring_limit() {
+    let text = "word ".repeat(60);
+    let source = format!("/**\n * {text}\n */\nfunction f() {{}}\n");
+    let kept: String = text.chars().take(197).collect();
+    let expected = format!("/** {kept}... */\nfunction f() {{ ... }}\n");
+    assert_eq!(
+        skeleton(Language::Javascript, &source, docstrings()),
+        expected
+    );
+}
+
+#[test]
+fn sql_block_comments_go_as_the_line_comments_do() {
+    let source = "\
+-- A line comment.
+/* A block comment. */
+CREATE TABLE t (
+    id INT, -- trailing line comment
+    name TEXT /* trailing block comment */
+);
+
+/*
+ * A block comment
+ * over three lines
+ */
+SELECT id /* inline */ FROM t;
+";
+    let expected = "\
+CREATE TABLE t (
+    id INT,
+    name TEXT
+);
+
+SELECT id FROM t;
+";
+    for options in [SkeletonOptions::default(), docstrings()] {
+        let found = skeleton(Language::Sql, source, options);
+        assert_eq!(found, expected, "{options:?}");
     }
 }
 

@@ -200,6 +200,41 @@
 
 ### Fixed
 
+- **An overview with docstrings keeps the doc comments of Go, JavaScript,
+  TypeScript, Java, C# and Lua.** The skeleton found a doc comment only by the
+  marker nodes of the Rust grammar, so in the other languages the
+  `docstrings` option changed nothing: the JSDoc of element
+  `src/SdkConfig.ts:95-97` dropped. Now each language's own doc form counts:
+  `/**` in JavaScript, TypeScript and TSX (JSDoc), `//` lines and `/* */` in
+  Go (go.dev/doc/comment), `/**` and `///` lines in Java (the JDK 25 doc
+  comment specification), `///` lines and `/**` in C# (the C# specification,
+  annex D), and in Lua `---` lines that go on over `--` lines, and `--[[--`
+  (LDoc). `/***` and `////` are not doc comments. A doc comment counts only
+  when a named node starts on the line below it, past other comments, so a
+  comment above a blank line or above a closing `}` stays dropped. It keeps
+  its marker and its first line of text, cut at 200 characters, as a Rust doc
+  comment does. A line that holds only markup tags, such as C# `<summary>`, a
+  Go directive such as `//go:noinline`, and a Lua line of hyphens hold no
+  text. `syntax::Parsed::next_sibling` is new. Without docstrings, nothing
+  changes. Measured with the release binaries of 8d0dbba and of this change,
+  `symbols` overview over 58 files of element, django, three.js, caddy,
+  lucene, ansible, telescope.nvim, flipt and this repository: without
+  docstrings, 57 answers are byte-identical and one is the SQL fix below.
+  With docstrings, 34 answers gain 954 doc lines and lose none, and 23 do
+  not change, among them every Rust and Python file. `SdkConfig.ts` gains
+  `/** Resets the config to be completely empty. */`. On 5 files per
+  language, docstrings adds 65.0% to the Go answers, 7.1% to JavaScript,
+  30.8% to TypeScript, 65.8% to Java, 2.7% to C# and 45.0% to Lua. The
+  recorded skeletons with docstrings change in 25 cases of
+  `crates/facts/fixtures/skeleton_{go,java,csharp,typescript}.json`.
+- **An SQL skeleton drops `/* */` comments as it drops `--` comments.**
+  tree-sitter-sql gives a block comment the kind `marginalia`, which neither
+  the SQL comment kinds nor the skeleton's list of unlisted comment kinds
+  held. The 4-line `/* */` header of flipt
+  `config/migrations/sqlite3/1_variants_unique_per_flag.up.sql` stayed in
+  its overview, and now it goes. A comment that shares a line with code goes,
+  and the code stays. The 3 cases of `crates/facts/fixtures/skeleton_sql.json`
+  that hold `/* */` change in all four option sets.
 - **A path row names a file once, and a step with no line prints no line.** A
   file node is its own label, so each file row printed its path twice, and a
   step that reached an imported file printed `@0`. Now a file row prints

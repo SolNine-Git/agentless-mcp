@@ -164,6 +164,55 @@ fn the_previous_sibling_of_a_first_child_or_the_root_is_none() {
     assert_eq!(parsed.prev_sibling(name), None);
 }
 
+#[test]
+fn the_next_sibling_equals_a_forward_scan_of_the_parents_children_at_every_node() {
+    let mut languages = std::collections::BTreeSet::new();
+    for case in &cases() {
+        let parsed = parsed(case);
+        assert_eq!(parsed.next_sibling(parsed.root()), None, "{}", case.name);
+        for node in parsed.descendants(parsed.root()) {
+            let Some(parent) = parsed.parent(node) else {
+                continue;
+            };
+            let scanned = parsed
+                .children(parent)
+                .skip_while(|child| *child != node)
+                .nth(1);
+            assert_eq!(
+                parsed.next_sibling(node),
+                scanned,
+                "{}: {node:?}",
+                case.name
+            );
+        }
+        languages.insert(case.language.clone());
+    }
+    assert!(languages.len() >= 3, "{languages:?}");
+}
+
+#[test]
+fn the_next_sibling_of_a_last_child_or_the_root_is_none() {
+    let source = "def f():\n    return 1\n\nx = 2\n";
+    let parsed = parse(Language::Python, Arc::from(source)).expect("the source parses");
+    let root = parsed.root();
+    let statements: Vec<NodeId> = parsed.children(root).collect();
+    let [function, statement] = statements[..] else {
+        panic!("two statements: {statements:?}");
+    };
+    assert_eq!(parsed.next_sibling(root), None);
+    assert!(parsed.descendants(function).count() > 1);
+    assert_eq!(parsed.next_sibling(function), Some(statement));
+    assert_eq!(parsed.next_sibling(statement), None);
+    let parts: Vec<NodeId> = parsed.children(statement).collect();
+    let [name, equals, value] = parts[..] else {
+        panic!("three parts: {parts:?}");
+    };
+    assert!(parsed.is_leaf(name) && parsed.is_leaf(equals));
+    assert_eq!(parsed.next_sibling(name), Some(equals));
+    assert_eq!(parsed.next_sibling(equals), Some(value));
+    assert_eq!(parsed.next_sibling(value), None);
+}
+
 fn assert_node(parsed: &Parsed, node: Node, id: NodeId, name: &str) {
     let at = format!("{name}: {id:?}");
     assert_eq!(parsed.kind_name(id), node.kind(), "{at}");
