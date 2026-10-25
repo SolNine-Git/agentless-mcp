@@ -1,4 +1,5 @@
 mod capabilities;
+mod counts;
 mod envelope;
 mod goldens;
 mod goldens_graph;

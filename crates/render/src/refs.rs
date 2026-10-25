@@ -3,12 +3,13 @@
 
 use app::{
     ROW_INDENT, RefGroup, RefListing, RefSite, RefsResult, SharedCaller, file_site, locator,
-    omitted_line,
 };
 use facts::split_ordinal;
 use json::{fixed, round_half_even};
 use prompts::messages::{
-    DATA_KEY_NO_FAN_IN, REFS_HEADER, REFS_HEADER_SHARED, REFS_TARGET_UNRESOLVED,
+    DATA_KEY_NO_FAN_IN, REFS_ABSENT, REFS_ABSENT_COMPLETE, REFS_CALLERS_UNLISTED,
+    REFS_CANDIDATES_UNLISTED, REFS_GROUP_HEADER, REFS_HEADER, REFS_HEADER_SHARED,
+    REFS_SHARED_CANDIDATE, REFS_TARGET_UNRESOLVED, REFS_UNLISTED, REFS_UNLISTED_FILES,
 };
 use serde::Serialize;
 use text::one_line;
@@ -67,14 +68,6 @@ fn notice(result: &RefsResult) -> String {
     REFS_TARGET_UNRESOLVED.render((&result.target, name))
 }
 
-fn references(count: usize) -> &'static str {
-    if count == 1 {
-        "reference"
-    } else {
-        "references"
-    }
-}
-
 fn groups_text(result: &RefsResult, complete_over: Option<usize>) -> String {
     let groups = &result.groups;
     let named = result.definition.as_deref().unwrap_or(&result.target);
@@ -98,15 +91,12 @@ fn header(result: &RefsResult, named: &str) -> String {
 }
 
 fn absence_line(target: &str, complete_over: Option<usize>) -> String {
-    let line = format!(
-        "no references to {} outside its own definition",
-        one_line(target)
-    );
-    let Some(files) = complete_over else {
-        return line + "\n";
+    let target = one_line(target);
+    let line = match complete_over {
+        Some(files) => REFS_ABSENT_COMPLETE.render((&target, files)),
+        None => REFS_ABSENT.render(&target),
     };
-    let noun = if files == 1 { "file" } else { "files" };
-    format!("{line} (complete scan: {files} {noun}, 0 skipped)\n")
+    line + "\n"
 }
 
 fn group_block(group: &RefGroup) -> String {
@@ -125,9 +115,7 @@ fn group_header(group: &RefGroup) -> String {
     if !group.scope_checked {
         labelled.push_str(", locals not checked");
     }
-    let sites = group.sites.len();
-    let path = one_line(&group.path);
-    format!("{path}  ({sites} {}{labelled})", references(sites))
+    REFS_GROUP_HEADER.render((&one_line(&group.path), group.sites.len(), &labelled))
 }
 
 // The whole id, so a reader copies it to expand with no pattern to join.
@@ -145,14 +133,11 @@ fn footer_note(groups: &RefListing) -> Option<String> {
     if omitted == 0 {
         return None;
     }
-    let note = omitted_line(omitted, "references", groups.limit);
     let files_omitted = groups.files_omitted();
     if files_omitted == 0 {
-        return Some(note);
+        return Some(REFS_UNLISTED.render((omitted, groups.limit)));
     }
-    Some(format!(
-        "{note}, including every reference in {files_omitted} more files"
-    ))
+    Some(REFS_UNLISTED_FILES.render((omitted, files_omitted, groups.limit)))
 }
 
 // Production candidates first, then the test-defined ones under their own heading.
@@ -170,29 +155,20 @@ fn shared_text(result: &RefsResult) -> String {
         lines.extend(from_tests.into_iter().flat_map(candidate_rows));
     }
     if listing.omitted() > 0 {
-        lines.push(omitted_line(
-            listing.omitted(),
-            "candidates",
-            listing.limit(),
-        ));
+        lines.push(REFS_CANDIDATES_UNLISTED.render((listing.omitted(), listing.limit())));
     }
     lines.join("\n") + "\n"
 }
 
 fn candidate_rows(row: &SharedCaller) -> Vec<String> {
-    let files = if row.shared_files == 1 {
-        "file"
-    } else {
-        "files"
-    };
     let line = row.line.to_string();
-    let mut rows = vec![format!(
-        "  {}  ({} shared callers in {} {files}, score {})",
-        locator(&row.stable_id, "", Some(&line)),
+    let candidate = REFS_SHARED_CANDIDATE.render((
+        &locator(&row.stable_id, "", Some(&line)),
         row.overlap,
         row.shared_files,
-        fixed(row.score, 3)
-    )];
+        &fixed(row.score, 3),
+    ));
+    let mut rows = vec![format!("  {candidate}")];
     let shown = row.callers.iter().take(SHARED_CALLERS_SHOWN);
     rows.extend(shown.map(|caller| {
         let site = file_site(&caller.path, caller.line);
@@ -200,7 +176,7 @@ fn candidate_rows(row: &SharedCaller) -> Vec<String> {
     }));
     let hidden = row.callers.len().saturating_sub(SHARED_CALLERS_SHOWN);
     if hidden > 0 {
-        rows.push(omitted_line(hidden, "callers", SHARED_CALLERS_SHOWN));
+        rows.push(REFS_CALLERS_UNLISTED.render((hidden, SHARED_CALLERS_SHOWN)));
     }
     rows
 }

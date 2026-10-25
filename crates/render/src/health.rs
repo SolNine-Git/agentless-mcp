@@ -3,49 +3,46 @@
 
 use app::{
     HealthComplexity, HealthComplexityRow, HealthReport, HealthSymbol, Skipped, file_site, locator,
-    omitted_line,
 };
 use json::fixed;
 use kernel::Bounded;
+use prompts::messages::{
+    HEALTH_COMPLEXITY, HEALTH_COMPLEXITY_WALKED, HEALTH_EXPORTS, HEALTH_EXPORTS_UNLISTED,
+    HEALTH_HOTSPOTS, HEALTH_HOTSPOTS_UNLISTED, HEALTH_HUBS, HEALTH_HUBS_UNLISTED, HEALTH_ORPHANS,
+    HEALTH_ORPHANS_UNLISTED, HEALTH_OVER, HEALTH_OVER_EXCLUDED, HEALTH_UNMEASURED,
+    HEALTH_UNMEASURED_UNLISTED,
+};
+use prompts::{Count, Template};
 use serde::Serialize;
 use text::one_line;
 
 use crate::envelope::wrap_json_whole;
 use crate::{Rendered, View};
 
-// What one section calls itself, whether or not it found anything. `omitted` is the noun of the
-// cut line when it differs from `plural`.
+// What one section prints: its header, its cut line, and its text when it found nothing.
 struct Wording {
-    singular: &'static str,
-    plural: &'static str,
-    criterion: &'static str,
+    header: &'static Template<Count>,
+    unlisted: &'static Template<(Count, Count)>,
     empty: &'static str,
-    omitted: &'static str,
 }
 
 const ORPHANS: Wording = Wording {
-    singular: "orphan candidate",
-    plural: "orphan candidates",
-    criterion: "function, no counted edge in or out",
+    header: &HEALTH_ORPHANS,
+    unlisted: &HEALTH_ORPHANS_UNLISTED,
     empty: "no orphan candidates: every function has a counted edge",
-    omitted: "orphan candidates",
 };
 
 const UNUSED: Wording = Wording {
-    singular: "unused export",
-    plural: "unused exports",
-    criterion: "public function outside a function body, no counted edge in",
+    header: &HEALTH_EXPORTS,
+    unlisted: &HEALTH_EXPORTS_UNLISTED,
     empty: "no unused exports: every public function outside a function body is reached",
-    omitted: "unused exports",
 };
 
 // The heading counts every symbol with an edge, so it names symbols; the rows it cut are hubs.
 const HUBS: Wording = Wording {
-    singular: "symbol carries a counted edge",
-    plural: "symbols carry a counted edge",
-    criterion: "function, method or class, highest counted degree first",
+    header: &HEALTH_HUBS,
+    unlisted: &HEALTH_HUBS_UNLISTED,
     empty: "no hubs: no function, method or class carries a counted edge",
-    omitted: "hubs",
 };
 
 impl View for HealthReport {
@@ -60,17 +57,13 @@ impl View for HealthReport {
 }
 
 fn health_text(report: &HealthReport) -> String {
-    let excluded = if report.excluded > 0 {
-        format!("; {} excluded as test or fixture paths", report.excluded)
+    let header = if report.excluded > 0 {
+        HEALTH_OVER_EXCLUDED.render((report.symbols, report.excluded))
     } else {
-        String::new()
+        HEALTH_OVER.render(report.symbols)
     };
     let mut lines = vec![
-        format!(
-            "health over {} {}{excluded}",
-            report.symbols,
-            plural(report.symbols, "symbol")
-        ),
+        header,
         "degree counts same-file and resolved-via-import edges only; unique and \
          name-only-ambiguous matches are discounted and named per row"
             .to_owned(),
@@ -107,16 +100,8 @@ impl Cut {
         }
     }
 
-    fn line(&self, noun: &str) -> Option<String> {
-        (self.omitted > 0).then(|| omitted_line(self.omitted, noun, self.limit))
-    }
-}
-
-fn plural(count: usize, noun: &str) -> String {
-    if count == 1 {
-        noun.to_owned()
-    } else {
-        format!("{noun}s")
+    fn line(&self, unlisted: &Template<(Count, Count)>) -> Option<String> {
+        (self.omitted > 0).then(|| unlisted.render((self.omitted, self.limit)))
     }
 }
 
@@ -125,17 +110,9 @@ fn section_lines(rows: &[HealthSymbol], cut: &Cut, wording: &Wording) -> Vec<Str
     if cut.total == 0 {
         return vec![String::new(), wording.empty.to_owned()];
     }
-    let noun = if cut.total == 1 {
-        wording.singular
-    } else {
-        wording.plural
-    };
-    let mut lines = vec![
-        String::new(),
-        format!("{} {noun} ({})", cut.total, wording.criterion),
-    ];
+    let mut lines = vec![String::new(), wording.header.render(cut.total)];
     lines.extend(rows.iter().map(symbol_row));
-    lines.extend(cut.line(wording.omitted));
+    lines.extend(cut.line(wording.unlisted));
     lines
 }
 
@@ -164,26 +141,17 @@ fn complexity_lines(summary: &HealthComplexity) -> Vec<String> {
         let none = "complexity: no tier-1 source files to measure outside test and fixture paths";
         return vec![String::new(), none.to_owned()];
     }
-    let measured = summary.measured();
-    let mut lines = vec![
-        String::new(),
-        format!(
-            "complexity over {} {} in {measured} {} (threshold cc > {}): {} over the \
-             threshold, erosion {}, clone share {}",
-            summary.units,
-            plural(summary.units, "unit"),
-            plural(measured, "file"),
-            summary.threshold,
-            summary.over_threshold,
-            fixed(summary.erosion, 3),
-            fixed(summary.clone_share(), 3)
-        ),
-    ];
+    let header = HEALTH_COMPLEXITY.render((
+        summary.units,
+        summary.measured(),
+        summary.threshold as usize,
+        summary.over_threshold,
+        &fixed(summary.erosion, 3),
+        &fixed(summary.clone_share(), 3),
+    ));
+    let mut lines = vec![String::new(), header];
     if summary.stopped_by_budget() {
-        lines.push(format!(
-            "complexity: {} of {} files walked before the time budget",
-            summary.walked, summary.files
-        ));
+        lines.push(HEALTH_COMPLEXITY_WALKED.render((summary.walked, summary.files)));
     }
     let listing = &summary.not_measured;
     lines.extend(unmeasured_lines(listing.rows(), &Cut::of(listing)));
@@ -194,16 +162,12 @@ fn unmeasured_lines(rows: &[Skipped], cut: &Cut) -> Vec<String> {
     if cut.total == 0 {
         return Vec::new();
     }
-    let mut lines = vec![format!(
-        "complexity: {} {} not measured",
-        cut.total,
-        plural(cut.total, "file")
-    )];
+    let mut lines = vec![HEALTH_UNMEASURED.render(cut.total)];
     lines.extend(
         (rows.iter())
             .map(|entry| format!("  {}  {}", one_line(&entry.path), one_line(&entry.reason))),
     );
-    lines.extend(cut.line("unmeasured files"));
+    lines.extend(cut.line(&HEALTH_UNMEASURED_UNLISTED));
     lines
 }
 
@@ -214,17 +178,9 @@ fn hotspot_lines(rows: &[HealthComplexityRow], cut: &Cut) -> Vec<String> {
             "no hotspots: no unit was measured".to_owned(),
         ];
     }
-    let mut lines = vec![
-        String::new(),
-        format!(
-            "{} {} ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest \
-             first)",
-            cut.total,
-            plural(cut.total, "unit")
-        ),
-    ];
+    let mut lines = vec![String::new(), HEALTH_HOTSPOTS.render(cut.total)];
     lines.extend(rows.iter().map(hotspot_row));
-    lines.extend(cut.line("hotspots"));
+    lines.extend(cut.line(&HEALTH_HOTSPOTS_UNLISTED));
     lines
 }
 

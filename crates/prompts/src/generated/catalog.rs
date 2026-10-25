@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 235] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -284,9 +284,39 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
     ),
     (
         "messages",
+        "communities_header",
+        &["count", "total", "modularity", "resolution"],
+        messages::COMMUNITIES_HEADER.pieces(),
+    ),
+    (
+        "messages",
         "communities_not_converged",
         &[],
         &[Piece::Text(messages::COMMUNITIES_NOT_CONVERGED)],
+    ),
+    (
+        "messages",
+        "communities_nothing_parsed",
+        &[],
+        &[Piece::Text(messages::COMMUNITIES_NOTHING_PARSED)],
+    ),
+    (
+        "messages",
+        "communities_unlisted",
+        &["count", "limit"],
+        messages::COMMUNITIES_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "communities_weak",
+        &[],
+        &[Piece::Text(messages::COMMUNITIES_WEAK)],
+    ),
+    (
+        "messages",
+        "community_files_unlisted",
+        &["count", "limit"],
+        messages::COMMUNITY_FILES_UNLISTED.pieces(),
     ),
     (
         "messages",
@@ -400,6 +430,18 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
     ),
     (
         "messages",
+        "config_stoplist_dropped",
+        &["config", "count", "chars"],
+        messages::CONFIG_STOPLIST_DROPPED.pieces(),
+    ),
+    (
+        "messages",
+        "config_unknown_keys_suppressed",
+        &["config", "count"],
+        messages::CONFIG_UNKNOWN_KEYS_SUPPRESSED.pieces(),
+    ),
+    (
+        "messages",
         "contract_evidence",
         &["rule", "unit", "capture"],
         messages::CONTRACT_EVIDENCE.pieces(),
@@ -442,15 +484,75 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
     ),
     (
         "messages",
+        "cycles_header",
+        &["count"],
+        messages::CYCLES_HEADER.pieces(),
+    ),
+    (
+        "messages",
         "cycles_unlisted",
         &["count", "limit"],
         messages::CYCLES_UNLISTED.pieces(),
     ),
     (
         "messages",
+        "cycles_unresolved",
+        &["count"],
+        messages::CYCLES_UNRESOLVED.pieces(),
+    ),
+    (
+        "messages",
         "data_key_no_fan_in",
         &["target", "name"],
         messages::DATA_KEY_NO_FAN_IN.pieces(),
+    ),
+    (
+        "messages",
+        "diagram_edges_unlisted",
+        &["count", "limit"],
+        messages::DIAGRAM_EDGES_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "diagram_elided",
+        &["count"],
+        messages::DIAGRAM_ELIDED.pieces(),
+    ),
+    (
+        "messages",
+        "diagram_not_converged",
+        &[],
+        &[Piece::Text(messages::DIAGRAM_NOT_CONVERGED)],
+    ),
+    (
+        "messages",
+        "diagram_summary",
+        &["count", "total"],
+        messages::DIAGRAM_SUMMARY.pieces(),
+    ),
+    (
+        "messages",
+        "diagram_summary_focus",
+        &["target", "count", "total"],
+        messages::DIAGRAM_SUMMARY_FOCUS.pieces(),
+    ),
+    (
+        "messages",
+        "diagram_summary_focus_grouped",
+        &["target", "count", "total"],
+        messages::DIAGRAM_SUMMARY_FOCUS_GROUPED.pieces(),
+    ),
+    (
+        "messages",
+        "diagram_summary_grouped",
+        &["count", "total"],
+        messages::DIAGRAM_SUMMARY_GROUPED.pieces(),
+    ),
+    (
+        "messages",
+        "diagram_titles",
+        &["count"],
+        messages::DIAGRAM_TITLES.pieces(),
     ),
     (
         "messages",
@@ -469,6 +571,42 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
         "expand_no_room",
         &["requested", "seats"],
         messages::EXPAND_NO_ROOM.pieces(),
+    ),
+    (
+        "messages",
+        "expand_over_limit",
+        &["limit"],
+        messages::EXPAND_OVER_LIMIT.pieces(),
+    ),
+    (
+        "messages",
+        "expand_unresolved_unlisted",
+        &["count", "total"],
+        messages::EXPAND_UNRESOLVED_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "explain_definitions_unlisted",
+        &["count", "limit"],
+        messages::EXPLAIN_DEFINITIONS_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "explain_edges_unlisted",
+        &["count"],
+        messages::EXPLAIN_EDGES_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "explain_importers_unlisted",
+        &["count", "limit"],
+        messages::EXPLAIN_IMPORTERS_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "explain_imports_unlisted",
+        &["count", "limit"],
+        messages::EXPLAIN_IMPORTS_UNLISTED.pieces(),
     ),
     (
         "messages",
@@ -538,6 +676,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
     ),
     (
         "messages",
+        "find_unlisted",
+        &["count", "limit"],
+        messages::FIND_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
         "find_unparsed",
         &["query", "listed"],
         messages::FIND_UNPARSED.pieces(),
@@ -598,9 +742,99 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
     ),
     (
         "messages",
+        "grouped_files",
+        &["count"],
+        messages::GROUPED_FILES.pieces(),
+    ),
+    (
+        "messages",
         "grouped_ids",
         &["count"],
         messages::GROUPED_IDS.pieces(),
+    ),
+    (
+        "messages",
+        "health_complexity",
+        &["count", "total", "threshold", "over", "erosion", "share"],
+        messages::HEALTH_COMPLEXITY.pieces(),
+    ),
+    (
+        "messages",
+        "health_complexity_walked",
+        &["count", "total"],
+        messages::HEALTH_COMPLEXITY_WALKED.pieces(),
+    ),
+    (
+        "messages",
+        "health_exports",
+        &["count"],
+        messages::HEALTH_EXPORTS.pieces(),
+    ),
+    (
+        "messages",
+        "health_exports_unlisted",
+        &["count", "limit"],
+        messages::HEALTH_EXPORTS_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "health_hotspots",
+        &["count"],
+        messages::HEALTH_HOTSPOTS.pieces(),
+    ),
+    (
+        "messages",
+        "health_hotspots_unlisted",
+        &["count", "limit"],
+        messages::HEALTH_HOTSPOTS_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "health_hubs",
+        &["count"],
+        messages::HEALTH_HUBS.pieces(),
+    ),
+    (
+        "messages",
+        "health_hubs_unlisted",
+        &["count", "limit"],
+        messages::HEALTH_HUBS_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "health_orphans",
+        &["count"],
+        messages::HEALTH_ORPHANS.pieces(),
+    ),
+    (
+        "messages",
+        "health_orphans_unlisted",
+        &["count", "limit"],
+        messages::HEALTH_ORPHANS_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "health_over",
+        &["count"],
+        messages::HEALTH_OVER.pieces(),
+    ),
+    (
+        "messages",
+        "health_over_excluded",
+        &["count", "total"],
+        messages::HEALTH_OVER_EXCLUDED.pieces(),
+    ),
+    (
+        "messages",
+        "health_unmeasured",
+        &["count"],
+        messages::HEALTH_UNMEASURED.pieces(),
+    ),
+    (
+        "messages",
+        "health_unmeasured_unlisted",
+        &["count", "limit"],
+        messages::HEALTH_UNMEASURED_UNLISTED.pieces(),
     ),
     (
         "messages",
@@ -631,6 +865,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
         "history_git_output_malformed",
         &["detail"],
         messages::HISTORY_GIT_OUTPUT_MALFORMED.pieces(),
+    ),
+    (
+        "messages",
+        "history_header",
+        &["path", "target", "start", "end", "count"],
+        messages::HISTORY_HEADER.pieces(),
     ),
     (
         "messages",
@@ -844,6 +1084,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
     ),
     (
         "messages",
+        "map_budget_none",
+        &["count", "budget"],
+        messages::MAP_BUDGET_NONE.pieces(),
+    ),
+    (
+        "messages",
         "map_companion_unlisted",
         &["path"],
         messages::MAP_COMPANION_UNLISTED.pieces(),
@@ -862,9 +1108,51 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
     ),
     (
         "messages",
+        "map_max_files_none",
+        &["count"],
+        messages::MAP_MAX_FILES_NONE.pieces(),
+    ),
+    (
+        "messages",
+        "map_not_converged",
+        &[],
+        &[Piece::Text(messages::MAP_NOT_CONVERGED)],
+    ),
+    (
+        "messages",
+        "map_nothing_parsed",
+        &[],
+        &[Piece::Text(messages::MAP_NOTHING_PARSED)],
+    ),
+    (
+        "messages",
+        "map_over_budget",
+        &["count", "total", "budget"],
+        messages::MAP_OVER_BUDGET.pieces(),
+    ),
+    (
+        "messages",
+        "map_symbols_unlisted",
+        &["count"],
+        messages::MAP_SYMBOLS_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "map_tests_unlisted",
+        &["count", "limit"],
+        messages::MAP_TESTS_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
         "map_unresolved_seeds",
         &["seeds"],
         messages::MAP_UNRESOLVED_SEEDS.pieces(),
+    ),
+    (
+        "messages",
+        "map_walk_capped",
+        &[],
+        &[Piece::Text(messages::MAP_WALK_CAPPED)],
     ),
     (
         "messages",
@@ -964,6 +1252,36 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
     ),
     (
         "messages",
+        "refs_absent",
+        &["target"],
+        messages::REFS_ABSENT.pieces(),
+    ),
+    (
+        "messages",
+        "refs_absent_complete",
+        &["target", "count"],
+        messages::REFS_ABSENT_COMPLETE.pieces(),
+    ),
+    (
+        "messages",
+        "refs_callers_unlisted",
+        &["count", "limit"],
+        messages::REFS_CALLERS_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "refs_candidates_unlisted",
+        &["count", "limit"],
+        messages::REFS_CANDIDATES_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "refs_group_header",
+        &["path", "count", "note"],
+        messages::REFS_GROUP_HEADER.pieces(),
+    ),
+    (
+        "messages",
         "refs_header",
         &["target", "count"],
         messages::REFS_HEADER.pieces(),
@@ -976,9 +1294,27 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
     ),
     (
         "messages",
+        "refs_shared_candidate",
+        &["target", "count", "total", "score"],
+        messages::REFS_SHARED_CANDIDATE.pieces(),
+    ),
+    (
+        "messages",
         "refs_target_unresolved",
         &["target", "name"],
         messages::REFS_TARGET_UNRESOLVED.pieces(),
+    ),
+    (
+        "messages",
+        "refs_unlisted",
+        &["count", "limit"],
+        messages::REFS_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "refs_unlisted_files",
+        &["count", "total", "limit"],
+        messages::REFS_UNLISTED_FILES.pieces(),
     ),
     (
         "messages",

@@ -46,15 +46,3 @@ pub fn stable_ids_line(id_prefix: &str, path: &str) -> String {
 pub fn file_site(path: &str, line: u32) -> String {
     format!("{}:{line}", one_line(path))
 }
-
-/// Returns the line that announces a listing's cut: how many more of `noun` the answer leaves
-/// out, and the limit that cut it when `limit` is not zero.
-#[must_use]
-pub fn omitted_line(omitted: usize, noun: &str, limit: usize) -> String {
-    let bound = if limit > 0 {
-        format!(" (limit {limit})")
-    } else {
-        String::new()
-    };
-    format!("... {omitted} more {noun} not listed{bound}")
-}

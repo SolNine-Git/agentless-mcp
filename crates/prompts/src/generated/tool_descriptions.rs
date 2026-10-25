@@ -36,23 +36,23 @@ pub const ANALYZE_STRUCTURE: &str = "Five whole-repository structure questions b
         are in the text views. operation='health' takes an optional \
         limit and returns three readings of one degree count -- orphan \
         candidates (a function no counted edge reaches or leaves), \
-        unused exports (a public function no counted edge reaches) and \
-        hubs (the highest total degree first); only same-file and \
-        resolved-via-import edges are counted, and a unique-name or \
-        name-only-ambiguous match is named on the row rather than \
-        counted, so an orphan row states the evidence it was not built \
-        on. The health answer also carries a complexity summary \
-        (functions measured, functions above the complexity threshold, \
-        which is 10 by default, erosion, the share of mass held by \
-        those functions, and clone share, the share of source lines \
-        inside a block that has a copy once names and literals are \
-        ignored) and hotspots, the functions with the most mass (cc \
-        times the square root of sloc), each with its stable id or \
-        marked metric-only. Complexity counts decision points and \
-        lines. It does not judge design. No path, no cycles and an \
-        unknown endpoint are all ordinary answers with a message rather \
-        than errors; an unknown operation is rejected by the published \
-        enum.";
+        unused exports (a public function outside a function body that \
+        no counted edge reaches) and hubs (the highest total degree \
+        first); only same-file and resolved-via-import edges are \
+        counted, and a unique-name or name-only-ambiguous match is \
+        named on the row rather than counted, so an orphan row states \
+        the evidence it was not built on. The health answer also \
+        carries a complexity summary (functions measured, functions \
+        above the complexity threshold, which is 10 by default, \
+        erosion, the share of mass held by those functions, and clone \
+        share, the share of source lines inside a block that has a copy \
+        once names and literals are ignored) and hotspots, the \
+        functions with the most mass (cc times the square root of \
+        sloc), each with its stable id or marked metric-only. \
+        Complexity counts decision points and lines. It does not judge \
+        design. No path, no cycles and an unknown endpoint are all \
+        ordinary answers with a message rather than errors; an unknown \
+        operation is rejected by the published enum.";
 
 /// The description of the `capabilities` tool.
 pub const CAPABILITIES: &str = "Why is this answer incomplete? The server version, grammars, \

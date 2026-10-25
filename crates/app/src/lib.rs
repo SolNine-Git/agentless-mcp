@@ -122,7 +122,7 @@ pub use registry::{
 };
 pub use repo::{Repo, expand_user, resolve, resolve_in_git};
 pub use rows::COVERAGE;
-pub use rowtext::{MODULE_LEVEL, ROW_INDENT, file_site, locator, omitted_line, stable_ids_line};
+pub use rowtext::{MODULE_LEVEL, ROW_INDENT, file_site, locator, stable_ids_line};
 pub use scan::Skipped;
 pub use scope::{in_metric_scope, is_fixture_path, is_test_path};
 pub use tags::{CacheReport, Opening, Session, Tags, repo_generation};

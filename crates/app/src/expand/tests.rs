@@ -38,7 +38,7 @@ fn the_ids_past_the_limit_come_before_the_repeated_ids() {
     let rows = grouped_rows(2, 3, 1);
     let counts: Vec<&str> = rows.iter().map(|(count, _)| count.as_str()).collect();
     assert_eq!(counts, ["(2 ids)", "(3 ids)"]);
-    assert!(rows[0].1.ends_with("the per-call limit is 1 symbols"));
+    assert_eq!(rows[0].1, "not expanded: the per-call limit is 1 symbol");
     assert!(grouped_rows(0, 0, 9).is_empty());
 }
 

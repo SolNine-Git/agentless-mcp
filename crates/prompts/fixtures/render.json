@@ -281,9 +281,40 @@
       },
       "text": "src/app/svc.py: Python's tokenizer rejects this file (TokenError: EOF). Clone blocks are indexed only in a file the tokenizer accepts, the same as scb-check. Fix the line the error names, then index the file again."
     },
+    "communities_header": {
+      "arguments": {
+        "count": 3,
+        "modularity": "0.408",
+        "resolution": "1",
+        "total": 6
+      },
+      "text": "3 communities over 6 files (modularity 0.408 at resolution 1)"
+    },
     "communities_not_converged": {
       "arguments": {},
-      "text": "note: community detection stopped at its pass limit before the partition settled, so these communities are a partial answer"
+      "text": "// note: community detection stopped at its pass limit before the partition settled, so these communities are a partial answer"
+    },
+    "communities_nothing_parsed": {
+      "arguments": {},
+      "text": "no communities: no file in this repository parsed"
+    },
+    "communities_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 1
+      },
+      "text": "... 2 more communities not listed (limit 1)"
+    },
+    "communities_weak": {
+      "arguments": {},
+      "text": "// note: weak partition; use these communities as a hint, not a boundary"
+    },
+    "community_files_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 2
+      },
+      "text": "... 2 more files in this community not listed (limit 2)"
     },
     "complexity_crossed": {
       "arguments": {
@@ -417,6 +448,21 @@
       },
       "text": "erosion_gate in .agentless-mcp.json holds 2 entries that name no gated check (complexity_delta, contract_drift, clone_delta). They are ignored."
     },
+    "config_stoplist_dropped": {
+      "arguments": {
+        "chars": 64,
+        "config": ".agentless-mcp.json",
+        "count": 2
+      },
+      "text": "stoplist in .agentless-mcp.json: 2 entries are not bare names of at most 64 characters and were dropped"
+    },
+    "config_unknown_keys_suppressed": {
+      "arguments": {
+        "config": ".agentless-mcp.json",
+        "count": 4
+      },
+      "text": "4 further unknown keys in .agentless-mcp.json: warnings suppressed"
+    },
     "contract_evidence": {
       "arguments": {
         "capture": "data.get(\"items\", [])",
@@ -465,6 +511,12 @@
       },
       "text": "not checked: contract_drift did not compare src/adapters/api.py, because its text before the change cannot be measured. src/adapters/api.py does not parse"
     },
+    "cycles_header": {
+      "arguments": {
+        "count": 2
+      },
+      "text": "2 import cycles"
+    },
     "cycles_unlisted": {
       "arguments": {
         "count": 2,
@@ -472,12 +524,71 @@
       },
       "text": "... 2 more cycles not listed (limit 2, shortest chain first)"
     },
+    "cycles_unresolved": {
+      "arguments": {
+        "count": 3
+      },
+      "text": "// note: 3 import statements of this repository's own modules did not resolve, so a cycle through them is not listed"
+    },
     "data_key_no_fan_in": {
       "arguments": {
         "name": "receipt_header",
         "target": "json:crates/prompts/data/envelope.json::receipt_header"
       },
       "text": "json:crates/prompts/data/envelope.json::receipt_header is a data key, and a data key has no fan-in: Grep finds the spellings of receipt_header."
+    },
+    "diagram_edges_unlisted": {
+      "arguments": {
+        "count": 7,
+        "limit": 40
+      },
+      "text": "%% 7 reference edges not drawn (edge bound 40)"
+    },
+    "diagram_elided": {
+      "arguments": {
+        "count": 5
+      },
+      "text": "... 5 more modules"
+    },
+    "diagram_not_converged": {
+      "arguments": {},
+      "text": "the ranking that chose these modules did not converge, so which ones the bound kept is a partial answer"
+    },
+    "diagram_summary": {
+      "arguments": {
+        "count": 40,
+        "total": 12
+      },
+      "text": "diagram of 40 modules; 12 elided"
+    },
+    "diagram_summary_focus": {
+      "arguments": {
+        "count": 40,
+        "target": "src/app.py",
+        "total": 12
+      },
+      "text": "diagram of 40 modules around src/app.py; 12 elided"
+    },
+    "diagram_summary_focus_grouped": {
+      "arguments": {
+        "count": 40,
+        "target": "src/app.py",
+        "total": 12
+      },
+      "text": "diagram of 40 modules around src/app.py, grouped by community; 12 elided"
+    },
+    "diagram_summary_grouped": {
+      "arguments": {
+        "count": 40,
+        "total": 12
+      },
+      "text": "diagram of 40 modules, grouped by community; 12 elided"
+    },
+    "diagram_titles": {
+      "arguments": {
+        "count": 10
+      },
+      "text": "subgraph titles name whole communities, including the 10 modules the rank bound left out of this diagram"
     },
     "expand_batch_shortened": {
       "arguments": {
@@ -500,6 +611,46 @@
         "seats": 40
       },
       "text": "not expanded: 400 ids exceed the 40 one call can answer; retry with at most that many."
+    },
+    "expand_over_limit": {
+      "arguments": {
+        "limit": 10
+      },
+      "text": "not expanded: the per-call limit is 10 symbols"
+    },
+    "expand_unresolved_unlisted": {
+      "arguments": {
+        "count": 5,
+        "total": 25
+      },
+      "text": "unresolved: 5 further ids are not listed; 25 of the ids requested did not resolve"
+    },
+    "explain_definitions_unlisted": {
+      "arguments": {
+        "count": 3,
+        "limit": 20
+      },
+      "text": "... 3 more definitions not listed (limit 20)"
+    },
+    "explain_edges_unlisted": {
+      "arguments": {
+        "count": 6
+      },
+      "text": "... 6 more edges at this tier not listed"
+    },
+    "explain_importers_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 20
+      },
+      "text": "... 2 more importers not listed (limit 20)"
+    },
+    "explain_imports_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 20
+      },
+      "text": "... 2 more declared imports not listed (limit 20)"
     },
     "explain_no_match": {
       "arguments": {
@@ -578,6 +729,13 @@
       },
       "text": "no matching symbols of kind 'class': 'quote' does match symbols of other kinds: function, method. Retry with one of those kinds, or with no kind."
     },
+    "find_unlisted": {
+      "arguments": {
+        "count": 30,
+        "limit": 3
+      },
+      "text": "... 30 more matches not listed (limit 3)"
+    },
     "find_unparsed": {
       "arguments": {
         "listed": "core.py:4",
@@ -643,11 +801,113 @@
       },
       "text": "  xarray/core/_aggregations.py @754 (12 lines)"
     },
+    "grouped_files": {
+      "arguments": {
+        "count": 4
+      },
+      "text": "(4 files)"
+    },
     "grouped_ids": {
       "arguments": {
         "count": 12
       },
       "text": "(12 ids)"
+    },
+    "health_complexity": {
+      "arguments": {
+        "count": 19,
+        "erosion": "0.000",
+        "over": 0,
+        "share": "0.061",
+        "threshold": 10,
+        "total": 3
+      },
+      "text": "complexity over 19 units in 3 files (threshold cc > 10): 0 over the threshold, erosion 0.000, clone share 0.061"
+    },
+    "health_complexity_walked": {
+      "arguments": {
+        "count": 120,
+        "total": 554
+      },
+      "text": "complexity: 120 of 554 files walked before the time budget"
+    },
+    "health_exports": {
+      "arguments": {
+        "count": 5
+      },
+      "text": "5 unused exports (public function outside a function body, no counted edge in)"
+    },
+    "health_exports_unlisted": {
+      "arguments": {
+        "count": 6,
+        "limit": 1
+      },
+      "text": "... 6 more unused exports not listed (limit 1)"
+    },
+    "health_hotspots": {
+      "arguments": {
+        "count": 19
+      },
+      "text": "19 units ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest first)"
+    },
+    "health_hotspots_unlisted": {
+      "arguments": {
+        "count": 4,
+        "limit": 20
+      },
+      "text": "... 4 more hotspots not listed (limit 20)"
+    },
+    "health_hubs": {
+      "arguments": {
+        "count": 21
+      },
+      "text": "21 symbols carry a counted edge (function, method or class, highest counted degree first)"
+    },
+    "health_hubs_unlisted": {
+      "arguments": {
+        "count": 7,
+        "limit": 20
+      },
+      "text": "... 7 more hubs not listed (limit 20)"
+    },
+    "health_orphans": {
+      "arguments": {
+        "count": 247
+      },
+      "text": "247 orphan candidates (function, no counted edge in or out)"
+    },
+    "health_orphans_unlisted": {
+      "arguments": {
+        "count": 246,
+        "limit": 1
+      },
+      "text": "... 246 more orphan candidates not listed (limit 1)"
+    },
+    "health_over": {
+      "arguments": {
+        "count": 412
+      },
+      "text": "health over 412 symbols"
+    },
+    "health_over_excluded": {
+      "arguments": {
+        "count": 412,
+        "total": 88
+      },
+      "text": "health over 412 symbols; 88 excluded as test or fixture paths"
+    },
+    "health_unmeasured": {
+      "arguments": {
+        "count": 2
+      },
+      "text": "complexity: 2 files not measured"
+    },
+    "health_unmeasured_unlisted": {
+      "arguments": {
+        "count": 3,
+        "limit": 20
+      },
+      "text": "... 3 more unmeasured files not listed (limit 20)"
     },
     "history_body_truncated": {
       "arguments": {
@@ -685,6 +945,16 @@
         "detail": "commit 2 does not open with a full sha"
       },
       "text": "git printed log output history cannot read: commit 2 does not open with a full sha. history refuses a partial read rather than answer from one. Check that this git honours --no-patch together with -L, and that no filter rewrites git log output."
+    },
+    "history_header": {
+      "arguments": {
+        "count": 2,
+        "end": 40,
+        "path": "billing/invoice.py",
+        "start": 31,
+        "target": "py:billing/invoice.py::Invoice.total"
+      },
+      "text": "py:billing/invoice.py::Invoice.total  billing/invoice.py:31-40  (2 commits, newest first)"
     },
     "history_more_commits": {
       "arguments": {
@@ -910,6 +1180,13 @@
       },
       "text": "function, file or body"
     },
+    "map_budget_none": {
+      "arguments": {
+        "budget": 200,
+        "count": 12
+      },
+      "text": "// note: the 200-token budget left room for none of the 12 symbols; raise --budget"
+    },
     "map_companion_unlisted": {
       "arguments": {
         "path": "agentless/util/postprocess_data.py"
@@ -930,11 +1207,50 @@
       },
       "text": "limit is 500, but operation map takes a limit from 1 to 200."
     },
+    "map_max_files_none": {
+      "arguments": {
+        "count": 9
+      },
+      "text": "// note: --max-files kept none of the 9 ranked files"
+    },
+    "map_not_converged": {
+      "arguments": {},
+      "text": "// note: the ranking behind this map did not converge, so the order of the files below is a partial answer"
+    },
+    "map_nothing_parsed": {
+      "arguments": {},
+      "text": "// note: no file in this repository parsed"
+    },
+    "map_over_budget": {
+      "arguments": {
+        "budget": 200,
+        "count": 3,
+        "total": 204
+      },
+      "text": "// note: this map renders to 204 tokens against a 200-token budget: the 3 ranked files are listed whatever the budget allows, and the budget bounds only the symbols shown under them"
+    },
+    "map_symbols_unlisted": {
+      "arguments": {
+        "count": 9
+      },
+      "text": "... 9 more symbols in this file not listed"
+    },
+    "map_tests_unlisted": {
+      "arguments": {
+        "count": 846,
+        "limit": 5
+      },
+      "text": "... 846 more test files not listed (limit 5)"
+    },
     "map_unresolved_seeds": {
       "arguments": {
         "seeds": "rotate_age, shift_age"
       },
       "text": "// note: these focus seeds matched no file, no symbol, and no name spelled in five or fewer non-test files of this repository, so the ranking below is not focused on them: rotate_age, shift_age. Check the spelling, or seed with a file path from the tree."
+    },
+    "map_walk_capped": {
+      "arguments": {},
+      "text": "// note: the walk out to these tests hit its node bound before it finished, so this section is a floor rather than every test"
     },
     "operation_in_tool": {
       "arguments": {
@@ -1045,6 +1361,41 @@
       },
       "text": "orient operation 'path' needs both source and target: each is a stable id, a qualified name, or a repository-relative file path. Retry naming both ends."
     },
+    "refs_absent": {
+      "arguments": {
+        "target": "py:pkg/lib.py::target"
+      },
+      "text": "no references to py:pkg/lib.py::target outside its own definition"
+    },
+    "refs_absent_complete": {
+      "arguments": {
+        "count": 42,
+        "target": "py:pkg/lib.py::target"
+      },
+      "text": "no references to py:pkg/lib.py::target outside its own definition (complete scan: 42 files, 0 skipped)"
+    },
+    "refs_callers_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 5
+      },
+      "text": "... 2 more callers not listed (limit 5)"
+    },
+    "refs_candidates_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 1
+      },
+      "text": "... 2 more candidates not listed (limit 1)"
+    },
+    "refs_group_header": {
+      "arguments": {
+        "count": 4,
+        "note": ", resolved-via-import",
+        "path": "reports.py"
+      },
+      "text": "reports.py  (4 references, resolved-via-import)"
+    },
     "refs_header": {
       "arguments": {
         "count": 3,
@@ -1060,12 +1411,36 @@
       },
       "text": "8 references to helper, a name that 2 definitions share"
     },
+    "refs_shared_candidate": {
+      "arguments": {
+        "count": 6,
+        "score": "0.281",
+        "target": "[py:pkg/lib.py::other1] @5",
+        "total": 1
+      },
+      "text": "[py:pkg/lib.py::other1] @5  (6 shared callers in 1 file, score 0.281)"
+    },
     "refs_target_unresolved": {
       "arguments": {
         "name": "total",
         "target": "py:src/app/svc.py::Invoice.total"
       },
       "text": "py:src/app/svc.py::Invoice.total resolves to no symbol; these are the references to the name total, wherever it is defined"
+    },
+    "refs_unlisted": {
+      "arguments": {
+        "count": 6,
+        "limit": 2
+      },
+      "text": "... 6 more references not listed (limit 2)"
+    },
+    "refs_unlisted_files": {
+      "arguments": {
+        "count": 6,
+        "limit": 2,
+        "total": 2
+      },
+      "text": "... 6 more references not listed (limit 2), including every reference in 2 more files"
     },
     "repo_refused_no_roots": {
       "arguments": {},

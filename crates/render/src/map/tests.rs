@@ -68,12 +68,40 @@ fn every_note_line_of_a_map_starts_with_the_tool_marker() {
     assert_eq!(
         map_text(&noted_map()),
         "// note: the ranking behind this map did not converge, so the order of the files below \
-         is a partial answer\n// note: nothing in this repository parsed into symbols\n// note: \
-         this map renders to 200 tokens against a 100-token budget: every one of the 0 ranked \
-         files is listed whatever the budget allows, and the budget bounds only the symbols shown \
-         under them\n\nno ranked files\n\n// note: the walk out to these tests hit its node bound \
-         before it finished, so this section is a floor rather than every test\n"
+         is a partial answer\n// note: no file in this repository parsed\n// note: this map \
+         renders to 200 tokens against a 100-token budget: the 0 ranked files are listed whatever \
+         the budget allows, and the budget bounds only the symbols shown under them\n\nno ranked \
+         files\n\n// note: the walk out to these tests hit its node bound before it finished, so \
+         this section is a floor rather than every test\n"
     );
+}
+
+#[test]
+fn a_count_of_one_takes_the_singular_in_the_notes_and_the_companion_cut() {
+    let mut map = companion_map();
+    map.companions.rows = Bounded::cut(map.companions.rows.rows().to_vec(), 1);
+    let text = map_text(&map);
+    assert!(text.contains(
+        "\n// note: this map renders to 200 tokens against a 100-token budget: the 1 ranked file \
+         is listed whatever the budget allows, and the budget bounds only the symbols shown under \
+         it\n"
+    ));
+    assert!(text.ends_with("\n... 1 more test file not listed (limit 1)\n"));
+    let kept_none = MapResult {
+        ranked: 1,
+        ..noted_map()
+    };
+    assert!(
+        map_text(&kept_none).contains("\n// note: --max-files kept none of the 1 ranked file\n")
+    );
+    let fit_none = MapResult {
+        ranked: 2,
+        candidates: 1,
+        ..noted_map()
+    };
+    let note =
+        "\n// note: the 100-token budget left room for none of the 1 symbol; raise --budget\n";
+    assert!(map_text(&fit_none).contains(note));
 }
 
 #[test]

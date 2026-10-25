@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::slice;
 
 use facts::line_prefix;
-use prompts::messages::{EXPAND_BODY_TRUNCATED, EXPAND_NO_ROOM, GROUPED_IDS};
+use prompts::messages::{EXPAND_BODY_TRUNCATED, EXPAND_NO_ROOM, EXPAND_OVER_LIMIT, GROUPED_IDS};
 
 use crate::bounds::within;
 use crate::budget::{TRUNCATION_MARKER_TOKENS, allocate, longest_fitting};
@@ -155,8 +155,10 @@ pub(crate) fn first_copies(ids: &[String]) -> Vec<&str> {
 fn grouped_rows(over_limit: usize, repeated: usize, limit: usize) -> Vec<(String, String)> {
     let mut rows = Vec::new();
     if over_limit > 0 {
-        let reason = format!("not expanded: the per-call limit is {limit} symbols");
-        rows.push((GROUPED_IDS.render(over_limit), reason));
+        rows.push((
+            GROUPED_IDS.render(over_limit),
+            EXPAND_OVER_LIMIT.render(limit),
+        ));
     }
     if repeated > 0 {
         let reason = "not expanded: repeated in this batch, and expanded under the first copy";

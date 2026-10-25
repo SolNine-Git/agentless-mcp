@@ -234,6 +234,56 @@
   and 18 rows with a cut seed. No golden or recorded fixture holds such a row.
   The mark is the new message `map_companion_unlisted`. The guide says what
   the mark means, and that `covers` names the files of the text row.
+- **A count of one takes the singular form in every cut line and count of the
+  graph, fan-in, find, explain, expand and map answers, and in two config
+  warnings.** The shared `omitted_line` took one plural noun for every count,
+  and the other counts chose their noun in code. So the answers printed
+  "... 1 more communities not listed (limit 2)", "... 1 more unused exports
+  not listed (limit 4)", "including every reference in 1 more files", "the
+  per-call limit is 1 symbols", "1 community over 1 files", "diagram of 1
+  modules", "unresolved: 1 further ids are not listed", "stoplist in
+  .agentless-mcp.json: 1 entries are not bare names ... and were dropped" and
+  "1 further unknown keys". Now each of these lines is a row of
+  `crates/prompts/data/messages.json` with the `{count:one|many}` field: 56
+  new rows. `omitted_line` and the health `plural` helper are gone. At a count
+  of two or more the text does not change. Measured with the release binaries
+  of 87e8c6e and of this change over 103 calls of health, refs, history,
+  communities, cycles, diagram, expand, explain, find and map in this
+  repository at 8d0dbba, django-11099, lucene-12022 and element-web: 36
+  answers change, each in its note or count lines only, with the same ranks,
+  rows and order. The map's rows text is one character shorter for each "1
+  more symbol" line, so its measured tokens can drop by one: lucene `map
+  --budget 200 --max-files 1` "renders to 204 tokens" now reads 203, and the
+  JSON `rendered_tokens` of two recorded maps goes from 175 to 174 and from 54
+  to 53. The `%% 1 reference edge not drawn` comment is inside the diagram
+  document, so a committed diagram with exactly one reference edge over the
+  bound drifts once under `diagram --check`.
+- **Each note of the cycles, communities and diagram answers starts with
+  `// note:`.** The unresolved-import note of cycles, the weak-partition and
+  pass-limit notes of communities, and the two caveats of the diagram printed
+  `note:` with no marker, some indented, and the diagram caveat said "the 10
+  module(s)". Now each note is a messages row at column 0 in its old place,
+  and the diagram caveat counts its modules with the choice field. The CLI
+  prints each diagram caveat line on stderr as it is, under the receipt lines,
+  in place of `agentless-mcp: note: ...`. The diagram JSON `caveat` holds the
+  note sentences without a marker, as the receipt JSON holds its `note`: it
+  loses its `note: ` prefix. The map notes (unsettled ranking, budget, capped
+  walk, the three nothing-ranked notes) move from literals in the renderer to
+  messages rows. The budget note now reads "the 3 ranked files are listed" in
+  place of "every one of the 3 ranked files is listed", and "the 1 ranked file
+  is listed ... under it" for one file.
+- **The empty map and the empty communities answer give one reason.**
+  Communities printed "nothing in this repository parsed into files" and the
+  map "nothing in this repository parsed into symbols". Both fire when no file
+  parsed: a file with no symbol still ranks in the map (measured: one file `x =
+  1` gives a one-file map and one community). Both now say "no file in this
+  repository parsed".
+- **The analyze_structure description states the unused-export rule of the
+  code.** It said "a public function no counted edge reaches", and the health
+  answer counts "a public function outside a function body". The description
+  now says "a public function outside a function body that no counted edge
+  reaches". No v2 tool serves it: tools/list stays 10,534 bytes, byte for
+  byte (measured on the release binaries of 854c90c, 87e8c6e and this change).
 - **An overview with docstrings keeps the doc comments of Go, JavaScript,
   TypeScript, Java, C# and Lua.** The skeleton found a doc comment only by the
   marker nodes of the Rust grammar, so in the other languages the

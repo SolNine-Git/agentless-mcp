@@ -48,7 +48,12 @@ pub const prompts::messages::CLONE_NO_TAG_CACHE: &str
 pub const prompts::messages::CLONE_NO_TAG_CACHE_EVIDENCE: &str
 pub const prompts::messages::CLONE_OLD_NOT_INDEXED: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::CLONE_TOKENIZER_REJECTS: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::COMMUNITIES_HEADER: prompts::Template<(prompts::Count, prompts::Count, prompts::Text, prompts::Text)>
+pub const prompts::messages::COMMUNITIES_NOTHING_PARSED: &str
 pub const prompts::messages::COMMUNITIES_NOT_CONVERGED: &str
+pub const prompts::messages::COMMUNITIES_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::COMMUNITIES_WEAK: &str
+pub const prompts::messages::COMMUNITY_FILES_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::COMPLEXITY_CROSSED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::COMPLEXITY_DOES_NOT_PARSE: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::COMPLEXITY_EVIDENCE: prompts::Template<(prompts::Count, prompts::Count, prompts::Count, prompts::Count, prompts::Count)>
@@ -65,6 +70,8 @@ pub const prompts::messages::CONFIG_BOUNDARY_GLOBS_TOO_MANY: prompts::Template<(
 pub const prompts::messages::CONFIG_EROSION_GATE_MODE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::messages::CONFIG_EROSION_GATE_NOT_OBJECT: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::CONFIG_EROSION_GATE_UNKNOWN: prompts::Template<(prompts::Text, prompts::Text, prompts::Count)>
+pub const prompts::messages::CONFIG_STOPLIST_DROPPED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::CONFIG_UNKNOWN_KEYS_SUPPRESSED: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::CONTRACT_EVIDENCE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::messages::CONTRACT_NEW_HIT: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::messages::CONTRACT_NEW_NOT_MEASURED: prompts::Template<(prompts::Text, prompts::Text)>
@@ -72,11 +79,27 @@ pub const prompts::messages::CONTRACT_NO_BOUNDARY: prompts::Template<prompts::Te
 pub const prompts::messages::CONTRACT_NO_BOUNDARY_EVIDENCE: &str
 pub const prompts::messages::CONTRACT_NO_RULES: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::CONTRACT_OLD_NOT_MEASURED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::CYCLES_HEADER: prompts::Template<prompts::Count>
 pub const prompts::messages::CYCLES_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::CYCLES_UNRESOLVED: prompts::Template<prompts::Count>
 pub const prompts::messages::DATA_KEY_NO_FAN_IN: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::DIAGRAM_EDGES_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::DIAGRAM_ELIDED: prompts::Template<prompts::Count>
+pub const prompts::messages::DIAGRAM_NOT_CONVERGED: &str
+pub const prompts::messages::DIAGRAM_SUMMARY: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::DIAGRAM_SUMMARY_FOCUS: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::DIAGRAM_SUMMARY_FOCUS_GROUPED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::DIAGRAM_SUMMARY_GROUPED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::DIAGRAM_TITLES: prompts::Template<prompts::Count>
 pub const prompts::messages::EXPAND_BATCH_SHORTENED: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPAND_BODY_TRUNCATED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPAND_NO_ROOM: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::EXPAND_OVER_LIMIT: prompts::Template<prompts::Count>
+pub const prompts::messages::EXPAND_UNRESOLVED_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::EXPLAIN_DEFINITIONS_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::EXPLAIN_EDGES_UNLISTED: prompts::Template<prompts::Count>
+pub const prompts::messages::EXPLAIN_IMPORTERS_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::EXPLAIN_IMPORTS_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPLAIN_NO_MATCH: prompts::Template<prompts::Text>
 pub const prompts::messages::EXPLAIN_TIE: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::FIND_DATA_FOLDED: prompts::Template<(prompts::Text, prompts::Count)>
@@ -88,6 +111,7 @@ pub const prompts::messages::FIND_DATA_UNLISTED: prompts::Template<(prompts::Cou
 pub const prompts::messages::FIND_NO_DECLARATION: prompts::Template<prompts::Text>
 pub const prompts::messages::FIND_NO_MATCHES: prompts::Template<prompts::Text>
 pub const prompts::messages::FIND_NO_MATCHES_KIND: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::FIND_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::FIND_UNPARSED: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::FIND_USAGE_HEAD: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::FIND_USAGE_HEAD_OWNER: prompts::Template<(prompts::Text, prompts::Text, prompts::Count)>
@@ -98,12 +122,28 @@ pub const prompts::messages::FIND_USAGE_NEAREST_ALL: &str
 pub const prompts::messages::FIND_USAGE_REST: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::FIND_USAGE_REST_OWNER: prompts::Template<(prompts::Text, prompts::Text, prompts::Count)>
 pub const prompts::messages::FIND_USAGE_ROW: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::GROUPED_FILES: prompts::Template<prompts::Count>
 pub const prompts::messages::GROUPED_IDS: prompts::Template<prompts::Count>
+pub const prompts::messages::HEALTH_COMPLEXITY: prompts::Template<(prompts::Count, prompts::Count, prompts::Count, prompts::Count, prompts::Text, prompts::Text)>
+pub const prompts::messages::HEALTH_COMPLEXITY_WALKED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::HEALTH_EXPORTS: prompts::Template<prompts::Count>
+pub const prompts::messages::HEALTH_EXPORTS_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::HEALTH_HOTSPOTS: prompts::Template<prompts::Count>
+pub const prompts::messages::HEALTH_HOTSPOTS_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::HEALTH_HUBS: prompts::Template<prompts::Count>
+pub const prompts::messages::HEALTH_HUBS_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::HEALTH_ORPHANS: prompts::Template<prompts::Count>
+pub const prompts::messages::HEALTH_ORPHANS_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::HEALTH_OVER: prompts::Template<prompts::Count>
+pub const prompts::messages::HEALTH_OVER_EXCLUDED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::HEALTH_UNMEASURED: prompts::Template<prompts::Count>
+pub const prompts::messages::HEALTH_UNMEASURED_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::HISTORY_BODY_TRUNCATED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::HISTORY_DIRTY_FILE: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::HISTORY_DIRTY_UNKNOWN: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Text)>
 pub const prompts::messages::HISTORY_GIT_FAILED: prompts::Template<prompts::Text>
 pub const prompts::messages::HISTORY_GIT_OUTPUT_MALFORMED: prompts::Template<prompts::Text>
+pub const prompts::messages::HISTORY_HEADER: prompts::Template<(prompts::Text, prompts::Text, prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::HISTORY_MORE_COMMITS: prompts::Template<prompts::Count>
 pub const prompts::messages::HISTORY_NO_COMMITS: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::HISTORY_NO_GIT: prompts::Template<prompts::Text>
@@ -139,10 +179,18 @@ pub const prompts::messages::LINT_UNKNOWN_CHECK: prompts::Template<(prompts::Tex
 pub const prompts::messages::LINT_UNKNOWN_SEVERITY: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::LISTED_AND: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::LISTED_OR: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::MAP_BUDGET_NONE: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::MAP_COMPANION_UNLISTED: prompts::Template<prompts::Text>
 pub const prompts::messages::MAP_FILE_UNREACHED: prompts::Template<prompts::Count>
 pub const prompts::messages::MAP_LIMIT_OUT_OF_RANGE: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::MAP_MAX_FILES_NONE: prompts::Template<prompts::Count>
+pub const prompts::messages::MAP_NOTHING_PARSED: &str
+pub const prompts::messages::MAP_NOT_CONVERGED: &str
+pub const prompts::messages::MAP_OVER_BUDGET: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::MAP_SYMBOLS_UNLISTED: prompts::Template<prompts::Count>
+pub const prompts::messages::MAP_TESTS_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::MAP_UNRESOLVED_SEEDS: prompts::Template<prompts::Text>
+pub const prompts::messages::MAP_WALK_CAPPED: &str
 pub const prompts::messages::OPERATION_IN_TOOL: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::OPERATION_LACKS_PARAMETER: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::OPERATION_REQUIRES_VALUE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
@@ -159,9 +207,17 @@ pub const prompts::messages::PAIR_WORKTREE_UNREAD: prompts::Template<(prompts::T
 pub const prompts::messages::PATH_DATA_KEY_NO_EDGES: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::PATH_ENDPOINT_NO_MATCH: prompts::Template<prompts::Text>
 pub const prompts::messages::PATH_NEEDS_ENDPOINTS: prompts::Template<prompts::Text>
+pub const prompts::messages::REFS_ABSENT: prompts::Template<prompts::Text>
+pub const prompts::messages::REFS_ABSENT_COMPLETE: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::REFS_CALLERS_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::REFS_CANDIDATES_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::REFS_GROUP_HEADER: prompts::Template<(prompts::Text, prompts::Count, prompts::Text)>
 pub const prompts::messages::REFS_HEADER: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::REFS_HEADER_SHARED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::REFS_SHARED_CANDIDATE: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Text)>
 pub const prompts::messages::REFS_TARGET_UNRESOLVED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::REFS_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::REFS_UNLISTED_FILES: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::REPO_REFUSED_NOT_ALLOWED: prompts::Template<prompts::Text>
 pub const prompts::messages::REPO_REFUSED_NO_ROOTS: &str
 pub const prompts::messages::ROOTS_FILE_HINT: prompts::Template<prompts::Text>

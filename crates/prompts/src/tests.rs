@@ -103,7 +103,7 @@ fn the_fixture_and_the_catalog_hold_the_same_templates() {
         .iter()
         .map(|(file, key, _, _)| (*file, *key))
         .collect();
-    assert_eq!(cataloged.len(), 179);
+    assert_eq!(cataloged.len(), 235);
     assert_eq!(fixed, cataloged);
 }
 
@@ -156,7 +156,7 @@ fn each_choice_takes_the_form_of_its_count_at_one_and_at_two() {
         })
         .collect();
     assert_eq!(covered, fixed);
-    assert_eq!(covered.len(), 25);
+    assert_eq!(covered.len(), 74);
     assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
 }
 

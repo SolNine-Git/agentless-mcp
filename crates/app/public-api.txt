@@ -3035,7 +3035,6 @@ pub fn app::locator(&str, &str, core::option::Option<&str>) -> alloc::string::St
 pub fn app::map(&app::Services, &app::Reading<'_>, &app::MapRequest) -> app::Noted<core::result::Result<app::MapResult, app::Error>>
 pub fn app::map_rows_text(&[app::MapFile]) -> alloc::string::String
 pub fn app::normalize_patch(&app::Repo, &[patch::blocks::Edit]) -> core::result::Result<app::NormalizeReport, app::Error>
-pub fn app::omitted_line(usize, &str, usize) -> alloc::string::String
 pub fn app::path(&app::Services, &app::Reading<'_>, &app::PathRequest) -> app::Noted<core::result::Result<app::PathTrace, app::Error>>
 pub fn app::rationale_nodes(syntax::language::Language, &str, &facts::values::Symbol) -> alloc::vec::Vec<app::RationaleNode>
 pub fn app::refs(&app::Services, &app::Reading<'_>, &app::RefsRequest) -> app::Noted<core::result::Result<app::RefsResult, app::Error>>

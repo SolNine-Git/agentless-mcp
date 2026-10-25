@@ -3,14 +3,15 @@
 
 use app::{
     DataEntry, DataMatches, ExpandResult, FindResult, OutsideOutline, SymbolCard, Usage, UsageFile,
-    UsageOrder, cards_text, omitted_line,
+    UsageOrder, cards_text,
 };
 use prompts::messages::{
-    EXPAND_BATCH_SHORTENED, FIND_DATA_FOLDED, FIND_DATA_FOLDED_REST, FIND_DATA_KIND_EXCLUDED,
-    FIND_DATA_OUTSIDE, FIND_DATA_OUTSIDE_UNREAD, FIND_DATA_UNLISTED, FIND_NO_DECLARATION,
-    FIND_NO_MATCHES, FIND_NO_MATCHES_KIND, FIND_UNPARSED, FIND_USAGE_HEAD, FIND_USAGE_HEAD_OWNER,
-    FIND_USAGE_LINES, FIND_USAGE_LINES_ALL, FIND_USAGE_NEAREST, FIND_USAGE_NEAREST_ALL,
-    FIND_USAGE_REST, FIND_USAGE_REST_OWNER, FIND_USAGE_ROW,
+    EXPAND_BATCH_SHORTENED, EXPAND_UNRESOLVED_UNLISTED, FIND_DATA_FOLDED, FIND_DATA_FOLDED_REST,
+    FIND_DATA_KIND_EXCLUDED, FIND_DATA_OUTSIDE, FIND_DATA_OUTSIDE_UNREAD, FIND_DATA_UNLISTED,
+    FIND_NO_DECLARATION, FIND_NO_MATCHES, FIND_NO_MATCHES_KIND, FIND_UNLISTED, FIND_UNPARSED,
+    FIND_USAGE_HEAD, FIND_USAGE_HEAD_OWNER, FIND_USAGE_LINES, FIND_USAGE_LINES_ALL,
+    FIND_USAGE_NEAREST, FIND_USAGE_NEAREST_ALL, FIND_USAGE_REST, FIND_USAGE_REST_OWNER,
+    FIND_USAGE_ROW,
 };
 use prompts::{Count, Template, Text};
 use serde::Serialize;
@@ -68,7 +69,7 @@ fn find_text(result: &FindResult) -> String {
 fn note_lines(result: &FindResult) -> [Option<String>; 6] {
     let (cards, excluded) = (&result.cards, result.data_kind_excluded);
     [
-        (cards.omitted() > 0).then(|| omitted_line(cards.omitted(), "matches", cards.limit())),
+        (cards.omitted() > 0).then(|| FIND_UNLISTED.render((cards.omitted(), cards.limit()))),
         unlisted_line(&result.data),
         (excluded > 0).then(|| FIND_DATA_KIND_EXCLUDED.render(excluded)),
         (result.declares_nothing() && !result.unparsed.is_empty()).then(|| unparsed_line(result)),
@@ -378,11 +379,8 @@ pub fn expand_stderr_rows(result: &ExpandResult) -> Vec<String> {
         .map(|(entry, reason)| format!("unresolved: {entry} -- {reason}"))
         .collect();
     if result.unresolved_omitted > 0 {
-        rows.push(format!(
-            "unresolved: {} further ids are not listed; {} of the ids requested did not resolve",
-            result.unresolved_omitted,
-            result.unresolved_total()
-        ));
+        let counts = (result.unresolved_omitted, result.unresolved_total());
+        rows.push(EXPAND_UNRESOLVED_UNLISTED.render(counts));
     }
     rows
 }

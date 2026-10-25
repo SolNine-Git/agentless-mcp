@@ -971,7 +971,7 @@ repository, before you read anything.
        billing/invoice.py
        billing/ledger.py
 ... 2 more files in this community not listed (limit 2)
-... 1 more communities not listed (limit 1)
+... 1 more community not listed (limit 1)
 ```
 
 The partition is single-level greedy modularity over the same file graph the

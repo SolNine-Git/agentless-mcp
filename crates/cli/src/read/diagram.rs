@@ -70,7 +70,7 @@ fn drawn(
         Ok(mermaid(view))
     };
     let mut lines = receipt_lines(&receipt, &diagram_summary(view));
-    lines.extend(diagram_caveat(view).map(|caveat| format!("agentless-mcp: {caveat}")));
+    lines.extend(diagram_caveat(view));
     let err = lines.join("\n") + "\n";
     match rendered {
         Ok(out) => write_answer(streams, &out, &err, EXIT_OK),

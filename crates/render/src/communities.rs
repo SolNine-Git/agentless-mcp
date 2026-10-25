@@ -3,9 +3,12 @@
 
 use std::cmp::Ordering;
 
-use app::{CommunityReport, CommunityRow, omitted_line};
+use app::{CommunityReport, CommunityRow};
 use json::{fixed, general, round_half_even};
-use prompts::messages::COMMUNITIES_NOT_CONVERGED;
+use prompts::messages::{
+    COMMUNITIES_HEADER, COMMUNITIES_NOT_CONVERGED, COMMUNITIES_NOTHING_PARSED,
+    COMMUNITIES_UNLISTED, COMMUNITIES_WEAK, COMMUNITY_FILES_UNLISTED, GROUPED_FILES,
+};
 use serde::{Serialize, Serializer};
 use text::one_line;
 
@@ -31,46 +34,36 @@ impl View for CommunityReport {
 fn communities_text(report: &CommunityReport) -> String {
     let total = report.communities.total();
     if total == 0 {
-        return "no communities: nothing in this repository parsed into files\n".to_owned();
+        return format!("{COMMUNITIES_NOTHING_PARSED}\n");
     }
-    let noun = if total == 1 {
-        "community"
-    } else {
-        "communities"
-    };
     let scaled = flat_zero(round_half_even(report.modularity, 3));
-    let mut lines = vec![format!(
-        "{total} {noun} over {} files (modularity {} at resolution {})",
+    let mut lines = vec![COMMUNITIES_HEADER.render((
+        total,
         report.files,
-        fixed(scaled, 3),
-        general(report.resolution)
-    )];
+        &fixed(scaled, 3),
+        &general(report.resolution),
+    ))];
     lines.extend(partition_notes(report, scaled));
     for (at, community) in report.communities.rows().iter().enumerate() {
         lines.extend(community_lines(at + 1, community));
     }
     let omitted = report.communities.omitted();
     if omitted > 0 {
-        lines.push(omitted_line(
-            omitted,
-            "communities",
-            report.communities.limit(),
-        ));
+        lines.push(COMMUNITIES_UNLISTED.render((omitted, report.communities.limit())));
     }
     lines.join("\n") + "\n"
 }
 
 fn community_lines(number: usize, community: &CommunityRow) -> Vec<String> {
-    let size = community.members.total();
-    let files = if size == 1 { "file" } else { "files" };
+    let size = GROUPED_FILES.render(community.members.total());
     let label = one_line(&community.label);
-    let mut lines = vec![format!("  {number:>3}. {label}  ({size} {files})")];
+    let mut lines = vec![format!("  {number:>3}. {label}  {size}")];
     let members = community.members.rows().iter();
     lines.extend(members.map(|member| format!("       {}", one_line(member))));
     let omitted = community.members.omitted();
     if omitted > 0 {
         let limit = community.members.limit();
-        lines.push(omitted_line(omitted, "files in this community", limit));
+        lines.push(COMMUNITY_FILES_UNLISTED.render((omitted, limit)));
     }
     lines
 }
@@ -86,12 +79,10 @@ fn partition_notes(report: &CommunityReport, scaled: f64) -> Vec<String> {
         ));
     }
     if !report.converged {
-        notes.push(format!("  {COMMUNITIES_NOT_CONVERGED}"));
+        notes.push(COMMUNITIES_NOT_CONVERGED.to_owned());
     }
     if weak_partition(report) {
-        notes.push(
-            "  note: weak partition; use these communities as a hint, not a boundary".to_owned(),
-        );
+        notes.push(COMMUNITIES_WEAK.to_owned());
     }
     notes
 }

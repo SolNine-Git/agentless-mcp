@@ -3,8 +3,9 @@
 
 use app::{HistoryEntry, HistoryResult, history_entry_text};
 use prompts::messages::{
-    HISTORY_DIRTY_FILE, HISTORY_DIRTY_UNKNOWN, HISTORY_MORE_COMMITS, HISTORY_OUTPUT_CAPPED,
-    HISTORY_SEATS_CAPPED, HISTORY_SHALLOW, HISTORY_SHALLOW_UNKNOWN, HISTORY_SIGNATURE_CHANGED,
+    HISTORY_DIRTY_FILE, HISTORY_DIRTY_UNKNOWN, HISTORY_HEADER, HISTORY_MORE_COMMITS,
+    HISTORY_OUTPUT_CAPPED, HISTORY_SEATS_CAPPED, HISTORY_SHALLOW, HISTORY_SHALLOW_UNKNOWN,
+    HISTORY_SIGNATURE_CHANGED,
 };
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
@@ -32,14 +33,13 @@ fn history_text(result: &HistoryResult) -> String {
 }
 
 fn span_header(result: &HistoryResult) -> String {
-    let count = result.entries.len();
-    let noun = if count == 1 { "commit" } else { "commits" };
-    let (start, end) = (result.start_line, result.end_line);
-    let span = format!("{}:{start}-{end}", one_line(&result.path));
-    format!(
-        "{}  {span}  ({count} {noun}, newest first)",
-        one_line(&result.target)
-    )
+    HISTORY_HEADER.render((
+        &one_line(&result.path),
+        &one_line(&result.target),
+        result.start_line as usize,
+        result.end_line as usize,
+        result.entries.len(),
+    ))
 }
 
 // Each note names a reason to doubt the list: a cap, a working-tree edit, a moved signature, a

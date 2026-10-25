@@ -1,7 +1,7 @@
 //! The import cycles' two forms: arrow chains in the text, and every cycle's files in the JSON.
 
 use app::{CycleReport, CycleRow};
-use prompts::messages::CYCLES_UNLISTED;
+use prompts::messages::{CYCLES_HEADER, CYCLES_UNLISTED, CYCLES_UNRESOLVED, GROUPED_FILES};
 use serde::Serialize;
 use text::one_line;
 
@@ -26,8 +26,7 @@ fn cycles_text(report: &CycleReport) -> String {
         lines.push("no import cycles".to_owned());
         lines.extend(unresolved_note(report.unresolved_internal_imports));
     } else {
-        let noun = if total == 1 { "cycle" } else { "cycles" };
-        lines.push(format!("{total} import {noun}"));
+        lines.push(CYCLES_HEADER.render(total));
         lines.extend(unresolved_note(report.unresolved_internal_imports));
         for (index, cycle) in report.cycles.rows().iter().enumerate() {
             lines.extend(cycle_lines(index + 1, cycle));
@@ -49,10 +48,8 @@ fn cycles_text(report: &CycleReport) -> String {
 fn cycle_lines(number: usize, cycle: &CycleRow) -> Vec<String> {
     let component = component(cycle);
     let chain = one_line(&chain(cycle)).into_owned();
-    let mut lines = vec![format!(
-        "  {number:>3}. ({} files) {chain}",
-        component.len()
-    )];
+    let size = GROUPED_FILES.render(component.len());
+    let mut lines = vec![format!("  {number:>3}. {size} {chain}")];
     let off_chain: Vec<&str> = component
         .into_iter()
         .filter(|path| !cycle.files.iter().any(|file| file == path))
@@ -82,17 +79,7 @@ fn listed_members(paths: &[&str]) -> String {
 
 // Only an unresolved import of the repository's own modules can hide a cycle.
 fn unresolved_note(count: u32) -> Option<String> {
-    let statements = if count == 1 {
-        "statement"
-    } else {
-        "statements"
-    };
-    (count > 0).then(|| {
-        format!(
-            "  note: {count} import {statements} of this repository's own modules did not \
-             resolve, so a cycle through them is not listed"
-        )
-    })
+    (count > 0).then(|| CYCLES_UNRESOLVED.render(count as usize))
 }
 
 // The chain closes the ring by naming its first file again.

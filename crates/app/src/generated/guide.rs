@@ -823,7 +823,7 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         communities over 7 files (modularity 0.363 at resolution \
         1)\n    1. billing around billing/invoice.py  (4 files)\n       \
         billing/invoice.py\n       billing/ledger.py\n... 2 more files \
-        in this community not listed (limit 2)\n... 1 more communities \
+        in this community not listed (limit 2)\n... 1 more community \
         not listed (limit 1)\n```\n\nThe partition is single-level \
         greedy modularity over the same file graph the\nmap ranks. \
         Three explicit ordering rules stand behind it, so an \
@@ -1729,7 +1729,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3599, 4432),
     ("stable-ids", 4434, 5752),
     ("the-two-surfaces", 5754, 11298),
-    ("per-tool-usage", 11300, 94973),
+    ("per-tool-usage", 11300, 94971),
     ("claude-code-specifics", 13058, 14689),
     ("map", 14691, 24600),
     ("tree", 24602, 24923),
@@ -1742,17 +1742,17 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("explain", 40688, 42633),
     ("path", 42635, 45370),
     ("cycles", 45372, 46878),
-    ("communities", 46880, 49406),
-    ("diagram", 49408, 52179),
-    ("health", 52181, 58417),
-    ("html", 58419, 59370),
-    ("resolve-locs", 59372, 60187),
-    ("capabilities", 60189, 60999),
-    ("index", 61001, 63763),
-    ("lint", 63765, 83773),
-    ("validate-vote", 83775, 93372),
-    ("warmup", 93374, 94973),
-    ("project-defaults-agentless-mcp-json", 94975, 98928),
-    ("token-counting", 98930, 99344),
-    ("exit-codes", 99346, 99804),
+    ("communities", 46880, 49404),
+    ("diagram", 49406, 52177),
+    ("health", 52179, 58415),
+    ("html", 58417, 59368),
+    ("resolve-locs", 59370, 60185),
+    ("capabilities", 60187, 60997),
+    ("index", 60999, 63761),
+    ("lint", 63763, 83771),
+    ("validate-vote", 83773, 93370),
+    ("warmup", 93372, 94971),
+    ("project-defaults-agentless-mcp-json", 94973, 98926),
+    ("token-counting", 98928, 99342),
+    ("exit-codes", 99344, 99802),
 ];

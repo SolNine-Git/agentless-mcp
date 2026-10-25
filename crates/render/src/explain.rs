@@ -1,11 +1,13 @@
 //! The explanation's two forms: the card with its tiered fan-out, fan-in and imports in the
 //! text, and every group and listing in the JSON, trimmed at the fan-out groups.
 
-use app::{
-    EdgeRow, Explanation, ImportRow, TierGroup, cards_text, file_site, locator, omitted_line,
-};
+use app::{EdgeRow, Explanation, ImportRow, TierGroup, cards_text, file_site, locator};
 use kernel::Bounded;
-use prompts::messages::EXPLAIN_TIE;
+use prompts::messages::{
+    EXPLAIN_DEFINITIONS_UNLISTED, EXPLAIN_EDGES_UNLISTED, EXPLAIN_IMPORTERS_UNLISTED,
+    EXPLAIN_IMPORTS_UNLISTED, EXPLAIN_TIE,
+};
+use prompts::{Count, Template};
 use serde::Serialize;
 use text::one_line;
 
@@ -50,11 +52,7 @@ fn explanation_text(explanation: &Explanation) -> String {
     lines.extend(
         (alternatives.rows().iter()).map(|entry| format!("  also defined at {}", one_line(entry))),
     );
-    lines.extend(cut_line(
-        alternatives.omitted(),
-        alternatives.limit(),
-        "definitions",
-    ));
+    lines.extend(cut_line(alternatives, &EXPLAIN_DEFINITIONS_UNLISTED));
     if !explanation.rationales.is_empty() {
         lines.push(String::new());
         lines.push("rationale".to_owned());
@@ -88,7 +86,7 @@ fn tiers_text(heading: &str, groups: &[TierGroup]) -> String {
         lines.extend(group.rows.iter().map(edge_line));
         let omitted = group.total.saturating_sub(group.rows.len());
         if omitted > 0 {
-            lines.push(omitted_line(omitted, "edges at this tier", 0));
+            lines.push(EXPLAIN_EDGES_UNLISTED.render(omitted));
         }
     }
     lines.join("\n") + "\n"
@@ -118,11 +116,7 @@ fn imports_text(explanation: &Explanation) -> String {
                 one_line(&row.other)
             )
         }));
-        lines.extend(cut_line(
-            declared.omitted(),
-            declared.limit(),
-            "declared imports",
-        ));
+        lines.extend(cut_line(declared, &EXPLAIN_IMPORTS_UNLISTED));
     }
     let importers = &explanation.imports_in;
     if importers.rows().is_empty() {
@@ -132,17 +126,14 @@ fn imports_text(explanation: &Explanation) -> String {
             let site = file_site(&row.path, row.line);
             format!("    imported by  {site}  as {}", one_line(&row.module))
         }));
-        lines.extend(cut_line(
-            importers.omitted(),
-            importers.limit(),
-            "importers",
-        ));
+        lines.extend(cut_line(importers, &EXPLAIN_IMPORTERS_UNLISTED));
     }
     lines.join("\n") + "\n"
 }
 
-fn cut_line(omitted: usize, limit: usize, noun: &str) -> Option<String> {
-    (omitted > 0).then(|| omitted_line(omitted, noun, limit))
+fn cut_line<R>(listing: &Bounded<R>, unlisted: &Template<(Count, Count)>) -> Option<String> {
+    let omitted = listing.omitted();
+    (omitted > 0).then(|| unlisted.render((omitted, listing.limit())))
 }
 
 #[derive(Clone, Serialize)]

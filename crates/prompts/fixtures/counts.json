@@ -186,6 +186,332 @@
       },
       "one": "unsatisfiable: line range 9000-9050 is beyond src/app/svc.py (1 line)",
       "many": "unsatisfiable: line range 9000-9050 is beyond src/app/svc.py (2 lines)"
+    },
+    "communities_header": {
+      "arguments": {
+        "modularity": "0.408",
+        "resolution": "1"
+      },
+      "one": "1 community over 1 file (modularity 0.408 at resolution 1)",
+      "many": "2 communities over 2 files (modularity 0.408 at resolution 1)"
+    },
+    "communities_unlisted": {
+      "arguments": {
+        "limit": 1
+      },
+      "one": "... 1 more community not listed (limit 1)",
+      "many": "... 2 more communities not listed (limit 1)"
+    },
+    "community_files_unlisted": {
+      "arguments": {
+        "limit": 2
+      },
+      "one": "... 1 more file in this community not listed (limit 2)",
+      "many": "... 2 more files in this community not listed (limit 2)"
+    },
+    "config_stoplist_dropped": {
+      "arguments": {
+        "chars": 64,
+        "config": ".agentless-mcp.json"
+      },
+      "one": "stoplist in .agentless-mcp.json: 1 entry is not a bare name of at most 64 characters and was dropped",
+      "many": "stoplist in .agentless-mcp.json: 2 entries are not bare names of at most 64 characters and were dropped"
+    },
+    "config_unknown_keys_suppressed": {
+      "arguments": {
+        "config": ".agentless-mcp.json"
+      },
+      "one": "1 further unknown key in .agentless-mcp.json: warnings suppressed",
+      "many": "2 further unknown keys in .agentless-mcp.json: warnings suppressed"
+    },
+    "cycles_header": {
+      "arguments": {},
+      "one": "1 import cycle",
+      "many": "2 import cycles"
+    },
+    "cycles_unresolved": {
+      "arguments": {},
+      "one": "// note: 1 import statement of this repository's own modules did not resolve, so a cycle through it is not listed",
+      "many": "// note: 2 import statements of this repository's own modules did not resolve, so a cycle through them is not listed"
+    },
+    "diagram_edges_unlisted": {
+      "arguments": {
+        "limit": 40
+      },
+      "one": "%% 1 reference edge not drawn (edge bound 40)",
+      "many": "%% 2 reference edges not drawn (edge bound 40)"
+    },
+    "diagram_elided": {
+      "arguments": {},
+      "one": "... 1 more module",
+      "many": "... 2 more modules"
+    },
+    "diagram_summary": {
+      "arguments": {
+        "total": 12
+      },
+      "one": "diagram of 1 module; 12 elided",
+      "many": "diagram of 2 modules; 12 elided"
+    },
+    "diagram_summary_focus": {
+      "arguments": {
+        "target": "src/app.py",
+        "total": 12
+      },
+      "one": "diagram of 1 module around src/app.py; 12 elided",
+      "many": "diagram of 2 modules around src/app.py; 12 elided"
+    },
+    "diagram_summary_focus_grouped": {
+      "arguments": {
+        "target": "src/app.py",
+        "total": 12
+      },
+      "one": "diagram of 1 module around src/app.py, grouped by community; 12 elided",
+      "many": "diagram of 2 modules around src/app.py, grouped by community; 12 elided"
+    },
+    "diagram_summary_grouped": {
+      "arguments": {
+        "total": 12
+      },
+      "one": "diagram of 1 module, grouped by community; 12 elided",
+      "many": "diagram of 2 modules, grouped by community; 12 elided"
+    },
+    "diagram_titles": {
+      "arguments": {},
+      "one": "subgraph titles name whole communities, including the 1 module the rank bound left out of this diagram",
+      "many": "subgraph titles name whole communities, including the 2 modules the rank bound left out of this diagram"
+    },
+    "expand_over_limit": {
+      "arguments": {},
+      "one": "not expanded: the per-call limit is 1 symbol",
+      "many": "not expanded: the per-call limit is 2 symbols"
+    },
+    "expand_unresolved_unlisted": {
+      "arguments": {
+        "total": 25
+      },
+      "one": "unresolved: 1 further id is not listed; 25 of the ids requested did not resolve",
+      "many": "unresolved: 2 further ids are not listed; 25 of the ids requested did not resolve"
+    },
+    "explain_definitions_unlisted": {
+      "arguments": {
+        "limit": 20
+      },
+      "one": "... 1 more definition not listed (limit 20)",
+      "many": "... 2 more definitions not listed (limit 20)"
+    },
+    "explain_edges_unlisted": {
+      "arguments": {},
+      "one": "... 1 more edge at this tier not listed",
+      "many": "... 2 more edges at this tier not listed"
+    },
+    "explain_importers_unlisted": {
+      "arguments": {
+        "limit": 20
+      },
+      "one": "... 1 more importer not listed (limit 20)",
+      "many": "... 2 more importers not listed (limit 20)"
+    },
+    "explain_imports_unlisted": {
+      "arguments": {
+        "limit": 20
+      },
+      "one": "... 1 more declared import not listed (limit 20)",
+      "many": "... 2 more declared imports not listed (limit 20)"
+    },
+    "find_unlisted": {
+      "arguments": {
+        "limit": 3
+      },
+      "one": "... 1 more match not listed (limit 3)",
+      "many": "... 2 more matches not listed (limit 3)"
+    },
+    "grouped_files": {
+      "arguments": {},
+      "one": "(1 file)",
+      "many": "(2 files)"
+    },
+    "health_complexity": {
+      "arguments": {
+        "erosion": "0.000",
+        "over": 0,
+        "share": "0.061",
+        "threshold": 10
+      },
+      "one": "complexity over 1 unit in 1 file (threshold cc > 10): 0 over the threshold, erosion 0.000, clone share 0.061",
+      "many": "complexity over 2 units in 2 files (threshold cc > 10): 0 over the threshold, erosion 0.000, clone share 0.061"
+    },
+    "health_complexity_walked": {
+      "arguments": {
+        "count": 120
+      },
+      "one": "complexity: 120 of 1 file walked before the time budget",
+      "many": "complexity: 120 of 2 files walked before the time budget"
+    },
+    "health_exports": {
+      "arguments": {},
+      "one": "1 unused export (public function outside a function body, no counted edge in)",
+      "many": "2 unused exports (public function outside a function body, no counted edge in)"
+    },
+    "health_exports_unlisted": {
+      "arguments": {
+        "limit": 1
+      },
+      "one": "... 1 more unused export not listed (limit 1)",
+      "many": "... 2 more unused exports not listed (limit 1)"
+    },
+    "health_hotspots": {
+      "arguments": {},
+      "one": "1 unit ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest first)",
+      "many": "2 units ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest first)"
+    },
+    "health_hotspots_unlisted": {
+      "arguments": {
+        "limit": 20
+      },
+      "one": "... 1 more hotspot not listed (limit 20)",
+      "many": "... 2 more hotspots not listed (limit 20)"
+    },
+    "health_hubs": {
+      "arguments": {},
+      "one": "1 symbol carries a counted edge (function, method or class, highest counted degree first)",
+      "many": "2 symbols carry a counted edge (function, method or class, highest counted degree first)"
+    },
+    "health_hubs_unlisted": {
+      "arguments": {
+        "limit": 20
+      },
+      "one": "... 1 more hub not listed (limit 20)",
+      "many": "... 2 more hubs not listed (limit 20)"
+    },
+    "health_orphans": {
+      "arguments": {},
+      "one": "1 orphan candidate (function, no counted edge in or out)",
+      "many": "2 orphan candidates (function, no counted edge in or out)"
+    },
+    "health_orphans_unlisted": {
+      "arguments": {
+        "limit": 1
+      },
+      "one": "... 1 more orphan candidate not listed (limit 1)",
+      "many": "... 2 more orphan candidates not listed (limit 1)"
+    },
+    "health_over": {
+      "arguments": {},
+      "one": "health over 1 symbol",
+      "many": "health over 2 symbols"
+    },
+    "health_over_excluded": {
+      "arguments": {
+        "total": 88
+      },
+      "one": "health over 1 symbol; 88 excluded as test or fixture paths",
+      "many": "health over 2 symbols; 88 excluded as test or fixture paths"
+    },
+    "health_unmeasured": {
+      "arguments": {},
+      "one": "complexity: 1 file not measured",
+      "many": "complexity: 2 files not measured"
+    },
+    "health_unmeasured_unlisted": {
+      "arguments": {
+        "limit": 20
+      },
+      "one": "... 1 more unmeasured file not listed (limit 20)",
+      "many": "... 2 more unmeasured files not listed (limit 20)"
+    },
+    "history_header": {
+      "arguments": {
+        "end": 40,
+        "path": "billing/invoice.py",
+        "start": 31,
+        "target": "py:billing/invoice.py::Invoice.total"
+      },
+      "one": "py:billing/invoice.py::Invoice.total  billing/invoice.py:31-40  (1 commit, newest first)",
+      "many": "py:billing/invoice.py::Invoice.total  billing/invoice.py:31-40  (2 commits, newest first)"
+    },
+    "map_budget_none": {
+      "arguments": {
+        "budget": 200
+      },
+      "one": "// note: the 200-token budget left room for none of the 1 symbol; raise --budget",
+      "many": "// note: the 200-token budget left room for none of the 2 symbols; raise --budget"
+    },
+    "map_max_files_none": {
+      "arguments": {},
+      "one": "// note: --max-files kept none of the 1 ranked file",
+      "many": "// note: --max-files kept none of the 2 ranked files"
+    },
+    "map_over_budget": {
+      "arguments": {
+        "budget": 200,
+        "total": 204
+      },
+      "one": "// note: this map renders to 204 tokens against a 200-token budget: the 1 ranked file is listed whatever the budget allows, and the budget bounds only the symbols shown under it",
+      "many": "// note: this map renders to 204 tokens against a 200-token budget: the 2 ranked files are listed whatever the budget allows, and the budget bounds only the symbols shown under them"
+    },
+    "map_symbols_unlisted": {
+      "arguments": {},
+      "one": "... 1 more symbol in this file not listed",
+      "many": "... 2 more symbols in this file not listed"
+    },
+    "map_tests_unlisted": {
+      "arguments": {
+        "limit": 5
+      },
+      "one": "... 1 more test file not listed (limit 5)",
+      "many": "... 2 more test files not listed (limit 5)"
+    },
+    "refs_absent_complete": {
+      "arguments": {
+        "target": "py:pkg/lib.py::target"
+      },
+      "one": "no references to py:pkg/lib.py::target outside its own definition (complete scan: 1 file, 0 skipped)",
+      "many": "no references to py:pkg/lib.py::target outside its own definition (complete scan: 2 files, 0 skipped)"
+    },
+    "refs_callers_unlisted": {
+      "arguments": {
+        "limit": 5
+      },
+      "one": "... 1 more caller not listed (limit 5)",
+      "many": "... 2 more callers not listed (limit 5)"
+    },
+    "refs_candidates_unlisted": {
+      "arguments": {
+        "limit": 1
+      },
+      "one": "... 1 more candidate not listed (limit 1)",
+      "many": "... 2 more candidates not listed (limit 1)"
+    },
+    "refs_group_header": {
+      "arguments": {
+        "note": ", resolved-via-import",
+        "path": "reports.py"
+      },
+      "one": "reports.py  (1 reference, resolved-via-import)",
+      "many": "reports.py  (2 references, resolved-via-import)"
+    },
+    "refs_shared_candidate": {
+      "arguments": {
+        "score": "0.281",
+        "target": "[py:pkg/lib.py::other1] @5"
+      },
+      "one": "[py:pkg/lib.py::other1] @5  (1 shared caller in 1 file, score 0.281)",
+      "many": "[py:pkg/lib.py::other1] @5  (2 shared callers in 2 files, score 0.281)"
+    },
+    "refs_unlisted": {
+      "arguments": {
+        "limit": 2
+      },
+      "one": "... 1 more reference not listed (limit 2)",
+      "many": "... 2 more references not listed (limit 2)"
+    },
+    "refs_unlisted_files": {
+      "arguments": {
+        "limit": 2
+      },
+      "one": "... 1 more reference not listed (limit 2), including every reference in 1 more file",
+      "many": "... 2 more references not listed (limit 2), including every reference in 2 more files"
     }
   }
 }

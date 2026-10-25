@@ -238,10 +238,55 @@ pub const CLONE_TOKENIZER_REJECTS: Template<(Text, Text)> = Template::new(&[
     ),
 ]);
 
+/// A template that takes (`count`, `total`, `modularity`, `resolution`).
+pub const COMMUNITIES_HEADER: Template<(Count, Count, Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "community", "communities"),
+    Piece::Text(" over "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+    Piece::Text(" (modularity "),
+    Piece::Value(2),
+    Piece::Text(" at resolution "),
+    Piece::Value(3),
+    Piece::Text(")"),
+]);
+
 /// A text that takes no values.
-pub const COMMUNITIES_NOT_CONVERGED: &str = "note: community detection stopped at its pass limit \
-        before the partition settled, so these communities are a \
+pub const COMMUNITIES_NOT_CONVERGED: &str = "// note: community detection stopped at its pass \
+        limit before the partition settled, so these communities are a \
         partial answer";
+
+/// A text that takes no values.
+pub const COMMUNITIES_NOTHING_PARSED: &str = "no communities: no file in this repository parsed";
+
+/// A template that takes (`count`, `limit`).
+pub const COMMUNITIES_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "community", "communities"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A text that takes no values.
+pub const COMMUNITIES_WEAK: &str = "// note: weak partition; use these communities as a hint, not \
+        a boundary";
+
+/// A template that takes (`count`, `limit`).
+pub const COMMUNITY_FILES_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "file", "files"),
+    Piece::Text(" in this community not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
 
 /// A template that takes (`qualname`, `old_cc`, `new_cc`, `old_sloc`, `new_sloc`, `threshold`).
 pub const COMPLEXITY_CROSSED: Template<(Text, Count, Count, Count, Count, Count)> =
@@ -456,6 +501,31 @@ pub const CONFIG_EROSION_GATE_UNKNOWN: Template<(Text, Text, Count)> = Template:
     Piece::Text(" ignored."),
 ]);
 
+/// A template that takes (`config`, `count`, `chars`).
+pub const CONFIG_STOPLIST_DROPPED: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Text("stoplist in "),
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "entry is not a bare name", "entries are not bare names"),
+    Piece::Text(" of at most "),
+    Piece::Value(2),
+    Piece::Text(" characters and "),
+    Piece::Choice(1, "was", "were"),
+    Piece::Text(" dropped"),
+]);
+
+/// A template that takes (`config`, `count`).
+pub const CONFIG_UNKNOWN_KEYS_SUPPRESSED: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" further unknown "),
+    Piece::Choice(1, "key", "keys"),
+    Piece::Text(" in "),
+    Piece::Value(0),
+    Piece::Text(": warnings suppressed"),
+]);
+
 /// A template that takes (`rule`, `unit`, `capture`).
 pub const CONTRACT_EVIDENCE: Template<(Text, Text, Text)> = Template::new(&[
     Piece::Text("rule "),
@@ -515,6 +585,13 @@ pub const CONTRACT_OLD_NOT_MEASURED: Template<(Text, Text)> = Template::new(&[
     Piece::Value(1),
 ]);
 
+/// A template that takes `count`.
+pub const CYCLES_HEADER: Template<Count> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" import "),
+    Piece::Choice(0, "cycle", "cycles"),
+]);
+
 /// A template that takes (`count`, `limit`).
 pub const CYCLES_UNLISTED: Template<(Count, Count)> = Template::new(&[
     Piece::Text("... "),
@@ -526,6 +603,20 @@ pub const CYCLES_UNLISTED: Template<(Count, Count)> = Template::new(&[
     Piece::Text(", shortest chain first)"),
 ]);
 
+/// A template that takes `count`.
+pub const CYCLES_UNRESOLVED: Template<Count> = Template::new(&[
+    Piece::Text("// note: "),
+    Piece::Value(0),
+    Piece::Text(" import "),
+    Piece::Choice(0, "statement", "statements"),
+    Piece::Text(
+        " of this repository's own modules did not resolve, so a cycle \
+        through ",
+    ),
+    Piece::Choice(0, "it", "them"),
+    Piece::Text(" is not listed"),
+]);
+
 /// A template that takes (`target`, `name`).
 pub const DATA_KEY_NO_FAN_IN: Template<(Text, Text)> = Template::new(&[
     Piece::Value(0),
@@ -535,6 +626,86 @@ pub const DATA_KEY_NO_FAN_IN: Template<(Text, Text)> = Template::new(&[
     ),
     Piece::Value(1),
     Piece::Text("."),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const DIAGRAM_EDGES_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("%% "),
+    Piece::Value(0),
+    Piece::Text(" reference "),
+    Piece::Choice(0, "edge", "edges"),
+    Piece::Text(" not drawn (edge bound "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes `count`.
+pub const DIAGRAM_ELIDED: Template<Count> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "module", "modules"),
+]);
+
+/// A text that takes no values.
+pub const DIAGRAM_NOT_CONVERGED: &str = "the ranking that chose these modules did not converge, \
+        so which ones the bound kept is a partial answer";
+
+/// A template that takes (`count`, `total`).
+pub const DIAGRAM_SUMMARY: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("diagram of "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "module", "modules"),
+    Piece::Text("; "),
+    Piece::Value(1),
+    Piece::Text(" elided"),
+]);
+
+/// A template that takes (`target`, `count`, `total`).
+pub const DIAGRAM_SUMMARY_FOCUS: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Text("diagram of "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "module", "modules"),
+    Piece::Text(" around "),
+    Piece::Value(0),
+    Piece::Text("; "),
+    Piece::Value(2),
+    Piece::Text(" elided"),
+]);
+
+/// A template that takes (`target`, `count`, `total`).
+pub const DIAGRAM_SUMMARY_FOCUS_GROUPED: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Text("diagram of "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "module", "modules"),
+    Piece::Text(" around "),
+    Piece::Value(0),
+    Piece::Text(", grouped by community; "),
+    Piece::Value(2),
+    Piece::Text(" elided"),
+]);
+
+/// A template that takes (`count`, `total`).
+pub const DIAGRAM_SUMMARY_GROUPED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("diagram of "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "module", "modules"),
+    Piece::Text(", grouped by community; "),
+    Piece::Value(1),
+    Piece::Text(" elided"),
+]);
+
+/// A template that takes `count`.
+pub const DIAGRAM_TITLES: Template<Count> = Template::new(&[
+    Piece::Text("subgraph titles name whole communities, including the "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "module", "modules"),
+    Piece::Text(" the rank bound left out of this diagram"),
 ]);
 
 /// A template that takes (`shortened`, `total`, `budget`).
@@ -573,6 +744,67 @@ pub const EXPAND_NO_ROOM: Template<(Count, Count)> = Template::new(&[
     Piece::Text(" ids exceed the "),
     Piece::Value(1),
     Piece::Text(" one call can answer; retry with at most that many."),
+]);
+
+/// A template that takes `limit`.
+pub const EXPAND_OVER_LIMIT: Template<Count> = Template::new(&[
+    Piece::Text("not expanded: the per-call limit is "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "symbol", "symbols"),
+]);
+
+/// A template that takes (`count`, `total`).
+pub const EXPAND_UNRESOLVED_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("unresolved: "),
+    Piece::Value(0),
+    Piece::Text(" further "),
+    Piece::Choice(0, "id is", "ids are"),
+    Piece::Text(" not listed; "),
+    Piece::Value(1),
+    Piece::Text(" of the ids requested did not resolve"),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const EXPLAIN_DEFINITIONS_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "definition", "definitions"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes `count`.
+pub const EXPLAIN_EDGES_UNLISTED: Template<Count> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "edge", "edges"),
+    Piece::Text(" at this tier not listed"),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const EXPLAIN_IMPORTERS_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "importer", "importers"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const EXPLAIN_IMPORTS_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more declared "),
+    Piece::Choice(0, "import", "imports"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
 ]);
 
 /// A template that takes `target`.
@@ -697,6 +929,17 @@ pub const FIND_NO_MATCHES_KIND: Template<(Text, Text, Text)> = Template::new(&[
     Piece::Text(". Retry with one of those kinds, or with no kind."),
 ]);
 
+/// A template that takes (`count`, `limit`).
+pub const FIND_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "match", "matches"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
 /// A template that takes (`query`, `listed`).
 pub const FIND_UNPARSED: Template<(Text, Text)> = Template::new(&[
     Piece::Text("note: "),
@@ -798,11 +1041,172 @@ pub const FIND_USAGE_ROW: Template<(Text, Count, Count)> = Template::new(&[
 ]);
 
 /// A template that takes `count`.
+pub const GROUPED_FILES: Template<Count> = Template::new(&[
+    Piece::Text("("),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "file", "files"),
+    Piece::Text(")"),
+]);
+
+/// A template that takes `count`.
 pub const GROUPED_IDS: Template<Count> = Template::new(&[
     Piece::Text("("),
     Piece::Value(0),
     Piece::Text(" "),
     Piece::Choice(0, "id", "ids"),
+    Piece::Text(")"),
+]);
+
+/// A template that takes (`count`, `total`, `threshold`, `over`, `erosion`, `share`).
+pub const HEALTH_COMPLEXITY: Template<(Count, Count, Count, Count, Text, Text)> = Template::new(&[
+    Piece::Text("complexity over "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "unit", "units"),
+    Piece::Text(" in "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+    Piece::Text(" (threshold cc > "),
+    Piece::Value(2),
+    Piece::Text("): "),
+    Piece::Value(3),
+    Piece::Text(" over the threshold, erosion "),
+    Piece::Value(4),
+    Piece::Text(", clone share "),
+    Piece::Value(5),
+]);
+
+/// A template that takes (`count`, `total`).
+pub const HEALTH_COMPLEXITY_WALKED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("complexity: "),
+    Piece::Value(0),
+    Piece::Text(" of "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+    Piece::Text(" walked before the time budget"),
+]);
+
+/// A template that takes `count`.
+pub const HEALTH_EXPORTS: Template<Count> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" unused "),
+    Piece::Choice(0, "export", "exports"),
+    Piece::Text(" (public function outside a function body, no counted edge in)"),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const HEALTH_EXPORTS_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more unused "),
+    Piece::Choice(0, "export", "exports"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes `count`.
+pub const HEALTH_HOTSPOTS: Template<Count> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "unit", "units"),
+    Piece::Text(
+        " ranked by mass (named functions and methods, mass = cc * \
+        sqrt(sloc), highest first)",
+    ),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const HEALTH_HOTSPOTS_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "hotspot", "hotspots"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes `count`.
+pub const HEALTH_HUBS: Template<Count> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "symbol carries", "symbols carry"),
+    Piece::Text(
+        " a counted edge (function, method or class, highest counted \
+        degree first)",
+    ),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const HEALTH_HUBS_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "hub", "hubs"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes `count`.
+pub const HEALTH_ORPHANS: Template<Count> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" orphan "),
+    Piece::Choice(0, "candidate", "candidates"),
+    Piece::Text(" (function, no counted edge in or out)"),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const HEALTH_ORPHANS_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more orphan "),
+    Piece::Choice(0, "candidate", "candidates"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes `count`.
+pub const HEALTH_OVER: Template<Count> = Template::new(&[
+    Piece::Text("health over "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "symbol", "symbols"),
+]);
+
+/// A template that takes (`count`, `total`).
+pub const HEALTH_OVER_EXCLUDED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("health over "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "symbol", "symbols"),
+    Piece::Text("; "),
+    Piece::Value(1),
+    Piece::Text(" excluded as test or fixture paths"),
+]);
+
+/// A template that takes `count`.
+pub const HEALTH_UNMEASURED: Template<Count> = Template::new(&[
+    Piece::Text("complexity: "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "file", "files"),
+    Piece::Text(" not measured"),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const HEALTH_UNMEASURED_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more unmeasured "),
+    Piece::Choice(0, "file", "files"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
     Piece::Text(")"),
 ]);
 
@@ -862,6 +1266,22 @@ pub const HISTORY_GIT_OUTPUT_MALFORMED: Template<Text> = Template::new(&[
         Check that this git honours --no-patch together with -L, and \
         that no filter rewrites git log output.",
     ),
+]);
+
+/// A template that takes (`path`, `target`, `start`, `end`, `count`).
+pub const HISTORY_HEADER: Template<(Text, Text, Count, Count, Count)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text("  "),
+    Piece::Value(0),
+    Piece::Text(":"),
+    Piece::Value(2),
+    Piece::Text("-"),
+    Piece::Value(3),
+    Piece::Text("  ("),
+    Piece::Value(4),
+    Piece::Text(" "),
+    Piece::Choice(4, "commit", "commits"),
+    Piece::Text(", newest first)"),
 ]);
 
 /// A template that takes `shown`.
@@ -1177,6 +1597,17 @@ pub const LISTED_AND: Template<(Text, Text)> =
 pub const LISTED_OR: Template<(Text, Text)> =
     Template::new(&[Piece::Value(1), Piece::Text(" or "), Piece::Value(0)]);
 
+/// A template that takes (`count`, `budget`).
+pub const MAP_BUDGET_NONE: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("// note: the "),
+    Piece::Value(1),
+    Piece::Text("-token budget left room for none of the "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "symbol", "symbols"),
+    Piece::Text("; raise --budget"),
+]);
+
 /// A template that takes `path`.
 pub const MAP_COMPANION_UNLISTED: Template<Text> =
     Template::new(&[Piece::Value(0), Piece::Text(" (not listed)")]);
@@ -1205,6 +1636,58 @@ pub const MAP_LIMIT_OUT_OF_RANGE: Template<(Count, Count, Count)> = Template::ne
     Piece::Text("."),
 ]);
 
+/// A template that takes `count`.
+pub const MAP_MAX_FILES_NONE: Template<Count> = Template::new(&[
+    Piece::Text("// note: --max-files kept none of the "),
+    Piece::Value(0),
+    Piece::Text(" ranked "),
+    Piece::Choice(0, "file", "files"),
+]);
+
+/// A text that takes no values.
+pub const MAP_NOT_CONVERGED: &str = "// note: the ranking behind this map did not converge, so \
+        the order of the files below is a partial answer";
+
+/// A text that takes no values.
+pub const MAP_NOTHING_PARSED: &str = "// note: no file in this repository parsed";
+
+/// A template that takes (`count`, `total`, `budget`).
+pub const MAP_OVER_BUDGET: Template<(Count, Count, Count)> = Template::new(&[
+    Piece::Text("// note: this map renders to "),
+    Piece::Value(1),
+    Piece::Text(" tokens against a "),
+    Piece::Value(2),
+    Piece::Text("-token budget: the "),
+    Piece::Value(0),
+    Piece::Text(" ranked "),
+    Piece::Choice(0, "file is", "files are"),
+    Piece::Text(
+        " listed whatever the budget allows, and the budget bounds only \
+        the symbols shown under ",
+    ),
+    Piece::Choice(0, "it", "them"),
+]);
+
+/// A template that takes `count`.
+pub const MAP_SYMBOLS_UNLISTED: Template<Count> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "symbol", "symbols"),
+    Piece::Text(" in this file not listed"),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const MAP_TESTS_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more test "),
+    Piece::Choice(0, "file", "files"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
 /// A template that takes `seeds`.
 pub const MAP_UNRESOLVED_SEEDS: Template<Text> = Template::new(&[
     Piece::Text(
@@ -1215,6 +1698,10 @@ pub const MAP_UNRESOLVED_SEEDS: Template<Text> = Template::new(&[
     Piece::Value(0),
     Piece::Text(". Check the spelling, or seed with a file path from the tree."),
 ]);
+
+/// A text that takes no values.
+pub const MAP_WALK_CAPPED: &str = "// note: the walk out to these tests hit its node bound before \
+        it finished, so this section is a floor rather than every test";
 
 /// A template that takes (`tool`, `operation`).
 pub const OPERATION_IN_TOOL: Template<(Text, Text)> = Template::new(&[
@@ -1359,6 +1846,57 @@ pub const PATH_NEEDS_ENDPOINTS: Template<Text> = Template::new(&[
     ),
 ]);
 
+/// A template that takes `target`.
+pub const REFS_ABSENT: Template<Text> = Template::new(&[
+    Piece::Text("no references to "),
+    Piece::Value(0),
+    Piece::Text(" outside its own definition"),
+]);
+
+/// A template that takes (`target`, `count`).
+pub const REFS_ABSENT_COMPLETE: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("no references to "),
+    Piece::Value(0),
+    Piece::Text(" outside its own definition (complete scan: "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+    Piece::Text(", 0 skipped)"),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const REFS_CALLERS_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "caller", "callers"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const REFS_CANDIDATES_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "candidate", "candidates"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes (`path`, `count`, `note`).
+pub const REFS_GROUP_HEADER: Template<(Text, Count, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("  ("),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "reference", "references"),
+    Piece::Value(2),
+    Piece::Text(")"),
+]);
+
 /// A template that takes (`target`, `count`).
 pub const REFS_HEADER: Template<(Text, Count)> = Template::new(&[
     Piece::Value(1),
@@ -1380,12 +1918,53 @@ pub const REFS_HEADER_SHARED: Template<(Text, Count, Count)> = Template::new(&[
     Piece::Text(" definitions share"),
 ]);
 
+/// A template that takes (`target`, `count`, `total`, `score`).
+pub const REFS_SHARED_CANDIDATE: Template<(Text, Count, Count, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("  ("),
+    Piece::Value(1),
+    Piece::Text(" shared "),
+    Piece::Choice(1, "caller", "callers"),
+    Piece::Text(" in "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "file", "files"),
+    Piece::Text(", score "),
+    Piece::Value(3),
+    Piece::Text(")"),
+]);
+
 /// A template that takes (`target`, `name`).
 pub const REFS_TARGET_UNRESOLVED: Template<(Text, Text)> = Template::new(&[
     Piece::Value(0),
     Piece::Text(" resolves to no symbol; these are the references to the name "),
     Piece::Value(1),
     Piece::Text(", wherever it is defined"),
+]);
+
+/// A template that takes (`count`, `limit`).
+pub const REFS_UNLISTED: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "reference", "references"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes (`count`, `total`, `limit`).
+pub const REFS_UNLISTED_FILES: Template<(Count, Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "reference", "references"),
+    Piece::Text(" not listed (limit "),
+    Piece::Value(2),
+    Piece::Text("), including every reference in "),
+    Piece::Value(1),
+    Piece::Text(" more "),
+    Piece::Choice(1, "file", "files"),
 ]);
 
 /// A text that takes no values.
