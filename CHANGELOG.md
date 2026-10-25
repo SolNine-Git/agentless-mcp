@@ -187,6 +187,15 @@
   and its JSON adds `data_key`. Before, `explain toml:Cargo.toml::workspace.package`
   on this repository explained the Rust function `package` in
   xtask/src/layers.rs. Now it prints the table's card.
+- **The `find_referencing_symbols` description explains two marks again.**
+  The shorter surface had dropped two sentences. The description says again
+  that the tier 'unique' means only that the repository defines the name one
+  time, not that the two files are connected. It says again that a group
+  marked 'locals not checked' comes from a language that has no scope
+  analysis. Measured from the release `agentless-mcp-server`, one stdio
+  session: `tools/list` goes from 10,266 to 10,479 bytes, and the cl100k count
+  of the compact tool entry (encode_ordinary, tiktoken-rs 0.12.1) from 276 to
+  321.
 
 ## 0.11.0rc1 -- 2026-10-23
 

@@ -88,9 +88,12 @@ pub const FIND_REFERENCING_SYMBOLS: &str = "Who calls this symbol, and what brea
         Lists the symbols that reference a target, by file and evidence \
         tier: same-file, resolved-via-import, unique, \
         name-only-ambiguous. Read the top two tiers as callers and the \
-        bottom two as candidates. Call it when the answer depends on \
-        the callers. It is the most expensive tool here: fan-in over a \
-        large repository can take minutes.";
+        bottom two as candidates. The tier 'unique' means only that the \
+        repository defines the name one time. It does not mean that the \
+        two files are connected. A group marked 'locals not checked' \
+        comes from a language that has no scope analysis. Call it when \
+        the answer depends on the callers. It is the most expensive \
+        tool here: fan-in over a large repository can take minutes.";
 
 /// The description of the `find_symbol` tool.
 pub const FIND_SYMBOL: &str = "Does this symbol exist, and where is it defined? Find symbols by \
