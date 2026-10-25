@@ -50,7 +50,6 @@ fn the_data_entries_follow_as_cards_and_folded_lines_then_the_unlisted_files() {
         unlisted: (1..=4)
             .map(|at| folded(&format!("l{at}.json"), at))
             .collect(),
-        scanned: true,
     };
     let expected = "[json:a.json::pin] @2\n  constant\n  pin = 1\n\n\
         b.json: 4 data keys match. Grep finds the spellings.\n\
@@ -67,18 +66,6 @@ fn the_data_entries_follow_as_cards_and_folded_lines_then_the_unlisted_files() {
     assert_eq!(json.matches.len(), 1);
     assert_eq!(folded[..2], [("b.json", 4), ("l1.json", 1)]);
     assert_eq!((json.total, json.omitted), (15, 14));
-}
-
-#[test]
-fn a_miss_in_a_repository_with_data_files_says_deep_keys_are_not_symbols() {
-    let with_data = DataMatches {
-        scanned: true,
-        ..DataMatches::default()
-    };
-    let text = find_text(&result(with_data));
-    assert!(text.ends_with("not symbols. Grep finds them.\n"), "{text}");
-    let text = find_text(&result(DataMatches::default()));
-    assert!(!text.contains("not symbols"), "{text}");
 }
 
 #[test]

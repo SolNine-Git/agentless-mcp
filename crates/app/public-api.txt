@@ -1188,7 +1188,6 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::CyclesRequest
 impl core::panic::unwind_safe::UnwindSafe for app::CyclesRequest
 pub struct app::DataMatches
 pub app::DataMatches::entries: alloc::vec::Vec<app::DataEntry>
-pub app::DataMatches::scanned: bool
 pub app::DataMatches::unlisted: alloc::vec::Vec<app::FoldedFile>
 impl app::DataMatches
 pub fn app::DataMatches::total(&self) -> usize

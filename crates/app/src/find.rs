@@ -118,14 +118,10 @@ fn matched(scan: &SymbolFacts, request: &FindRequest, limit: usize) -> FindResul
     };
     let cards = top_cards(code, &needle, limit);
     let room = DATA_ENTRIES.min(limit.saturating_sub(cards.len()));
-    let scanned = scan
-        .files
-        .iter()
-        .any(|file| is_data_language(file.language));
     FindResult {
         query: request.query.clone(),
         cards: Bounded::with_total(cards, code_total, limit),
-        data: data_matches(data, &needle, room, scanned),
+        data: data_matches(data, &needle, room),
         skipped: scan.skipped.clone(),
         kind: request.kind.map(SymbolKind::as_str),
         other_kinds,

@@ -3,8 +3,8 @@
 
 use app::{DataEntry, DataMatches, ExpandResult, FindResult, SymbolCard, cards_text, omitted_line};
 use prompts::messages::{
-    EXPAND_BATCH_SHORTENED, FIND_DATA_FOLDED, FIND_DATA_NOT_SYMBOLS, FIND_DATA_UNLISTED,
-    FIND_NO_MATCHES, FIND_NO_MATCHES_KIND, FIND_UNPARSED,
+    EXPAND_BATCH_SHORTENED, FIND_DATA_FOLDED, FIND_DATA_UNLISTED, FIND_NO_MATCHES,
+    FIND_NO_MATCHES_KIND, FIND_UNPARSED,
 };
 use serde::Serialize;
 use text::one_line;
@@ -35,7 +35,7 @@ impl View for FindResult {
 fn find_text(result: &FindResult) -> String {
     let cards = &result.cards;
     let mut body = if result.is_miss() {
-        miss_text(result)
+        miss_line(result) + "\n"
     } else {
         matches_text(result)
     };
@@ -72,16 +72,6 @@ fn matches_text(result: &FindResult) -> String {
 
 fn card_block(card: &SymbolCard) -> String {
     cards_text(std::slice::from_ref(card)).trim_end().to_owned()
-}
-
-// A miss in a repository with data files says that deep keys are not symbols.
-fn miss_text(result: &FindResult) -> String {
-    let mut text = miss_line(result) + "\n";
-    if result.data.scanned {
-        text.push_str(FIND_DATA_NOT_SYMBOLS);
-        text.push('\n');
-    }
-    text
 }
 
 // The data files no entry shows, with the first few named.

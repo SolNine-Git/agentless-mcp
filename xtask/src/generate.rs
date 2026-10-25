@@ -224,7 +224,7 @@ mod tests {
     fn the_prompt_files_parse_with_no_problem() {
         let envelope = templates::parse(ENVELOPE, &read(ENVELOPE)).unwrap();
         let messages = templates::parse(MESSAGES, &read(MESSAGES)).unwrap();
-        assert_eq!((envelope.len(), messages.len()), (13, 143));
+        assert_eq!((envelope.len(), messages.len()), (13, 142));
         let text = read(RULES);
         let entries: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(entries["rules"].as_array().map(Vec::len), Some(22));

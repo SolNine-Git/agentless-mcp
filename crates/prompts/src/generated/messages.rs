@@ -556,10 +556,6 @@ pub const FIND_DATA_FOLDED: Template<(Text, Count)> = Template::new(&[
     Piece::Text(" data keys match. Grep finds the spellings."),
 ]);
 
-/// A text that takes no values.
-pub const FIND_DATA_NOT_SYMBOLS: &str = "Keys below depth 2 and keys in lists of JSON, TOML and \
-        YAML files are not symbols. Grep finds them.";
-
 /// A template that takes (`count`, `total`, `listed`).
 pub const FIND_DATA_UNLISTED: Template<(Count, Count, Text)> = Template::new(&[
     Piece::Value(0),

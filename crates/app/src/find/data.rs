@@ -21,8 +21,6 @@ pub struct DataMatches {
     pub entries: Vec<DataEntry>,
     /// The files whose matching keys no entry shows, in rank order.
     pub unlisted: Vec<FoldedFile>,
-    /// Whether the scan holds a data file.
-    pub scanned: bool,
 }
 
 /// One shown data match: a key's card, or one line for a file with many matching keys.
@@ -59,12 +57,8 @@ pub(super) fn data_matches(
     matches: Vec<(&FileSymbols, &Symbol)>,
     needle: &str,
     room: usize,
-    scanned: bool,
 ) -> DataMatches {
-    let mut data = DataMatches {
-        scanned,
-        ..DataMatches::default()
-    };
+    let mut data = DataMatches::default();
     let mut full = false;
     for (file, symbols) in by_file(matches, needle) {
         let entries = file_entries(file, &symbols);

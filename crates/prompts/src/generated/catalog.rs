@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 156] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 155] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -469,12 +469,6 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 156] = [
         "find_data_folded",
         &["path", "count"],
         messages::FIND_DATA_FOLDED.pieces(),
-    ),
-    (
-        "messages",
-        "find_data_not_symbols",
-        &[],
-        &[Piece::Text(messages::FIND_DATA_NOT_SYMBOLS)],
     ),
     (
         "messages",

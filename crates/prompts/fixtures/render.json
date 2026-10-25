@@ -501,10 +501,6 @@
       },
       "text": "config/default.yml: 11 data keys match. Grep finds the spellings."
     },
-    "find_data_not_symbols": {
-      "arguments": {},
-      "text": "Keys below depth 2 and keys in lists of JSON, TOML and YAML files are not symbols. Grep finds them."
-    },
     "find_data_unlisted": {
       "arguments": {
         "count": 62,

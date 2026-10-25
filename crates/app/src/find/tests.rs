@@ -105,7 +105,7 @@ fn an_answer_of_one_folded_file_is_not_a_miss() {
     assert!(result.cards.rows().is_empty());
     assert!(!result.is_miss(), "{:?}", result.data);
     let miss = found(vec![data_file("configdata.json", &names)], "nothing", 20);
-    assert!(miss.is_miss() && miss.data.scanned);
+    assert!(miss.is_miss());
 }
 
 fn symbol(name: &str, parent: &str, kind: SymbolKind) -> Symbol {
