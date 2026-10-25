@@ -665,6 +665,13 @@ pub const FIND_DATA_UNLISTED: Template<(Count, Count, Count, Text)> = Template::
 ]);
 
 /// A template that takes `query`.
+pub const FIND_NO_DECLARATION: Template<Text> = Template::new(&[
+    Piece::Text("no declared symbol has '"),
+    Piece::Value(0),
+    Piece::Text("' in its name or qualified name, matched case-insensitively."),
+]);
+
+/// A template that takes `query`.
 pub const FIND_NO_MATCHES: Template<Text> = Template::new(&[
     Piece::Text("no matching symbols: no declared symbol has '"),
     Piece::Value(0),
@@ -693,6 +700,83 @@ pub const FIND_UNPARSED: Template<(Text, Text)> = Template::new(&[
     Piece::Text(" is spelled where a file did not parse ("),
     Piece::Value(1),
     Piece::Text("), so a declaration there may be missing from this answer"),
+]);
+
+/// A template that takes (`name`, `count`).
+pub const FIND_USAGE_HEAD: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("usage: "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file spells", "files spell"),
+    Piece::Text(" '"),
+    Piece::Value(0),
+    Piece::Text("' and "),
+    Piece::Choice(1, "does", "do"),
+    Piece::Text(" not declare it"),
+    Piece::Choice(1, ":", "."),
+]);
+
+/// A template that takes (`name`, `owner`, `count`).
+pub const FIND_USAGE_HEAD_OWNER: Template<(Text, Text, Count)> = Template::new(&[
+    Piece::Text("usage: "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "file spells", "files spell"),
+    Piece::Text(" '"),
+    Piece::Value(0),
+    Piece::Text("' and '"),
+    Piece::Value(1),
+    Piece::Text("' and "),
+    Piece::Choice(2, "does", "do"),
+    Piece::Text(" not declare '"),
+    Piece::Value(0),
+    Piece::Text("'"),
+    Piece::Choice(2, ":", "."),
+]);
+
+/// A template that takes `count`.
+pub const FIND_USAGE_LINES: Template<Count> = Template::new(&[
+    Piece::Text("The "),
+    Piece::Value(0),
+    Piece::Text(" with the most lines:"),
+]);
+
+/// A text that takes no values.
+pub const FIND_USAGE_LINES_ALL: &str = "Most lines first:";
+
+/// A template that takes `count`.
+pub const FIND_USAGE_NEAREST: Template<Count> = Template::new(&[
+    Piece::Text("The "),
+    Piece::Value(0),
+    Piece::Text(" nearest to a declaration:"),
+]);
+
+/// A text that takes no values.
+pub const FIND_USAGE_NEAREST_ALL: &str = "Nearest to a declaration first:";
+
+/// A template that takes (`name`, `count`).
+pub const FIND_USAGE_REST: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" more "),
+    Piece::Choice(1, "file spells", "files spell"),
+    Piece::Text(" '"),
+    Piece::Value(0),
+    Piece::Text("' and "),
+    Piece::Choice(1, "is", "are"),
+    Piece::Text(" not listed."),
+]);
+
+/// A template that takes (`path`, `line`, `count`).
+pub const FIND_USAGE_ROW: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Text("  "),
+    Piece::Value(0),
+    Piece::Text(" @"),
+    Piece::Value(1),
+    Piece::Text(" ("),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "line", "lines"),
+    Piece::Text(")"),
 ]);
 
 /// A template that takes `count`.

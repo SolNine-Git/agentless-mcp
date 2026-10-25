@@ -125,7 +125,7 @@ fn the_first_line_outside_skips_the_lines_where_outline_rows_start() {
 #[test]
 fn the_search_stops_under_a_spent_deadline() {
     let scanned = Scanned::new(&[("deep.json", DEEP)]);
-    let loaded = SymbolFacts::load(&scanned.services, &scanned.reading());
+    let loaded = SymbolFacts::load(&scanned.services, &scanned.reading(), &|_| Vec::new());
     let scan = loaded.value.unwrap_or_else(|error| panic!("{error}"));
     let deadline = spent();
     let reading = scanned.reading().with_deadline(&deadline);

@@ -2,13 +2,15 @@
 //! card's fields in the JSON.
 
 use app::{
-    DataEntry, DataMatches, ExpandResult, FindResult, OutsideOutline, SymbolCard, cards_text,
-    omitted_line,
+    DataEntry, DataMatches, ExpandResult, FindResult, OutsideOutline, SymbolCard, Usage, UsageFile,
+    UsageOrder, cards_text, omitted_line,
 };
 use prompts::messages::{
     EXPAND_BATCH_SHORTENED, FIND_DATA_FOLDED, FIND_DATA_FOLDED_REST, FIND_DATA_KIND_EXCLUDED,
-    FIND_DATA_OUTSIDE, FIND_DATA_OUTSIDE_UNREAD, FIND_DATA_UNLISTED, FIND_NO_MATCHES,
-    FIND_NO_MATCHES_KIND, FIND_UNPARSED,
+    FIND_DATA_OUTSIDE, FIND_DATA_OUTSIDE_UNREAD, FIND_DATA_UNLISTED, FIND_NO_DECLARATION,
+    FIND_NO_MATCHES, FIND_NO_MATCHES_KIND, FIND_UNPARSED, FIND_USAGE_HEAD, FIND_USAGE_HEAD_OWNER,
+    FIND_USAGE_LINES, FIND_USAGE_LINES_ALL, FIND_USAGE_NEAREST, FIND_USAGE_NEAREST_ALL,
+    FIND_USAGE_REST, FIND_USAGE_ROW,
 };
 use serde::Serialize;
 use text::one_line;
@@ -37,9 +39,9 @@ impl View for FindResult {
 }
 
 // Any skipped-file warning first, then the code cards and the data entries, or why nothing
-// matched, then the notes on what the answer leaves out.
+// matched, then the notes on what the answer leaves out, then the usage files.
 fn find_text(result: &FindResult) -> String {
-    let mut body = if result.is_miss() {
+    let mut body = if result.declares_nothing() {
         miss_line(result) + "\n"
     } else {
         matches_text(result)
@@ -47,6 +49,10 @@ fn find_text(result: &FindResult) -> String {
     for line in note_lines(result).into_iter().flatten() {
         body.push_str(&line);
         body.push('\n');
+    }
+    if let Some(usage) = &result.usage {
+        body.push('\n');
+        body.push_str(&usage_text(usage));
     }
     let warning = skipped_line(&result.skipped);
     if warning.is_empty() {
@@ -64,7 +70,7 @@ fn note_lines(result: &FindResult) -> [Option<String>; 6] {
         (cards.omitted() > 0).then(|| omitted_line(cards.omitted(), "matches", cards.limit())),
         unlisted_line(&result.data),
         (excluded > 0).then(|| FIND_DATA_KIND_EXCLUDED.render(excluded)),
-        (result.is_miss() && !result.unparsed.is_empty()).then(|| unparsed_line(result)),
+        (result.declares_nothing() && !result.unparsed.is_empty()).then(|| unparsed_line(result)),
         outside_line(&result.query, &result.outside),
         (result.outside.unread > 0).then(|| {
             let outside = &result.outside;
@@ -128,15 +134,53 @@ fn unlisted_line(data: &DataMatches) -> Option<String> {
     Some(FIND_DATA_UNLISTED.render((counts.0, counts.1, counts.2, listed.as_str())))
 }
 
-// A miss that the kind filter caused names the kinds the query does match.
+// A miss that the kind filter caused names the kinds the query does match. With usage files to
+// follow, the line does not send the reader to a text search.
 fn miss_line(result: &FindResult) -> String {
     match result.kind {
         Some(kind) if !result.other_kinds.is_empty() => {
             let kinds = result.other_kinds.join(", ");
             FIND_NO_MATCHES_KIND.render((kind, &result.query, &kinds))
         }
+        _ if result.usage.is_some() => FIND_NO_DECLARATION.render(&result.query),
         _ => FIND_NO_MATCHES.render(&result.query),
     }
+}
+
+// The head with its order, a row per listed file, and the count of the files the cap left out.
+fn usage_text(usage: &Usage) -> String {
+    let files = &usage.files;
+    let mut lines = vec![usage_head(usage)];
+    lines.extend(files.rows().iter().map(usage_row));
+    if files.omitted() > 0 {
+        lines.push(FIND_USAGE_REST.render((usage.name.as_str(), files.omitted())));
+    }
+    lines.join("\n") + "\n"
+}
+
+// A head of one file ends with a colon and takes no order.
+fn usage_head(usage: &Usage) -> String {
+    let (name, total) = (usage.name.as_str(), usage.files.total());
+    let head = match usage.owner.as_deref() {
+        Some(owner) => FIND_USAGE_HEAD_OWNER.render((name, owner, total)),
+        None => FIND_USAGE_HEAD.render((name, total)),
+    };
+    if total == 1 {
+        return head;
+    }
+    let shown = usage.files.rows().len();
+    let order = match (usage.order, usage.files.omitted() > 0) {
+        (UsageOrder::NearestDeclaration, true) => FIND_USAGE_NEAREST.render(shown),
+        (UsageOrder::NearestDeclaration, false) => FIND_USAGE_NEAREST_ALL.to_owned(),
+        (UsageOrder::MostLines, true) => FIND_USAGE_LINES.render(shown),
+        (UsageOrder::MostLines, false) => FIND_USAGE_LINES_ALL.to_owned(),
+    };
+    format!("{head} {order}")
+}
+
+fn usage_row(file: &UsageFile) -> String {
+    let (line, lines) = (file.line as usize, file.lines as usize);
+    FIND_USAGE_ROW.render((&one_line(&file.path), line, lines))
 }
 
 fn unparsed_line(result: &FindResult) -> String {
@@ -171,6 +215,48 @@ struct FindJson<'a> {
     data_kind_excluded: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     outside_outline: Option<OutsideJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    usage: Option<UsageJson<'a>>,
+}
+
+// The code files that spell the name and do not declare it: the owner only for a qualified query.
+#[derive(Clone, Serialize)]
+struct UsageJson<'a> {
+    name: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner: Option<&'a str>,
+    total: usize,
+    limit: usize,
+    order: &'static str,
+    files: Vec<UsageFileJson<'a>>,
+}
+
+#[derive(Clone, Serialize)]
+struct UsageFileJson<'a> {
+    path: &'a str,
+    line: u32,
+    lines: u32,
+}
+
+impl<'a> UsageJson<'a> {
+    fn of(usage: &'a Usage) -> Self {
+        let files = usage.files.rows().iter().map(|file| UsageFileJson {
+            path: &file.path,
+            line: file.line,
+            lines: file.lines,
+        });
+        UsageJson {
+            name: &usage.name,
+            owner: usage.owner.as_deref(),
+            total: usage.files.total(),
+            limit: usage.files.limit(),
+            order: match usage.order {
+                UsageOrder::NearestDeclaration => "nearest_declaration",
+                UsageOrder::MostLines => "most_lines",
+            },
+            files: files.collect(),
+        }
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -243,6 +329,7 @@ impl<'a> FindJson<'a> {
             unparsed: unparsed.collect(),
             data_kind_excluded: (excluded > 0).then_some(excluded),
             outside_outline: OutsideJson::of(&result.outside),
+            usage: result.usage.as_ref().map(UsageJson::of),
         }
     }
 }

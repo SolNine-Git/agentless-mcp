@@ -103,7 +103,7 @@ fn the_fixture_and_the_catalog_hold_the_same_templates() {
         .iter()
         .map(|(file, key, _, _)| (*file, *key))
         .collect();
-    assert_eq!(cataloged.len(), 162);
+    assert_eq!(cataloged.len(), 171);
     assert_eq!(fixed, cataloged);
 }
 
@@ -156,7 +156,7 @@ fn each_choice_takes_the_form_of_its_count_at_one_and_at_two() {
         })
         .collect();
     assert_eq!(covered, fixed);
-    assert_eq!(covered.len(), 18);
+    assert_eq!(covered.len(), 22);
     assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
 }
 
@@ -168,6 +168,20 @@ fn a_count_of_one_takes_the_singular_form_in_a_typed_render() {
     assert_eq!(
         messages::SLICE_RANGE_BEYOND_FILE.render(values),
         "unsatisfiable: line range 9000-9050 is beyond src/app/svc.py (1 line)"
+    );
+}
+
+// The head of one usage file ends with a colon and takes no order row. A longer head ends a
+// sentence, and an order row follows it.
+#[test]
+fn the_usage_head_of_one_file_ends_with_a_colon_and_of_more_files_with_a_full_stop() {
+    assert_eq!(
+        messages::FIND_USAGE_HEAD.render(("where", 1)),
+        "usage: 1 file spells 'where' and does not declare it:"
+    );
+    assert_eq!(
+        messages::FIND_USAGE_HEAD.render(("where", 47)),
+        "usage: 47 files spell 'where' and do not declare it."
     );
 }
 

@@ -79,7 +79,10 @@ pub use env::{EnvConfig, Services, UnreadCwd, WALK_BUDGET};
 pub use error::Error;
 pub use expand::{ExpandRequest, ExpandResult, expand};
 pub use explain::{EdgeRow, ExplainRequest, Explanation, ImportRow, TierGroup, explain};
-pub use find::{DataEntry, DataMatches, FindRequest, FindResult, FoldedFile, OutsideOutline, find};
+pub use find::{
+    DataEntry, DataMatches, FindRequest, FindResult, FoldedFile, OutsideOutline, Usage, UsageFile,
+    UsageOrder, find,
+};
 pub use guide::{guide_text, section_names, section_text, unknown_section};
 pub use health::{
     DiscountedTier, HealthComplexity, HealthComplexityRow, HealthReport, HealthRequest,

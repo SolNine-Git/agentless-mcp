@@ -505,15 +505,44 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         that starts with the query, and then\nevery other match. In one \
         tier, the cards come in the order of the lowered\nname, then of \
         the path. So `find-symbol Value` lists the class `Value` \
-        before\nthe `value` methods.\n\nOutput is incident cards: id, \
-        `@line-line`, kind, signature. Everything is in\none place \
-        rather than joined across \
-        rows:\n\n```\n[py:src/app/svc.py::Invoice.total] @12-30\n  \
-        method\n  def total(self)\n```\n\nThe id carries the rest. Its \
-        prefix names the language, and its qualified name\nnames the \
-        owning class. A card names the owner on the kind line only when \
-        the\nsymbol's own name holds a dot, because a dotted name hides \
-        where the owner\nends.\n\n### `refs` \
+        before\nthe `value` methods.\n\nAfter the cards, the data \
+        entries and the notes, a `usage:` block lists the\ncode files \
+        that spell the name as a whole word and declare no symbol \
+        with\nthat name in its case. The search reads the text of each \
+        code file, so it\nfinds the name in a call, an import, a \
+        comment or a string. It does not read\ndata files. For a \
+        qualified query such as `Square.area`, the name is the \
+        last\npart, and each listed file also spells the owner \
+        `Square`. The files nearest\nto a declaring file come first: \
+        the fewest directory steps, then the most\nlines that spell the \
+        name, then the path. A data file with a key of that name\nis a \
+        declaring file too. When no file declares the name, the most \
+        lines come\nfirst. Each row gives the first line that spells \
+        the name and the count of\nthose lines. The block lists 10 \
+        files and counts the rest:\n\n```\nusage: 47 files spell \
+        'where' and do not declare it. The 10 nearest to a \
+        declaration:\n  xarray/core/_aggregations.py @754 (12 lines)\n  \
+        xarray/core/dataset.py @225 (11 lines)\n  \
+        xarray/core/dataarray.py @340 (8 lines)\n  \
+        xarray/core/indexing.py @43 (6 lines)\n  xarray/core/missing.py \
+        @32 (6 lines)\n  xarray/core/rolling.py @196 (6 lines)\n  \
+        xarray/core/accessor_str.py @1372 (4 lines)\n  \
+        xarray/core/nanops.py @8 (4 lines)\n  \
+        xarray/core/dask_array_ops.py @69 (3 lines)\n  \
+        xarray/core/concat.py @334 (2 lines)\n37 more files spell \
+        'where' and are not listed.\n```\n\nThe block comes with a kind \
+        filter too. When no symbol matches and a code\nfile spells the \
+        name, the first line says that no symbol is declared, \
+        the\nblock follows, and the command exits 0. A query that is \
+        not a name, or names\njoined by `.` or `::`, gets no \
+        block.\n\nOutput is incident cards: id, `@line-line`, kind, \
+        signature. Everything is in\none place rather than joined \
+        across rows:\n\n```\n[py:src/app/svc.py::Invoice.total] \
+        @12-30\n  method\n  def total(self)\n```\n\nThe id carries the \
+        rest. Its prefix names the language, and its qualified \
+        name\nnames the owning class. A card names the owner on the \
+        kind line only when the\nsymbol's own name holds a dot, because \
+        a dotted name hides where the owner\nends.\n\n### `refs` \
         (`find_referencing_symbols`) -- fan-in and blast \
         radius\n\n```\nagentless-mcp refs Invoice.total --limit \
         50\nagentless-mcp refs Invoice.total \
@@ -1686,30 +1715,30 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3599, 4432),
     ("stable-ids", 4434, 5752),
     ("the-two-surfaces", 5754, 11298),
-    ("per-tool-usage", 11300, 92507),
+    ("per-tool-usage", 11300, 94151),
     ("claude-code-specifics", 13058, 14689),
     ("map", 14691, 24286),
     ("tree", 24288, 24609),
     ("skeleton", 24611, 25976),
     ("expand", 25978, 27951),
     ("slice", 27953, 28790),
-    ("find-symbol", 28792, 29833),
-    ("refs", 29835, 35385),
-    ("history", 35387, 38220),
-    ("explain", 38222, 40167),
-    ("path", 40169, 42904),
-    ("cycles", 42906, 44412),
-    ("communities", 44414, 46940),
-    ("diagram", 46942, 49713),
-    ("health", 49715, 55951),
-    ("html", 55953, 56904),
-    ("resolve-locs", 56906, 57721),
-    ("capabilities", 57723, 58533),
-    ("index", 58535, 61297),
-    ("lint", 61299, 81307),
-    ("validate-vote", 81309, 90906),
-    ("warmup", 90908, 92507),
-    ("project-defaults-agentless-mcp-json", 92509, 96462),
-    ("token-counting", 96464, 96878),
-    ("exit-codes", 96880, 97338),
+    ("find-symbol", 28792, 31477),
+    ("refs", 31479, 37029),
+    ("history", 37031, 39864),
+    ("explain", 39866, 41811),
+    ("path", 41813, 44548),
+    ("cycles", 44550, 46056),
+    ("communities", 46058, 48584),
+    ("diagram", 48586, 51357),
+    ("health", 51359, 57595),
+    ("html", 57597, 58548),
+    ("resolve-locs", 58550, 59365),
+    ("capabilities", 59367, 60177),
+    ("index", 60179, 62941),
+    ("lint", 62943, 82951),
+    ("validate-vote", 82953, 92550),
+    ("warmup", 92552, 94151),
+    ("project-defaults-agentless-mcp-json", 94153, 98106),
+    ("token-counting", 98108, 98522),
+    ("exit-codes", 98524, 98982),
 ];

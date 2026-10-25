@@ -219,7 +219,8 @@ pub const RESOLVE_LOCATIONS: &str = "Which lines hold this class, function, or l
 /// The description of the `symbols` tool.
 pub const SYMBOLS: &str = "Look up a symbol and read it by symbol. find (requires name; kind, \
         limit): symbols matching a name, Qualified.name or substring, \
-        with path:line and a stable id. overview (requires paths; \
+        with path:line and a stable id, then the files that use the \
+        name and do not declare it. overview (requires paths; \
         docstrings): signatures with bodies elided; read it instead of \
         the file. expand (requires stable_ids; limit): line-numbered \
         bodies; expand a long id alone, because an over-budget batch is \

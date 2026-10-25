@@ -47,6 +47,7 @@ pub const app::ops::limits::DEFAULT_REFS_LIMIT: usize
 pub const app::ops::limits::DEFAULT_RESOLUTION: f64
 pub const app::ops::limits::DEFAULT_TREE_DEPTH: usize
 pub const app::ops::limits::DEFAULT_TREE_ENTRIES: usize
+pub const app::ops::limits::FIND_USAGE_FILES: usize
 pub const app::ops::limits::MAX_BUDGET: usize
 pub const app::ops::limits::MAX_CONTEXT_LINES: usize
 pub const app::ops::limits::MAX_DIAGRAM_EDGES: usize
@@ -654,6 +655,25 @@ impl core::marker::Unpin for app::Setting
 impl core::marker::UnsafeUnpin for app::Setting
 impl core::panic::unwind_safe::RefUnwindSafe for app::Setting
 impl core::panic::unwind_safe::UnwindSafe for app::Setting
+pub enum app::UsageOrder
+pub app::UsageOrder::MostLines
+pub app::UsageOrder::NearestDeclaration
+impl core::clone::Clone for app::UsageOrder
+pub fn app::UsageOrder::clone(&self) -> Self
+impl core::cmp::Eq for app::UsageOrder
+impl core::cmp::PartialEq for app::UsageOrder
+pub fn app::UsageOrder::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::UsageOrder
+pub fn app::UsageOrder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::UsageOrder
+impl core::marker::StructuralPartialEq for app::UsageOrder
+impl core::marker::Freeze for app::UsageOrder
+impl core::marker::Send for app::UsageOrder
+impl core::marker::Sync for app::UsageOrder
+impl core::marker::Unpin for app::UsageOrder
+impl core::marker::UnsafeUnpin for app::UsageOrder
+impl core::panic::unwind_safe::RefUnwindSafe for app::UsageOrder
+impl core::panic::unwind_safe::UnwindSafe for app::UsageOrder
 pub enum app::Verdict
 pub app::Verdict::Error
 pub app::Verdict::Failed
@@ -1487,7 +1507,9 @@ pub app::FindResult::outside: app::OutsideOutline
 pub app::FindResult::query: alloc::string::String
 pub app::FindResult::skipped: alloc::vec::Vec<app::Skipped>
 pub app::FindResult::unparsed: alloc::vec::Vec<(alloc::string::String, u32)>
+pub app::FindResult::usage: core::option::Option<app::Usage>
 impl app::FindResult
+pub fn app::FindResult::declares_nothing(&self) -> bool
 pub fn app::FindResult::is_miss(&self) -> bool
 impl core::clone::Clone for app::FindResult
 pub fn app::FindResult::clone(&self) -> Self
@@ -2804,6 +2826,45 @@ impl core::marker::Unpin for app::UnreadCwd
 impl core::marker::UnsafeUnpin for app::UnreadCwd
 impl core::panic::unwind_safe::RefUnwindSafe for app::UnreadCwd
 impl core::panic::unwind_safe::UnwindSafe for app::UnreadCwd
+pub struct app::Usage
+pub app::Usage::files: kernel::bounded::Bounded<app::UsageFile>
+pub app::Usage::name: alloc::string::String
+pub app::Usage::order: app::UsageOrder
+pub app::Usage::owner: core::option::Option<alloc::string::String>
+impl core::clone::Clone for app::Usage
+pub fn app::Usage::clone(&self) -> Self
+impl core::cmp::Eq for app::Usage
+impl core::cmp::PartialEq for app::Usage
+pub fn app::Usage::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Usage
+pub fn app::Usage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::Usage
+impl core::marker::Freeze for app::Usage
+impl core::marker::Send for app::Usage
+impl core::marker::Sync for app::Usage
+impl core::marker::Unpin for app::Usage
+impl core::marker::UnsafeUnpin for app::Usage
+impl core::panic::unwind_safe::RefUnwindSafe for app::Usage
+impl core::panic::unwind_safe::UnwindSafe for app::Usage
+pub struct app::UsageFile
+pub app::UsageFile::line: u32
+pub app::UsageFile::lines: u32
+pub app::UsageFile::path: alloc::string::String
+impl core::clone::Clone for app::UsageFile
+pub fn app::UsageFile::clone(&self) -> Self
+impl core::cmp::Eq for app::UsageFile
+impl core::cmp::PartialEq for app::UsageFile
+pub fn app::UsageFile::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::UsageFile
+pub fn app::UsageFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::UsageFile
+impl core::marker::Freeze for app::UsageFile
+impl core::marker::Send for app::UsageFile
+impl core::marker::Sync for app::UsageFile
+impl core::marker::Unpin for app::UsageFile
+impl core::marker::UnsafeUnpin for app::UsageFile
+impl core::panic::unwind_safe::RefUnwindSafe for app::UsageFile
+impl core::panic::unwind_safe::UnwindSafe for app::UsageFile
 pub struct app::ValidateReport
 pub app::ValidateReport::deadline_expired: bool
 pub app::ValidateReport::header: app::RunHeader

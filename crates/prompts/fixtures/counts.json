@@ -89,6 +89,36 @@
       "one": "1 data key in 1 file matches and is not listed: data.json (1). This answer has room for 1 data entry after the code matches. Grep finds the spellings.",
       "many": "2 data keys in 2 files match and are not listed: data.json (1). This answer has room for 2 data entries after the code matches. Grep finds the spellings."
     },
+    "find_usage_head": {
+      "arguments": {
+        "name": "where"
+      },
+      "one": "usage: 1 file spells 'where' and does not declare it:",
+      "many": "usage: 2 files spell 'where' and do not declare it."
+    },
+    "find_usage_head_owner": {
+      "arguments": {
+        "name": "replace",
+        "owner": "SegmentInfos"
+      },
+      "one": "usage: 1 file spells 'replace' and 'SegmentInfos' and does not declare 'replace':",
+      "many": "usage: 2 files spell 'replace' and 'SegmentInfos' and do not declare 'replace'."
+    },
+    "find_usage_rest": {
+      "arguments": {
+        "name": "where"
+      },
+      "one": "1 more file spells 'where' and is not listed.",
+      "many": "2 more files spell 'where' and are not listed."
+    },
+    "find_usage_row": {
+      "arguments": {
+        "line": 754,
+        "path": "xarray/core/_aggregations.py"
+      },
+      "one": "  xarray/core/_aggregations.py @754 (1 line)",
+      "many": "  xarray/core/_aggregations.py @754 (2 lines)"
+    },
     "grouped_ids": {
       "arguments": {},
       "one": "(1 id)",

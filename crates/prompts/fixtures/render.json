@@ -552,6 +552,12 @@
       },
       "text": "62 data keys in 2 files match and are not listed: doc/missing-references.json (60), .lgtm.yml (2). This answer has room for 5 data entries after the code matches. Grep finds the spellings."
     },
+    "find_no_declaration": {
+      "arguments": {
+        "query": "existsBySlug"
+      },
+      "text": "no declared symbol has 'existsBySlug' in its name or qualified name, matched case-insensitively."
+    },
     "find_no_matches": {
       "arguments": {
         "query": "rotate_age"
@@ -572,6 +578,56 @@
         "query": "unfinished"
       },
       "text": "note: unfinished is spelled where a file did not parse (core.py:4), so a declaration there may be missing from this answer"
+    },
+    "find_usage_head": {
+      "arguments": {
+        "count": 47,
+        "name": "where"
+      },
+      "text": "usage: 47 files spell 'where' and do not declare it."
+    },
+    "find_usage_head_owner": {
+      "arguments": {
+        "count": 7,
+        "name": "replace",
+        "owner": "SegmentInfos"
+      },
+      "text": "usage: 7 files spell 'replace' and 'SegmentInfos' and do not declare 'replace'."
+    },
+    "find_usage_lines": {
+      "arguments": {
+        "count": 10
+      },
+      "text": "The 10 with the most lines:"
+    },
+    "find_usage_lines_all": {
+      "arguments": {},
+      "text": "Most lines first:"
+    },
+    "find_usage_nearest": {
+      "arguments": {
+        "count": 10
+      },
+      "text": "The 10 nearest to a declaration:"
+    },
+    "find_usage_nearest_all": {
+      "arguments": {},
+      "text": "Nearest to a declaration first:"
+    },
+    "find_usage_rest": {
+      "arguments": {
+        "count": 37,
+        "name": "where"
+      },
+      "text": "37 more files spell 'where' and are not listed."
+    },
+    "find_usage_row": {
+      "arguments": {
+        "count": 12,
+        "line": 754,
+        "path": "xarray/core/_aggregations.py"
+      },
+      "text": "  xarray/core/_aggregations.py @754 (12 lines)"
     },
     "grouped_ids": {
       "arguments": {

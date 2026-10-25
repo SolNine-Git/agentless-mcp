@@ -30,7 +30,8 @@ pub(crate) struct RepoFacts {
     pub(crate) skipped: Vec<Skipped>,
 }
 
-// The scan that reads each file's symbols and no other fact.
+// The scan that reads each file's symbols and no other fact, and where each file spells the words
+// that the caller asked for.
 #[derive(Debug, Default)]
 pub(crate) struct SymbolFacts {
     pub(crate) files: Vec<FileSymbols>,
@@ -42,7 +43,19 @@ pub(crate) struct FileSymbols {
     pub(crate) path: String,
     pub(crate) language: Language,
     pub(crate) symbols: Vec<Symbol>,
+    // The speller's answer for this file's text: one entry per word, in the caller's word order.
+    pub(crate) spellings: Vec<Option<Spelling>>,
 }
+
+// The first line of a file that spells a word, and how many lines spell it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Spelling {
+    pub(crate) line: u32,
+    pub(crate) lines: u32,
+}
+
+// Where one file's text spells each word that the caller asked for.
+pub(crate) type Speller<'s> = dyn Fn(&FileText) -> Vec<Option<Spelling>> + Sync + 's;
 
 // The facts of one file's text, and the warning of a cache row that a parse replaced.
 type FactsOf<'f> = dyn Fn(&FileText) -> Served<Result<Facts, Unparsable>> + Sync + 'f;
@@ -76,10 +89,12 @@ pub(crate) fn over_scan<T>(
 }
 
 impl SymbolFacts {
-    // The warnings come as they come with `RepoFacts::load`.
+    // The warnings come as they come with `RepoFacts::load`. `spell` reads the text of each file
+    // that gives symbols, on the scan threads.
     pub(crate) fn load(
         services: &Services,
         reading: &Reading<'_>,
+        spell: &Speller<'_>,
     ) -> Noted<Result<SymbolFacts, Error>> {
         let root = &reading.repo.root;
         let symbols_of = |text: &FileText| {
@@ -88,6 +103,7 @@ impl SymbolFacts {
                 path: text.path.clone(),
                 language: text.language,
                 symbols,
+                spellings: spell(text),
             });
             Served { value, warning }
         };

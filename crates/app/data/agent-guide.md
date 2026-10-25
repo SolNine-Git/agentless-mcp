@@ -577,6 +577,38 @@ every other match. In one tier, the cards come in the order of the lowered
 name, then of the path. So `find-symbol Value` lists the class `Value` before
 the `value` methods.
 
+After the cards, the data entries and the notes, a `usage:` block lists the
+code files that spell the name as a whole word and declare no symbol with
+that name in its case. The search reads the text of each code file, so it
+finds the name in a call, an import, a comment or a string. It does not read
+data files. For a qualified query such as `Square.area`, the name is the last
+part, and each listed file also spells the owner `Square`. The files nearest
+to a declaring file come first: the fewest directory steps, then the most
+lines that spell the name, then the path. A data file with a key of that name
+is a declaring file too. When no file declares the name, the most lines come
+first. Each row gives the first line that spells the name and the count of
+those lines. The block lists 10 files and counts the rest:
+
+```
+usage: 47 files spell 'where' and do not declare it. The 10 nearest to a declaration:
+  xarray/core/_aggregations.py @754 (12 lines)
+  xarray/core/dataset.py @225 (11 lines)
+  xarray/core/dataarray.py @340 (8 lines)
+  xarray/core/indexing.py @43 (6 lines)
+  xarray/core/missing.py @32 (6 lines)
+  xarray/core/rolling.py @196 (6 lines)
+  xarray/core/accessor_str.py @1372 (4 lines)
+  xarray/core/nanops.py @8 (4 lines)
+  xarray/core/dask_array_ops.py @69 (3 lines)
+  xarray/core/concat.py @334 (2 lines)
+37 more files spell 'where' and are not listed.
+```
+
+The block comes with a kind filter too. When no symbol matches and a code
+file spells the name, the first line says that no symbol is declared, the
+block follows, and the command exits 0. A query that is not a name, or names
+joined by `.` or `::`, gets no block.
+
 Output is incident cards: id, `@line-line`, kind, signature. Everything is in
 one place rather than joined across rows:
 

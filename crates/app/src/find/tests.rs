@@ -19,6 +19,7 @@ fn data_file(path: &str, names: &[&str]) -> FileSymbols {
         path: path.to_owned(),
         language: Language::Json,
         symbols: symbols.collect(),
+        spellings: Vec::new(),
     }
 }
 
@@ -76,6 +77,7 @@ fn data_keys(path: &str, keys: &[(&str, &str)]) -> FileSymbols {
         path: path.to_owned(),
         language: Language::Json,
         symbols: symbols.collect(),
+        spellings: Vec::new(),
     }
 }
 
@@ -380,6 +382,7 @@ fn file(path: &str, symbols: Vec<Symbol>) -> FileSymbols {
         path: path.to_owned(),
         language: Language::Python,
         symbols,
+        spellings: Vec::new(),
     }
 }
 
@@ -426,7 +429,7 @@ fn the_kept_cards_are_the_first_of_the_stable_sort_at_every_limit() {
 #[test]
 fn the_unparsed_mention_pass_stops_under_a_spent_deadline() {
     let scanned = Scanned::new(&TESTED);
-    let loaded = SymbolFacts::load(&scanned.services, &scanned.reading());
+    let loaded = SymbolFacts::load(&scanned.services, &scanned.reading(), &|_| Vec::new());
     let scan = loaded.value.unwrap_or_else(|error| panic!("{error}"));
     let deadline = spent();
     let reading = scanned.reading().with_deadline(&deadline);

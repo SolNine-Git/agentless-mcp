@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 162] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 171] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -514,6 +514,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 162] = [
     ),
     (
         "messages",
+        "find_no_declaration",
+        &["query"],
+        messages::FIND_NO_DECLARATION.pieces(),
+    ),
+    (
+        "messages",
         "find_no_matches",
         &["query"],
         messages::FIND_NO_MATCHES.pieces(),
@@ -529,6 +535,54 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 162] = [
         "find_unparsed",
         &["query", "listed"],
         messages::FIND_UNPARSED.pieces(),
+    ),
+    (
+        "messages",
+        "find_usage_head",
+        &["name", "count"],
+        messages::FIND_USAGE_HEAD.pieces(),
+    ),
+    (
+        "messages",
+        "find_usage_head_owner",
+        &["name", "owner", "count"],
+        messages::FIND_USAGE_HEAD_OWNER.pieces(),
+    ),
+    (
+        "messages",
+        "find_usage_lines",
+        &["count"],
+        messages::FIND_USAGE_LINES.pieces(),
+    ),
+    (
+        "messages",
+        "find_usage_lines_all",
+        &[],
+        &[Piece::Text(messages::FIND_USAGE_LINES_ALL)],
+    ),
+    (
+        "messages",
+        "find_usage_nearest",
+        &["count"],
+        messages::FIND_USAGE_NEAREST.pieces(),
+    ),
+    (
+        "messages",
+        "find_usage_nearest_all",
+        &[],
+        &[Piece::Text(messages::FIND_USAGE_NEAREST_ALL)],
+    ),
+    (
+        "messages",
+        "find_usage_rest",
+        &["name", "count"],
+        messages::FIND_USAGE_REST.pieces(),
+    ),
+    (
+        "messages",
+        "find_usage_row",
+        &["path", "line", "count"],
+        messages::FIND_USAGE_ROW.pieces(),
     ),
     (
         "messages",

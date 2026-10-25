@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Added
+
+- **`find-symbol` lists the code files that use a name and do not declare
+  it.** After the cards, the data entries and the notes, a `usage:` block
+  lists the code files that spell the query's name as a whole word and
+  declare no symbol with that name in its case. The search reads the text
+  that the scan of `find-symbol` already holds, so a name in a call, an
+  import, a comment or a string counts. It does not read data files. A
+  qualified query `Owner.name` keeps the files that also spell `Owner`. The
+  files nearest to a declaring file come first: the fewest directory steps,
+  then the most lines that spell the name, then the path. With no declaring
+  file, the most lines come first. The block lists 10 files, each with its
+  first line and its count of lines, and counts the rest. It comes with a
+  kind filter too, and when no symbol matches. Then the first line says that
+  no symbol is declared and does not send the reader to grep. A query that
+  is not a name, or names joined by `.` or `::`, gets no block. The JSON
+  answer gains a `usage` member, left out when no file spells the name. The
+  `symbols` description gains "then the files that use the name and do not
+  declare it": its tools/list entry grows from 2,444 to 2,500 bytes and from
+  528 to 541 cl100k tokens. Measured with the release binaries of f6105a2 and
+  of this change over the 676 `find` calls that the forced and hooked
+  benchmark arms recorded: 465 answers gain a block, and the text answers
+  grow by 19.3% in cl100k tokens (median 71, p90 178, max 294 for an answer
+  that grows). At the cap of 10, the blocks list 30 of the 66 gold files that
+  the arms missed at a usage site, 42 of the 161 gold files that a find call
+  missed, and 199 of the 1,504 gold files that the arms did not name. The
+  warm-cache wall time of `find-symbol` on four snapshots of 2,032 to 5,102
+  files stays within 6 ms of the base (10 runs each, median).
+
 ### Removed
 
 - **The Python build leaves the repository.** The tag `v0.11.0rc1` holds its
@@ -13,6 +42,14 @@
   calls the `agentless-mcp hook` commands.
 
 ### Changed
+
+- **A `find-symbol` miss with usage files exits 0.** The CLI exit code of a
+  query that matches no symbol was 1. When a code file spells the name, the
+  answer now lists that file, and the command exits 0. The exit code stays 1
+  when no symbol matches and no code file spells the name. A script that
+  tests for a miss by the exit code sees the change. Over the 676 recorded
+  `find` calls above, 69 exit codes go from 1 to 0, 46 stay 1, and none goes
+  from 0 to 1.
 
 - **A JSON, TOML or YAML file gives an outline of its keys, not every key.**
   The outline holds the keys to depth 2 (a TOML table header is one level), at
