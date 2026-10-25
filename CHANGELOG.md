@@ -131,6 +131,32 @@
   from the fixtures: the 349 refusals of `crates/mcp/fixtures/validate.json`
   go from 96,735 to 23,001 bytes, and the 36 refused calls of
   `crates/mcp/fixtures/calls.json` from 8,875 to 4,427 bytes.
+- **A call that gives no data for any item that it names is an error.** Four
+  calls now set `isError` true: a `read slice` of a path that does not read, a
+  `read slice` whose every range starts past the end of the file, a `symbols
+  overview` whose every path fails, and a `symbols expand` where no id
+  resolves. The answer has the refusal form and no receipt. It gives the
+  reason of each item, one per line, with the same words as before. For
+  example, `read(operation="slice", path="no/such.rs", lines=[1, 5])` gave
+  "no/such.rs: unreadable: No such file or directory" under the receipt with
+  `isError` false. Now it gives "Error calling tool 'read': no/such.rs:
+  unreadable: No such file or directory" with `isError` true. A call that gives
+  data for some of its items does not change. The CLI `slice` of ranges that
+  all start past the end of the file now exits 1, with one stderr row for each
+  range. Before, it exited 0 and wrote the reports to stdout:
+  `agentless-mcp slice inventory.py --lines 500:600` wrote "unsatisfiable: line
+  range 500-600 is beyond inventory.py (134 lines)" to stdout. Now it writes
+  "agentless-mcp: unsatisfiable: line range 500-600 is beyond inventory.py (134
+  lines)" to stderr. Claude Code runs a `PostToolUse` hook only after a call
+  that succeeds, so these calls no longer unlock the search gate. The README
+  sentence that said an Agentless call that errored still unlocks was false
+  for every answer with `isError` true. The README now says what the client
+  does. The guide says the rule next to the refusal paragraph. The changed
+  reference outcomes: calls 42, 43 and 45 of the `rich` run in
+  `crates/mcp/fixtures/calls.json`, the run `slice_beyond` in
+  `crates/cli/fixtures/read/scenarios.json`, and the 4 rows of
+  `crates/app/fixtures/read/views.json` whose ranges all fail. Each row of that
+  file now records the view's error beside its text.
 
 ### Fixed
 
@@ -196,6 +222,29 @@
   session: `tools/list` goes from 10,266 to 10,479 bytes, and the cl100k count
   of the compact tool entry (encode_ordinary, tiktoken-rs 0.12.1) from 276 to
   321.
+- **The tools agree on when a call that gives no data is an error.** The same
+  missing file gave `isError` true in `symbols locate`, but false in `read
+  slice`, `symbols overview` and `symbols expand`. A path outside the root gave
+  true in `read slice`, but false in `symbols overview`. A reversed range gave
+  true, but a range past the end of the file gave false. Measured with the
+  release binaries of the base 4ad5177 and of this change, MCP stdio on this
+  repository, `isError` before and after: `read slice` of `no/such.rs` with
+  `lines` or `whole_file`, of the directory `crates`, and of
+  `Cargo.toml` lines 90000-90005: false to true. `symbols expand` of
+  `rs:no/such.rs::nope` or `rs:Cargo.toml::nope`: false to true. `symbols
+  overview` of `no/such.rs`, `../out.py` or `README.md`: false to true. The
+  partial calls `read slice` of `Cargo.toml` lines 1-2 and 90000-90005, and
+  `symbols overview` of `no/such.rs` and `Cargo.toml`, give the same text as
+  before. A surface diff of 70 calls of `read`, `find`, `overview` and
+  `expand` over element-web, django-15161 and tokio-6752: 46 answers are the
+  same, 21 changed by this rule, and 3 by the next fix.
+- **The `find` line for unlisted data files counts the files that it does not
+  name.** The list ended with three dots and then the template's period, so the
+  line showed four dots. Now it ends as the line for data files outside their
+  outline ends. On element-web, `symbols(operation="find", name="Failure to
+  create room")` went from "src/i18n/strings/el.json (1), .... This answer"
+  to "src/i18n/strings/el.json (1), ... 41 more. This answer". No other
+  message ends a list with three dots before its period.
 
 ## 0.11.0rc1 -- 2026-10-23
 

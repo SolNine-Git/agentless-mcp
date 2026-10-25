@@ -151,8 +151,9 @@ fn failed(path: &str, language: Option<Language>, error: String) -> FileView {
 }
 
 /// Renders the lines of `request` with the headers of the scopes around them. A range that starts
-/// past the end of the file, or that is no range, gets a line that says so. The warning of an
-/// unreadable cache row comes with either outcome.
+/// past the end of the file, or that is no range, gets a line that says so. When no range gives a
+/// line, those lines are the view's error. The warning of an unreadable cache row comes with
+/// either outcome.
 #[must_use]
 pub fn slice(reading: &Reading<'_>, request: &SliceRequest) -> Noted<Result<FileView, Error>> {
     let context = match within(&request.context, 0, MAX_CONTEXT_LINES, "context") {
@@ -188,7 +189,8 @@ struct Sliced<'a> {
 }
 
 impl Sliced<'_> {
-    // The satisfiable ranges widen by the context and render; each other range gets a report.
+    // The satisfiable ranges widen by the context and render; each other range gets a report. The
+    // reports of a request that no range satisfies are why the view has no text.
     fn view(&self, ranges: &[(usize, usize)], context: usize) -> Result<FileView, Error> {
         let total = usize::try_from(line_count(self.text)).unwrap_or(usize::MAX);
         let (fits, unfit): (Vec<_>, Vec<_>) = ranges
@@ -198,11 +200,10 @@ impl Sliced<'_> {
             .iter()
             .map(|&&(start, end)| unsatisfiable(self.path, start, end, total))
             .collect();
-        let mut view = failed(self.path, self.language, String::new());
         if !ranges.is_empty() && fits.is_empty() {
-            view.text = reports.join("\n") + "\n";
-            return Ok(view);
+            return Ok(failed(self.path, self.language, reports.join("\n")));
         }
+        let mut view = failed(self.path, self.language, String::new());
         let widened: Vec<(u32, u32)> = fits
             .iter()
             .map(|&&(start, end)| widen(start, end, context, total))

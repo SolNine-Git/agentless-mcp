@@ -142,29 +142,32 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         has it. A parameter foreign to the selected\noperation gets the \
         list of what that operation takes and requires. A \
         refusal\nkeeps `isError` true. The server never returns a \
-        schema validation dump.\n\n**Previous surface.** These six are \
-        the v2 surface, the only one. Before\n0.11.0, a server started \
-        with `--surface v1` published the original twelve\nper-question \
-        tools for un-migrated operators. A server started \
-        with\n`--surface both` published the union, which was fifteen \
-        names rather than\neighteen because `find_referencing_symbols`, \
-        `capabilities` and `history`\nstood alone on both surfaces. \
-        0.11.0 removed both: the server refuses either\nvalue at \
-        start-up. This is the mapping for readers who migrate:\n\n| v1 \
-        tool (behind `--surface v1`) | v2 call |\n|---|---|\n| \
-        `repo_map` | `orient` operation `map` |\n| `list_dir` | `read` \
-        operation `dir` |\n| `get_symbols_overview` | `symbols` \
-        operation `overview` |\n| `expand_symbols` | `symbols` \
-        operation `expand` |\n| `read_slice` | `read` operation `slice` \
-        |\n| `find_symbol` | `symbols` operation `find` |\n| \
-        `explain_symbol` | `symbols` operation `explain` |\n| \
-        `analyze_structure` | `orient` operations `path` / `cycles` / \
-        `communities` / `diagram` / `health` |\n| `resolve_locations` | \
-        `symbols` operation `locate` |\n\n`find_referencing_symbols` \
-        and `capabilities` are the same tools on both\nsurfaces. Every \
-        v2 operation routes to exactly the handler its v1 \
-        counterpart\ncalled, with the same defaults. A v2 answer is \
-        therefore byte-identical to\nits v1 \
+        schema validation dump. The\nserver also sets `isError` true \
+        when a call gives no data for any item that it\nnames. When a \
+        call gives data for some of its items, `isError` stays false \
+        and\nthe answer names each item that failed.\n\n**Previous \
+        surface.** These six are the v2 surface, the only one. \
+        Before\n0.11.0, a server started with `--surface v1` published \
+        the original twelve\nper-question tools for un-migrated \
+        operators. A server started with\n`--surface both` published \
+        the union, which was fifteen names rather than\neighteen \
+        because `find_referencing_symbols`, `capabilities` and \
+        `history`\nstood alone on both surfaces. 0.11.0 removed both: \
+        the server refuses either\nvalue at start-up. This is the \
+        mapping for readers who migrate:\n\n| v1 tool (behind \
+        `--surface v1`) | v2 call |\n|---|---|\n| `repo_map` | `orient` \
+        operation `map` |\n| `list_dir` | `read` operation `dir` |\n| \
+        `get_symbols_overview` | `symbols` operation `overview` |\n| \
+        `expand_symbols` | `symbols` operation `expand` |\n| \
+        `read_slice` | `read` operation `slice` |\n| `find_symbol` | \
+        `symbols` operation `find` |\n| `explain_symbol` | `symbols` \
+        operation `explain` |\n| `analyze_structure` | `orient` \
+        operations `path` / `cycles` / `communities` / `diagram` / \
+        `health` |\n| `resolve_locations` | `symbols` operation \
+        `locate` |\n\n`find_referencing_symbols` and `capabilities` are \
+        the same tools on both\nsurfaces. Every v2 operation routes to \
+        exactly the handler its v1 counterpart\ncalled, with the same \
+        defaults. A v2 answer is therefore byte-identical to\nits v1 \
         counterpart's.\n\nEverything that writes or executes is \
         CLI-only, and always will be. A tool\nthat an analysed \
         repository's contents could talk an agent into calling \
@@ -1605,31 +1608,31 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-canonical-recipe", 484, 3597),
     ("the-funnel-and-where-it-stops", 3599, 4432),
     ("stable-ids", 4434, 5752),
-    ("the-two-surfaces", 5754, 11096),
-    ("per-tool-usage", 11098, 88158),
-    ("claude-code-specifics", 12856, 14487),
-    ("map", 14489, 22792),
-    ("tree", 22794, 23115),
-    ("skeleton", 23117, 24230),
-    ("expand", 24232, 26084),
-    ("slice", 26086, 26923),
-    ("find-symbol", 26925, 27563),
-    ("refs", 27565, 32320),
-    ("history", 32322, 35155),
-    ("explain", 35157, 36806),
-    ("path", 36808, 39556),
-    ("cycles", 39558, 40669),
-    ("communities", 40671, 42916),
-    ("diagram", 42918, 45689),
-    ("health", 45691, 51927),
-    ("html", 51929, 52880),
-    ("resolve-locs", 52882, 53681),
-    ("capabilities", 53683, 54493),
-    ("index", 54495, 57164),
-    ("lint", 57166, 77174),
-    ("validate-vote", 77176, 86557),
-    ("warmup", 86559, 88158),
-    ("project-defaults-agentless-mcp-json", 88160, 92113),
-    ("token-counting", 92115, 92529),
-    ("exit-codes", 92531, 92989),
+    ("the-two-surfaces", 5754, 11298),
+    ("per-tool-usage", 11300, 88360),
+    ("claude-code-specifics", 13058, 14689),
+    ("map", 14691, 22994),
+    ("tree", 22996, 23317),
+    ("skeleton", 23319, 24432),
+    ("expand", 24434, 26286),
+    ("slice", 26288, 27125),
+    ("find-symbol", 27127, 27765),
+    ("refs", 27767, 32522),
+    ("history", 32524, 35357),
+    ("explain", 35359, 37008),
+    ("path", 37010, 39758),
+    ("cycles", 39760, 40871),
+    ("communities", 40873, 43118),
+    ("diagram", 43120, 45891),
+    ("health", 45893, 52129),
+    ("html", 52131, 53082),
+    ("resolve-locs", 53084, 53883),
+    ("capabilities", 53885, 54695),
+    ("index", 54697, 57366),
+    ("lint", 57368, 77376),
+    ("validate-vote", 77378, 86759),
+    ("warmup", 86761, 88360),
+    ("project-defaults-agentless-mcp-json", 88362, 92315),
+    ("token-counting", 92317, 92731),
+    ("exit-codes", 92733, 93191),
 ];

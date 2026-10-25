@@ -412,9 +412,10 @@ do not. `read(slice)` unlocks on the same rule that allows an exact-file `Grep`:
 naming a file and a line range is the localization. A directory listing is how
 you look for a file, not evidence that you found one. `Grep` scoped to one
 existing file remains available before unlock because the caller has already
-localized that search. The mark
-hook reads the call and not its result, so an Agentless call that errored
-still unlocks.
+localized that search. The client
+runs the mark hook only after a call that succeeds. A call that returns an
+error result does not unlock the session: a refused call, or a call that gives
+no data for any item that it names.
 The constraint is an order, not a ban: once the gate opens, broad search keeps
 the one job a symbol map cannot do, which is string literals, error messages,
 config keys, and fixtures.

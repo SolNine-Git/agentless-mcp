@@ -57,8 +57,8 @@ fn the_data_entries_follow_as_cards_and_folded_lines_then_the_unlisted_files() {
     let expected = "[json:a.json::pin] @2\n  key\n  pin = 1\n\n\
         b.json: 4 data keys match. Grep finds the spellings.\n\
         10 data keys in 4 files match and are not listed: l1.json (1), l2.json (2), l3.json (3), \
-        .... This answer has room for 2 data entries after the code matches. Grep finds the \
-        spellings.\n";
+        ... 1 more. This answer has room for 2 data entries after the code matches. Grep finds \
+        the spellings.\n";
     let found = result(data);
     assert_eq!(find_text(&found), expected);
     let json = FindJson::of(&found);
@@ -70,6 +70,22 @@ fn the_data_entries_follow_as_cards_and_folded_lines_then_the_unlisted_files() {
     assert_eq!(json.matches.len(), 1);
     assert_eq!(folded[..2], [("b.json", 4), ("l1.json", 1)]);
     assert_eq!((json.total, json.omitted), (15, 14));
+}
+
+#[test]
+fn three_unlisted_data_files_are_all_named_with_no_count_of_more() {
+    let data = DataMatches {
+        entries: vec![DataEntry::Card(card("a.json", "pin"))],
+        unlisted: (1..=3)
+            .map(|at| folded(&format!("l{at}.json"), at))
+            .collect(),
+        room: 1,
+    };
+    let expected = "6 data keys in 3 files match and are not listed: l1.json (1), l2.json (2), \
+        l3.json (3). This answer has room for 1 data entries after the code matches. Grep finds \
+        the spellings.";
+    let text = find_text(&result(data));
+    assert_eq!(text.lines().last(), Some(expected));
 }
 
 #[test]

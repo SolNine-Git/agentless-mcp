@@ -37,7 +37,8 @@ pub(super) fn answer(context: &Context<'_>, call: &Call) -> Result<String, Failu
     }
 }
 
-// A file with no text shows why, as the body of the answer.
+// A slice that gives no line fails with the reason: the path does not read, or every range starts
+// past the end of the file.
 fn slice(context: &Context<'_>, arguments: &Arguments) -> Result<String, Failure> {
     let request = SliceRequest {
         path: arguments.text_or_empty("path"),
@@ -47,6 +48,9 @@ fn slice(context: &Context<'_>, arguments: &Arguments) -> Result<String, Failure
     let outcome = app::slice(&context.reading, &request);
     context.logged(&outcome.diagnostics);
     let view = outcome.value?;
+    if !view.error.is_empty() {
+        return Err(Failure::Refused(view.error));
+    }
     Ok(context.rendered(|receipt| tool_text(receipt, ToolForm::Slice(&view))))
 }
 

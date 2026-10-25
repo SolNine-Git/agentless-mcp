@@ -85,7 +85,7 @@ fn this_cache_file(text: &str) -> String {
 // cache, so both sides show a placeholder for each.
 #[test]
 fn every_read_scenario_answers_as_the_fixture() {
-    every_scenario_answers_as("read/scenarios", 50, without_cache_field);
+    every_scenario_answers_as("read/scenarios", 51, without_cache_field);
 }
 
 #[test]

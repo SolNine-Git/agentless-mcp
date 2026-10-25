@@ -1,6 +1,5 @@
 //! The text of the tool answers whose body differs from the command line's: an expansion that
-//! lists the ids that missed, an overview that keeps the block of each file that failed, and a
-//! slice that shows why it has no text.
+//! lists the ids that missed, and an overview that keeps the block of each file that failed.
 
 use app::{ExpandResult, FileView, ROW_INDENT};
 use text::one_line;
@@ -17,7 +16,7 @@ pub enum ToolForm<'a> {
     Expand(&'a ExpandResult),
     /// Each file's block in order, with the reason under the header of a file that failed.
     Overview(&'a [FileView]),
-    /// The numbered lines, or the reason when the slice has none.
+    /// The numbered lines.
     Slice(&'a FileView),
 }
 
@@ -53,9 +52,6 @@ fn tool_block(view: &FileView) -> String {
 }
 
 fn slice_body(view: &FileView) -> String {
-    if view.text.is_empty() {
-        view.error.clone()
-    } else {
-        view.text.clone()
-    }
+    debug_assert!(view.error.is_empty(), "a slice with an error is a refusal");
+    view.text.clone()
 }

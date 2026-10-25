@@ -118,8 +118,9 @@ fn unlisted_line(data: &DataMatches) -> Option<String> {
     let mut listed: Vec<String> = named
         .map(|file| format!("{} ({})", one_line(&file.path), file.keys))
         .collect();
-    if data.unlisted.len() > UNLISTED_NAMED {
-        listed.push("...".to_owned());
+    let hidden = data.unlisted.len().saturating_sub(UNLISTED_NAMED);
+    if hidden > 0 {
+        listed.push(format!("... {hidden} more"));
     }
     let keys = data.unlisted.iter().map(|file| file.keys).sum::<usize>();
     let listed = listed.join(", ");

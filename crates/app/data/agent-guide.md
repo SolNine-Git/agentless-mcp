@@ -161,7 +161,10 @@ and it gives the form that the parameter accepts. A wrong `operation` value
 gets the list of valid operations, and the name of the tool that has that
 operation when another tool has it. A parameter foreign to the selected
 operation gets the list of what that operation takes and requires. A refusal
-keeps `isError` true. The server never returns a schema validation dump.
+keeps `isError` true. The server never returns a schema validation dump. The
+server also sets `isError` true when a call gives no data for any item that it
+names. When a call gives data for some of its items, `isError` stays false and
+the answer names each item that failed.
 
 **Previous surface.** These six are the v2 surface, the only one. Before
 0.11.0, a server started with `--surface v1` published the original twelve
