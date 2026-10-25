@@ -621,16 +621,17 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         one symbol, in place of a `find-symbol`\nplus `refs` pair. \
         `target` is a stable id or a qualified name. When a bare\nname \
         has several definitions, the tool explains the first in path \
-        order and\nlists the rest as `also defined at`. An unknown \
-        target is a message and exit\n1, never an exception.\n\nFan-out \
-        is *resolved* references, not a call list. It includes the \
-        classes a\nsignature names and the constants a body reads. It \
-        counts one relationship\nper pair, however many times the name \
-        appears. For the individual call sites\nwith their line \
-        numbers, use `refs`.\n\n### `path` (`orient` operation `path`) \
-        -- how are these two connected\n\n```\nagentless-mcp path \
-        reorder_report format_money\nagentless-mcp path \
-        py:reports.py::reorder_report \
+        order and\nlists at most `limit` of the rest as `also defined \
+        at`, then a line that\ncounts the rest it leaves out. An \
+        unknown target is a message and exit 1,\nnever an \
+        exception.\n\nFan-out is *resolved* references, not a call \
+        list. It includes the classes a\nsignature names and the \
+        constants a body reads. It counts one relationship\nper pair, \
+        however many times the name appears. For the individual call \
+        sites\nwith their line numbers, use `refs`.\n\n### `path` \
+        (`orient` operation `path`) -- how are these two \
+        connected\n\n```\nagentless-mcp path reorder_report \
+        format_money\nagentless-mcp path py:reports.py::reorder_report \
         py:pricing.py::format_money\n```\n\n```json\n{\"operation\": \
         \"path\", \"source\": \"reorder_report\", \"target\": \
         \"format_money\"}\n```\n\nThe command finds the fewest-hop \
@@ -672,9 +673,12 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         But a definition whose qualified name *is* what you\ntyped \
         outranks every one that merely ends with it. Only definitions \
         of equal\nstanding are reported as ambiguous. `explain` uses \
-        the same order and lists\nthe rest under `also defined \
-        at`.\n\n### `cycles` (`orient` operation `cycles`) -- \
-        module-level import knots\n\n```\nagentless-mcp cycles --limit \
+        the same order. When a\ndotted name such as `Resolver.resolve` \
+        is the qualified name of a definition,\n`explain` and `refs` \
+        answer about the exact matches only, and `explain` lists\nonly \
+        the other exact matches under `also defined at`.\n\n### \
+        `cycles` (`orient` operation `cycles`) -- module-level import \
+        knots\n\n```\nagentless-mcp cycles --limit \
         20\n```\n\n```json\n{\"operation\": \"cycles\"}\n```\n\nEvery \
         import cycle in the repository, by strongly connected component \
         over\nthe resolved import edges, each rendered as a chain that \
@@ -1597,7 +1601,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3599, 4432),
     ("stable-ids", 4434, 5752),
     ("the-two-surfaces", 5754, 11096),
-    ("per-tool-usage", 11098, 87595),
+    ("per-tool-usage", 11098, 87836),
     ("claude-code-specifics", 12856, 14487),
     ("map", 14489, 22792),
     ("tree", 22794, 23115),
@@ -1607,20 +1611,20 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("find-symbol", 26925, 27563),
     ("refs", 27565, 31998),
     ("history", 32000, 34833),
-    ("explain", 34835, 36417),
-    ("path", 36419, 38993),
-    ("cycles", 38995, 40106),
-    ("communities", 40108, 42353),
-    ("diagram", 42355, 45126),
-    ("health", 45128, 51364),
-    ("html", 51366, 52317),
-    ("resolve-locs", 52319, 53118),
-    ("capabilities", 53120, 53930),
-    ("index", 53932, 56601),
-    ("lint", 56603, 76611),
-    ("validate-vote", 76613, 85994),
-    ("warmup", 85996, 87595),
-    ("project-defaults-agentless-mcp-json", 87597, 91550),
-    ("token-counting", 91552, 91966),
-    ("exit-codes", 91968, 92426),
+    ("explain", 34835, 36484),
+    ("path", 36486, 39234),
+    ("cycles", 39236, 40347),
+    ("communities", 40349, 42594),
+    ("diagram", 42596, 45367),
+    ("health", 45369, 51605),
+    ("html", 51607, 52558),
+    ("resolve-locs", 52560, 53359),
+    ("capabilities", 53361, 54171),
+    ("index", 54173, 56842),
+    ("lint", 56844, 76852),
+    ("validate-vote", 76854, 86235),
+    ("warmup", 86237, 87836),
+    ("project-defaults-agentless-mcp-json", 87838, 91791),
+    ("token-counting", 91793, 92207),
+    ("exit-codes", 92209, 92667),
 ];

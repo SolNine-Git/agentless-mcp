@@ -53,6 +53,47 @@ fn the_explain_goldens_come_out_byte_for_byte() {
     }
 }
 
+// The explain text after its receipt line.
+fn explain_body(repo: &str, target: &str, limit: &str) -> String {
+    let pinned = Pinned::new(repo);
+    let request = ExplainRequest {
+        target: target.to_owned(),
+        limit: int(limit),
+    };
+    let explained = answered(
+        repo,
+        app::explain(&pinned.services, &pinned.reading(), &request),
+    );
+    let text = pinned.text(&explained);
+    text.split_once('\n')
+        .map_or(text.clone(), |(_, body)| body.to_owned())
+}
+
+#[test]
+fn the_limit_cuts_the_other_definitions_and_counts_the_rest() {
+    let expected = "ambiguous: 8 definitions match price equally; this explains the first in path \
+                    order. Pass a stable id to explain another.\n\
+                    [kt:Pricing.kt::Priceable.price] @13\n  method\n  fun price(): Double\n  \
+                    also defined at kt:Pricing.kt::Invoice.price\n  \
+                    also defined at scala:Pricing.scala::Invoice.price\n\
+                    ... 5 more definitions not listed (limit 2)\n\n\
+                    references (fan-out): none\n\n\
+                    referenced by (fan-in): 1\n  name-only-ambiguous (1)\n    \
+                    referenced by Invoice.price    [lua:pricing.lua::Invoice.price] @12\n\n\
+                    imports\n    declares  none resolved inside this repository\n    \
+                    imported by  nothing in this repository\n";
+    assert_eq!(explain_body("tier2", "price", "2"), expected);
+}
+
+#[test]
+fn a_data_key_explains_its_card_and_says_a_key_has_no_fan_in() {
+    let expected = "[json:config.json::service.port] @3\n  constant\n  port = 8080\n\n\
+                    json:config.json::service.port is a data key, and a data key has no fan-in: \
+                    Grep finds the spellings of port.\n";
+    let body = explain_body("tier2", "json:config.json::service.port", "20");
+    assert_eq!(body, expected);
+}
+
 #[test]
 fn the_path_goldens_come_out_byte_for_byte() {
     for (repo, _, source, target) in CASES {

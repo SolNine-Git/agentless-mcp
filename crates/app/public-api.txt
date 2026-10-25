@@ -1386,8 +1386,9 @@ impl core::marker::UnsafeUnpin for app::ExplainRequest
 impl core::panic::unwind_safe::RefUnwindSafe for app::ExplainRequest
 impl core::panic::unwind_safe::UnwindSafe for app::ExplainRequest
 pub struct app::Explanation
-pub app::Explanation::alternatives: alloc::vec::Vec<alloc::string::String>
+pub app::Explanation::alternatives: kernel::bounded::Bounded<alloc::string::String>
 pub app::Explanation::card: core::option::Option<app::SymbolCard>
+pub app::Explanation::data_key: bool
 pub app::Explanation::fan_in: alloc::vec::Vec<app::TierGroup>
 pub app::Explanation::fan_out: alloc::vec::Vec<app::TierGroup>
 pub app::Explanation::imports_in: kernel::bounded::Bounded<app::ImportRow>
@@ -2453,6 +2454,8 @@ impl core::marker::UnsafeUnpin for app::RefsRequest
 impl core::panic::unwind_safe::RefUnwindSafe for app::RefsRequest
 impl core::panic::unwind_safe::UnwindSafe for app::RefsRequest
 pub struct app::RefsResult
+pub app::RefsResult::data_key: core::option::Option<alloc::string::String>
+pub app::RefsResult::definition: core::option::Option<alloc::string::String>
 pub app::RefsResult::groups: app::RefListing
 pub app::RefsResult::scanned: core::option::Option<usize>
 pub app::RefsResult::shared: kernel::bounded::Bounded<app::SharedCaller>

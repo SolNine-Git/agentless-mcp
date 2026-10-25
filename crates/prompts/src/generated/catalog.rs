@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 155] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 156] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -439,6 +439,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 155] = [
         "contract_old_not_measured",
         &["path", "reason"],
         messages::CONTRACT_OLD_NOT_MEASURED.pieces(),
+    ),
+    (
+        "messages",
+        "data_key_no_fan_in",
+        &["target", "name"],
+        messages::DATA_KEY_NO_FAN_IN.pieces(),
     ),
     (
         "messages",

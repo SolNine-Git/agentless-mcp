@@ -53,6 +53,22 @@ pub(crate) fn resolve_symbol_span(
     resolve_symbol_span_in(reading, raw, &mut ParsedFiles::new())
 }
 
+// The key that a data file's stable id names, or `None` when `raw` is no such id or the file
+// does not hold the key. Data keys stay out of the name graph, so only the file resolves them.
+pub(crate) fn data_key_span(reading: &Reading<'_>, raw: &str) -> Option<Noted<SymbolSpan>> {
+    let parsed: StableId = raw.parse().ok()?;
+    let language = Language::from_path(parsed.path())?;
+    if !is_data_language(language) {
+        return None;
+    }
+    let found = resolve_symbol_span(reading, raw);
+    let span = found.value.ok()?;
+    Some(Noted {
+        value: span,
+        diagnostics: found.diagnostics,
+    })
+}
+
 // As `resolve_symbol_span`, with a path parsed once per `files`. Each id that names the path
 // gets the parse's warnings.
 pub(crate) fn resolve_symbol_span_in(

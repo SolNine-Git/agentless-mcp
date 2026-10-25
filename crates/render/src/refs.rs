@@ -7,7 +7,7 @@ use app::{
 };
 use facts::split_ordinal;
 use json::{fixed, round_half_even};
-use prompts::messages::REFS_TARGET_UNRESOLVED;
+use prompts::messages::{DATA_KEY_NO_FAN_IN, REFS_TARGET_UNRESOLVED};
 use serde::Serialize;
 use text::one_line;
 
@@ -27,11 +27,15 @@ impl View for RefsResult {
 // The unresolved-target notice and the skipped-file warning come first: each changes how every
 // row below it reads. Only a scan that skipped nothing licenses the absence claim.
 fn refs_text(result: &RefsResult) -> String {
+    if let Some(key) = &result.data_key {
+        return DATA_KEY_NO_FAN_IN.render((&one_line(&result.target), &one_line(key))) + "\n";
+    }
     let complete_over = result.scanned.filter(|_| result.skipped.is_empty());
+    let named = result.definition.as_deref().unwrap_or(&result.target);
     let body = if result.shared_callers {
         shared_text(result)
     } else {
-        groups_text(&result.groups, &result.target, complete_over)
+        groups_text(&result.groups, named, complete_over)
     };
     let pieces: Vec<String> = [notice(result), skipped_line(&result.skipped)]
         .into_iter()
@@ -191,6 +195,10 @@ fn candidate_rows(row: &SharedCaller) -> Vec<String> {
 struct RefsJson<'a> {
     target: &'a str,
     target_resolved: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    definition: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data_key: Option<&'a str>,
     scanned: Option<usize>,
     total: usize,
     limit: usize,
@@ -252,6 +260,8 @@ impl<'a> RefsJson<'a> {
         RefsJson {
             target: &result.target,
             target_resolved: result.target_resolved,
+            definition: result.definition.as_deref(),
+            data_key: result.data_key.as_deref(),
             scanned: result.scanned,
             total: groups.total,
             limit: groups.limit,

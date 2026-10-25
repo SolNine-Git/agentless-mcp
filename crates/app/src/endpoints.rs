@@ -1,7 +1,23 @@
 //! The resolution of a name the caller typed to the definitions it matches, best match first,
-//! and the endpoint that explain and path start from.
+//! which explain and refs read, and the endpoint that path starts from.
 
-use graph::{Definition, NameIndex, SymbolGraph, definitions_for};
+use graph::{Definition, Lookup, NameIndex, SymbolGraph, definitions_for, resolve_definitions};
+
+// The definitions `target` names, best first. A dotted name that no file path confirms still
+// names the definitions whose qualified name it spells, such as `Class.method`.
+pub(crate) fn resolve_target<'a>(index: &NameIndex<'a>, target: &str) -> Lookup<'a> {
+    let lookup = resolve_definitions(index, target);
+    let mut ranked = rank_candidates(lookup.definitions, target);
+    let exact = exact_count(&ranked, target);
+    let named = !lookup.scoped && exact > 0;
+    if named {
+        ranked.truncate(exact);
+    }
+    Lookup {
+        definitions: ranked,
+        scoped: lookup.scoped || named,
+    }
+}
 
 // A definition whose qualified name is the text the caller typed outranks one that only ends
 // with it; inside a band, the path and the line decide.
@@ -22,11 +38,16 @@ pub(crate) fn best_band<'r, 'a>(
     ranked: &'r [Definition<'a>],
     target: &str,
 ) -> &'r [Definition<'a>] {
-    let exact = ranked
+    let exact = exact_count(ranked, target);
+    if exact == 0 { ranked } else { &ranked[..exact] }
+}
+
+// How many definitions at the head of `ranked` have `target` as their qualified name.
+fn exact_count(ranked: &[Definition<'_>], target: &str) -> usize {
+    ranked
         .iter()
         .take_while(|definition| definition.symbol().qualname() == target)
-        .count();
-    if exact == 0 { ranked } else { &ranked[..exact] }
+        .count()
 }
 
 // One endpoint the caller named: the node it resolved to and its label, or why it resolved to

@@ -739,8 +739,9 @@ imports
 Use it as the orientation call for one symbol, in place of a `find-symbol`
 plus `refs` pair. `target` is a stable id or a qualified name. When a bare
 name has several definitions, the tool explains the first in path order and
-lists the rest as `also defined at`. An unknown target is a message and exit
-1, never an exception.
+lists at most `limit` of the rest as `also defined at`, then a line that
+counts the rest it leaves out. An unknown target is a message and exit 1,
+never an exception.
 
 Fan-out is *resolved* references, not a call list. It includes the classes a
 signature names and the constants a body reads. It counts one relationship
@@ -799,8 +800,10 @@ says so instead of reporting "no path".
 segment, so `Resolver.resolve` also matches `ToolHandlers.resolve` and a
 module-level `resolve`. But a definition whose qualified name *is* what you
 typed outranks every one that merely ends with it. Only definitions of equal
-standing are reported as ambiguous. `explain` uses the same order and lists
-the rest under `also defined at`.
+standing are reported as ambiguous. `explain` uses the same order. When a
+dotted name such as `Resolver.resolve` is the qualified name of a definition,
+`explain` and `refs` answer about the exact matches only, and `explain` lists
+only the other exact matches under `also defined at`.
 
 ### `cycles` (`orient` operation `cycles`) -- module-level import knots
 

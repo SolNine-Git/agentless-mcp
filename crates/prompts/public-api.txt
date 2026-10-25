@@ -72,6 +72,7 @@ pub const prompts::messages::CONTRACT_NO_BOUNDARY: prompts::Template<prompts::Te
 pub const prompts::messages::CONTRACT_NO_BOUNDARY_EVIDENCE: &str
 pub const prompts::messages::CONTRACT_NO_RULES: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::CONTRACT_OLD_NOT_MEASURED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::DATA_KEY_NO_FAN_IN: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::EXPAND_BATCH_SHORTENED: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPAND_BODY_TRUNCATED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPAND_NO_ROOM: prompts::Template<(prompts::Count, prompts::Count)>

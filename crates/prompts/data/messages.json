@@ -49,6 +49,7 @@
   "map_file_unreached": "... {count} symbols in this file; the focus has no reference path to it, so no budget shows them",
   "refs_target_unresolved": "{target} resolves to no symbol; these are the references to the name {name}, wherever it is defined",
   "explain_tie": "ambiguous: {count} definitions match {target} equally; this explains the first in path order. Pass a stable id to explain another.",
+  "data_key_no_fan_in": "{target} is a data key, and a data key has no fan-in: Grep finds the spellings of {name}.",
   "communities_not_converged": "note: community detection stopped at its pass limit before the partition settled, so these communities are a partial answer",
   "stable_ids_pattern": "stable ids: {pattern}",
   "overview_stable_ids": "stable ids: {pattern} -- nested symbols qualify as Class.method",

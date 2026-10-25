@@ -39,8 +39,22 @@ fn explanation_text(explanation: &Explanation) -> String {
     }
     let card_text = cards_text(std::slice::from_ref(card));
     lines.push(card_text.trim_end_matches('\n').to_owned());
-    let alternatives = explanation.alternatives.iter();
-    lines.extend(alternatives.map(|entry| format!("  also defined at {}", one_line(entry))));
+    if explanation.data_key {
+        return format!(
+            "{}\n\n{}\n",
+            lines.join("\n"),
+            one_line(&explanation.message)
+        );
+    }
+    let alternatives = &explanation.alternatives;
+    lines.extend(
+        (alternatives.rows().iter()).map(|entry| format!("  also defined at {}", one_line(entry))),
+    );
+    lines.extend(cut_line(
+        alternatives.omitted(),
+        alternatives.limit(),
+        "definitions",
+    ));
     if !explanation.rationales.is_empty() {
         lines.push(String::new());
         lines.push("rationale".to_owned());
@@ -137,6 +151,8 @@ struct ExplainJson<'a> {
     symbol: Option<CardJson<'a>>,
     message: &'a str,
     alternatives: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alternatives_omitted: Option<usize>,
     fan_out: Vec<GroupJson<'a>>,
     fan_in: Vec<GroupJson<'a>>,
     imports: ImportsJson<'a>,
@@ -191,7 +207,8 @@ impl<'a> ExplainJson<'a> {
             target: &explanation.target,
             symbol: explanation.card.as_ref().map(CardJson::of),
             message: &explanation.message,
-            alternatives: &explanation.alternatives,
+            alternatives: explanation.alternatives.rows(),
+            alternatives_omitted: Some(explanation.alternatives.omitted()).filter(|&left| left > 0),
             fan_out: explanation.fan_out.iter().map(GroupJson::of).collect(),
             fan_in: explanation.fan_in.iter().map(GroupJson::of).collect(),
             imports: ImportsJson {

@@ -500,6 +500,17 @@ pub const CONTRACT_OLD_NOT_MEASURED: Template<(Text, Text)> = Template::new(&[
     Piece::Value(1),
 ]);
 
+/// A template that takes (`target`, `name`).
+pub const DATA_KEY_NO_FAN_IN: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(
+        " is a data key, and a data key has no fan-in: Grep finds the \
+        spellings of ",
+    ),
+    Piece::Value(1),
+    Piece::Text("."),
+]);
+
 /// A template that takes (`shortened`, `total`, `budget`).
 pub const EXPAND_BATCH_SHORTENED: Template<(Count, Count, Count)> = Template::new(&[
     Piece::Text("note: "),

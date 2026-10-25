@@ -465,6 +465,13 @@
       },
       "text": "not checked: contract_drift did not compare src/adapters/api.py, because its text before the change cannot be measured. src/adapters/api.py does not parse"
     },
+    "data_key_no_fan_in": {
+      "arguments": {
+        "name": "receipt_header",
+        "target": "json:crates/prompts/data/envelope.json::receipt_header"
+      },
+      "text": "json:crates/prompts/data/envelope.json::receipt_header is a data key, and a data key has no fan-in: Grep finds the spellings of receipt_header."
+    },
     "expand_batch_shortened": {
       "arguments": {
         "budget": 12000,

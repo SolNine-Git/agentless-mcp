@@ -6,10 +6,73 @@ use kernel::Stopped;
 use syntax::Language;
 
 use super::shared::shared_callers;
-use super::{dedupe, names_by_path, round_robin};
+use super::{RefsRequest, RefsResult, dedupe, names_by_path, refs, round_robin};
+use crate::IntArg;
 use crate::clock::spent;
 use crate::endpoints::scanned::{Scanned, TESTED};
 use crate::scan::RepoFacts;
+
+fn referenced(files: &[(&str, &str)], target: &str) -> RefsResult {
+    let scanned = Scanned::new(files);
+    let request = RefsRequest {
+        target: target.to_owned(),
+        limit: IntArg::from_usize(50),
+        shared_callers: false,
+    };
+    let outcome = refs(&scanned.services, &scanned.reading(), &request);
+    outcome.value.unwrap_or_else(|error| panic!("{error}"))
+}
+
+fn listed(result: &RefsResult) -> Vec<(&str, u32)> {
+    let groups = result.groups.rows.iter();
+    let rows =
+        groups.flat_map(|group| (group.sites.iter()).map(|site| (group.path.as_str(), site.line)));
+    rows.collect()
+}
+
+// Two classes that each define `as_sql`, and a module that calls one of them.
+const CALLED: [(&str, &str); 2] = [
+    (
+        "a.py",
+        "class Value:\n    def as_sql(self):\n        return 1\n\n\nclass Other:\n    def \
+         as_sql(self):\n        return 2\n",
+    ),
+    (
+        "b.py",
+        "from a import Value\n\n\ndef use():\n    return Value().as_sql()\n",
+    ),
+];
+
+#[test]
+fn a_qualified_name_lists_the_references_of_its_one_definition() {
+    let answer = referenced(&CALLED, "Value.as_sql");
+    assert!(answer.target_resolved);
+    assert_eq!(answer.definition.as_deref(), Some("py:a.py::Value.as_sql"));
+    assert_eq!(listed(&answer), [("b.py", 5)]);
+}
+
+#[test]
+fn a_declaration_is_never_a_reference() {
+    let answer = referenced(&CALLED, "as_sql");
+    assert!(answer.target_resolved);
+    assert_eq!(answer.definition, None);
+    assert_eq!(listed(&answer), [("b.py", 5)]);
+}
+
+#[test]
+fn a_data_key_id_has_no_fan_in() {
+    let files = [
+        ("data.json", "{\n  \"receipt_header\": \"x\"\n}\n"),
+        (
+            "use.py",
+            "def receipt_header():\n    return 1\n\n\ndef caller():\n    return receipt_header()\n",
+        ),
+    ];
+    let answer = referenced(&files, "json:data.json::receipt_header");
+    assert_eq!(answer.data_key.as_deref(), Some("receipt_header"));
+    assert!(answer.groups.rows.is_empty());
+    assert_eq!(answer.groups.total, 0);
+}
 
 fn file(path: &str, lines: &[u32]) -> FileFacts {
     let refs = lines.iter().map(|&line| Ref {

@@ -134,6 +134,44 @@
   36 files in 21 languages with no Rust doc comment and no Lua comment give
   the same output in both modes, byte for byte. In 12 Rust and Lua files,
   each changed line is a comment line or a source line that a comment covered.
+- **`refs` resolves a qualified name such as `Class.method`.** The name lookup
+  confirmed a dotted name only when a module path came before the qualified
+  name, so `refs Value.as_sql` said "resolves to no symbol" and listed every
+  `as_sql` in the repository. Now `refs` and `explain` share one resolution: a
+  dotted name that no path confirms names the definitions whose qualified name
+  it spells. When it names one definition, the header names that definition's
+  stable id, and the JSON adds `definition`. Measured on django-15161 with the release binaries of the base and
+  of this change: `refs Value.as_sql` went from 260 references under the
+  "resolves to no symbol" notice to "166 references to
+  py:django/db/models/expressions.py::Value.as_sql", and `refs
+  Expression.identity` from 24 to 14, with its own lines 398, 404 and 413 gone.
+- **A declaration is no longer a reference.** `refs` listed the line that
+  declares a same-name definition, such as `def as_sql`, as a name-only
+  reference. Now `refs` drops each site that the extractor marks as a
+  declaration. Only the Python extractor marks declarations. On django-15161,
+  `refs as_sql` went from 260 to 166 references and `refs deconstruct` from
+  353 to 275. The difference is 94 and 78, the number of `def` and `class`
+  lines of each name. The CLI fixture rows `refs_bare_name`, `refs_cut` and
+  `refs_cut_json` change from 10 to 9 references: the declaration `def helper`
+  at a.py:1 is gone.
+- **`explain` lists at most `limit` other definitions, then a count line.** It
+  listed every other definition of the name as `also defined at`, whatever the
+  limit. Now the text ends the list with "... N more definitions not listed
+  (limit L)", and the JSON adds `alternatives_omitted`. A qualified name that
+  names one definition has no alternatives. The guide's `explain` and `path`
+  sections now say so. On django-15161, `explain
+  Value.as_sql --limit 3` went from 89 rows and 7,845 bytes to 0 rows and 1,030
+  bytes, and `explain deconstruct --limit 3` from 76 rows and 7,801 bytes to 3
+  rows, the count line and 1,598 bytes.
+- **`explain` and `refs` resolve a data key's stable id.** Data keys stay out
+  of the name graph, so `explain` said "no symbol matches" and `refs` said
+  "resolves to no symbol" for an id that `expand` and `history` resolve. Now
+  both resolve the id with the resolver that `expand` uses. `explain` prints
+  the key's card and the sentence "ID is a data key, and a data key has no
+  fan-in: Grep finds the spellings of KEY." `refs` prints only that sentence,
+  and its JSON adds `data_key`. Before, `explain toml:Cargo.toml::workspace.package`
+  on this repository explained the Rust function `package` in
+  xtask/src/layers.rs. Now it prints the table's card.
 
 ## 0.11.0rc1 -- 2026-10-23
 

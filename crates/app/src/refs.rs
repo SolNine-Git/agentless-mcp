@@ -6,14 +6,16 @@ mod sites;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use facts::Role;
-use graph::{Definition, NameIndex, Resolver, Scopes, Site, references_to, resolve_definitions};
+use facts::{Role, StableId};
+use graph::{Definition, Lookup, NameIndex, Resolver, Scopes, Site, references_to};
 use kernel::{Bounded, Deadline};
 
 use crate::bounds::within;
 use crate::detached::answered_over;
+use crate::endpoints::resolve_target;
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::RepoFacts;
+use crate::span::data_key_span;
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
 
 /// A refs request: the target, the most sites, and whether to rank the shared callers.
@@ -40,6 +42,10 @@ pub struct RefsResult {
     pub shared_callers: bool,
     /// Whether the target named what it found. When false, the answer is about a name.
     pub target_resolved: bool,
+    /// The stable id of the one definition a qualified name resolved to.
+    pub definition: Option<String>,
+    /// The key's name when the target is a data key, which has no fan-in.
+    pub data_key: Option<String>,
     /// The files the scan passed over.
     pub skipped: Vec<Skipped>,
     /// How many files the scan read.
@@ -151,6 +157,9 @@ pub fn refs(
         Ok(limit) => limit,
         Err(error) => return Noted::new(Err(error)),
     };
+    if let Some(found) = data_key_span(reading, &request.target) {
+        return found.map(|span| Ok(no_fan_in(request, limit, span.symbol.name)));
+    }
     let stoplist = &reading.repo.config.stoplist;
     let loaded = RepoFacts::load(services, reading);
     let deadline = reading.deadline;
@@ -173,7 +182,7 @@ fn fan_in(
     let index = NameIndex::build(&facts.files);
     let scopes = Scopes::build(&facts.files);
     let resolver = Resolver::new(&index, &scopes);
-    let lookup = resolve_definitions(&index, &request.target);
+    let lookup = resolve_target(&index, &request.target);
     let target_ids: BTreeSet<String> = (lookup.definitions.iter())
         .map(|definition| definition.stable_id().to_string())
         .collect();
@@ -198,12 +207,44 @@ fn fan_in(
         shared: Bounded::cut(ranked, limit),
         shared_callers: request.shared_callers,
         target_resolved: lookup.scoped,
+        definition: qualified_definition(&request.target, &lookup),
+        data_key: None,
         skipped: facts.skipped.clone(),
         scanned: Some(facts.files.len()),
     })
 }
 
-// Every spelling of each definition outside its own span, then the alias spellings.
+// A data key stays out of the name graph, so nothing references it.
+fn no_fan_in(request: &RefsRequest, limit: usize, key: String) -> RefsResult {
+    RefsResult {
+        target: request.target.clone(),
+        groups: RefListing {
+            rows: Vec::new(),
+            total: 0,
+            limit,
+            files: 0,
+        },
+        shared: Bounded::cut(Vec::new(), limit),
+        shared_callers: request.shared_callers,
+        target_resolved: true,
+        definition: None,
+        data_key: Some(key),
+        skipped: Vec::new(),
+        scanned: None,
+    }
+}
+
+// The one definition a dotted name, not a stable id, resolved to.
+fn qualified_definition(target: &str, lookup: &Lookup<'_>) -> Option<String> {
+    let qualified = target.contains('.') && target.parse::<StableId>().is_err();
+    match lookup.definitions.as_slice() {
+        [only] if qualified && lookup.scoped => Some(only.stable_id().to_string()),
+        _ => None,
+    }
+}
+
+// Every spelling of each definition outside its own span, then the alias spellings. A site
+// that declares a name is no reference to it.
 fn spellings<'a>(
     resolver: &Resolver<'a>,
     definitions: &[Definition<'a>],
@@ -214,7 +255,8 @@ fn spellings<'a>(
         .collect();
     let direct =
         (definitions.iter()).flat_map(|definition| references_to(resolver.index(), definition));
-    direct
+    let referencing = direct.filter(|site| site.reference.role != Role::Declaration);
+    referencing
         .chain(alias_sites(resolver, target_ids, &spelled))
         .collect()
 }
