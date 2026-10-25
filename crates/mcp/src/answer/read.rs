@@ -2,6 +2,9 @@
 
 use app::ops::limits::{DEFAULT_CONTEXT_LINES, DEFAULT_TREE_DEPTH, DEFAULT_TREE_ENTRIES};
 use app::{IntArg, SliceRequest, TreeRequest};
+use prompts::messages::{
+    ACCEPTS_LINE_RANGES, SLICE_LINES_AND_WHOLE_FILE, SLICE_NEEDS_LINES, SLICE_RANGE_REVERSED,
+};
 use render::{ToolForm, tool_text};
 
 use super::Context;
@@ -9,7 +12,7 @@ use crate::arguments::{Arguments, Value};
 use crate::dispatch::Call;
 use crate::failure::Failure;
 
-// The surface each slice refusal names, so the caller knows which call to correct.
+// The operation that the log detail of a range with no pair names.
 const SLICE: &str = "read operation 'slice'";
 
 pub(super) fn answer(context: &Context<'_>, call: &Call) -> Result<String, Failure> {
@@ -52,14 +55,12 @@ fn slice_ranges(arguments: &Arguments) -> Result<Vec<(usize, usize)>, Failure> {
     let whole = arguments.flag("whole_file");
     let lines = arguments.value("lines");
     match lines {
-        Value::List(_) if whole => Err(Failure::Refused(format!(
-            "{SLICE} accepts lines or whole_file=true, not both"
-        ))),
+        Value::List(_) if whole => Err(Failure::Refused(SLICE_LINES_AND_WHOLE_FILE.to_owned())),
         Value::List(items) => line_ranges(lines, items),
         _ if whole => Ok(Vec::new()),
-        _ => Err(Failure::Refused(format!(
-            "{SLICE} requires non-empty lines or explicit whole_file=true"
-        ))),
+        _ => Err(Failure::Refused(
+            SLICE_NEEDS_LINES.render(ACCEPTS_LINE_RANGES),
+        )),
     }
 }
 
@@ -89,10 +90,8 @@ fn line_range(pair: &Value) -> Result<(usize, usize), Failure> {
         )));
     };
     if !ordered(start, end) {
-        return Err(Failure::Refused(format!(
-            "{SLICE} range [{start}, {end}] is not a line range: each one is [start, end], \
-             1-based and inclusive, with end at or after start."
-        )));
+        let given = format!("[{start},{end}]");
+        return Err(Failure::Refused(SLICE_RANGE_REVERSED.render(&given)));
     }
     Ok((line(start), line(end)))
 }

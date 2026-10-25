@@ -82,6 +82,78 @@
     }
   },
   "messages": {
+    "accepts_bool": {
+      "arguments": {},
+      "text": "true or false"
+    },
+    "accepts_choice": {
+      "arguments": {
+        "listed": "function, file or body"
+      },
+      "text": "one of function, file or body"
+    },
+    "accepts_integer": {
+      "arguments": {
+        "maximum": 500,
+        "minimum": 1
+      },
+      "text": "an integer from 1 to 500"
+    },
+    "accepts_integer_from": {
+      "arguments": {
+        "minimum": 1
+      },
+      "text": "an integer of 1 or more"
+    },
+    "accepts_line_ranges": {
+      "arguments": {},
+      "text": "one [start, end] pair of 1-based line numbers, such as [10, 20], or a list of pairs, such as [[10, 20], [40, 50]]"
+    },
+    "accepts_number": {
+      "arguments": {
+        "ceiling": "100",
+        "minimum": 0
+      },
+      "text": "a number above 0 and at most 100"
+    },
+    "accepts_schema": {
+      "arguments": {},
+      "text": "a value that fits its schema in tools/list"
+    },
+    "accepts_text": {
+      "arguments": {},
+      "text": "a string"
+    },
+    "accepts_text_or_texts": {
+      "arguments": {},
+      "text": "a string or a list of strings"
+    },
+    "accepts_texts": {
+      "arguments": {},
+      "text": "a list of strings"
+    },
+    "argument_invalid": {
+      "arguments": {
+        "accepted": "an integer from 1 to 500",
+        "found": "0",
+        "name": "limit"
+      },
+      "text": "limit is 0, but must be an integer from 1 to 500."
+    },
+    "argument_missing": {
+      "arguments": {
+        "accepted": "a string",
+        "name": "target"
+      },
+      "text": "target is required and must be a string."
+    },
+    "argument_unknown": {
+      "arguments": {
+        "name": "max_files",
+        "tool": "orient"
+      },
+      "text": "orient has no parameter max_files."
+    },
     "cache_absent_refreshing": {
       "arguments": {},
       "text": "a background refresh is in progress"
@@ -715,6 +787,20 @@
       },
       "text": "unknown severity 'error'. The severities are: advisory, warning, not_checked."
     },
+    "listed_and": {
+      "arguments": {
+        "listed": "source, target, include_unique",
+        "name": "include_ambiguous"
+      },
+      "text": "source, target, include_unique and include_ambiguous"
+    },
+    "listed_or": {
+      "arguments": {
+        "listed": "function, file",
+        "name": "body"
+      },
+      "text": "function, file or body"
+    },
     "map_file_unreached": {
       "arguments": {
         "count": 9
@@ -727,7 +813,7 @@
         "maximum": 200,
         "minimum": 1
       },
-      "text": "orient operation 'map' rejects limit=500: the map's file cap runs 1-200, which is the same bound repo_map publishes as max_files. The wider ceiling on this parameter belongs to the communities and cycles listings that share it. Retry with a limit in range."
+      "text": "limit is 500, but operation map takes a limit from 1 to 200."
     },
     "map_unresolved_seeds": {
       "arguments": {
@@ -735,25 +821,42 @@
       },
       "text": "// note: these focus seeds matched no file, no symbol, and no name spelled in five or fewer non-test files of this repository, so the ranking below is not focused on them: rotate_age, shift_age. Check the spelling, or seed with a file path from the tree."
     },
-    "op_rejects_parameters": {
+    "operation_in_tool": {
       "arguments": {
-        "accepted": "focus, budget, limit, granularity",
-        "operation": "map",
-        "required": "none",
-        "stray": "source, target",
-        "tool": "orient"
+        "operation": "find",
+        "tool": "symbols"
       },
-      "text": "orient operation 'map' does not accept: source, target. This operation accepts: focus, budget, limit, granularity; required: none. Drop the stray parameters, or pick the operation that takes them."
+      "text": "Call the tool symbols with operation find."
     },
-    "op_requires_parameters": {
+    "operation_lacks_parameter": {
       "arguments": {
-        "accepted": "source, target, include_unique, include_ambiguous",
-        "missing": "target",
-        "operation": "path",
-        "required": "source, target",
-        "tool": "orient"
+        "name": "source",
+        "operation": "map"
       },
-      "text": "orient operation 'path' is missing: target. This operation accepts: source, target, include_unique, include_ambiguous; required: source, target. Retry naming the missing parameters."
+      "text": "Operation map has no parameter source."
+    },
+    "operation_requires_value": {
+      "arguments": {
+        "accepted": "a string",
+        "name": "source",
+        "operation": "path"
+      },
+      "text": "Operation path requires a value for source, which must be a string."
+    },
+    "operation_takes": {
+      "arguments": {
+        "accepted": "limit",
+        "operation": "cycles"
+      },
+      "text": "Operation cycles takes limit."
+    },
+    "operation_takes_and_requires": {
+      "arguments": {
+        "accepted": "name, kind and limit",
+        "operation": "find",
+        "required": "name"
+      },
+      "text": "Operation find takes name, kind and limit, and requires name."
     },
     "overview_data_unlisted": {
       "arguments": {
@@ -855,6 +958,16 @@
       },
       "text": "repo_root is required: this server holds several repositories and will not guess between them. Retry with repo_root set to one of: /srv/app, /srv/other"
     },
+    "slice_lines_and_whole_file": {
+      "arguments": {},
+      "text": "Operation slice takes lines or whole_file=true, but not both."
+    },
+    "slice_needs_lines": {
+      "arguments": {
+        "accepted": "a list of pairs"
+      },
+      "text": "Operation slice requires lines or whole_file=true, and lines must be a list of pairs."
+    },
     "slice_range_beyond_file": {
       "arguments": {
         "end": 9050,
@@ -871,6 +984,12 @@
         "start": 60
       },
       "text": "unsatisfiable: line range 60-30 is not a range in src/app/svc.py: a start of 1 or more, and an end at or after the start"
+    },
+    "slice_range_reversed": {
+      "arguments": {
+        "found": "[3,1]"
+      },
+      "text": "lines holds [3,1], but each pair must have its end at or after its start."
     },
     "span_data_key_unlisted": {
       "arguments": {
@@ -892,13 +1011,18 @@
       },
       "text": "--surface v1 publishes the v1 tools. They are deprecated and are removed in 0.11.0. Move to the v2 tools: agentless-mcp guide --section the-two-surfaces has the mapping."
     },
-    "unknown_operation": {
+    "tool_takes": {
       "arguments": {
-        "operation": "graph",
-        "operations": "cycles, diagram, path",
-        "tool": "analyze_structure"
+        "accepted": "target, repo_root, limit and budget",
+        "tool": "history"
       },
-      "text": "analyze_structure has no operation named 'graph'. Valid operations are: cycles, diagram, path. Retry with one of those."
+      "text": "history takes target, repo_root, limit and budget."
+    },
+    "unknown_tool": {
+      "arguments": {
+        "listed": "orient, symbols and read"
+      },
+      "text": "No tool has this name. The tools are orient, symbols and read."
     }
   }
 }

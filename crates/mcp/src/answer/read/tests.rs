@@ -48,10 +48,8 @@ fn every_other_flat_shape_is_refused() {
     ] {
         let answer = sliced(&server, &lines);
         assert!(answer.is_error, "{lines}: {}", answer.text);
-        assert!(
-            answer.text.contains(" for call[read]\nlines."),
-            "{lines}: {}",
-            answer.text
-        );
+        let want =
+            format!("Error calling tool 'read': lines is {lines}, but must be one [start, end]");
+        assert!(answer.text.starts_with(&want), "{lines}: {}", answer.text);
     }
 }

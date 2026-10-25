@@ -4,6 +4,78 @@
 use crate::template::{Count, Piece, Template, Text};
 
 /// A text that takes no values.
+pub const ACCEPTS_BOOL: &str = "true or false";
+
+/// A template that takes `listed`.
+pub const ACCEPTS_CHOICE: Template<Text> =
+    Template::new(&[Piece::Text("one of "), Piece::Value(0)]);
+
+/// A template that takes (`minimum`, `maximum`).
+pub const ACCEPTS_INTEGER: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("an integer from "),
+    Piece::Value(0),
+    Piece::Text(" to "),
+    Piece::Value(1),
+]);
+
+/// A template that takes `minimum`.
+pub const ACCEPTS_INTEGER_FROM: Template<Count> = Template::new(&[
+    Piece::Text("an integer of "),
+    Piece::Value(0),
+    Piece::Text(" or more"),
+]);
+
+/// A text that takes no values.
+pub const ACCEPTS_LINE_RANGES: &str = "one [start, end] pair of 1-based line numbers, such as \
+        [10, 20], or a list of pairs, such as [[10, 20], [40, 50]]";
+
+/// A template that takes (`minimum`, `ceiling`).
+pub const ACCEPTS_NUMBER: Template<(Count, Text)> = Template::new(&[
+    Piece::Text("a number above "),
+    Piece::Value(0),
+    Piece::Text(" and at most "),
+    Piece::Value(1),
+]);
+
+/// A text that takes no values.
+pub const ACCEPTS_SCHEMA: &str = "a value that fits its schema in tools/list";
+
+/// A text that takes no values.
+pub const ACCEPTS_TEXT: &str = "a string";
+
+/// A text that takes no values.
+pub const ACCEPTS_TEXT_OR_TEXTS: &str = "a string or a list of strings";
+
+/// A text that takes no values.
+pub const ACCEPTS_TEXTS: &str = "a list of strings";
+
+/// A template that takes (`accepted`, `name`, `found`).
+pub const ARGUMENT_INVALID: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" is "),
+    Piece::Value(2),
+    Piece::Text(", but must be "),
+    Piece::Value(0),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`accepted`, `name`).
+pub const ARGUMENT_MISSING: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" is required and must be "),
+    Piece::Value(0),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`tool`, `name`).
+pub const ARGUMENT_UNKNOWN: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" has no parameter "),
+    Piece::Value(1),
+    Piece::Text("."),
+]);
+
+/// A text that takes no values.
 pub const CACHE_ABSENT_REFRESHING: &str = "a background refresh is in progress";
 
 /// A template that takes `repo_root`.
@@ -893,6 +965,14 @@ pub const LINT_UNKNOWN_SEVERITY: Template<(Text, Text)> = Template::new(&[
     Piece::Text("."),
 ]);
 
+/// A template that takes (`name`, `listed`).
+pub const LISTED_AND: Template<(Text, Text)> =
+    Template::new(&[Piece::Value(1), Piece::Text(" and "), Piece::Value(0)]);
+
+/// A template that takes (`name`, `listed`).
+pub const LISTED_OR: Template<(Text, Text)> =
+    Template::new(&[Piece::Value(1), Piece::Text(" or "), Piece::Value(0)]);
+
 /// A template that takes `count`.
 pub const MAP_FILE_UNREACHED: Template<Count> = Template::new(&[
     Piece::Text("... "),
@@ -905,17 +985,13 @@ pub const MAP_FILE_UNREACHED: Template<Count> = Template::new(&[
 
 /// A template that takes (`limit`, `minimum`, `maximum`).
 pub const MAP_LIMIT_OUT_OF_RANGE: Template<(Count, Count, Count)> = Template::new(&[
-    Piece::Text("orient operation 'map' rejects limit="),
+    Piece::Text("limit is "),
     Piece::Value(0),
-    Piece::Text(": the map's file cap runs "),
+    Piece::Text(", but operation map takes a limit from "),
     Piece::Value(1),
-    Piece::Text("-"),
+    Piece::Text(" to "),
     Piece::Value(2),
-    Piece::Text(
-        ", which is the same bound repo_map publishes as max_files. The \
-        wider ceiling on this parameter belongs to the communities and \
-        cycles listings that share it. Retry with a limit in range.",
-    ),
+    Piece::Text("."),
 ]);
 
 /// A template that takes `seeds`.
@@ -929,35 +1005,53 @@ pub const MAP_UNRESOLVED_SEEDS: Template<Text> = Template::new(&[
     Piece::Text(". Check the spelling, or seed with a file path from the tree."),
 ]);
 
-/// A template that takes (`tool`, `operation`, `stray`, `accepted`, `required`).
-pub const OP_REJECTS_PARAMETERS: Template<(Text, Text, Text, Text, Text)> = Template::new(&[
+/// A template that takes (`tool`, `operation`).
+pub const OPERATION_IN_TOOL: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("Call the tool "),
     Piece::Value(0),
-    Piece::Text(" operation '"),
+    Piece::Text(" with operation "),
     Piece::Value(1),
-    Piece::Text("' does not accept: "),
-    Piece::Value(2),
-    Piece::Text(". This operation accepts: "),
-    Piece::Value(3),
-    Piece::Text("; required: "),
-    Piece::Value(4),
-    Piece::Text(
-        ". Drop the stray parameters, or pick the operation that takes \
-        them.",
-    ),
+    Piece::Text("."),
 ]);
 
-/// A template that takes (`tool`, `operation`, `missing`, `accepted`, `required`).
-pub const OP_REQUIRES_PARAMETERS: Template<(Text, Text, Text, Text, Text)> = Template::new(&[
+/// A template that takes (`operation`, `name`).
+pub const OPERATION_LACKS_PARAMETER: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("Operation "),
     Piece::Value(0),
-    Piece::Text(" operation '"),
+    Piece::Text(" has no parameter "),
     Piece::Value(1),
-    Piece::Text("' is missing: "),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`operation`, `accepted`, `name`).
+pub const OPERATION_REQUIRES_VALUE: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Text("Operation "),
+    Piece::Value(0),
+    Piece::Text(" requires a value for "),
     Piece::Value(2),
-    Piece::Text(". This operation accepts: "),
-    Piece::Value(3),
-    Piece::Text("; required: "),
-    Piece::Value(4),
-    Piece::Text(". Retry naming the missing parameters."),
+    Piece::Text(", which must be "),
+    Piece::Value(1),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`operation`, `accepted`).
+pub const OPERATION_TAKES: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("Operation "),
+    Piece::Value(0),
+    Piece::Text(" takes "),
+    Piece::Value(1),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`operation`, `accepted`, `required`).
+pub const OPERATION_TAKES_AND_REQUIRES: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Text("Operation "),
+    Piece::Value(0),
+    Piece::Text(" takes "),
+    Piece::Value(1),
+    Piece::Text(", and requires "),
+    Piece::Value(2),
+    Piece::Text("."),
 ]);
 
 /// A template that takes (`count`, `cap`).
@@ -1105,6 +1199,20 @@ pub const SERVER_ROOT_REQUIRED: Template<Text> = Template::new(&[
     Piece::Value(0),
 ]);
 
+/// A text that takes no values.
+pub const SLICE_LINES_AND_WHOLE_FILE: &str = "Operation slice takes lines or whole_file=true, but \
+        not both.";
+
+/// A template that takes `accepted`.
+pub const SLICE_NEEDS_LINES: Template<Text> = Template::new(&[
+    Piece::Text(
+        "Operation slice requires lines or whole_file=true, and lines \
+        must be ",
+    ),
+    Piece::Value(0),
+    Piece::Text("."),
+]);
+
 /// A template that takes (`path`, `start`, `end`, `total`).
 pub const SLICE_RANGE_BEYOND_FILE: Template<(Text, Count, Count, Count)> = Template::new(&[
     Piece::Text("unsatisfiable: line range "),
@@ -1127,6 +1235,13 @@ pub const SLICE_RANGE_NOT_A_RANGE: Template<(Text, Count, Count)> = Template::ne
     Piece::Text(" is not a range in "),
     Piece::Value(0),
     Piece::Text(": a start of 1 or more, and an end at or after the start"),
+]);
+
+/// A template that takes `found`.
+pub const SLICE_RANGE_REVERSED: Template<Text> = Template::new(&[
+    Piece::Text("lines holds "),
+    Piece::Value(0),
+    Piece::Text(", but each pair must have its end at or after its start."),
 ]);
 
 /// A template that takes (`path`, `qualname`, `cap`).
@@ -1157,12 +1272,17 @@ pub const SURFACE_V1_DEPRECATED: Template<Text> = Template::new(&[
     ),
 ]);
 
-/// A template that takes (`tool`, `operation`, `operations`).
-pub const UNKNOWN_OPERATION: Template<(Text, Text, Text)> = Template::new(&[
+/// A template that takes (`tool`, `accepted`).
+pub const TOOL_TAKES: Template<(Text, Text)> = Template::new(&[
     Piece::Value(0),
-    Piece::Text(" has no operation named '"),
+    Piece::Text(" takes "),
     Piece::Value(1),
-    Piece::Text("'. Valid operations are: "),
-    Piece::Value(2),
-    Piece::Text(". Retry with one of those."),
+    Piece::Text("."),
+]);
+
+/// A template that takes `listed`.
+pub const UNKNOWN_TOOL: Template<Text> = Template::new(&[
+    Piece::Text("No tool has this name. The tools are "),
+    Piece::Value(0),
+    Piece::Text("."),
 ]);

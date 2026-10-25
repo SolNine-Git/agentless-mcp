@@ -8,7 +8,6 @@ use serde_json::json;
 
 use super::calls::{answered, built, reference, run_named};
 use super::{Kept, Setup};
-use crate::dispatch::UNPLANNED;
 use crate::{Arming, Ports};
 
 // The background index of these tests moves the pinned clock, between the call's start and its
@@ -69,7 +68,7 @@ fn a_call_past_its_limit_stops_and_capabilities_has_no_limit() {
 }
 
 #[test]
-fn an_unknown_tool_is_an_unplanned_failure_with_its_detail_in_the_log() {
+fn an_unknown_tool_is_a_refusal_that_lists_the_tools_and_logs_nothing() {
     let run = run_named("probe");
     let sandbox = built(&run);
     let log = Arc::new(Kept::default());
@@ -87,10 +86,8 @@ fn an_unknown_tool_is_an_unplanned_failure_with_its_detail_in_the_log() {
     };
     let server = sandbox.server_with(&setup, sandbox.services(), ports);
     let got = answered(&sandbox, &server, "repo_map", &json!({}));
-    assert_eq!(got, (UNPLANNED.to_owned(), true));
-    let lines = log.lines();
-    assert_eq!(
-        lines,
-        ["unhandled error in an agentless-mcp tool call: repo_map: no tool repo_map"]
-    );
+    let want = "Error calling tool 'repo_map': No tool has this name. The tools are \
+                find_referencing_symbols, history, capabilities, orient, symbols and read.";
+    assert_eq!(got, (want.to_owned(), true));
+    assert!(log.lines().is_empty(), "{:?}", log.lines());
 }

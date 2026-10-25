@@ -1,4 +1,4 @@
-//! One tool call from its name and arguments to its answer: the tool, the validation, the
+//! One tool call from its name and arguments to its answer: the tool, the validation with its
 //! operation checks, the deadline, then the operation, with the three forms of a failed call.
 
 use std::path::PathBuf;
@@ -12,7 +12,8 @@ use serde_json::{Map, Value as Json};
 use crate::answer::answer;
 use crate::arguments::Arguments;
 use crate::failure::Failure;
-use crate::operation::{checked_map_limit, checked_operation};
+use crate::operation::checked_map_limit;
+use crate::refusal::unknown_tool;
 use crate::roots::Allowlist;
 use crate::server::Ports;
 use crate::validate::validate;
@@ -60,17 +61,12 @@ pub(crate) fn prepared(
     arguments: Option<Map<String, Json>>,
 ) -> Result<Call, Answer> {
     let Some(tool) = TOOLS.iter().copied().find(|tool| tool.name == name) else {
-        return Err(failed(
-            inner,
-            name,
-            Failure::Unplanned(format!("no tool {name}")),
-        ));
+        return Err(failed(inner, name, Failure::Refused(unknown_tool(name))));
     };
     // Null arguments read as no arguments.
     let input = arguments.map_or_else(|| Json::Object(Map::new()), Json::Object);
-    let arguments = validate(tool, &input).map_err(|text| Answer { text, error: true })?;
-    let operation = checked_operation(tool, &arguments)
-        .map_err(|message| failed(inner, name, Failure::Refused(message)))?;
+    let (operation, arguments) =
+        validate(tool, &input).map_err(|message| failed(inner, name, Failure::Refused(message)))?;
     if let Some(operation) = operation {
         checked_map_limit(operation, &arguments)
             .map_err(|message| failed(inner, name, Failure::Refused(message)))?;

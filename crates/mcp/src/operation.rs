@@ -2,80 +2,57 @@
 //! parameter it does not take must be absent, and every parameter it requires must be given.
 
 use app::ops::limits::{MAX_MAX_FILES, MIN_MAX_FILES};
-use app::surface::{Calls, Operation, Tool};
+use app::surface::{Operation, Tool};
 use prompts::messages::{
-    MAP_LIMIT_OUT_OF_RANGE, OP_REJECTS_PARAMETERS, OP_REQUIRES_PARAMETERS, UNKNOWN_OPERATION,
+    ARGUMENT_INVALID, MAP_LIMIT_OUT_OF_RANGE, OPERATION_LACKS_PARAMETER, OPERATION_REQUIRES_VALUE,
 };
+use serde_json::Value as Json;
 
 use crate::arguments::{Arguments, Value};
+use crate::refusal::{accepted_by_name, operation_owner, shown};
 
 // Every operation takes these, so no table row lists them.
 const UNIVERSAL: [&str; 3] = ["repo_root", "operation", "no_cache"];
 
-// The operation the call names, `None` for a tool with no table, or the refusal text.
-pub(crate) fn checked_operation(
-    tool: &'static Tool,
-    arguments: &Arguments,
-) -> Result<Option<&'static Operation>, String> {
-    let Calls::Operations(table) = tool.calls else {
-        return Ok(None);
-    };
-    let name = arguments
-        .text("operation")
-        .expect("the validation gives each tool with an operation table a text operation");
-    let Some(operation) = tool.operation(name) else {
-        let mut names: Vec<&str> = table.iter().map(|operation| operation.name).collect();
-        names.sort_unstable();
-        return Err(UNKNOWN_OPERATION.render((tool.name, name, &names.join(", "))));
-    };
+// The operation of `tool` named `name`, or the refusal that lists the operations `tool` has.
+pub(crate) fn named_operation(tool: &Tool, name: &str) -> Result<&'static Operation, String> {
+    tool.operation(name)
+        .ok_or_else(|| unknown_operation(tool, name))
+}
+
+// The operations `tool` has, and the tool that has `name` when another one does.
+fn unknown_operation(tool: &Tool, name: &str) -> String {
+    let given = shown(&Json::from(name));
+    let refusal =
+        ARGUMENT_INVALID.render((&accepted_by_name(tool, "operation"), "operation", &given));
+    match operation_owner(name, tool.name) {
+        Some(owner) => format!("{refusal} {owner}"),
+        None => refusal,
+    }
+}
+
+// The sentence for a parameter that the call gives a value and `operation` does not take.
+pub(crate) fn stray(operation: &Operation, param: &str, value: &Value) -> Option<String> {
+    let taken = UNIVERSAL.contains(&param) || operation.accepted.contains(&param);
+    (!taken && !omitted(value)).then(|| OPERATION_LACKS_PARAMETER.render((operation.name, param)))
+}
+
+// One sentence per parameter that `operation` requires and the call leaves absent.
+pub(crate) fn missing(tool: &Tool, operation: &Operation, arguments: &Arguments) -> Vec<String> {
     let given: Vec<&str> = arguments
         .iter()
         .filter(|(param, value)| !UNIVERSAL.contains(param) && !omitted(value))
         .map(|(param, _)| *param)
         .collect();
-    refused_parameters(tool, operation, &given).map_or(Ok(Some(operation)), Err)
-}
-
-// The stray parameters refused first, then the missing ones.
-fn refused_parameters(tool: &Tool, operation: &Operation, given: &[&str]) -> Option<String> {
-    let accepted = operation.accepted.join(", ");
-    let required = if operation.required.is_empty() {
-        "none".to_owned()
-    } else {
-        operation.required.join(", ")
-    };
-    let mut stray: Vec<&str> = given
-        .iter()
-        .copied()
-        .filter(|param| !operation.accepted.contains(param))
-        .collect();
-    stray.sort_unstable();
-    if !stray.is_empty() {
-        let values = (
-            tool.name,
-            operation.name,
-            &*stray.join(", "),
-            &*accepted,
-            &*required,
-        );
-        return Some(OP_REJECTS_PARAMETERS.render(values));
-    }
-    let missing: Vec<&str> = operation
+    operation
         .required
         .iter()
-        .copied()
         .filter(|param| !given.contains(param))
-        .collect();
-    (!missing.is_empty()).then(|| {
-        let values = (
-            tool.name,
-            operation.name,
-            &*missing.join(", "),
-            &*accepted,
-            &*required,
-        );
-        OP_REQUIRES_PARAMETERS.render(values)
-    })
+        .map(|param| {
+            let form = accepted_by_name(tool, param);
+            OPERATION_REQUIRES_VALUE.render((operation.name, &form, param))
+        })
+        .collect()
 }
 
 // A null, false, blank, zero or empty value says nothing, so it counts as absent.

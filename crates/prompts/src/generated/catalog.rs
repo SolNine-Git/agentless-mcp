@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 134] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 156] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -77,6 +77,84 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 134] = [
         "service_truncation",
         &["unit", "shown", "total"],
         envelope::SERVICE_TRUNCATION.pieces(),
+    ),
+    (
+        "messages",
+        "accepts_bool",
+        &[],
+        &[Piece::Text(messages::ACCEPTS_BOOL)],
+    ),
+    (
+        "messages",
+        "accepts_choice",
+        &["listed"],
+        messages::ACCEPTS_CHOICE.pieces(),
+    ),
+    (
+        "messages",
+        "accepts_integer",
+        &["minimum", "maximum"],
+        messages::ACCEPTS_INTEGER.pieces(),
+    ),
+    (
+        "messages",
+        "accepts_integer_from",
+        &["minimum"],
+        messages::ACCEPTS_INTEGER_FROM.pieces(),
+    ),
+    (
+        "messages",
+        "accepts_line_ranges",
+        &[],
+        &[Piece::Text(messages::ACCEPTS_LINE_RANGES)],
+    ),
+    (
+        "messages",
+        "accepts_number",
+        &["minimum", "ceiling"],
+        messages::ACCEPTS_NUMBER.pieces(),
+    ),
+    (
+        "messages",
+        "accepts_schema",
+        &[],
+        &[Piece::Text(messages::ACCEPTS_SCHEMA)],
+    ),
+    (
+        "messages",
+        "accepts_text",
+        &[],
+        &[Piece::Text(messages::ACCEPTS_TEXT)],
+    ),
+    (
+        "messages",
+        "accepts_text_or_texts",
+        &[],
+        &[Piece::Text(messages::ACCEPTS_TEXT_OR_TEXTS)],
+    ),
+    (
+        "messages",
+        "accepts_texts",
+        &[],
+        &[Piece::Text(messages::ACCEPTS_TEXTS)],
+    ),
+    (
+        "messages",
+        "argument_invalid",
+        &["accepted", "name", "found"],
+        messages::ARGUMENT_INVALID.pieces(),
+    ),
+    (
+        "messages",
+        "argument_missing",
+        &["accepted", "name"],
+        messages::ARGUMENT_MISSING.pieces(),
+    ),
+    (
+        "messages",
+        "argument_unknown",
+        &["tool", "name"],
+        messages::ARGUMENT_UNKNOWN.pieces(),
     ),
     (
         "messages",
@@ -658,6 +736,18 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 134] = [
     ),
     (
         "messages",
+        "listed_and",
+        &["name", "listed"],
+        messages::LISTED_AND.pieces(),
+    ),
+    (
+        "messages",
+        "listed_or",
+        &["name", "listed"],
+        messages::LISTED_OR.pieces(),
+    ),
+    (
+        "messages",
         "map_file_unreached",
         &["count"],
         messages::MAP_FILE_UNREACHED.pieces(),
@@ -676,15 +766,33 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 134] = [
     ),
     (
         "messages",
-        "op_rejects_parameters",
-        &["tool", "operation", "stray", "accepted", "required"],
-        messages::OP_REJECTS_PARAMETERS.pieces(),
+        "operation_in_tool",
+        &["tool", "operation"],
+        messages::OPERATION_IN_TOOL.pieces(),
     ),
     (
         "messages",
-        "op_requires_parameters",
-        &["tool", "operation", "missing", "accepted", "required"],
-        messages::OP_REQUIRES_PARAMETERS.pieces(),
+        "operation_lacks_parameter",
+        &["operation", "name"],
+        messages::OPERATION_LACKS_PARAMETER.pieces(),
+    ),
+    (
+        "messages",
+        "operation_requires_value",
+        &["operation", "accepted", "name"],
+        messages::OPERATION_REQUIRES_VALUE.pieces(),
+    ),
+    (
+        "messages",
+        "operation_takes",
+        &["operation", "accepted"],
+        messages::OPERATION_TAKES.pieces(),
+    ),
+    (
+        "messages",
+        "operation_takes_and_requires",
+        &["operation", "accepted", "required"],
+        messages::OPERATION_TAKES_AND_REQUIRES.pieces(),
     ),
     (
         "messages",
@@ -784,6 +892,18 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 134] = [
     ),
     (
         "messages",
+        "slice_lines_and_whole_file",
+        &[],
+        &[Piece::Text(messages::SLICE_LINES_AND_WHOLE_FILE)],
+    ),
+    (
+        "messages",
+        "slice_needs_lines",
+        &["accepted"],
+        messages::SLICE_NEEDS_LINES.pieces(),
+    ),
+    (
+        "messages",
         "slice_range_beyond_file",
         &["path", "start", "end", "total"],
         messages::SLICE_RANGE_BEYOND_FILE.pieces(),
@@ -793,6 +913,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 134] = [
         "slice_range_not_a_range",
         &["path", "start", "end"],
         messages::SLICE_RANGE_NOT_A_RANGE.pieces(),
+    ),
+    (
+        "messages",
+        "slice_range_reversed",
+        &["found"],
+        messages::SLICE_RANGE_REVERSED.pieces(),
     ),
     (
         "messages",
@@ -814,8 +940,14 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 134] = [
     ),
     (
         "messages",
-        "unknown_operation",
-        &["tool", "operation", "operations"],
-        messages::UNKNOWN_OPERATION.pieces(),
+        "tool_takes",
+        &["tool", "accepted"],
+        messages::TOOL_TAKES.pieces(),
+    ),
+    (
+        "messages",
+        "unknown_tool",
+        &["listed"],
+        messages::UNKNOWN_TOOL.pieces(),
     ),
 ];

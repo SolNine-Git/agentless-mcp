@@ -1,14 +1,15 @@
 use std::fs;
 use std::path::Path;
 
-use app::surface::{Presence, Shape, TOOLS};
+use app::surface::{Presence, TOOLS, Tool};
 use json::JsonValue;
-use serde_json::{Map, Value as Json};
+use prompts::messages::{ACCEPTS_LINE_RANGES, ACCEPTS_SCHEMA};
+use serde_json::{Map, Value as Json, json};
 use text::CodePointString;
 
-use super::coerce::tag;
-use super::validate;
+use super::{unknown_names, validate, verdicts};
 use crate::arguments::Value;
+use crate::refusal::accepted;
 
 const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
@@ -34,19 +35,34 @@ fn reference_cases() -> Vec<(Json, JsonValue)> {
     cases.into_iter().zip(outcomes).collect()
 }
 
-fn outcome(name: &str, arguments: &Json) -> JsonValue {
-    let tool = TOOLS
+fn tool_named(name: &str) -> &'static Tool {
+    TOOLS
         .iter()
         .find(|tool| tool.name == name)
-        .unwrap_or_else(|| panic!("no tool {name}"));
-    match validate(tool, arguments) {
-        Ok(values) => {
+        .unwrap_or_else(|| panic!("no tool {name}"))
+}
+
+// The coerced values when each value fits its shape and the tool takes each name, else the
+// refusal. Many accepted rows name an operation that refuses the call, so they test the coercion.
+fn outcome(name: &str, arguments: &Json) -> JsonValue {
+    let tool = tool_named(name);
+    let empty = Map::new();
+    let given = arguments.as_object().unwrap_or(&empty);
+    let fitting: Option<Vec<(&str, Value)>> = verdicts(tool, given)
+        .into_iter()
+        .map(|(name, verdict)| verdict.ok().map(|value| (name, value)))
+        .collect();
+    match fitting {
+        Some(values) if unknown_names(tool, given).is_empty() => {
             let entries = values
                 .iter()
                 .map(|(name, value)| (key(name), value_json(value)));
             JsonValue::Object(vec![(key("ok"), JsonValue::Object(entries.collect()))])
         }
-        Err(text) => JsonValue::Object(vec![(key("error"), JsonValue::Str(key(&text)))]),
+        _ => {
+            let text = validate(tool, arguments).expect_err("a value that does not fit");
+            JsonValue::Object(vec![(key("error"), JsonValue::Str(key(&text)))])
+        }
     }
 }
 
@@ -90,26 +106,23 @@ fn each_case_validates_as_the_reference_says() {
     );
 }
 
-// Each choice of shapes tags its problems with a name the reference gives that shape.
+// Every parameter of the surface states its accepted form in words, and no refusal falls back to
+// pointing at the schema.
 #[test]
-fn each_choice_tags_its_shapes_by_their_reference_names() {
-    let choices: Vec<(&str, &str, Vec<String>)> = TOOLS
+fn each_parameter_states_its_accepted_form_in_words() {
+    for tool in TOOLS {
+        for param in tool.params {
+            let form = accepted(tool, param);
+            assert_ne!(form, ACCEPTS_SCHEMA, "{}.{}", tool.name, param.name);
+        }
+    }
+    let read = TOOLS.iter().find(|tool| tool.name == "read").unwrap();
+    let lines = read
+        .params
         .iter()
-        .flat_map(|tool| tool.params.iter().map(|param| (tool.name, param)))
-        .filter_map(|(tool, param)| match param.shape {
-            Shape::AnyOf(shapes) => Some((tool, param.name, shapes.iter().map(tag).collect())),
-            _ => None,
-        })
-        .collect();
-    // Every choice parameter of the surface in tools/list order, and no other parameter.
-    let want: Vec<(&str, &str, Vec<String>)> = [
-        ("orient", "focus", ["str", "list[str]"]),
-        ("read", "lines", ["list[int]", "list[list[int]]"]),
-    ]
-    .into_iter()
-    .map(|(tool, name, tags)| (tool, name, tags.map(String::from).to_vec()))
-    .collect();
-    assert_eq!(choices, want);
+        .find(|param| param.name == "lines")
+        .unwrap();
+    assert_eq!(accepted(read, lines), ACCEPTS_LINE_RANGES);
 }
 
 // tools/list offers no null choice, and an explicit null still reads as an absent value.
@@ -123,8 +136,9 @@ fn an_explicit_null_reads_as_absent_for_each_nullable_parameter() {
         let call: Map<String, Json> = required
             .map(|param| (param.name.to_owned(), Json::from("x")))
             .collect();
-        let absent = validate(tool, &Json::Object(call.clone()));
-        assert!(absent.is_ok(), "{}: {absent:?}", tool.name);
+        let absent = verdicts(tool, &call);
+        let fits = absent.iter().all(|(_, verdict)| verdict.is_ok());
+        assert!(fits, "{}: {absent:?}", tool.name);
         let nullable: Vec<&str> = tool
             .params
             .iter()
@@ -135,8 +149,92 @@ fn an_explicit_null_reads_as_absent_for_each_nullable_parameter() {
         for name in nullable {
             let mut given = call.clone();
             given.insert(name.to_owned(), Json::Null);
-            let found = validate(tool, &Json::Object(given));
-            assert_eq!(found, absent, "{}.{name}", tool.name);
+            assert_eq!(verdicts(tool, &given), absent, "{}.{name}", tool.name);
         }
     }
+}
+
+fn assert_refusals(cases: &[(&str, Json, &str)]) {
+    for (name, arguments, want) in cases {
+        let found = validate(tool_named(name), arguments);
+        assert_eq!(found.err().as_deref(), Some(*want), "{name} {arguments}");
+    }
+}
+
+// A bad operation is the whole refusal: the other parameters have no operation to be judged by.
+#[test]
+fn a_refusal_decides_the_operation_first() {
+    assert_refusals(&[
+        (
+            "orient",
+            json!({"operation": "find", "name": "x"}),
+            "operation is \"find\", but must be one of map, communities, cycles, health, diagram \
+             or path. Call the tool symbols with operation find.",
+        ),
+        (
+            "symbols",
+            json!({"operation": "map", "focus": "x"}),
+            "operation is \"map\", but must be one of find, overview, expand, explain or locate. \
+             Call the tool orient with operation map.",
+        ),
+        (
+            "orient",
+            json!({"operation": "bogus", "name": "x"}),
+            "operation is \"bogus\", but must be one of map, communities, cycles, health, diagram \
+             or path.",
+        ),
+        (
+            "symbols",
+            json!({"name": "x"}),
+            "operation is required and must be one of find, overview, expand, explain or locate.",
+        ),
+        (
+            "symbols",
+            json!({"operation": null, "name": "x"}),
+            "operation is null, but must be one of find, overview, expand, explain or locate.",
+        ),
+    ]);
+}
+
+// Each parameter in declaration order gets at most one sentence, the unknown names follow in the
+// call's order, and the listing of what the operation takes comes last.
+#[test]
+fn a_refusal_judges_each_parameter_once_in_declaration_order() {
+    assert_refusals(&[
+        (
+            "symbols",
+            json!({"operation": "find", "name": "x", "path": "a", "lines": [1, 2]}),
+            "Operation find has no parameter path. symbols has no parameter lines. Operation find \
+             takes name, kind and limit, and requires name.",
+        ),
+        (
+            "symbols",
+            json!({"operation": "find", "name": 3, "path": "a"}),
+            "name is 3, but must be a string. Operation find has no parameter path. Operation \
+             find takes name, kind and limit, and requires name.",
+        ),
+        (
+            "symbols",
+            json!({"operation": "find", "name": "x", "path": "a"}),
+            "Operation find has no parameter path. Operation find takes name, kind and limit, \
+             and requires name.",
+        ),
+        (
+            "read",
+            json!({"operation": "dir", "deep": 2}),
+            "read has no parameter deep. Operation dir takes path, depth and max_entries.",
+        ),
+        // A stray value that does not fit its shape gets the shape sentence, not the stray one.
+        (
+            "symbols",
+            json!({"operation": "find", "name": "x", "path": 3}),
+            "path is 3, but must be a string.",
+        ),
+        (
+            "orient",
+            json!({"operation": "cycles", "limit": 0, "focus": "x"}),
+            "Operation cycles has no parameter focus. limit is 0, but must be an integer from 1 \
+             to 500. Operation cycles takes limit.",
+        ),
+    ]);
 }

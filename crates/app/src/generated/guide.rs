@@ -133,33 +133,38 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         stdout or XDG cache |\n| *(no MCP tool)* | | `index`, `warmup`, \
         `patch`, `lint`, `validate`, `vote` | write side and install \
         time |\n\nThe schema of `operation` lists the valid values as \
-        an enum. The server checks\nthe value itself and answers a \
-        wrong value with the valid list. The server\nrefuses a \
-        parameter foreign to the selected operation with one message \
-        that\nnames what that operation accepts and requires. It never \
-        returns a schema\nvalidation dump.\n\n**Previous surface.** \
-        These six are the v2 surface, the only one. Before\n0.11.0, a \
-        server started with `--surface v1` published the original \
-        twelve\nper-question tools for un-migrated operators. A server \
-        started with\n`--surface both` published the union, which was \
-        fifteen names rather than\neighteen because \
-        `find_referencing_symbols`, `capabilities` and `history`\nstood \
-        alone on both surfaces. 0.11.0 removed both: the server refuses \
-        either\nvalue at start-up. This is the mapping for readers who \
-        migrate:\n\n| v1 tool (behind `--surface v1`) | v2 call \
-        |\n|---|---|\n| `repo_map` | `orient` operation `map` |\n| \
-        `list_dir` | `read` operation `dir` |\n| `get_symbols_overview` \
-        | `symbols` operation `overview` |\n| `expand_symbols` | \
-        `symbols` operation `expand` |\n| `read_slice` | `read` \
-        operation `slice` |\n| `find_symbol` | `symbols` operation \
-        `find` |\n| `explain_symbol` | `symbols` operation `explain` \
-        |\n| `analyze_structure` | `orient` operations `path` / \
-        `cycles` / `communities` / `diagram` / `health` |\n| \
-        `resolve_locations` | `symbols` operation `locate` \
-        |\n\n`find_referencing_symbols` and `capabilities` are the same \
-        tools on both\nsurfaces. Every v2 operation routes to exactly \
-        the handler its v1 counterpart\ncalled, with the same defaults. \
-        A v2 answer is therefore byte-identical to\nits v1 \
+        an enum. The server checks\nevery argument before the call \
+        runs. A refusal gives one sentence for each bad\nparameter. The \
+        sentence names the parameter and the value that the call \
+        gave,\nand it gives the form that the parameter accepts. A \
+        wrong `operation` value\ngets the list of valid operations, and \
+        the name of the tool that has that\noperation when another tool \
+        has it. A parameter foreign to the selected\noperation gets the \
+        list of what that operation takes and requires. A \
+        refusal\nkeeps `isError` true. The server never returns a \
+        schema validation dump.\n\n**Previous surface.** These six are \
+        the v2 surface, the only one. Before\n0.11.0, a server started \
+        with `--surface v1` published the original twelve\nper-question \
+        tools for un-migrated operators. A server started \
+        with\n`--surface both` published the union, which was fifteen \
+        names rather than\neighteen because `find_referencing_symbols`, \
+        `capabilities` and `history`\nstood alone on both surfaces. \
+        0.11.0 removed both: the server refuses either\nvalue at \
+        start-up. This is the mapping for readers who migrate:\n\n| v1 \
+        tool (behind `--surface v1`) | v2 call |\n|---|---|\n| \
+        `repo_map` | `orient` operation `map` |\n| `list_dir` | `read` \
+        operation `dir` |\n| `get_symbols_overview` | `symbols` \
+        operation `overview` |\n| `expand_symbols` | `symbols` \
+        operation `expand` |\n| `read_slice` | `read` operation `slice` \
+        |\n| `find_symbol` | `symbols` operation `find` |\n| \
+        `explain_symbol` | `symbols` operation `explain` |\n| \
+        `analyze_structure` | `orient` operations `path` / `cycles` / \
+        `communities` / `diagram` / `health` |\n| `resolve_locations` | \
+        `symbols` operation `locate` |\n\n`find_referencing_symbols` \
+        and `capabilities` are the same tools on both\nsurfaces. Every \
+        v2 operation routes to exactly the handler its v1 \
+        counterpart\ncalled, with the same defaults. A v2 answer is \
+        therefore byte-identical to\nits v1 \
         counterpart's.\n\nEverything that writes or executes is \
         CLI-only, and always will be. A tool\nthat an analysed \
         repository's contents could talk an agent into calling \
@@ -1591,31 +1596,31 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-canonical-recipe", 484, 3597),
     ("the-funnel-and-where-it-stops", 3599, 4432),
     ("stable-ids", 4434, 5752),
-    ("the-two-surfaces", 5754, 10809),
-    ("per-tool-usage", 10811, 87308),
-    ("claude-code-specifics", 12569, 14200),
-    ("map", 14202, 22505),
-    ("tree", 22507, 22828),
-    ("skeleton", 22830, 23943),
-    ("expand", 23945, 25797),
-    ("slice", 25799, 26636),
-    ("find-symbol", 26638, 27276),
-    ("refs", 27278, 31711),
-    ("history", 31713, 34546),
-    ("explain", 34548, 36130),
-    ("path", 36132, 38706),
-    ("cycles", 38708, 39819),
-    ("communities", 39821, 42066),
-    ("diagram", 42068, 44839),
-    ("health", 44841, 51077),
-    ("html", 51079, 52030),
-    ("resolve-locs", 52032, 52831),
-    ("capabilities", 52833, 53643),
-    ("index", 53645, 56314),
-    ("lint", 56316, 76324),
-    ("validate-vote", 76326, 85707),
-    ("warmup", 85709, 87308),
-    ("project-defaults-agentless-mcp-json", 87310, 91263),
-    ("token-counting", 91265, 91679),
-    ("exit-codes", 91681, 92139),
+    ("the-two-surfaces", 5754, 11096),
+    ("per-tool-usage", 11098, 87595),
+    ("claude-code-specifics", 12856, 14487),
+    ("map", 14489, 22792),
+    ("tree", 22794, 23115),
+    ("skeleton", 23117, 24230),
+    ("expand", 24232, 26084),
+    ("slice", 26086, 26923),
+    ("find-symbol", 26925, 27563),
+    ("refs", 27565, 31998),
+    ("history", 32000, 34833),
+    ("explain", 34835, 36417),
+    ("path", 36419, 38993),
+    ("cycles", 38995, 40106),
+    ("communities", 40108, 42353),
+    ("diagram", 42355, 45126),
+    ("health", 45128, 51364),
+    ("html", 51366, 52317),
+    ("resolve-locs", 52319, 53118),
+    ("capabilities", 53120, 53930),
+    ("index", 53932, 56601),
+    ("lint", 56603, 76611),
+    ("validate-vote", 76613, 85994),
+    ("warmup", 85996, 87595),
+    ("project-defaults-agentless-mcp-json", 87597, 91550),
+    ("token-counting", 91552, 91966),
+    ("exit-codes", 91968, 92426),
 ];

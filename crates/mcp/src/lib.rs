@@ -12,6 +12,7 @@ mod listing;
 mod log;
 mod offload;
 mod operation;
+mod refusal;
 mod restart;
 mod roots;
 mod serve;

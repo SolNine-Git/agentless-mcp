@@ -102,6 +102,20 @@
   `find_referencing_symbols` -22.3%, `read dir` -22.7%, `orient map` -1.7% and
   `read slice` -2.8%. Each of the 200 new answers equals the old answer after
   these three changes, byte for byte.
+- **A refused call gets one sentence per bad parameter, not the pydantic
+  dump.** Each sentence names the parameter and the value that the call gave,
+  and it gives the accepted form, for example "limit is 0, but must be an
+  integer from 1 to 500." For `lines`, it gives both forms. A name that the
+  tool does not take, a wrong `operation` value, a parameter foreign to the
+  operation, a missing parameter, the map's limit and the three `read slice`
+  refusals use the same form. A wrong `operation` value that another tool has
+  gets "Call the tool symbols with operation find." An unknown tool name gets
+  the list of tools, not the unplanned-failure text, and the log stays empty.
+  Every refusal keeps `isError: true`, and every accepted call keeps its
+  answer. The texts are rows of `crates/prompts/data/messages.json`. Measured
+  from the fixtures: the 349 refusals of `crates/mcp/fixtures/validate.json`
+  go from 96,735 to 23,001 bytes, and the 36 refused calls of
+  `crates/mcp/fixtures/calls.json` from 8,875 to 4,427 bytes.
 
 ## 0.11.0rc1 -- 2026-10-23
 

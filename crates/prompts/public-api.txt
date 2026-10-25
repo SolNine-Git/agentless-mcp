@@ -14,6 +14,19 @@ pub const prompts::envelope::RECEIPT_REPO: prompts::Template<prompts::Text>
 pub const prompts::envelope::RECEIPT_SUMMARY: prompts::Template<prompts::Text>
 pub const prompts::envelope::SERVICE_TRUNCATION: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub mod prompts::messages
+pub const prompts::messages::ACCEPTS_BOOL: &str
+pub const prompts::messages::ACCEPTS_CHOICE: prompts::Template<prompts::Text>
+pub const prompts::messages::ACCEPTS_INTEGER: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::ACCEPTS_INTEGER_FROM: prompts::Template<prompts::Count>
+pub const prompts::messages::ACCEPTS_LINE_RANGES: &str
+pub const prompts::messages::ACCEPTS_NUMBER: prompts::Template<(prompts::Count, prompts::Text)>
+pub const prompts::messages::ACCEPTS_SCHEMA: &str
+pub const prompts::messages::ACCEPTS_TEXT: &str
+pub const prompts::messages::ACCEPTS_TEXTS: &str
+pub const prompts::messages::ACCEPTS_TEXT_OR_TEXTS: &str
+pub const prompts::messages::ARGUMENT_INVALID: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::ARGUMENT_MISSING: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::ARGUMENT_UNKNOWN: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::CACHE_ABSENT_REFRESHING: &str
 pub const prompts::messages::CACHE_BUILD_HINT: prompts::Template<prompts::Text>
 pub const prompts::messages::CACHE_DISCARDED_NO_INDEX: &str
@@ -108,11 +121,16 @@ pub const prompts::messages::LINT_SINCE_ALONE: &str
 pub const prompts::messages::LINT_SINCE_TAKES_PAIR_CHECKS: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::LINT_UNKNOWN_CHECK: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::LINT_UNKNOWN_SEVERITY: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::LISTED_AND: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::LISTED_OR: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::MAP_FILE_UNREACHED: prompts::Template<prompts::Count>
 pub const prompts::messages::MAP_LIMIT_OUT_OF_RANGE: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::MAP_UNRESOLVED_SEEDS: prompts::Template<prompts::Text>
-pub const prompts::messages::OP_REJECTS_PARAMETERS: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Text, prompts::Text)>
-pub const prompts::messages::OP_REQUIRES_PARAMETERS: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::OPERATION_IN_TOOL: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::OPERATION_LACKS_PARAMETER: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::OPERATION_REQUIRES_VALUE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::OPERATION_TAKES: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::OPERATION_TAKES_AND_REQUIRES: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::messages::OVERVIEW_DATA_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::OVERVIEW_STABLE_IDS: prompts::Template<prompts::Text>
 pub const prompts::messages::PAIR_BLOB_OVER_CAP: prompts::Template<prompts::Count>
@@ -129,12 +147,16 @@ pub const prompts::messages::ROOTS_FILE_UNREADABLE: prompts::Template<(prompts::
 pub const prompts::messages::SCAN_SKIPPED_FILES: prompts::Template<(prompts::Count, prompts::Text)>
 pub const prompts::messages::SERVER_NO_ROOTS: &str
 pub const prompts::messages::SERVER_ROOT_REQUIRED: prompts::Template<prompts::Text>
+pub const prompts::messages::SLICE_LINES_AND_WHOLE_FILE: &str
+pub const prompts::messages::SLICE_NEEDS_LINES: prompts::Template<prompts::Text>
 pub const prompts::messages::SLICE_RANGE_BEYOND_FILE: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::SLICE_RANGE_NOT_A_RANGE: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::SLICE_RANGE_REVERSED: prompts::Template<prompts::Text>
 pub const prompts::messages::SPAN_DATA_KEY_UNLISTED: prompts::Template<(prompts::Text, prompts::Text, prompts::Count)>
 pub const prompts::messages::STABLE_IDS_PATTERN: prompts::Template<prompts::Text>
 pub const prompts::messages::SURFACE_V1_DEPRECATED: prompts::Template<prompts::Text>
-pub const prompts::messages::UNKNOWN_OPERATION: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::TOOL_TAKES: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::UNKNOWN_TOOL: prompts::Template<prompts::Text>
 pub mod prompts::parameter_descriptions
 pub const prompts::parameter_descriptions::COMMUNITY_RESOLUTION: &str
 pub const prompts::parameter_descriptions::CONTEXT_LINES: &str

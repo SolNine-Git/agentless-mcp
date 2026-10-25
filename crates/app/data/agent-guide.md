@@ -155,10 +155,13 @@ lines.
 | *(no MCP tool)* | | `index`, `warmup`, `patch`, `lint`, `validate`, `vote` | write side and install time |
 
 The schema of `operation` lists the valid values as an enum. The server checks
-the value itself and answers a wrong value with the valid list. The server
-refuses a parameter foreign to the selected operation with one message that
-names what that operation accepts and requires. It never returns a schema
-validation dump.
+every argument before the call runs. A refusal gives one sentence for each bad
+parameter. The sentence names the parameter and the value that the call gave,
+and it gives the form that the parameter accepts. A wrong `operation` value
+gets the list of valid operations, and the name of the tool that has that
+operation when another tool has it. A parameter foreign to the selected
+operation gets the list of what that operation takes and requires. A refusal
+keeps `isError` true. The server never returns a schema validation dump.
 
 **Previous surface.** These six are the v2 surface, the only one. Before
 0.11.0, a server started with `--surface v1` published the original twelve
