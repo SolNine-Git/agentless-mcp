@@ -200,6 +200,40 @@
 
 ### Fixed
 
+- **A Rust `tests.rs` or `testing.rs` is a test path.** The rule read test
+  directories, the stem `conftest`, the suffix `_test` and the infixes `.test.`
+  and `.spec.`, but not the file that `#[cfg(test)] mod tests;` loads. So a map
+  of this repository focused on `crates/git/src/worktree.rs` ranked
+  `crates/git/src/worktree/tests.rs` second, and health counted its test
+  functions as orphans. Now a Rust file, by its language, with the stem `tests`
+  or `testing` is a test: a pure source of the ranking, a test companion,
+  outside health, the complexity summary, `clone_delta` and `contract_drift`,
+  and under "defined in tests" in shared callers. Over the 144 checkouts of
+  the 150 Loc-Bench instances, 51 swe-explore-bench repositories and this
+  repository, the rule moves 1, 16 and 112 files. The parent module of each
+  one declares it under `cfg(test)` or a test-support feature, so the rule
+  moves no product code. A Django `tests.py` stays a source file. Measured
+  with the release binaries of bc86507 and of this change on 8d0dbba: health
+  goes from "8034 symbols; 1246 excluded" and 247 orphan candidates to "6656
+  symbols; 2624 excluded" and 83, and the `worktree.rs` map lists
+  `worktree/tests.rs` as a companion instead of a ranked file. The file maps
+  of the 150 Loc-Bench instances, with their seeds and `--max-files 20`, keep
+  the same ranked files. The guide's test-path sentence names the rule.
+- **A test-companion row marks each file that the map does not list.** A row
+  names the files that the whole test file references among the seeds, the
+  ranked files and, for a test two hops out, the files between. The section
+  header says "tests exercising the files above", but a seed that
+  `--max-files` cut and a file between appear in no file block. On Agentless,
+  `map --focus agentless/fl/localize.py --budget 300 --max-files 3` printed
+  "-- file references agentless/util/postprocess_data.py", a file the map does
+  not list. Now that name reads `agentless/util/postprocess_data.py (not
+  listed)`. The JSON `covers`, the row order and the ranked files do not
+  change. Measured with the release binary of bc86507 over the 100 focused
+  function maps of 72 Loc-Bench repositories that the token ceiling did not
+  trim: 32 of 450 rows in 11 maps named an unlisted file, 14 rows two hops out
+  and 18 rows with a cut seed. No golden or recorded fixture holds such a row.
+  The mark is the new message `map_companion_unlisted`. The guide says what
+  the mark means, and that `covers` names the files of the text row.
 - **An overview with docstrings keeps the doc comments of Go, JavaScript,
   TypeScript, Java, C# and Lua.** The skeleton found a doc comment only by the
   marker nodes of the Rust grammar, so in the other languages the
@@ -555,7 +589,7 @@
   On this repository, a map focused on `crates/render/src/receipt.rs` ranks
   `crates/render/src/tests/rows.rs`. The map section now states the test-path
   rule once, with what it reads as a test (`django/test/`) and what it does
-  not (a Rust `src/foo/tests.rs`). The shared-callers section refers to it.
+  not (a Django `tests.py`). The shared-callers section refers to it.
 - **The guide states the order of `refs` groups and of `find-symbol` cards.**
   `refs` groups come in path order and in tier order within a file, so on
   django `refs F` lists the name-only `jquery.min.js` group second. The limit

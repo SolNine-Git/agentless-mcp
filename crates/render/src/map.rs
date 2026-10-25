@@ -1,11 +1,13 @@
 //! The map's two forms: the ranked rows under the notes that change how to read them, with the
 //! test companions at the foot; and the JSON with the counts behind the rows.
 
+use std::collections::BTreeSet;
+
 use app::{
     Companion, Companions, MapEntry, MapFile, MapResult, RationaleNode, map_rows_text, omitted_line,
 };
 use json::round_half_even;
-use prompts::messages::MAP_UNRESOLVED_SEEDS;
+use prompts::messages::{MAP_COMPANION_UNLISTED, MAP_UNRESOLVED_SEEDS};
 use serde::Serialize;
 use text::one_line;
 
@@ -37,7 +39,7 @@ impl View for MapResult {
 // The notes go above the rows: each changes how the ranking below it reads.
 pub(crate) fn map_text(result: &MapResult) -> String {
     let mut body = map_rows_text(&result.files);
-    let companions = companions_text(&result.companions);
+    let companions = companions_text(&result.companions, &result.files);
     if !companions.is_empty() {
         body = format!("{body}\n{companions}");
     }
@@ -95,14 +97,15 @@ fn why_nothing_ranked(result: &MapResult) -> String {
 }
 
 // An empty section prints nothing, unless the walk stopped early: then it says so.
-fn companions_text(companions: &Companions) -> String {
+fn companions_text(companions: &Companions, files: &[MapFile]) -> String {
     let note = companions.exhausted.then(|| WALK_CAPPED.to_owned());
     let rows = companions.rows.rows();
     if rows.is_empty() {
         return note.map(|line| line + "\n").unwrap_or_default();
     }
+    let listed: BTreeSet<&str> = files.iter().map(|file| file.path.as_str()).collect();
     let mut lines = vec!["tests exercising the files above:".to_owned()];
-    lines.extend(rows.iter().map(companion_row));
+    lines.extend(rows.iter().map(|row| companion_row(row, &listed)));
     let omitted = companions.rows.omitted();
     if omitted > 0 {
         lines.push(omitted_line(omitted, "test files", companions.rows.limit()));
@@ -111,8 +114,9 @@ fn companions_text(companions: &Companions) -> String {
     lines.join("\n") + "\n"
 }
 
-// The span is one referencing symbol; the coverage clause is about the whole file.
-fn companion_row(row: &Companion) -> String {
+// The span is one referencing symbol; the coverage clause is about the whole file. A covered file
+// can be a seed that the file cap cut or a file between the test and the targets.
+fn companion_row(row: &Companion, listed: &BTreeSet<&str>) -> String {
     let located = format!("{}:{}-{}", one_line(&row.path), row.start, row.end);
     if row.covers.is_empty() {
         return format!("  {located}");
@@ -120,9 +124,18 @@ fn companion_row(row: &Companion) -> String {
     let covers: Vec<String> = row
         .covers
         .iter()
-        .map(|path| one_line(path).into_owned())
+        .map(|path| covered_name(path, listed))
         .collect();
     format!("  {located}  -- file references {}", covers.join(", "))
+}
+
+fn covered_name(path: &str, listed: &BTreeSet<&str>) -> String {
+    let name = one_line(path);
+    if listed.contains(path) {
+        name.into_owned()
+    } else {
+        MAP_COMPANION_UNLISTED.render(&name)
+    }
 }
 
 #[derive(Clone, Serialize)]

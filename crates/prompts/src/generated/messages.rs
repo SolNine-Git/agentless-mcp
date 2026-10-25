@@ -1177,6 +1177,10 @@ pub const LISTED_AND: Template<(Text, Text)> =
 pub const LISTED_OR: Template<(Text, Text)> =
     Template::new(&[Piece::Value(1), Piece::Text(" or "), Piece::Value(0)]);
 
+/// A template that takes `path`.
+pub const MAP_COMPANION_UNLISTED: Template<Text> =
+    Template::new(&[Piece::Value(0), Piece::Text(" (not listed)")]);
+
 /// A template that takes `count`.
 pub const MAP_FILE_UNREACHED: Template<Count> = Template::new(&[
     Piece::Text("... "),

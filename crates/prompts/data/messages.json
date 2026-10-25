@@ -62,6 +62,7 @@
   "expand_no_room": "not expanded: {requested} ids exceed the {seats} one call can answer; retry with at most that many.",
   "grouped_ids": "({count} {count:id|ids})",
   "map_file_unreached": "... {count} {count:symbol|symbols} in this file; the focus has no reference path to it, so no budget shows {count:it|them}",
+  "map_companion_unlisted": "{path} (not listed)",
   "refs_target_unresolved": "{target} resolves to no symbol; these are the references to the name {name}, wherever it is defined",
   "refs_header": "{count} {count:reference|references} to {target}",
   "refs_header_shared": "{count} {count:reference|references} to {name}, a name that {total} definitions share",

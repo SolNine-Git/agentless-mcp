@@ -4,6 +4,7 @@ use syntax::{Language, Tier};
 
 const TEST_DIRECTORIES: [&str; 6] = ["test", "tests", "testing", "spec", "specs", "__tests__"];
 const FIXTURE_DIRECTORIES: [&str; 2] = ["fixtures", "testdata"];
+const RUST_TEST_STEMS: [&str; 2] = ["tests", "testing"];
 
 /// Returns true when `path` is a test file, by a directory segment or by its file name.
 #[must_use]
@@ -17,6 +18,7 @@ pub fn is_test_path(path: &str) -> bool {
         || stem.ends_with("_test")
         || file.contains(".test.")
         || file.contains(".spec.")
+        || is_rust_test_module(path, stem)
 }
 
 /// Returns true when a directory segment of `path` names a fixture directory.
@@ -31,6 +33,11 @@ pub fn in_metric_scope(path: &str) -> bool {
     Language::from_path(path).is_some_and(|language| language.tier() == Tier::One)
         && !is_test_path(path)
         && !is_fixture_path(path)
+}
+
+// The file that `#[cfg(test)] mod tests;` loads, and the crate's test helpers in `testing.rs`.
+fn is_rust_test_module(path: &str, stem: &str) -> bool {
+    RUST_TEST_STEMS.contains(&stem) && Language::from_path(path) == Some(Language::Rust)
 }
 
 // Whole segments only, and the file name is not a directory.

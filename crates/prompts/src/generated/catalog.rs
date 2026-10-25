@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 178] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 179] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -841,6 +841,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 178] = [
         "listed_or",
         &["name", "listed"],
         messages::LISTED_OR.pieces(),
+    ),
+    (
+        "messages",
+        "map_companion_unlisted",
+        &["path"],
+        messages::MAP_COMPANION_UNLISTED.pieces(),
     ),
     (
         "messages",

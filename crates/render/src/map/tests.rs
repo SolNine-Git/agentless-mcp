@@ -1,7 +1,44 @@
-use app::{Companions, MapResult};
+use app::{Companion, Companions, MapFile, MapResult};
 use kernel::Bounded;
 
 use super::map_text;
+
+fn companion(path: &str, covers: &[&str], depth: u32) -> Companion {
+    Companion {
+        path: path.to_owned(),
+        start: 3,
+        end: 9,
+        covers: covers.iter().map(|&cover| cover.to_owned()).collect(),
+        depth,
+        weight: 1.0,
+    }
+}
+
+// One listed file; a depth-1 test that also names a cut seed, and a depth-2 test that names only
+// the file it came through.
+fn companion_map() -> MapResult {
+    let rows = vec![
+        companion("tests/test_a.py", &["a.py", "seed.py"], 1),
+        companion("tests/test_b.py", &["helper.py"], 2),
+    ];
+    MapResult {
+        files: vec![MapFile {
+            path: "a.py".to_owned(),
+            rank: 0.5,
+            entries: Vec::new(),
+            total: 0,
+            id_prefix: "",
+            reached: true,
+            commits_window: None,
+            last_commit_days: None,
+        }],
+        companions: Companions {
+            rows: Bounded::cut(rows, 5),
+            exhausted: false,
+        },
+        ..noted_map()
+    }
+}
 
 // Every note this map can carry at once: no ranked file, an unsettled ranking, a budget that
 // the rows pass, and a companion walk that hit its bound.
@@ -36,5 +73,16 @@ fn every_note_line_of_a_map_starts_with_the_tool_marker() {
          files is listed whatever the budget allows, and the budget bounds only the symbols shown \
          under them\n\nno ranked files\n\n// note: the walk out to these tests hit its node bound \
          before it finished, so this section is a floor rather than every test\n"
+    );
+}
+
+#[test]
+fn a_companion_row_marks_each_file_that_the_map_does_not_list() {
+    let text = map_text(&companion_map());
+    let section = &text[text.find("tests exercising").unwrap()..];
+    assert_eq!(
+        section,
+        "tests exercising the files above:\n  tests/test_a.py:3-9  -- file references a.py, \
+         seed.py (not listed)\n  tests/test_b.py:3-9  -- file references helper.py (not listed)\n"
     );
 }

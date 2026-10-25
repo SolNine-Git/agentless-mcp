@@ -374,23 +374,27 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         does\nnot list it.\n\nA file is a test when a directory in its \
         path is `test`, `tests`, `testing`,\n`spec`, `specs` or \
         `__tests__`, when its stem is `conftest` or ends in\n`_test`, \
-        or when its name holds `.test.` or `.spec.`. The rule reads the \
-        path,\nnot the code. So a package named `test`, such as \
-        Django's `django/test/`,\nreads as tests. A Rust unit-test \
-        module such as `src/worktree/tests.rs`, and \
-        a\n`src/testing.rs`, do not, and they rank as source \
-        files.\n\nOn this project's fixture \
+        when its name holds `.test.` or `.spec.`, or when it is a Rust \
+        file\nwith the stem `tests` or `testing`. The rule reads the \
+        path, not the code. So\na package named `test`, such as \
+        Django's `django/test/`, reads as tests, and\nso do a Rust \
+        unit-test module such as `src/worktree/tests.rs` and \
+        a\n`src/testing.rs`. A Django `tests.py` does not, and it ranks \
+        as a source file.\n\nOn this project's fixture \
         `tests/characterization/fixtures/repo_py_tests`, a\nmap focused \
         on `pricing.py` ends with this section:\n\n```\ntests \
         exercising the files above:\n  tests/test_pricing.py:37-41  -- \
         file references inventory.py, pricing.py, reports.py\n  \
         tests/test_cli.py:13-19  -- file references cli.py, \
         pricing.py\n```\n\nThe span is the one symbol of the test that \
-        references a file above it. The\nfiles after `-- file \
-        references` are the files that the whole test file\nreferences, \
-        so the span need not name each of them. A section that the \
-        cap\ncuts ends with a count, as a map of Django focused \
-        on\n`django/db/models/expressions.py` does:\n`... 846 more test \
+        references the most of the files\nthat the row names. The files \
+        after `-- file references` are the files that\nthe whole test \
+        file references, so the span need not name each of them. \
+        A\nname marked `(not listed)` is a file that the map does not \
+        list: a seed that\n`--max-files` cut, or the file between a \
+        test two hops out and the files\nabove. A section that the cap \
+        cuts ends with a count, as a map of Django\nfocused on \
+        `django/db/models/expressions.py` does:\n`... 846 more test \
         files not listed (limit 5)`.\n\nA test qualifies only when it \
         references a seeded or chosen file **by name**.\nAn import \
         alone does not list it. What the row is worth over a bare path \
@@ -409,16 +413,17 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         `omitted` how many the cap left out. Each row is\n`{path, \
         start, end, covers, depth, weight}`: `start` and `end` are the \
         span of\nthe referencing symbol inside the test, never the \
-        whole file; `covers` names\nthe ranked or seeded files that one \
-        test reaches; `depth` is its distance from\nthem; `weight` is \
-        the aggregated edge weight behind it.\n\nTwo things the section \
-        cannot see, both properties of the graph rather than of\nthe \
-        section. A fixture with no grammar is never parsed, so it \
-        appears in no\nedge. And a test whose only use of its subject \
-        is a method on a value built\nelsewhere -- `s.Parse()`, \
-        `obj.method()` -- spells an attribute reference,\nwhich is not \
-        an edge at any tier.\n\n### `tree` (`read` operation `dir`) -- \
-        what exists\n\n```\nagentless-mcp tree --depth 4 --max-entries \
+        whole file; `covers` names\nthe files of the text row, without \
+        the `(not listed)` mark; `depth` is the\ntest's distance from \
+        the seeded and ranked files; `weight` is the aggregated\nedge \
+        weight behind it.\n\nTwo things the section cannot see, both \
+        properties of the graph rather than of\nthe section. A fixture \
+        with no grammar is never parsed, so it appears in no\nedge. And \
+        a test whose only use of its subject is a method on a value \
+        built\nelsewhere -- `s.Parse()`, `obj.method()` -- spells an \
+        attribute reference,\nwhich is not an edge at any tier.\n\n### \
+        `tree` (`read` operation `dir`) -- what \
+        exists\n\n```\nagentless-mcp tree --depth 4 --max-entries \
         500\n```\n\nThe listing is gitignore-aware, via `git ls-files` \
         where the directory is a\nrepository. The output marks both \
         truncations: depth elision and the entry\ncap. The tool never \
@@ -1724,30 +1729,30 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3599, 4432),
     ("stable-ids", 4434, 5752),
     ("the-two-surfaces", 5754, 11298),
-    ("per-tool-usage", 11300, 94659),
+    ("per-tool-usage", 11300, 94973),
     ("claude-code-specifics", 13058, 14689),
-    ("map", 14691, 24286),
-    ("tree", 24288, 24609),
-    ("skeleton", 24611, 25976),
-    ("expand", 25978, 27951),
-    ("slice", 27953, 28790),
-    ("find-symbol", 28792, 31477),
-    ("refs", 31479, 37537),
-    ("history", 37539, 40372),
-    ("explain", 40374, 42319),
-    ("path", 42321, 45056),
-    ("cycles", 45058, 46564),
-    ("communities", 46566, 49092),
-    ("diagram", 49094, 51865),
-    ("health", 51867, 58103),
-    ("html", 58105, 59056),
-    ("resolve-locs", 59058, 59873),
-    ("capabilities", 59875, 60685),
-    ("index", 60687, 63449),
-    ("lint", 63451, 83459),
-    ("validate-vote", 83461, 93058),
-    ("warmup", 93060, 94659),
-    ("project-defaults-agentless-mcp-json", 94661, 98614),
-    ("token-counting", 98616, 99030),
-    ("exit-codes", 99032, 99490),
+    ("map", 14691, 24600),
+    ("tree", 24602, 24923),
+    ("skeleton", 24925, 26290),
+    ("expand", 26292, 28265),
+    ("slice", 28267, 29104),
+    ("find-symbol", 29106, 31791),
+    ("refs", 31793, 37851),
+    ("history", 37853, 40686),
+    ("explain", 40688, 42633),
+    ("path", 42635, 45370),
+    ("cycles", 45372, 46878),
+    ("communities", 46880, 49406),
+    ("diagram", 49408, 52179),
+    ("health", 52181, 58417),
+    ("html", 58419, 59370),
+    ("resolve-locs", 59372, 60187),
+    ("capabilities", 60189, 60999),
+    ("index", 61001, 63763),
+    ("lint", 63765, 83773),
+    ("validate-vote", 83775, 93372),
+    ("warmup", 93374, 94973),
+    ("project-defaults-agentless-mcp-json", 94975, 98928),
+    ("token-counting", 98930, 99344),
+    ("exit-codes", 99346, 99804),
 ];

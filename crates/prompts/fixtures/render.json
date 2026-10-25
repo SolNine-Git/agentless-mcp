@@ -910,6 +910,12 @@
       },
       "text": "function, file or body"
     },
+    "map_companion_unlisted": {
+      "arguments": {
+        "path": "agentless/util/postprocess_data.py"
+      },
+      "text": "agentless/util/postprocess_data.py (not listed)"
+    },
     "map_file_unreached": {
       "arguments": {
         "count": 9

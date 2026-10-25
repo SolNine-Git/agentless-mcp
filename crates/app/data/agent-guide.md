@@ -415,10 +415,11 @@ not list it.
 
 A file is a test when a directory in its path is `test`, `tests`, `testing`,
 `spec`, `specs` or `__tests__`, when its stem is `conftest` or ends in
-`_test`, or when its name holds `.test.` or `.spec.`. The rule reads the path,
-not the code. So a package named `test`, such as Django's `django/test/`,
-reads as tests. A Rust unit-test module such as `src/worktree/tests.rs`, and a
-`src/testing.rs`, do not, and they rank as source files.
+`_test`, when its name holds `.test.` or `.spec.`, or when it is a Rust file
+with the stem `tests` or `testing`. The rule reads the path, not the code. So
+a package named `test`, such as Django's `django/test/`, reads as tests, and
+so do a Rust unit-test module such as `src/worktree/tests.rs` and a
+`src/testing.rs`. A Django `tests.py` does not, and it ranks as a source file.
 
 On this project's fixture `tests/characterization/fixtures/repo_py_tests`, a
 map focused on `pricing.py` ends with this section:
@@ -429,11 +430,13 @@ tests exercising the files above:
   tests/test_cli.py:13-19  -- file references cli.py, pricing.py
 ```
 
-The span is the one symbol of the test that references a file above it. The
-files after `-- file references` are the files that the whole test file
-references, so the span need not name each of them. A section that the cap
-cuts ends with a count, as a map of Django focused on
-`django/db/models/expressions.py` does:
+The span is the one symbol of the test that references the most of the files
+that the row names. The files after `-- file references` are the files that
+the whole test file references, so the span need not name each of them. A
+name marked `(not listed)` is a file that the map does not list: a seed that
+`--max-files` cut, or the file between a test two hops out and the files
+above. A section that the cap cuts ends with a count, as a map of Django
+focused on `django/db/models/expressions.py` does:
 `... 846 more test files not listed (limit 5)`.
 
 A test qualifies only when it references a seeded or chosen file **by name**.
@@ -453,8 +456,9 @@ The JSON form carries the same section under `test_companions`, shaped
 before the cap and `omitted` how many the cap left out. Each row is
 `{path, start, end, covers, depth, weight}`: `start` and `end` are the span of
 the referencing symbol inside the test, never the whole file; `covers` names
-the ranked or seeded files that one test reaches; `depth` is its distance from
-them; `weight` is the aggregated edge weight behind it.
+the files of the text row, without the `(not listed)` mark; `depth` is the
+test's distance from the seeded and ranked files; `weight` is the aggregated
+edge weight behind it.
 
 Two things the section cannot see, both properties of the graph rather than of
 the section. A fixture with no grammar is never parsed, so it appears in no

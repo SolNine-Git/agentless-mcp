@@ -139,6 +139,7 @@ pub const prompts::messages::LINT_UNKNOWN_CHECK: prompts::Template<(prompts::Tex
 pub const prompts::messages::LINT_UNKNOWN_SEVERITY: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::LISTED_AND: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::LISTED_OR: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::MAP_COMPANION_UNLISTED: prompts::Template<prompts::Text>
 pub const prompts::messages::MAP_FILE_UNREACHED: prompts::Template<prompts::Count>
 pub const prompts::messages::MAP_LIMIT_OUT_OF_RANGE: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::MAP_UNRESOLVED_SEEDS: prompts::Template<prompts::Text>
