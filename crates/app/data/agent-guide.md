@@ -583,13 +583,17 @@ caller is the expensive error.
 
 Keys in JSON, TOML and YAML files are not definitions. A data file gives an
 outline, not every key: the keys to depth 2 (a TOML table header is one
-level), at most 500 per file, each with a short value or its type and item
-count. Keys in lists and deeper keys are not symbols. `find-symbol` lists the
-matching keys after every code match and folds a file with more than three
-matches into one line. The overview of a data file prints its outline and
-counts the keys it leaves out. A key has no fan-in, a code spelling of a key is
-not a reference to the data file, and a string value in a data file references
-nothing. Use `grep` to find where a key is spelled.
+level), at most 500 per file, each with its value as the file writes it, cut
+at 40 characters, or its type and item count. Keys in lists and deeper keys
+are not symbols. A key's card names its kind as `key`, and a kind filter
+leaves every key out. `find-symbol` lists at most 5 data entries after every
+code match. A key whose name or qualified name equals the query gets a card
+first. A file with more than three other matching keys folds them into one
+line. When no code symbol matches, `find-symbol` also names the data files
+that spell the query outside their outline. The overview of a data file
+prints its outline and counts the keys it leaves out. A key has no fan-in, a
+code spelling of a key is not a reference to the data file, and a string value
+in a data file references nothing. Use `grep` to find where a key is spelled.
 
 The tool now **labels every group with the evidence tier behind it**, so the
 over-reporting costs you nothing:

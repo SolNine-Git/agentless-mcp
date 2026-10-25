@@ -59,13 +59,148 @@ fn every_code_match_ranks_before_an_exact_data_key() {
 
 #[test]
 fn a_data_file_with_more_than_three_matches_folds_to_one_entry() {
-    let names = ["area", "area_a", "area_b", "area_c"];
+    let names = ["area_a", "area_b", "area_c", "area_d"];
     let result = found(vec![data_file("d.json", &names)], "area", 20);
     assert_eq!(
         result.data.entries,
         [DataEntry::Folded(folded("d.json", 4))]
     );
     assert_eq!(result.data.total(), 4);
+}
+
+fn data_keys(path: &str, keys: &[(&str, &str)]) -> FileSymbols {
+    let symbols = keys
+        .iter()
+        .map(|(name, parent)| symbol(name, parent, SymbolKind::Class));
+    FileSymbols {
+        path: path.to_owned(),
+        language: Language::Json,
+        symbols: symbols.collect(),
+    }
+}
+
+const PACKAGE: [(&str, &str); 6] = [
+    ("devDependencies", ""),
+    ("eslint", "devDependencies"),
+    ("grunt", "devDependencies"),
+    ("grunt-cli", "devDependencies"),
+    ("grunt-contrib-qunit", "devDependencies"),
+    ("qunit", "devDependencies"),
+];
+
+#[test]
+fn an_exact_key_has_a_card_before_the_fold_of_the_other_matches_of_its_file() {
+    let result = found(
+        vec![data_keys("package.json", &PACKAGE)],
+        "devdependencies",
+        20,
+    );
+    let [DataEntry::Card(card), DataEntry::FoldedRest(rest)] = result.data.entries.as_slice()
+    else {
+        panic!("a card and the fold of the rest: {:?}", result.data.entries);
+    };
+    assert_eq!(
+        (card.stable_id.as_str(), card.kind),
+        ("json:package.json::devDependencies", "key")
+    );
+    assert_eq!(rest, &folded("package.json", 5));
+    assert_eq!((result.data.total(), result.data.room), (6, 5));
+}
+
+#[test]
+fn an_exact_qualified_name_is_an_exact_key() {
+    let result = found(
+        vec![data_keys("package.json", &PACKAGE)],
+        "devDependencies.grunt",
+        20,
+    );
+    let ids: Vec<&str> = (result.data.entries.iter())
+        .filter_map(|entry| match entry {
+            DataEntry::Card(card) => Some(card.stable_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "json:package.json::devDependencies.grunt",
+            "json:package.json::devDependencies.grunt-cli",
+            "json:package.json::devDependencies.grunt-contrib-qunit"
+        ]
+    );
+}
+
+#[test]
+fn the_exact_keys_take_the_room_before_any_folded_line() {
+    let mut files = vec![data_file(
+        "a.json",
+        &["pin", "pin_1", "pin_2", "pin_3", "pin_4"],
+    )];
+    files.extend(
+        (["b", "c", "d", "e", "f"].iter()).map(|name| data_file(&format!("{name}.json"), &["pin"])),
+    );
+    let result = found(files, "pin", 20);
+    let ids: Vec<&str> = (result.data.entries.iter())
+        .map(|entry| match entry {
+            DataEntry::Card(card) => card.stable_id.as_str(),
+            other => panic!("only cards: {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "json:a.json::pin",
+            "json:b.json::pin",
+            "json:c.json::pin",
+            "json:d.json::pin",
+            "json:e.json::pin"
+        ]
+    );
+    assert_eq!(
+        result.data.unlisted,
+        [folded("a.json", 4), folded("f.json", 1)]
+    );
+}
+
+fn kind_found(files: Vec<FileSymbols>, query: &str, kind: SymbolKind) -> super::FindResult {
+    let scan = SymbolFacts {
+        files,
+        skipped: Vec::new(),
+    };
+    let request = FindRequest {
+        query: query.to_owned(),
+        kind: Some(kind),
+        limit: IntArg::from_usize(20),
+    };
+    matched(&scan, &request, 20)
+}
+
+#[test]
+fn a_kind_filter_leaves_every_data_key_out_and_counts_the_matching_ones() {
+    let code = file("a.py", vec![symbol("pin_code", "", SymbolKind::Class)]);
+    let files = vec![code, data_keys("d.json", &[("pin", ""), ("pin_list", "")])];
+    let result = kind_found(files, "pin", SymbolKind::Class);
+    assert_eq!(result.cards.rows().len(), 1);
+    assert_eq!(
+        result.data,
+        super::DataMatches {
+            room: 5,
+            ..super::DataMatches::default()
+        }
+    );
+    assert_eq!(result.data_kind_excluded, 2);
+}
+
+#[test]
+fn the_other_kinds_of_a_kind_miss_name_code_kinds_only() {
+    let code = file("a.py", vec![symbol("pin", "", SymbolKind::Function)]);
+    let files = vec![code, data_keys("d.json", &[("pin", "")])];
+    let result = kind_found(files, "pin", SymbolKind::Class);
+    assert!(result.is_miss());
+    assert_eq!(
+        (result.other_kinds.as_slice(), result.data_kind_excluded),
+        (["function"].as_slice(), 1)
+    );
 }
 
 #[test]

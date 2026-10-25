@@ -15,7 +15,7 @@ use syntax::{Language, Parsed, Unparsable};
 pub const FACTS_SCHEMA_VERSION: u16 = 1;
 /// The version of the extraction rules written as code and of the blob layout. Bump it on any
 /// change to what `facts::extract`, the stored reason, or a blob encoder gives for one text.
-pub const FACTS_VERSION: u32 = 5;
+pub const FACTS_VERSION: u32 = 6;
 
 /// One file as the caller read it: its path below the root, its language, and its text.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -78,7 +78,11 @@ pub const prompts::messages::EXPAND_BODY_TRUNCATED: prompts::Template<(prompts::
 pub const prompts::messages::EXPAND_NO_ROOM: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPLAIN_TIE: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::FIND_DATA_FOLDED: prompts::Template<(prompts::Text, prompts::Count)>
-pub const prompts::messages::FIND_DATA_UNLISTED: prompts::Template<(prompts::Count, prompts::Count, prompts::Text)>
+pub const prompts::messages::FIND_DATA_FOLDED_REST: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::FIND_DATA_KIND_EXCLUDED: prompts::Template<prompts::Count>
+pub const prompts::messages::FIND_DATA_OUTSIDE: prompts::Template<(prompts::Text, prompts::Count, prompts::Text)>
+pub const prompts::messages::FIND_DATA_OUTSIDE_UNREAD: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::FIND_DATA_UNLISTED: prompts::Template<(prompts::Count, prompts::Count, prompts::Count, prompts::Text)>
 pub const prompts::messages::FIND_NO_MATCHES: prompts::Template<prompts::Text>
 pub const prompts::messages::FIND_NO_MATCHES_KIND: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::messages::FIND_UNPARSED: prompts::Template<(prompts::Text, prompts::Text)>
@@ -133,6 +137,7 @@ pub const prompts::messages::OPERATION_TAKES: prompts::Template<(prompts::Text, 
 pub const prompts::messages::OPERATION_TAKES_AND_REQUIRES: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::messages::OVERVIEW_DATA_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::OVERVIEW_STABLE_IDS: prompts::Template<prompts::Text>
+pub const prompts::messages::OVERVIEW_STABLE_IDS_DATA: prompts::Template<prompts::Text>
 pub const prompts::messages::PAIR_BLOB_OVER_CAP: prompts::Template<prompts::Count>
 pub const prompts::messages::PAIR_EDITS_UNAPPLIED: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::PAIR_NEW_UNREAD: prompts::Template<(prompts::Text, prompts::Text)>

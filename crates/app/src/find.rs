@@ -1,10 +1,11 @@
 //! Symbols by a substring or a qualified name, ranked exact name first, with the places a missed
-//! name is spelled where a file did not parse.
+//! name is spelled where a file did not parse or where a data file spells it outside its outline.
 
 use std::collections::BTreeSet;
 use std::path::Path;
 
 mod data;
+mod outside;
 
 use facts::{Symbol, SymbolKind, is_data_language};
 use graph::joins_name_graph;
@@ -18,8 +19,10 @@ use crate::ops::limits::MAX_LIMIT;
 use crate::scan::{FileSymbols, SymbolFacts};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped, SymbolCard, symbol_card};
 use data::{DATA_ENTRIES, data_matches};
+use outside::outside_outline;
 
 pub use data::{DataEntry, DataMatches, FoldedFile};
+pub use outside::OutsideOutline;
 
 // The longest qualified name, in bytes, that `short_ascii_holds` lowers on the stack.
 const SHORT_QUALNAME: usize = 128;
@@ -44,6 +47,11 @@ pub struct FindResult {
     pub cards: Bounded<SymbolCard>,
     /// The matching keys of data files, which rank after every code match.
     pub data: DataMatches,
+    /// The data keys that match and that the kind filter leaves out.
+    pub data_kind_excluded: usize,
+    /// With no code card and no kind filter, where data files spell the query outside their
+    /// outline.
+    pub outside: OutsideOutline,
     /// The files the scan passed over.
     pub skipped: Vec<Skipped>,
     /// The kind filter's name, if any.
@@ -86,7 +94,8 @@ pub fn find(
     Noted { value, diagnostics }
 }
 
-// The matches, and on a miss each place where a file that did not parse spells the query.
+// The matches. With no code card and no kind filter, where data files spell the query outside
+// their outline. On a miss, each place where a file that did not parse spells the query.
 fn answer(
     reading: &Reading<'_>,
     scan: &SymbolFacts,
@@ -94,14 +103,23 @@ fn answer(
     limit: usize,
 ) -> Noted<Result<FindResult, Error>> {
     let found = matched(scan, request, limit);
-    if !found.is_miss() {
-        return Noted::new(Ok(found));
-    }
-    let unparsed = unparsed_mentions(reading, scan, &request.query);
-    unparsed.map(|value| value.map(|unparsed| FindResult { unparsed, ..found }))
+    let outside = if request.kind.is_none() && found.cards.rows().is_empty() {
+        outside_outline(reading, scan, &lower(&request.query))
+    } else {
+        Noted::new(Ok(OutsideOutline::default()))
+    };
+    outside.then_ok(|outside| {
+        let found = FindResult { outside, ..found };
+        if !found.is_miss() {
+            return Noted::new(Ok(found));
+        }
+        let unparsed = unparsed_mentions(reading, scan, &request.query);
+        unparsed.map_ok(|unparsed| FindResult { unparsed, ..found })
+    })
 }
 
-// The result without the unparsed places, which only a miss reads.
+// The result without the places outside the outlines and the unparsed places. A data key has no
+// kind, so a kind filter leaves every data key out and counts the ones that match.
 fn matched(scan: &SymbolFacts, request: &FindRequest, limit: usize) -> FindResult {
     let needle = lower(&request.query);
     let symbols = scan.files.iter().flat_map(|file| {
@@ -109,11 +127,18 @@ fn matched(scan: &SymbolFacts, request: &FindRequest, limit: usize) -> FindResul
         symbols.map(move |symbol| (file, symbol))
     });
     let (data, code): (Vec<_>, Vec<_>) = symbols
-        .filter(|(_, symbol)| matches(symbol, &needle, request.kind))
+        .filter(|(file, symbol)| {
+            let data = is_data_language(file.language);
+            matches(symbol, &needle, if data { None } else { request.kind })
+        })
         .partition(|(file, _)| is_data_language(file.language));
-    let (total, code_total) = (code.len() + data.len(), code.len());
+    let (data, data_kind_excluded) = match request.kind {
+        Some(_) => (Vec::new(), data.len()),
+        None => (data, 0),
+    };
+    let code_total = code.len();
     let other_kinds = match request.kind {
-        Some(_) if total == 0 => other_kinds(scan, &needle),
+        Some(_) if code_total == 0 => other_kinds(scan, &needle),
         _ => Vec::new(),
     };
     let cards = top_cards(code, &needle, limit);
@@ -122,6 +147,8 @@ fn matched(scan: &SymbolFacts, request: &FindRequest, limit: usize) -> FindResul
         query: request.query.clone(),
         cards: Bounded::with_total(cards, code_total, limit),
         data: data_matches(data, &needle, room),
+        data_kind_excluded,
+        outside: OutsideOutline::default(),
         skipped: scan.skipped.clone(),
         kind: request.kind.map(SymbolKind::as_str),
         other_kinds,
@@ -148,9 +175,10 @@ fn top_cards(matches: Vec<(&FileSymbols, &Symbol)>, needle: &str, limit: usize) 
         .collect()
 }
 
-// The kinds, sorted, of the symbols that the query matches with no kind filter.
+// The kinds, sorted, of the code symbols that the query matches with no kind filter.
 fn other_kinds(scan: &SymbolFacts, needle: &str) -> Vec<&'static str> {
-    let symbols = scan.files.iter().flat_map(|file| file.symbols.iter());
+    let code = (scan.files.iter()).filter(|file| !is_data_language(file.language));
+    let symbols = code.flat_map(|file| file.symbols.iter());
     let kinds: BTreeSet<&'static str> = symbols
         .filter(|symbol| matches(symbol, needle, None))
         .map(|symbol| symbol.kind.as_str())

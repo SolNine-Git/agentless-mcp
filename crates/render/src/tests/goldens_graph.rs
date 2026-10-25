@@ -87,7 +87,7 @@ fn the_limit_cuts_the_other_definitions_and_counts_the_rest() {
 
 #[test]
 fn a_data_key_explains_its_card_and_says_a_key_has_no_fan_in() {
-    let expected = "[json:config.json::service.port] @3\n  constant\n  port = 8080\n\n\
+    let expected = "[json:config.json::service.port] @3\n  key\n  port = 8080\n\n\
                     json:config.json::service.port is a data key, and a data key has no fan-in: \
                     Grep finds the spellings of port.\n";
     let body = explain_body("tier2", "json:config.json::service.port", "20");

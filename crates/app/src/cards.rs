@@ -66,7 +66,11 @@ pub fn symbol_card(language: Language, path: &str, symbol: &Symbol, body: String
         path: path.to_owned(),
         start_line: symbol.line,
         end_line: symbol.end_line,
-        kind: symbol.kind.as_str(),
+        kind: if facts::is_data_language(language) {
+            "key"
+        } else {
+            symbol.kind.as_str()
+        },
         language: language.name(),
         signature: symbol.signature.clone(),
         parent_class: symbol.parent.clone(),

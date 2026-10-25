@@ -567,14 +567,53 @@ pub const FIND_DATA_FOLDED: Template<(Text, Count)> = Template::new(&[
     Piece::Text(" data keys match. Grep finds the spellings."),
 ]);
 
-/// A template that takes (`count`, `total`, `listed`).
-pub const FIND_DATA_UNLISTED: Template<(Count, Count, Text)> = Template::new(&[
+/// A template that takes (`path`, `count`).
+pub const FIND_DATA_FOLDED_REST: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(1),
+    Piece::Text(" more data keys match. Grep finds the spellings."),
+]);
+
+/// A template that takes `count`.
+pub const FIND_DATA_KIND_EXCLUDED: Template<Count> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(
+        " data keys match, and a kind filter leaves data keys out. Retry \
+        with no kind to list them.",
+    ),
+]);
+
+/// A template that takes (`query`, `count`, `listed`).
+pub const FIND_DATA_OUTSIDE: Template<(Text, Count, Text)> = Template::new(&[
+    Piece::Text("'"),
+    Piece::Value(0),
+    Piece::Text("' occurs in "),
+    Piece::Value(1),
+    Piece::Text(" data files outside their outline: "),
+    Piece::Value(2),
+    Piece::Text(". Grep finds every spelling."),
+]);
+
+/// A template that takes (`count`, `budget`).
+pub const FIND_DATA_OUTSIDE_UNREAD: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("note: the text search of data files stops at "),
+    Piece::Value(1),
+    Piece::Text(" bytes, so it did not read "),
+    Piece::Value(0),
+    Piece::Text(" data files. Grep reads every file."),
+]);
+
+/// A template that takes (`count`, `total`, `cap`, `listed`).
+pub const FIND_DATA_UNLISTED: Template<(Count, Count, Count, Text)> = Template::new(&[
     Piece::Value(0),
     Piece::Text(" data keys in "),
     Piece::Value(1),
     Piece::Text(" files match and are not listed: "),
+    Piece::Value(3),
+    Piece::Text(". This answer has room for "),
     Piece::Value(2),
-    Piece::Text(". Grep finds the spellings."),
+    Piece::Text(" data entries after the code matches. Grep finds the spellings."),
 ]);
 
 /// A template that takes `query`.
@@ -1077,6 +1116,13 @@ pub const OVERVIEW_STABLE_IDS: Template<Text> = Template::new(&[
     Piece::Text("stable ids: "),
     Piece::Value(0),
     Piece::Text(" -- nested symbols qualify as Class.method"),
+]);
+
+/// A template that takes `pattern`.
+pub const OVERVIEW_STABLE_IDS_DATA: Template<Text> = Template::new(&[
+    Piece::Text("stable ids: "),
+    Piece::Value(0),
+    Piece::Text(" -- nested keys qualify as parent.child"),
 ]);
 
 /// A template that takes `cap`.

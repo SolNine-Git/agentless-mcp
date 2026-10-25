@@ -6,7 +6,7 @@ use std::rc::Rc;
 use syntax::{Language, NodeId};
 
 use super::tree::{Field, Tree};
-use crate::spelling::truncate;
+use crate::spelling::{SIGNATURE_MAX_CHARS, truncate};
 use crate::values::{Symbol, SymbolKind, qualified};
 
 const PAIRS: [&str; 2] = ["pair", "block_mapping_pair"];
@@ -21,6 +21,8 @@ const YAML_PROPERTIES: [&str; 2] = ["anchor", "tag"];
 // The deepest level an outline lists: a key of the root mapping is level 1.
 const OUTLINE_DEPTH: u8 = 2;
 const PREVIEW_CHARS: usize = 40;
+// A YAML key with no value holds null.
+const ABSENT_VALUE: &str = "null";
 
 /// The most keys that the outline of one data file lists.
 pub const OUTLINE_CAP: usize = 500;
@@ -189,23 +191,30 @@ fn pair_symbol(tree: &Tree, node: NodeId, key: &str, owner: &str) -> Symbol {
     } else {
         SymbolKind::Constant
     };
-    let shape = pair_value(tree, node).map_or_else(String::new, |value| shape(tree, value));
-    Symbol::at(tree, node, key, kind)
-        .signed(&format!("{key} = {shape}"))
-        .owned_by(owner)
+    let shape =
+        pair_value(tree, node).map_or_else(|| ABSENT_VALUE.to_owned(), |value| shape(tree, value));
+    // The value keeps its whitespace, so the signature is set as written, not normalised.
+    let mut symbol = Symbol::at(tree, node, key, kind).owned_by(owner);
+    symbol.signature = truncate(
+        &format!("{} = {shape}", text::one_line(key)),
+        SIGNATURE_MAX_CHARS,
+    );
+    symbol
 }
 
-// The value field, or in TOML, whose pairs name no field, the last child that is not a key.
+// The value field, or in TOML, whose pairs name no field, the last child that is neither the
+// key nor a comment. A YAML key with no value has none.
 fn pair_value(tree: &Tree, node: NodeId) -> Option<NodeId> {
     tree.field(node, Field::Value).or_else(|| {
-        let values = tree
-            .named_children(node)
-            .filter(|child| !tree.is_any(*child, &KEYS));
+        let key = tree.field(node, Field::Key);
+        let values =
+            items(tree, node).filter(|child| Some(*child) != key && !tree.is_any(*child, &KEYS));
         values.last()
     })
 }
 
-// A mapping or a list by its item count, any other value by its text cut short.
+// A mapping or a list by its item count, any other value by its text as the file writes it,
+// on one line and cut short.
 fn shape(tree: &Tree, value: NodeId) -> String {
     let inner = unwrapped(tree, value);
     if tree.is_any(inner, &MAPPINGS) {
@@ -219,8 +228,7 @@ fn shape(tree: &Tree, value: NodeId) -> String {
             counted(items(tree, inner).count(), "item", "items")
         )
     } else {
-        let words: Vec<&str> = text::split_whitespace(tree.text(value)).collect();
-        truncate(&words.join(" "), PREVIEW_CHARS)
+        truncate(&text::one_line(tree.text(value)), PREVIEW_CHARS)
     }
 }
 

@@ -496,19 +496,24 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         missed\ncaller is the expensive error.\n\nKeys in JSON, TOML \
         and YAML files are not definitions. A data file gives \
         an\noutline, not every key: the keys to depth 2 (a TOML table \
-        header is one\nlevel), at most 500 per file, each with a short \
-        value or its type and item\ncount. Keys in lists and deeper \
-        keys are not symbols. `find-symbol` lists the\nmatching keys \
-        after every code match and folds a file with more than \
-        three\nmatches into one line. The overview of a data file \
-        prints its outline and\ncounts the keys it leaves out. A key \
-        has no fan-in, a code spelling of a key is\nnot a reference to \
-        the data file, and a string value in a data file \
-        references\nnothing. Use `grep` to find where a key is \
-        spelled.\n\nThe tool now **labels every group with the evidence \
-        tier behind it**, so the\nover-reporting costs you \
-        nothing:\n\n```\ncore.py  (1 references, same-file)\nuser.py  \
-        (2 references, resolved-via-import)\nshadow.py  (2 references, \
+        header is one\nlevel), at most 500 per file, each with its \
+        value as the file writes it, cut\nat 40 characters, or its type \
+        and item count. Keys in lists and deeper keys\nare not symbols. \
+        A key's card names its kind as `key`, and a kind filter\nleaves \
+        every key out. `find-symbol` lists at most 5 data entries after \
+        every\ncode match. A key whose name or qualified name equals \
+        the query gets a card\nfirst. A file with more than three other \
+        matching keys folds them into one\nline. When no code symbol \
+        matches, `find-symbol` also names the data files\nthat spell \
+        the query outside their outline. The overview of a data \
+        file\nprints its outline and counts the keys it leaves out. A \
+        key has no fan-in, a\ncode spelling of a key is not a reference \
+        to the data file, and a string value\nin a data file references \
+        nothing. Use `grep` to find where a key is spelled.\n\nThe tool \
+        now **labels every group with the evidence tier behind it**, so \
+        the\nover-reporting costs you nothing:\n\n```\ncore.py  (1 \
+        references, same-file)\nuser.py  (2 references, \
+        resolved-via-import)\nshadow.py  (2 references, \
         name-only-ambiguous)\n```\n\n| Tier | What it means \
         |\n|---|---|\n| `same-file` | the referencing file defines the \
         target itself |\n| `resolved-via-import` | the referencing file \
@@ -1601,7 +1606,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3599, 4432),
     ("stable-ids", 4434, 5752),
     ("the-two-surfaces", 5754, 11096),
-    ("per-tool-usage", 11098, 87836),
+    ("per-tool-usage", 11098, 88158),
     ("claude-code-specifics", 12856, 14487),
     ("map", 14489, 22792),
     ("tree", 22794, 23115),
@@ -1609,22 +1614,22 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("expand", 24232, 26084),
     ("slice", 26086, 26923),
     ("find-symbol", 26925, 27563),
-    ("refs", 27565, 31998),
-    ("history", 32000, 34833),
-    ("explain", 34835, 36484),
-    ("path", 36486, 39234),
-    ("cycles", 39236, 40347),
-    ("communities", 40349, 42594),
-    ("diagram", 42596, 45367),
-    ("health", 45369, 51605),
-    ("html", 51607, 52558),
-    ("resolve-locs", 52560, 53359),
-    ("capabilities", 53361, 54171),
-    ("index", 54173, 56842),
-    ("lint", 56844, 76852),
-    ("validate-vote", 76854, 86235),
-    ("warmup", 86237, 87836),
-    ("project-defaults-agentless-mcp-json", 87838, 91791),
-    ("token-counting", 91793, 92207),
-    ("exit-codes", 92209, 92667),
+    ("refs", 27565, 32320),
+    ("history", 32322, 35155),
+    ("explain", 35157, 36806),
+    ("path", 36808, 39556),
+    ("cycles", 39558, 40669),
+    ("communities", 40671, 42916),
+    ("diagram", 42918, 45689),
+    ("health", 45691, 51927),
+    ("html", 51929, 52880),
+    ("resolve-locs", 52882, 53681),
+    ("capabilities", 53683, 54493),
+    ("index", 54495, 57164),
+    ("lint", 57166, 77174),
+    ("validate-vote", 77176, 86557),
+    ("warmup", 86559, 88158),
+    ("project-defaults-agentless-mcp-json", 88160, 92113),
+    ("token-counting", 92115, 92529),
+    ("exit-codes", 92531, 92989),
 ];

@@ -508,13 +508,42 @@
       },
       "text": "config/default.yml: 11 data keys match. Grep finds the spellings."
     },
+    "find_data_folded_rest": {
+      "arguments": {
+        "count": 5,
+        "path": "package.json"
+      },
+      "text": "package.json: 5 more data keys match. Grep finds the spellings."
+    },
+    "find_data_kind_excluded": {
+      "arguments": {
+        "count": 3
+      },
+      "text": "3 data keys match, and a kind filter leaves data keys out. Retry with no kind to list them."
+    },
+    "find_data_outside": {
+      "arguments": {
+        "count": 3,
+        "listed": "src/i18n/strings/cs.json @3638, src/i18n/strings/de_DE.json @3633, src/i18n/strings/en_EN.json @647",
+        "query": "Stop live broadcasting?"
+      },
+      "text": "'Stop live broadcasting?' occurs in 3 data files outside their outline: src/i18n/strings/cs.json @3638, src/i18n/strings/de_DE.json @3633, src/i18n/strings/en_EN.json @647. Grep finds every spelling."
+    },
+    "find_data_outside_unread": {
+      "arguments": {
+        "budget": 33554432,
+        "count": 2
+      },
+      "text": "note: the text search of data files stops at 33554432 bytes, so it did not read 2 data files. Grep reads every file."
+    },
     "find_data_unlisted": {
       "arguments": {
+        "cap": 5,
         "count": 62,
         "listed": "doc/missing-references.json (60), .lgtm.yml (2)",
         "total": 2
       },
-      "text": "62 data keys in 2 files match and are not listed: doc/missing-references.json (60), .lgtm.yml (2). Grep finds the spellings."
+      "text": "62 data keys in 2 files match and are not listed: doc/missing-references.json (60), .lgtm.yml (2). This answer has room for 5 data entries after the code matches. Grep finds the spellings."
     },
     "find_no_matches": {
       "arguments": {
@@ -873,6 +902,12 @@
         "pattern": "py:src/app/svc.py::<QualifiedName>"
       },
       "text": "stable ids: py:src/app/svc.py::<QualifiedName> -- nested symbols qualify as Class.method"
+    },
+    "overview_stable_ids_data": {
+      "arguments": {
+        "pattern": "json:package.json::<QualifiedName>"
+      },
+      "text": "stable ids: json:package.json::<QualifiedName> -- nested keys qualify as parent.child"
     },
     "pair_blob_over_cap": {
       "arguments": {

@@ -83,6 +83,50 @@ fn a_scalar_value_shows_its_first_forty_characters() {
 }
 
 #[test]
+fn a_scalar_value_shows_as_the_file_writes_it_with_its_spaces() {
+    let source = r#"{"repo": "   repo: {root}", "tab": "a\tb  c", "empty": "", "none": null}"#;
+    let found = outline(Language::Json, source);
+    let expected = [
+        (1, r#"repo = "   repo: {root}""#),
+        (1, r#"tab = "a\tb  c""#),
+        (1, r#"empty = """#),
+        (1, "none = null"),
+    ];
+    let expected: Vec<(u8, String)> = expected
+        .iter()
+        .map(|(depth, signature)| (*depth, (*signature).to_owned()))
+        .collect();
+    assert_eq!(rows(&found), expected);
+}
+
+#[test]
+fn a_yaml_key_with_no_value_shows_null_and_a_newline_shows_as_backslash_n() {
+    let source =
+        "on:\n  push:\n  pull_request: # every branch\nrun: |\n  cargo  test\n  cargo fmt\nq: ''\n";
+    let found = outline(Language::Yaml, source);
+    let expected = [
+        (1, "on = object, 2 keys"),
+        (2, "push = null"),
+        (2, "pull_request = null"),
+        (1, r"run = |\n  cargo  test\n  cargo fmt"),
+        (1, "q = ''"),
+    ];
+    let expected: Vec<(u8, String)> = expected
+        .iter()
+        .map(|(depth, signature)| (*depth, (*signature).to_owned()))
+        .collect();
+    assert_eq!(rows(&found), expected);
+}
+
+#[test]
+fn a_long_key_and_its_value_stay_within_the_signature_cap() {
+    let key = "k".repeat(90);
+    let found = outline(Language::Json, &format!("{{\"{key}\": 1}}"));
+    let signature = &found.rows[0].symbol.signature;
+    assert_eq!(signature, &format!("{}...", "k".repeat(77)));
+}
+
+#[test]
 fn a_root_list_gives_its_shape_and_no_row() {
     let json = outline(Language::Json, "[{\"id\": 1}, {\"id\": 2}, {\"id\": 3}]");
     assert_eq!((json.rows.len(), json.keys), (0, 3));

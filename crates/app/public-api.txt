@@ -468,6 +468,7 @@ impl core::panic::unwind_safe::UnwindSafe for app::CheckInput
 pub enum app::DataEntry
 pub app::DataEntry::Card(app::SymbolCard)
 pub app::DataEntry::Folded(app::FoldedFile)
+pub app::DataEntry::FoldedRest(app::FoldedFile)
 impl core::clone::Clone for app::DataEntry
 pub fn app::DataEntry::clone(&self) -> Self
 impl core::cmp::Eq for app::DataEntry
@@ -1188,6 +1189,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::CyclesRequest
 impl core::panic::unwind_safe::UnwindSafe for app::CyclesRequest
 pub struct app::DataMatches
 pub app::DataMatches::entries: alloc::vec::Vec<app::DataEntry>
+pub app::DataMatches::room: usize
 pub app::DataMatches::unlisted: alloc::vec::Vec<app::FoldedFile>
 impl app::DataMatches
 pub fn app::DataMatches::total(&self) -> usize
@@ -1478,8 +1480,10 @@ impl core::panic::unwind_safe::UnwindSafe for app::FindRequest
 pub struct app::FindResult
 pub app::FindResult::cards: kernel::bounded::Bounded<app::SymbolCard>
 pub app::FindResult::data: app::DataMatches
+pub app::FindResult::data_kind_excluded: usize
 pub app::FindResult::kind: core::option::Option<&'static str>
 pub app::FindResult::other_kinds: alloc::vec::Vec<&'static str>
+pub app::FindResult::outside: app::OutsideOutline
 pub app::FindResult::query: alloc::string::String
 pub app::FindResult::skipped: alloc::vec::Vec<app::Skipped>
 pub app::FindResult::unparsed: alloc::vec::Vec<(alloc::string::String, u32)>
@@ -2235,6 +2239,27 @@ impl core::marker::Unpin for app::Opening
 impl core::marker::UnsafeUnpin for app::Opening
 impl !core::panic::unwind_safe::RefUnwindSafe for app::Opening
 impl !core::panic::unwind_safe::UnwindSafe for app::Opening
+pub struct app::OutsideOutline
+pub app::OutsideOutline::budget: usize
+pub app::OutsideOutline::places: alloc::vec::Vec<(alloc::string::String, u32)>
+pub app::OutsideOutline::unread: usize
+impl core::clone::Clone for app::OutsideOutline
+pub fn app::OutsideOutline::clone(&self) -> Self
+impl core::cmp::Eq for app::OutsideOutline
+impl core::cmp::PartialEq for app::OutsideOutline
+pub fn app::OutsideOutline::eq(&self, &Self) -> bool
+impl core::default::Default for app::OutsideOutline
+pub fn app::OutsideOutline::default() -> Self
+impl core::fmt::Debug for app::OutsideOutline
+pub fn app::OutsideOutline::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::OutsideOutline
+impl core::marker::Freeze for app::OutsideOutline
+impl core::marker::Send for app::OutsideOutline
+impl core::marker::Sync for app::OutsideOutline
+impl core::marker::Unpin for app::OutsideOutline
+impl core::marker::UnsafeUnpin for app::OutsideOutline
+impl core::panic::unwind_safe::RefUnwindSafe for app::OutsideOutline
+impl core::panic::unwind_safe::UnwindSafe for app::OutsideOutline
 pub struct app::PairSelection
 impl app::PairSelection
 pub fn app::PairSelection::checks(self) -> impl core::iter::traits::iterator::Iterator<Item = app::PairCheck>

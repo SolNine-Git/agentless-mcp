@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 156] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 161] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -478,8 +478,32 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 156] = [
     ),
     (
         "messages",
+        "find_data_folded_rest",
+        &["path", "count"],
+        messages::FIND_DATA_FOLDED_REST.pieces(),
+    ),
+    (
+        "messages",
+        "find_data_kind_excluded",
+        &["count"],
+        messages::FIND_DATA_KIND_EXCLUDED.pieces(),
+    ),
+    (
+        "messages",
+        "find_data_outside",
+        &["query", "count", "listed"],
+        messages::FIND_DATA_OUTSIDE.pieces(),
+    ),
+    (
+        "messages",
+        "find_data_outside_unread",
+        &["count", "budget"],
+        messages::FIND_DATA_OUTSIDE_UNREAD.pieces(),
+    ),
+    (
+        "messages",
         "find_data_unlisted",
-        &["count", "total", "listed"],
+        &["count", "total", "cap", "listed"],
         messages::FIND_DATA_UNLISTED.pieces(),
     ),
     (
@@ -805,6 +829,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 156] = [
         "overview_stable_ids",
         &["pattern"],
         messages::OVERVIEW_STABLE_IDS.pieces(),
+    ),
+    (
+        "messages",
+        "overview_stable_ids_data",
+        &["pattern"],
+        messages::OVERVIEW_STABLE_IDS_DATA.pieces(),
     ),
     (
         "messages",
