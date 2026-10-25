@@ -654,16 +654,16 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         does.\n\n```\n1 hop from py:reports.py::reorder_report to \
         py:pricing.py::format_money\n  start  reorder_report    \
         py:reports.py::reorder_report\n    1. -> references \
-        (resolved-via-import)    format_money    pricing.py:78    \
-        [py:pricing.py::format_money]\n```\n\nThe search walks edges in \
-        both directions, because the question is about\nrelatedness, \
-        not call direction. The output renders each hop with \
-        the\ndirection it really runs. `->` is \"this hop's origin \
-        references the arrival\".\n`<-` is \"the arrival references the \
-        origin\".\n\n**Read the tiers on the hops.** A chain is only as \
-        good as its weakest link.\nA `unique` hop is a name that \
-        matched the repository's only definition,\nwithout any import \
-        connecting the two files. Sometimes that is a real \
+        (resolved-via-import)    format_money    \
+        [py:pricing.py::format_money] @78\n```\n\nThe search walks \
+        edges in both directions, because the question is \
+        about\nrelatedness, not call direction. The output renders each \
+        hop with the\ndirection it really runs. `->` is \"this hop's \
+        origin references the arrival\".\n`<-` is \"the arrival \
+        references the origin\".\n\n**Read the tiers on the hops.** A \
+        chain is only as good as its weakest link.\nA `unique` hop is a \
+        name that matched the repository's only definition,\nwithout \
+        any import connecting the two files. Sometimes that is a real \
         edge.\nSometimes it is a local variable that happens to share a \
         name with a function\nelsewhere. Only `same-file` and \
         `resolved-via-import` edges participate by\ndefault. \
@@ -715,20 +715,25 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         \"resolution\": 0.5}\n```\n\nThis is a rollup rather than a \
         ranking. `map` says which files matter. This\ncommand says \
         which files are one thing. Use it first in an \
-        unfamiliar\nrepository, before you read anything.\n\n```\n29 \
-        communities over 109 files (modularity 0.262 at resolution \
-        1)\n    1. tests/unit  (15 files)\n       \
-        tests/conftest.py\n       tests/unit/test_cache.py\n       ... \
-        12 more files in this community\n```\n\nThe partition is \
-        single-level greedy modularity over the same file graph \
-        the\nmap ranks. Three explicit ordering rules stand behind it, \
-        so an unchanged\ntree returns the same communities in the same \
-        order every time. **Labels are\nmechanical, never generated.** \
-        The label is the deepest directory prefix a\nstrict majority of \
-        the members share, or `repository root` when no prefix\nreaches \
-        a majority. Two communities can therefore carry the same label. \
-        That\nis a statement about the directory layout rather than a \
-        defect.\n\n`modularity` is how much structure the detector \
+        unfamiliar\nrepository, before you read anything.\n\n```\n2 \
+        communities over 7 files (modularity 0.363 at resolution \
+        1)\n    1. billing around billing/invoice.py  (4 files)\n       \
+        billing/invoice.py\n       billing/ledger.py\n... 2 more files \
+        in this community not listed (limit 2)\n... 1 more communities \
+        not listed (limit 1)\n```\n\nThe partition is single-level \
+        greedy modularity over the same file graph the\nmap ranks. \
+        Three explicit ordering rules stand behind it, so an \
+        unchanged\ntree returns the same communities in the same order \
+        every time. **Labels are\nmechanical, never generated.** A \
+        community of one file has that file as its\nlabel. The label of \
+        a larger community is `<directory> around <hub>`. \
+        The\ndirectory is the deepest directory prefix that a strict \
+        majority of the\nmembers share, or `repository root` when no \
+        prefix has a majority. The hub is\nthe member with the most \
+        edge weight inside the community. On a tie, the hub\nis the \
+        first of those members in path order. A file is in one \
+        community only,\nso two communities never have the same \
+        label.\n\n`modularity` is how much structure the detector \
         actually found, and the score\nis scaled by the resolution it \
         was found at. At `--resolution 1.0`, roughly\n0.3 and up is a \
         repository with real module boundaries. Near 0 means \
@@ -1613,7 +1618,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3599, 4432),
     ("stable-ids", 4434, 5752),
     ("the-two-surfaces", 5754, 11298),
-    ("per-tool-usage", 11300, 88612),
+    ("per-tool-usage", 11300, 88880),
     ("claude-code-specifics", 13058, 14689),
     ("map", 14691, 22994),
     ("tree", 22996, 23317),
@@ -1624,19 +1629,19 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("refs", 28019, 32774),
     ("history", 32776, 35609),
     ("explain", 35611, 37260),
-    ("path", 37262, 40010),
-    ("cycles", 40012, 41123),
-    ("communities", 41125, 43370),
-    ("diagram", 43372, 46143),
-    ("health", 46145, 52381),
-    ("html", 52383, 53334),
-    ("resolve-locs", 53336, 54135),
-    ("capabilities", 54137, 54947),
-    ("index", 54949, 57618),
-    ("lint", 57620, 77628),
-    ("validate-vote", 77630, 87011),
-    ("warmup", 87013, 88612),
-    ("project-defaults-agentless-mcp-json", 88614, 92567),
-    ("token-counting", 92569, 92983),
-    ("exit-codes", 92985, 93443),
+    ("path", 37262, 39997),
+    ("cycles", 39999, 41110),
+    ("communities", 41112, 43638),
+    ("diagram", 43640, 46411),
+    ("health", 46413, 52649),
+    ("html", 52651, 53602),
+    ("resolve-locs", 53604, 54403),
+    ("capabilities", 54405, 55215),
+    ("index", 55217, 57886),
+    ("lint", 57888, 77896),
+    ("validate-vote", 77898, 87279),
+    ("warmup", 87281, 88880),
+    ("project-defaults-agentless-mcp-json", 88882, 92835),
+    ("token-counting", 92837, 93251),
+    ("exit-codes", 93253, 93711),
 ];

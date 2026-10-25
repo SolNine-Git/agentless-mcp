@@ -1,7 +1,9 @@
 //! Communities of the file graph: modularity local moving over the symmetrised graph, each
-//! community labelled by the directory a strict majority of its members share.
+//! community labelled by its one file, or by the directory a strict majority of its members share
+//! and its hub file.
 
 use std::collections::{BTreeMap, HashMap};
+use std::slice;
 
 use kernel::{Deadline, Stopped, checkpoint};
 use metrics::compensated_sum;
@@ -10,7 +12,7 @@ use crate::files::FileGraph;
 
 /// The resolution of the modularity objective when the caller names none.
 pub const DEFAULT_RESOLUTION: f64 = 1.0;
-/// The label of a community whose members share no majority directory.
+/// The directory part of the label of a community whose members share no majority directory.
 pub const ROOT_LABEL: &str = "repository root";
 
 // The bound exists so that a pathological graph cannot spin, not as a tuning knob.
@@ -221,8 +223,9 @@ fn partition<'a>(
             standard += fraction - share;
         }
         let paths: Vec<&'a str> = members.iter().map(|&member| nodes[member]).collect();
+        let hub = paths[hub_position(weighted, membership, members, community)];
         communities.push(Community {
-            label: community_label(&paths),
+            label: labelled(&paths, hub),
             members: paths,
             internal_weight: internal,
             total_weight: outgoing,
@@ -253,8 +256,41 @@ fn internal_weights(
         .collect()
 }
 
+// The member with the most edge weight inside the community; on a tie, the first in path order.
+fn hub_position(
+    weighted: &Weighted,
+    membership: &[usize],
+    members: &[usize],
+    community: usize,
+) -> usize {
+    let inside = |member: &usize| {
+        compensated_sum(&internal_weights(
+            weighted,
+            membership,
+            slice::from_ref(member),
+            community,
+        ))
+    };
+    let mut best = (0, inside(&members[0]));
+    for (position, member) in members.iter().enumerate().skip(1) {
+        let weight = inside(member);
+        if weight > best.1 {
+            best = (position, weight);
+        }
+    }
+    best.0
+}
+
+// A directory alone can label two communities, and the hub is in one community only.
+fn labelled(members: &[&str], hub: &str) -> String {
+    if members.len() == 1 {
+        return hub.to_owned();
+    }
+    format!("{} around {hub}", community_label(members))
+}
+
 /// Return the deepest directory prefix that a strict majority of `members` share, or
-/// [`ROOT_LABEL`] when none does.
+/// [`ROOT_LABEL`] when none does: the directory part of a community's label.
 #[must_use]
 pub fn community_label(members: &[&str]) -> String {
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();

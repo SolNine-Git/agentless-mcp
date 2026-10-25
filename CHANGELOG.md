@@ -160,6 +160,61 @@
 
 ### Fixed
 
+- **A path row names a file once, and a step with no line prints no line.** A
+  file node is its own label, so each file row printed its path twice, and a
+  step that reached an imported file printed `@0`. Now a file row prints
+  `[path]` once, and `@N` only when N is above 0. Symbol rows and the JSON do
+  not change. The guide's path example shows the current row form. Measured
+  with the release binaries of 65b7d1a and of this change on django-15161:
+  `path django/db/models/expressions.py django/utils/deconstruct.py` went from
+  "-> imports (resolved-via-import)    django/utils/deconstruct.py
+  [django/utils/deconstruct.py] @0" (354 bytes) to "-> imports
+  (resolved-via-import)    [django/utils/deconstruct.py]" (285 bytes).
+- **The body map prints each source line once, and its count lines count
+  only the symbols with no body.** The body map seated its first ids and did
+  not compare their spans, so a nested function printed inside each body that
+  held it. It also emptied each file's rows, so "... N more symbols in this
+  file not listed" counted the symbols whose bodies followed. Now an id whose
+  lines meet a seated body of its file gives its seat to the next id. A file's
+  count, in the text and in the JSON `omitted`, leaves out each symbol that has
+  a body. Each note line of a map, a body map and an expand answer now starts
+  with `// note: `, the marker of a line the tool writes about itself: the
+  shortened-bodies note, the unsettled-ranking note, the budget note, the
+  companion-walk note and the three nothing-ranked notes. Measured on
+  django-15161, `map --focus django/utils/deconstruct.py --granularity body
+  --budget 1500`, 2 files: 49 distinct lines with 34 of them printed two or
+  three times, to 77 distinct lines with none printed twice, and the count
+  line of deconstruct.py from 4 (all 4 had a body) to 2.
+- **A diagram label keeps the underscores of a path.** The label sanitizer
+  merged every run of underscores, so `django/conf/__init__.py` printed as
+  `django/conf/_init_.py`. Now only a run of replaced characters becomes one
+  underscore. Mermaid prints the text of a quoted label as it is written
+  (mermaid.ai flowchart syntax, "Special characters that break syntax"), so
+  the label needs no escape. On django-15161 the default diagram has 17
+  `__init__.py` labels, and it grows from 4,372 to 4,406 bytes.
+- **Two communities never have the same label.** A label was the directory
+  that a strict majority of the members share, so many communities had the
+  same label, and `repository root` named no member. Now a community of one
+  file has that file as its label. Any other community has `<directory>
+  around <hub>`: the majority directory or `repository root`, and the member
+  with the most edge weight inside the community, the first in path order on
+  a tie. Measured over the whole partition of django-15161, element-web and
+  this repository at ea6ed16 (861, 233 and 312 communities), the label values
+  that two or more communities shared went from 168, 11 and 47 to 0. The default
+  communities answer grows from 13,265 to 14,042 bytes (+5.9%), 13,726 to
+  14,507 (+5.7%) and 10,713 to 11,407 (+6.5%). The grouped diagram grows from
+  5,554 to 6,361 bytes (+14.5%), 5,499 to 6,290 (+14.4%) and 2,903 to 3,508
+  (+20.8%). Its subgraph titles are cut at 60 characters. After the cut, no
+  two shown titles are equal (base: 18, 16 and 7 subgraphs shared a title).
+- **A function nested in a function or a method is not an unused export.**
+  `health` listed a nested closure, such as `action.decorator`, as an unused
+  export and as an orphan candidate. Now a function whose parent is a function
+  or a method of the same file is not an export. It can still be an orphan
+  candidate. The section header reads "public function outside a function
+  body, no counted edge in". Measured on django-15161: unused exports 447 to
+  285, orphan candidates 321 to 321. On element-web (190 and 94) and this
+  repository (309 and 236) the counts do not change: their extractors emit no
+  nested function.
 - **The overview of a Rust or Lua file keeps the lines under a comment.** The
   default overview and the `--docstrings` overview both had the defect. The
   skeleton planned a node inside a comment as a comment of its own: the

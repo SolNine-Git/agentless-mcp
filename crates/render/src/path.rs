@@ -21,10 +21,12 @@ fn path_text(trace: &PathTrace) -> String {
     let count = trace.hops.len();
     let noun = if count == 1 { "hop" } else { "hops" };
     let (source, target) = (one_line(&trace.source), one_line(&trace.target));
-    let mut lines = vec![
-        format!("{count} {noun} from {source} to {target}"),
-        format!("  start  {}    {source}", one_line(&trace.source_label)),
-    ];
+    let start = if trace.source_label == trace.source {
+        format!("  start  {source}")
+    } else {
+        format!("  start  {}    {source}", one_line(&trace.source_label))
+    };
+    let mut lines = vec![format!("{count} {noun} from {source} to {target}"), start];
     let numbered = trace.hops.iter().enumerate();
     lines.extend(numbered.map(|(at, hop)| hop_line(at + 1, hop)));
     if !trace.message.is_empty() {
@@ -33,15 +35,20 @@ fn path_text(trace: &PathTrace) -> String {
     lines.join("\n") + "\n"
 }
 
+// A file node is its own label, so the row names it once; line 0 is a file with no line.
 fn hop_line(number: usize, hop: &PathHop) -> String {
-    let line = hop.line.to_string();
+    let line = (hop.line > 0).then(|| hop.line.to_string());
+    let located = locator(&hop.node, "", line.as_deref());
+    let named = if hop.label == hop.node {
+        located
+    } else {
+        format!("{}    {located}", one_line(&hop.label))
+    };
     format!(
-        "  {number:>3}. {} {} ({})    {}    {}",
+        "  {number:>3}. {} {} ({})    {named}",
         one_line(hop.arrow),
         one_line(hop.verb),
         one_line(hop.tier_label),
-        one_line(&hop.label),
-        locator(&hop.node, "", Some(&line))
     )
 }
 
@@ -116,3 +123,6 @@ impl Listing for PathJson<'_> {
         prefix
     }
 }
+
+#[cfg(test)]
+mod tests;

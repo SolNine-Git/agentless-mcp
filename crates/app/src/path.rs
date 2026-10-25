@@ -67,7 +67,7 @@ pub struct PathHop {
     pub label: String,
     /// The path of that node.
     pub path: String,
-    /// The line of that node.
+    /// The line of that node, or 0 for a file that the step reaches at no line.
     pub line: u32,
 }
 

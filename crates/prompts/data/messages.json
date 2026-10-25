@@ -47,7 +47,7 @@
   "overview_data_unlisted": "{count} more keys are not listed: the outline stops at depth 2, at list items and at {cap} keys. Grep finds them.",
   "span_data_key_unlisted": "{path} keeps an outline of its keys, and {qualname} is not in it: the outline stops at depth 2, at list items and at {cap} keys. Read the lines with read slice, or Grep for the key.",
   "expand_body_truncated": "... {shown} of {total} lines shown: the batch did not fit the output ceiling. Expand this id on its own for the whole body.",
-  "expand_batch_shortened": "note: {shortened} of {total} bodies were shortened to fit the {budget}-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies.",
+  "expand_batch_shortened": "// note: {shortened} of {total} bodies were shortened to fit the {budget}-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies.",
   "expand_no_room": "not expanded: {requested} ids exceed the {seats} one call can answer; retry with at most that many.",
   "grouped_ids": "({count} ids)",
   "map_file_unreached": "... {count} symbols in this file; the focus has no reference path to it, so no budget shows them",

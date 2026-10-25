@@ -1,11 +1,11 @@
 // agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 2 communities over 7 files (modularity 0.363 at resolution 1)
-    1. billing  (4 files)
+    1. billing around billing/invoice.py  (4 files)
        billing/invoice.py
        billing/ledger.py
        billing/money.py
        billing/tax.py
-    2. catalog  (3 files)
+    2. catalog around catalog/product.py  (3 files)
        catalog/product.py
        catalog/search.py
        catalog/stock.py

@@ -207,6 +207,35 @@ fn weight_rules_match_the_reference() {
     }
 }
 
+// Two communities in one directory, a star and a pair, and a file with no edge.
+#[test]
+fn a_label_names_the_directory_and_the_hub_or_the_one_file() {
+    let nodes = vec![
+        "lone.py",
+        "src/a.py",
+        "src/b.py",
+        "src/c.py",
+        "src/hub.py",
+        "src/x.py",
+        "src/y.py",
+    ];
+    let edges = [
+        ("src/a.py", "src/hub.py", 1.0),
+        ("src/b.py", "src/hub.py", 1.0),
+        ("src/c.py", "src/hub.py", 1.0),
+        ("src/x.py", "src/y.py", 1.0),
+    ];
+    let graph = FileGraph::from_parts(nodes, &edges);
+    let partition = detect_communities(&graph, 1.0, None).expect("no deadline stops it");
+    let labels: Vec<&str> = (partition.communities.iter())
+        .map(|community| community.label.as_str())
+        .collect();
+    assert_eq!(
+        labels,
+        ["src around src/hub.py", "src around src/x.py", "lone.py"]
+    );
+}
+
 #[derive(Deserialize)]
 struct FloodBound {
     leaves: usize,

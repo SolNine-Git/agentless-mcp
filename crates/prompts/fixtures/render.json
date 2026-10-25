@@ -478,7 +478,7 @@
         "shortened": 3,
         "total": 10
       },
-      "text": "note: 3 of 10 bodies were shortened to fit the 12000-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies."
+      "text": "// note: 3 of 10 bodies were shortened to fit the 12000-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies."
     },
     "expand_body_truncated": {
       "arguments": {

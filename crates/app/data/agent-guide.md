@@ -778,7 +778,7 @@ there", which no single fan-in or fan-out call does.
 ```
 1 hop from py:reports.py::reorder_report to py:pricing.py::format_money
   start  reorder_report    py:reports.py::reorder_report
-    1. -> references (resolved-via-import)    format_money    pricing.py:78    [py:pricing.py::format_money]
+    1. -> references (resolved-via-import)    format_money    [py:pricing.py::format_money] @78
 ```
 
 The search walks edges in both directions, because the question is about
@@ -863,20 +863,24 @@ command says which files are one thing. Use it first in an unfamiliar
 repository, before you read anything.
 
 ```
-29 communities over 109 files (modularity 0.262 at resolution 1)
-    1. tests/unit  (15 files)
-       tests/conftest.py
-       tests/unit/test_cache.py
-       ... 12 more files in this community
+2 communities over 7 files (modularity 0.363 at resolution 1)
+    1. billing around billing/invoice.py  (4 files)
+       billing/invoice.py
+       billing/ledger.py
+... 2 more files in this community not listed (limit 2)
+... 1 more communities not listed (limit 1)
 ```
 
 The partition is single-level greedy modularity over the same file graph the
 map ranks. Three explicit ordering rules stand behind it, so an unchanged
 tree returns the same communities in the same order every time. **Labels are
-mechanical, never generated.** The label is the deepest directory prefix a
-strict majority of the members share, or `repository root` when no prefix
-reaches a majority. Two communities can therefore carry the same label. That
-is a statement about the directory layout rather than a defect.
+mechanical, never generated.** A community of one file has that file as its
+label. The label of a larger community is `<directory> around <hub>`. The
+directory is the deepest directory prefix that a strict majority of the
+members share, or `repository root` when no prefix has a majority. The hub is
+the member with the most edge weight inside the community. On a tie, the hub
+is the first of those members in path order. A file is in one community only,
+so two communities never have the same label.
 
 `modularity` is how much structure the detector actually found, and the score
 is scaled by the resolution it was found at. At `--resolution 1.0`, roughly

@@ -36,6 +36,25 @@ fn the_graph_sections_count_only_binding_edges() {
     );
 }
 
+// A function inside a function or a method body is local to that body, so no import reaches it.
+const CLOSURES: [(&str, &str); 1] = [(
+    "admin.py",
+    "def action(function=None):\n    def decorator(func):\n        return func\n    return \
+     decorator\n\n\nclass Admin:\n    def get_urls(self):\n        def wrap(view):\n            \
+     return view\n        return [wrap]\n",
+)];
+
+#[test]
+fn a_closure_is_an_orphan_candidate_and_never_an_unused_export() {
+    let report = checked(&Scanned::new(&CLOSURES));
+    assert_eq!(
+        labels(report.orphans.rows()),
+        ["action", "action.decorator", "Admin.get_urls.wrap"]
+    );
+    assert_eq!(labels(report.unused_exports.rows()), ["action"]);
+    assert_eq!(report.unused_exports.total(), 1);
+}
+
 #[test]
 fn every_file_in_scope_is_walked_and_measured() {
     let report = checked(&Scanned::new(&LINKED));

@@ -5,7 +5,7 @@ methods are ranked as hubs and never reported as orphans: a call through a selec
 
 no orphan candidates: every function has a counted edge
 
-5 unused exports (public function, no counted edge in)
+5 unused exports (public function outside a function body, no counted edge in)
   [py:inventory.py::load_inventory] @104  load_inventory  function  in 0  out 2
   [py:inventory.py::dump_inventory] @118  dump_inventory  function  in 0  out 1
   [py:reports.py::reorder_report] @29  reorder_report  function  in 0  out 5

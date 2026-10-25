@@ -13,9 +13,9 @@ use crate::envelope::{Listing, wrap_json};
 use crate::skipped::{SkippedJson, skipped_json, skipped_line};
 use crate::{Rendered, Truncation, View};
 
-const NOT_CONVERGED: &str = "the ranking behind this map did not converge, so the order of the files below is a partial \
-     answer";
-const WALK_CAPPED: &str = "  note: the walk out to these tests hit its node bound before it \
+const NOT_CONVERGED: &str = "// note: the ranking behind this map did not converge, so the order of \
+                             the files below is a partial answer";
+const WALK_CAPPED: &str = "// note: the walk out to these tests hit its node bound before it \
                            finished, so this section is a floor rather than every test";
 
 impl View for MapResult {
@@ -59,9 +59,9 @@ fn notes(result: &MapResult) -> Vec<String> {
     }
     if result.budget > 0 && result.rendered > result.budget {
         notes.push(format!(
-            "this map renders to {} tokens against a {}-token budget: every one of the {} ranked \
-             files is listed whatever the budget allows, and the budget bounds only the symbols \
-             shown under them",
+            "// note: this map renders to {} tokens against a {}-token budget: every one of the \
+             {} ranked files is listed whatever the budget allows, and the budget bounds only the \
+             symbols shown under them",
             result.rendered,
             result.budget,
             result.files.len()
@@ -80,15 +80,15 @@ fn notes(result: &MapResult) -> Vec<String> {
 // Rows alone cannot tell a repository with no symbols from a budget that kept none of them.
 fn why_nothing_ranked(result: &MapResult) -> String {
     if result.ranked == 0 {
-        "nothing in this repository parsed into symbols".to_owned()
+        "// note: nothing in this repository parsed into symbols".to_owned()
     } else if result.candidates == 0 {
         format!(
-            "--max-files kept none of the {} ranked files",
+            "// note: --max-files kept none of the {} ranked files",
             result.ranked
         )
     } else {
         format!(
-            "the {}-token budget left room for none of {} symbols; raise --budget",
+            "// note: the {}-token budget left room for none of {} symbols; raise --budget",
             result.budget, result.candidates
         )
     }
@@ -278,3 +278,6 @@ impl Listing for MapJson<'_> {
         prefix
     }
 }
+
+#[cfg(test)]
+mod tests;

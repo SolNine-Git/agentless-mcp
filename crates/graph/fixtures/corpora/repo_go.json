@@ -322,9 +322,9 @@
   {"seeds": ["missing/nowhere.py"], "max_depth": 2, "reached": [], "exhausted": false}
  ],
  "communities": [
-  {"resolution": "0x3ff0000000000000", "communities": [["repository root", ["inventory.go", "pricing.go", "reports.go"], "0x400e7f105449c670", "0x400e7f105449c670"]], "modularity": "0x0000000000000000", "standard_modularity": "0x0000000000000000", "converged": true},
-  {"resolution": "0x3fd0000000000000", "communities": [["repository root", ["inventory.go", "pricing.go", "reports.go"], "0x400e7f105449c670", "0x400e7f105449c670"]], "modularity": "0x3fe8000000000000", "standard_modularity": "0x0000000000000000", "converged": true},
-  {"resolution": "0x4010000000000000", "communities": [["repository root", ["inventory.go"], "0x0000000000000000", "0x3feaaf2e49c08da2"], ["repository root", ["pricing.go"], "0x0000000000000000", "0x3ff127792f697f9f"], ["repository root", ["reports.go"], "0x0000000000000000", "0x3ffe7f105449c670"]], "modularity": "0xbff8200000000000", "standard_modularity": "0xbfd8200000000000", "converged": true}
+  {"resolution": "0x3ff0000000000000", "communities": [["repository root around reports.go", ["inventory.go", "pricing.go", "reports.go"], "0x400e7f105449c670", "0x400e7f105449c670"]], "modularity": "0x0000000000000000", "standard_modularity": "0x0000000000000000", "converged": true},
+  {"resolution": "0x3fd0000000000000", "communities": [["repository root around reports.go", ["inventory.go", "pricing.go", "reports.go"], "0x400e7f105449c670", "0x400e7f105449c670"]], "modularity": "0x3fe8000000000000", "standard_modularity": "0x0000000000000000", "converged": true},
+  {"resolution": "0x4010000000000000", "communities": [["inventory.go", ["inventory.go"], "0x0000000000000000", "0x3feaaf2e49c08da2"], ["pricing.go", ["pricing.go"], "0x0000000000000000", "0x3ff127792f697f9f"], ["reports.go", ["reports.go"], "0x0000000000000000", "0x3ffe7f105449c670"]], "modularity": "0xbff8200000000000", "standard_modularity": "0xbfd8200000000000", "converged": true}
  ],
  "scopes": [
   {"path": "inventory.go", "wholesale": [], "module_bindings": [], "named": [], "members": [], "statements": [["fmt", 5, null, false], ["sort", 6, null, false]], "resolved_edges": []},

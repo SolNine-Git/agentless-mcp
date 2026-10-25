@@ -20,38 +20,39 @@ pub const ANALYZE_STRUCTURE: &str = "Five whole-repository structure questions b
         import cycle as a file -> file -> file chain that closes -- ask \
         it when an import error, a partially initialized module or a \
         layering question needs the knots named. \
-        operation='communities' takes an optional resolution (lower \
-        groups more coarsely) and returns which files belong together, \
-        each group labelled by the directory prefix most of its members \
-        share; modularity below 0.3 is marked as a weak partition to \
-        use only as a hint -- ask it to orient in an unfamiliar \
-        repository before reading any file. operation='diagram' takes \
-        optional focus, max_nodes and group_by_communities and returns \
-        a mermaid flowchart of the module graph, PageRank-bounded with \
-        an explicit elision marker; solid arrows are declared imports, \
-        dashed arrows are discounted name references, drawn only while \
-        the diagram stays legible and counted in a comment when left \
-        out -- ask for it only when a human will look at it, because \
-        the facts you should reason over are in the text views. \
-        operation='health' takes an optional limit and returns three \
-        readings of one degree count -- orphan candidates (a function \
-        no counted edge reaches or leaves), unused exports (a public \
-        function no counted edge reaches) and hubs (the highest total \
-        degree first); only same-file and resolved-via-import edges are \
-        counted, and a unique-name or name-only-ambiguous match is \
-        named on the row rather than counted, so an orphan row states \
-        the evidence it was not built on. The health answer also \
-        carries a complexity summary (functions measured, functions \
-        above the complexity threshold, which is 10 by default, \
-        erosion, the share of mass held by those functions, and clone \
-        share, the share of source lines inside a block that has a copy \
-        once names and literals are ignored) and hotspots, the \
-        functions with the most mass (cc times the square root of \
-        sloc), each with its stable id or marked metric-only. \
-        Complexity counts decision points and lines. It does not judge \
-        design. No path, no cycles and an unknown endpoint are all \
-        ordinary answers with a message rather than errors; an unknown \
-        operation is rejected by the published enum.";
+        operation='communities' takes an optional resolution (a lower \
+        one gives larger groups) and returns which files belong \
+        together. Each label names the directory that most members \
+        share and the hub file. A modularity below 0.3 marks a weak \
+        partition: use it only as a hint. Use it to orient in an \
+        unfamiliar repository before you read a file. \
+        operation='diagram' takes optional focus, max_nodes and \
+        group_by_communities and returns a mermaid flowchart of the \
+        module graph, PageRank-bounded with an explicit elision marker; \
+        solid arrows are declared imports, dashed arrows are discounted \
+        name references, drawn only while the diagram stays legible and \
+        counted in a comment when left out -- ask for it only when a \
+        human will look at it, because the facts you should reason over \
+        are in the text views. operation='health' takes an optional \
+        limit and returns three readings of one degree count -- orphan \
+        candidates (a function no counted edge reaches or leaves), \
+        unused exports (a public function no counted edge reaches) and \
+        hubs (the highest total degree first); only same-file and \
+        resolved-via-import edges are counted, and a unique-name or \
+        name-only-ambiguous match is named on the row rather than \
+        counted, so an orphan row states the evidence it was not built \
+        on. The health answer also carries a complexity summary \
+        (functions measured, functions above the complexity threshold, \
+        which is 10 by default, erosion, the share of mass held by \
+        those functions, and clone share, the share of source lines \
+        inside a block that has a copy once names and literals are \
+        ignored) and hotspots, the functions with the most mass (cc \
+        times the square root of sloc), each with its stable id or \
+        marked metric-only. Complexity counts decision points and \
+        lines. It does not judge design. No path, no cycles and an \
+        unknown endpoint are all ordinary answers with a message rather \
+        than errors; an unknown operation is rejected by the published \
+        enum.";
 
 /// The description of the `capabilities` tool.
 pub const CAPABILITIES: &str = "Why is this answer incomplete? The server version, grammars, \

@@ -34,8 +34,8 @@ const ORPHANS: Wording = Wording {
 const UNUSED: Wording = Wording {
     singular: "unused export",
     plural: "unused exports",
-    criterion: "public function, no counted edge in",
-    empty: "no unused exports: every public function is reached",
+    criterion: "public function outside a function body, no counted edge in",
+    empty: "no unused exports: every public function outside a function body is reached",
     omitted: "unused exports",
 };
 

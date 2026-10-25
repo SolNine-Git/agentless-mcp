@@ -28,6 +28,15 @@ fn a_label_keeps_only_the_allowlist_as_the_reference_does() {
 }
 
 #[test]
+fn a_label_keeps_the_underscores_of_the_path_and_merges_only_replaced_runs() {
+    assert_eq!(
+        safe_label("django/conf/__init__.py"),
+        "django/conf/__init__.py"
+    );
+    assert_eq!(safe_label("a__\"];b"), "a___b");
+}
+
+#[test]
 fn a_repeated_label_takes_the_reference_ordinal() {
     let cases: Vec<(Vec<String>, Vec<String>)> =
         io::testing::cases(MANIFEST_DIR, LABELS, "distinct");

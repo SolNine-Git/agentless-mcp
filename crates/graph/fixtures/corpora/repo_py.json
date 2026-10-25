@@ -445,9 +445,9 @@
   {"seeds": ["missing/nowhere.py"], "max_depth": 2, "reached": [], "exhausted": false}
  ],
  "communities": [
-  {"resolution": "0x3ff0000000000000", "communities": [["repository root", ["inventory.py", "pricing.py", "reports.py"], "0x402efe4bda27ef8d", "0x402efe4bda27ef8d"]], "modularity": "0x0000000000000000", "standard_modularity": "0x0000000000000000", "converged": true},
-  {"resolution": "0x3fd0000000000000", "communities": [["repository root", ["inventory.py", "pricing.py", "reports.py"], "0x402efe4bda27ef8d", "0x402efe4bda27ef8d"]], "modularity": "0x3fe8000000000000", "standard_modularity": "0x0000000000000000", "converged": true},
-  {"resolution": "0x4010000000000000", "communities": [["repository root", ["inventory.py"], "0x0000000000000000", "0x400cc3da8d2b8702"], ["repository root", ["pricing.py"], "0x0000000000000000", "0x40109c5e93922c0c"], ["repository root", ["reports.py"], "0x0000000000000000", "0x401efe4bda27ef8d"]], "modularity": "0xbff80a960c4084cf", "standard_modularity": "0xbfd80a960c4084cf", "converged": true}
+  {"resolution": "0x3ff0000000000000", "communities": [["repository root around reports.py", ["inventory.py", "pricing.py", "reports.py"], "0x402efe4bda27ef8d", "0x402efe4bda27ef8d"]], "modularity": "0x0000000000000000", "standard_modularity": "0x0000000000000000", "converged": true},
+  {"resolution": "0x3fd0000000000000", "communities": [["repository root around reports.py", ["inventory.py", "pricing.py", "reports.py"], "0x402efe4bda27ef8d", "0x402efe4bda27ef8d"]], "modularity": "0x3fe8000000000000", "standard_modularity": "0x0000000000000000", "converged": true},
+  {"resolution": "0x4010000000000000", "communities": [["inventory.py", ["inventory.py"], "0x0000000000000000", "0x400cc3da8d2b8702"], ["pricing.py", ["pricing.py"], "0x0000000000000000", "0x40109c5e93922c0c"], ["reports.py", ["reports.py"], "0x0000000000000000", "0x401efe4bda27ef8d"]], "modularity": "0xbff80a960c4084cf", "standard_modularity": "0xbfd80a960c4084cf", "converged": true}
  ],
  "scopes": [
   {"path": "inventory.py", "wholesale": [], "module_bindings": [], "named": [], "members": [], "statements": [["json", 8, null, false], ["dataclasses", 9, null, false], ["pathlib", 10, null, false]], "resolved_edges": []},

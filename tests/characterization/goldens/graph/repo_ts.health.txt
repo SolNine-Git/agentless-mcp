@@ -5,7 +5,7 @@ methods are ranked as hubs and never reported as orphans: a call through a selec
 
 no orphan candidates: every function has a counted edge
 
-5 unused exports (public function, no counted edge in)
+5 unused exports (public function outside a function body, no counted edge in)
   [ts:reports.ts::reorderReport] @32  reorderReport  function  in 0  out 4
   [ts:reports.ts::summarise] @58  summarise  function  in 0  out 4
   [ts:types.ts::describeWarehouse] @25  describeWarehouse  function  in 0  out 2

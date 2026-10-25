@@ -513,7 +513,7 @@ pub const DATA_KEY_NO_FAN_IN: Template<(Text, Text)> = Template::new(&[
 
 /// A template that takes (`shortened`, `total`, `budget`).
 pub const EXPAND_BATCH_SHORTENED: Template<(Count, Count, Count)> = Template::new(&[
-    Piece::Text("note: "),
+    Piece::Text("// note: "),
     Piece::Value(0),
     Piece::Text(" of "),
     Piece::Value(1),

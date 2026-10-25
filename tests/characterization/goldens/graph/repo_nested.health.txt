@@ -5,7 +5,7 @@ methods are ranked as hubs and never reported as orphans: a call through a selec
 
 no orphan candidates: every function has a counted edge
 
-5 unused exports (public function, no counted edge in)
+5 unused exports (public function outside a function body, no counted edge in)
   [py:billing/invoice.py::open_invoice] @42  open_invoice  function  in 0  out 3
   [py:billing/invoice.py::render_invoice] @47  render_invoice  function  in 0  out 3
   [py:catalog/search.py::load_catalogue] @12  load_catalogue  function  in 0  out 2

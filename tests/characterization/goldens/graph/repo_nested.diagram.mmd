@@ -1,12 +1,12 @@
 flowchart LR
     %% solid: imports, dashed: references
-    subgraph s0["billing"]
+    subgraph s0["billing around billing/invoice.py"]
         n0["billing/invoice.py"]
         n1["billing/ledger.py"]
         n2["billing/money.py"]
         n3["billing/tax.py"]
     end
-    subgraph s1["catalog"]
+    subgraph s1["catalog around catalog/product.py"]
         n4["catalog/product.py"]
         n5["catalog/search.py"]
         n6["catalog/stock.py"]

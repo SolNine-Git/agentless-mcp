@@ -64,10 +64,10 @@ impl ExpandResult {
 
 // The bounds of one expansion: the ids it expands, the budget its bodies share, and its cards.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Seating {
-    pub(crate) limit: usize,
-    pub(crate) budget: usize,
-    pub(crate) seats: usize,
+struct Seating {
+    limit: usize,
+    budget: usize,
+    seats: usize,
 }
 
 /// Expands the stable ids of `request` in the repository that `reading` names. Each cache row
@@ -90,7 +90,7 @@ pub fn expand(
     expand_symbols(services, reading, &request.ids, seating).map(Ok)
 }
 
-pub(crate) fn expand_symbols(
+fn expand_symbols(
     services: &Services,
     reading: &Reading<'_>,
     ids: &[String],
@@ -121,17 +121,26 @@ pub(crate) fn expand_symbols(
         unresolved.push((count, reason));
         cards.truncate(seating.seats);
     }
+    Noted {
+        value: fitted(&*services.counter, cards, unresolved, seating.budget),
+        diagnostics: noted.diagnostics,
+    }
+}
+
+// The cards cut to `budget`, and the misses up to the row bound with a count of the rest.
+pub(crate) fn fitted(
+    counter: &dyn TokenCounter,
+    cards: Vec<SymbolCard>,
+    mut unresolved: Vec<(String, String)>,
+    budget: usize,
+) -> ExpandResult {
     let unresolved_omitted = unresolved.len().saturating_sub(MAX_UNRESOLVED_ROWS);
     unresolved.truncate(MAX_UNRESOLVED_ROWS);
-    let result = ExpandResult {
-        cards: fit_bodies(&*services.counter, cards, seating.budget),
+    ExpandResult {
+        cards: fit_bodies(counter, cards, budget),
         unresolved,
-        budget: seating.budget,
+        budget,
         unresolved_omitted,
-    };
-    Noted {
-        value: result,
-        diagnostics: noted.diagnostics,
     }
 }
 
@@ -157,7 +166,7 @@ fn grouped_rows(over_limit: usize, repeated: usize, limit: usize) -> Vec<(String
 }
 
 // A path outside the root is one more reason, beside the ids that do not resolve.
-fn expand_one(
+pub(crate) fn expand_one(
     reading: &Reading<'_>,
     raw: &str,
     files: &mut ParsedFiles,
