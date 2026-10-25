@@ -3,8 +3,8 @@ use syntax::Language;
 use text::lower;
 
 use super::{
-    DataEntry, FindRequest, FoldedFile, match_rank, matched, matches, short_ascii_holds, top_cards,
-    unparsed_mentions,
+    DataEntry, FindRequest, FoldedFile, Needle, match_rank, matched, matches, short_ascii_holds,
+    top_cards, unparsed_mentions,
 };
 use crate::clock::{assert_spent, spent};
 use crate::endpoints::scanned::{Scanned, TESTED};
@@ -331,16 +331,48 @@ fn only_a_short_ascii_name_takes_the_stack_path() {
 }
 
 #[test]
-fn an_exact_name_ranks_above_a_qualified_name_above_a_prefix_above_the_rest() {
+fn a_name_with_its_case_ranks_above_the_name_above_a_qualified_name_above_a_prefix() {
+    let rank = |name: &str, parent: &str, query: &str| {
+        match_rank(
+            &symbol(name, parent, SymbolKind::Function),
+            &Needle::new(query),
+        )
+        .0
+    };
     let ranks = [
-        match_rank(&symbol("Area", "", SymbolKind::Function), "area").0,
-        match_rank(&symbol("area", "Square", SymbolKind::Method), "square.area").0,
-        match_rank(&symbol("Area_of", "", SymbolKind::Function), "area").0,
-        match_rank(&symbol("square_area", "", SymbolKind::Function), "area").0,
+        rank("Area", "", "Area"),
+        rank("Area", "", "area"),
+        rank("area", "Square", "Square.area"),
+        rank("Area_of", "", "area"),
+        rank("square_area", "", "area"),
     ];
-    assert_eq!(ranks, [0, 1, 2, 3]);
-    let (_, lowered) = match_rank(&symbol("MiXed", "", SymbolKind::Function), "x");
+    assert_eq!(ranks, [0, 1, 2, 3, 4]);
+    let (_, lowered) = match_rank(
+        &symbol("MiXed", "", SymbolKind::Function),
+        &Needle::new("x"),
+    );
     assert_eq!(lowered, "mixed");
+}
+
+#[test]
+fn a_name_with_the_case_of_the_query_leads_the_names_that_differ_in_case() {
+    let method = |name: &str, parent: &str| symbol(name, parent, SymbolKind::Method);
+    let files = vec![
+        file(
+            "a/filters.py",
+            vec![method("value", "Filter"), method("value", "Field")],
+        ),
+        file(
+            "b/expressions.py",
+            vec![symbol("Value", "", SymbolKind::Class)],
+        ),
+    ];
+    let result = found(files, "Value", 1);
+    let ids: Vec<&str> = (result.cards.rows().iter())
+        .map(|card| card.stable_id.as_str())
+        .collect();
+    assert_eq!(ids, ["py:b/expressions.py::Value"]);
+    assert_eq!(result.cards.total(), 3);
 }
 
 fn file(path: &str, symbols: Vec<Symbol>) -> FileSymbols {
@@ -369,13 +401,13 @@ fn the_kept_cards_are_the_first_of_the_stable_sort_at_every_limit() {
         ),
         file("a.py", vec![method("area", "Disc"), method("Area", "Ring")]),
     ];
-    let needle = "area";
+    let needle = Needle::new("area");
     let all: Vec<(&FileSymbols, &Symbol)> = (files.iter())
         .flat_map(|file| file.symbols.iter().map(move |symbol| (file, symbol)))
         .collect();
     let mut sorted = all.clone();
     sorted.sort_by_cached_key(|&(file, symbol)| {
-        let (rank, lowered) = match_rank(symbol, needle);
+        let (rank, lowered) = match_rank(symbol, &needle);
         (rank, lowered, file.path.as_str())
     });
     for limit in 1..=all.len() + 1 {
@@ -383,7 +415,7 @@ fn the_kept_cards_are_the_first_of_the_stable_sort_at_every_limit() {
             .map(|(file, symbol)| symbol_card(file.language, &file.path, symbol, String::new()))
             .collect();
         assert_eq!(
-            top_cards(all.clone(), needle, limit),
+            top_cards(all.clone(), &needle, limit),
             expected,
             "limit {limit}"
         );

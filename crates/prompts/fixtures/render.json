@@ -465,6 +465,13 @@
       },
       "text": "not checked: contract_drift did not compare src/adapters/api.py, because its text before the change cannot be measured. src/adapters/api.py does not parse"
     },
+    "cycles_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 2
+      },
+      "text": "... 2 more cycles not listed (limit 2, shortest chain first)"
+    },
     "data_key_no_fan_in": {
       "arguments": {
         "name": "receipt_header",

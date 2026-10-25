@@ -17,14 +17,16 @@ fn the_overview_of_a_data_file_is_its_key_outline_in_line_order() {
         numbered: false,
     };
     let views = skeleton(&scanned.reading(), &request);
-    let unlisted = "more keys are not listed: the outline stops at depth 2, at list items and at \
-        500 keys. Grep finds them.\n";
+    let stops = "not listed: the outline stops at depth 2, at list items and at 500 keys.";
     let cargo = "table workspace.package, 1 key  @1\n  version = \"0.11.0\"  @2\n\
-        table deps, 1 key  @3\n  a = object, 1 key  @4\n1 ";
-    assert_eq!(views[0].text, format!("{cargo}{unlisted}"));
+        table deps, 1 key  @3\n  a = object, 1 key  @4\n";
+    assert_eq!(
+        views[0].text,
+        format!("{cargo}1 more key is {stops} Grep finds it.\n")
+    );
     assert_eq!(
         views[1].text,
-        format!("document = list, 2 items\n2 {unlisted}")
+        format!("document = list, 2 items\n2 more keys are {stops} Grep finds them.\n")
     );
 }
 

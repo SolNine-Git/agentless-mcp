@@ -1,6 +1,7 @@
 //! The import cycles' two forms: arrow chains in the text, and every cycle's files in the JSON.
 
-use app::{CycleReport, CycleRow, omitted_line};
+use app::{CycleReport, CycleRow};
+use prompts::messages::CYCLES_UNLISTED;
 use serde::Serialize;
 use text::one_line;
 
@@ -33,7 +34,7 @@ fn cycles_text(report: &CycleReport) -> String {
         }
         if report.cycles.omitted() > 0 {
             let limit = report.cycles.limit();
-            lines.push(omitted_line(report.cycles.omitted(), "cycles", limit));
+            lines.push(CYCLES_UNLISTED.render((report.cycles.omitted(), limit)));
         }
     }
     let body = lines.join("\n") + "\n";

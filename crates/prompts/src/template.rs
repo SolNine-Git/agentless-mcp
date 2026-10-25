@@ -17,10 +17,11 @@ impl<S: Signature> Template<S> {
         }
     }
 
-    /// Returns the template text with each placeholder replaced by its value.
+    /// Returns the template text with each placeholder replaced by its value, and each choice by
+    /// the form its count takes.
     #[must_use]
     pub fn render(&self, values: S::Values<'_>) -> String {
-        fill(self.pieces, &S::texts(values))
+        fill(self.pieces, &S::filled(values))
     }
 
     #[cfg(test)]
@@ -32,17 +33,39 @@ impl<S: Signature> Template<S> {
 pub(crate) enum Piece {
     Text(&'static str),
     Value(usize),
+    // The position of a count, its form for a count of one, and its form for any other count.
+    Choice(usize, &'static str, &'static str),
 }
 
-pub(crate) fn fill(pieces: &[Piece], values: &[String]) -> String {
+pub(crate) fn fill(pieces: &[Piece], values: &[Filled]) -> String {
     let mut text = String::new();
     for piece in pieces {
         match *piece {
             Piece::Text(literal) => text.push_str(literal),
-            Piece::Value(position) => text.push_str(&values[position]),
+            Piece::Value(position) => text.push_str(&values[position].text),
+            Piece::Choice(position, one, many) => {
+                text.push_str(if values[position].one { one } else { many });
+            }
         }
     }
     text
+}
+
+/// The text of one value, and whether the value is a count of one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Filled {
+    text: String,
+    one: bool,
+}
+
+impl Filled {
+    pub(crate) fn new(text: String, one: bool) -> Self {
+        Self { text, one }
+    }
+}
+
+fn filled<K: Kind>(value: &K::Value<'_>) -> Filled {
+    Filled::new(value.to_string(), K::is_one(value))
 }
 
 /// The placeholder kind that takes text.
@@ -57,14 +80,25 @@ pub struct Count;
 pub trait Kind {
     /// The value that fills a placeholder of this kind.
     type Value<'a>: Display;
+
+    /// Returns true when the value is a count of one, which takes the singular form.
+    fn is_one(value: &Self::Value<'_>) -> bool;
 }
 
 impl Kind for Text {
     type Value<'a> = &'a str;
+
+    fn is_one(_: &&str) -> bool {
+        false
+    }
 }
 
 impl Kind for Count {
     type Value<'a> = usize;
+
+    fn is_one(value: &usize) -> bool {
+        *value == 1
+    }
 }
 
 /// The values that a template takes, in value order: one kind, or a tuple of 2 to 6 kinds.
@@ -72,34 +106,34 @@ pub trait Signature {
     /// The values, one per placeholder name.
     type Values<'a>;
 
-    /// Returns each value as text, in value order.
-    fn texts(values: Self::Values<'_>) -> Vec<String>;
+    /// Returns each value as text with whether it is a count of one, in value order.
+    fn filled(values: Self::Values<'_>) -> Vec<Filled>;
 }
 
 impl<K: Kind> Signature for K {
     type Values<'a> = K::Value<'a>;
 
-    fn texts(values: Self::Values<'_>) -> Vec<String> {
-        vec![values.to_string()]
+    fn filled(values: Self::Values<'_>) -> Vec<Filled> {
+        vec![filled::<K>(&values)]
     }
 }
 
 impl<A: Kind, B: Kind> Signature for (A, B) {
     type Values<'a> = (A::Value<'a>, B::Value<'a>);
 
-    fn texts(values: Self::Values<'_>) -> Vec<String> {
-        vec![values.0.to_string(), values.1.to_string()]
+    fn filled(values: Self::Values<'_>) -> Vec<Filled> {
+        vec![filled::<A>(&values.0), filled::<B>(&values.1)]
     }
 }
 
 impl<A: Kind, B: Kind, C: Kind> Signature for (A, B, C) {
     type Values<'a> = (A::Value<'a>, B::Value<'a>, C::Value<'a>);
 
-    fn texts(values: Self::Values<'_>) -> Vec<String> {
+    fn filled(values: Self::Values<'_>) -> Vec<Filled> {
         vec![
-            values.0.to_string(),
-            values.1.to_string(),
-            values.2.to_string(),
+            filled::<A>(&values.0),
+            filled::<B>(&values.1),
+            filled::<C>(&values.2),
         ]
     }
 }
@@ -107,12 +141,12 @@ impl<A: Kind, B: Kind, C: Kind> Signature for (A, B, C) {
 impl<A: Kind, B: Kind, C: Kind, D: Kind> Signature for (A, B, C, D) {
     type Values<'a> = (A::Value<'a>, B::Value<'a>, C::Value<'a>, D::Value<'a>);
 
-    fn texts(values: Self::Values<'_>) -> Vec<String> {
+    fn filled(values: Self::Values<'_>) -> Vec<Filled> {
         vec![
-            values.0.to_string(),
-            values.1.to_string(),
-            values.2.to_string(),
-            values.3.to_string(),
+            filled::<A>(&values.0),
+            filled::<B>(&values.1),
+            filled::<C>(&values.2),
+            filled::<D>(&values.3),
         ]
     }
 }
@@ -126,13 +160,13 @@ impl<A: Kind, B: Kind, C: Kind, D: Kind, E: Kind> Signature for (A, B, C, D, E) 
         E::Value<'a>,
     );
 
-    fn texts(values: Self::Values<'_>) -> Vec<String> {
+    fn filled(values: Self::Values<'_>) -> Vec<Filled> {
         vec![
-            values.0.to_string(),
-            values.1.to_string(),
-            values.2.to_string(),
-            values.3.to_string(),
-            values.4.to_string(),
+            filled::<A>(&values.0),
+            filled::<B>(&values.1),
+            filled::<C>(&values.2),
+            filled::<D>(&values.3),
+            filled::<E>(&values.4),
         ]
     }
 }
@@ -147,14 +181,14 @@ impl<A: Kind, B: Kind, C: Kind, D: Kind, E: Kind, F: Kind> Signature for (A, B, 
         F::Value<'a>,
     );
 
-    fn texts(values: Self::Values<'_>) -> Vec<String> {
+    fn filled(values: Self::Values<'_>) -> Vec<Filled> {
         vec![
-            values.0.to_string(),
-            values.1.to_string(),
-            values.2.to_string(),
-            values.3.to_string(),
-            values.4.to_string(),
-            values.5.to_string(),
+            filled::<A>(&values.0),
+            filled::<B>(&values.1),
+            filled::<C>(&values.2),
+            filled::<D>(&values.3),
+            filled::<E>(&values.4),
+            filled::<F>(&values.5),
         ]
     }
 }

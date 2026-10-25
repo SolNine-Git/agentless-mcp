@@ -402,16 +402,39 @@ a count of the symbols that did not fit.
 
 Below the ranked files the map may add a **test companion section**. The
 ranking does not produce that section. A test file is held out of the ranking
-as a pure source: the walk follows its references and no rank flows back
-along one, so a test never enters the ranked map however directly it
-exercises the files in it. It exercises the code and is never what the code
-is about, and the companion section is how it reaches the answer at all.
+as a pure source: the walk follows its references, but no rank flows back
+along one. So a test gains no rank from the files it exercises, however
+directly it exercises them. A test can still rank in two ways. In a map with
+no focus, every file gets an equal share of the walk's restart, tests
+included. And a ranked file can reference a name that a test file defines,
+which carries rank forward into the test. On the agentless-mcp repository, a
+map focused on `crates/render/src/receipt.rs` lists
+`crates/render/src/tests/rows.rs`.
+The companion section is how a test reaches the answer when the ranking does
+not list it.
+
+A file is a test when a directory in its path is `test`, `tests`, `testing`,
+`spec`, `specs` or `__tests__`, when its stem is `conftest` or ends in
+`_test`, or when its name holds `.test.` or `.spec.`. The rule reads the path,
+not the code. So a package named `test`, such as Django's `django/test/`,
+reads as tests. A Rust unit-test module such as `src/worktree/tests.rs`, and a
+`src/testing.rs`, do not, and they rank as source files.
+
+On this project's fixture `tests/characterization/fixtures/repo_py_tests`, a
+map focused on `pricing.py` ends with this section:
 
 ```
 tests exercising the files above:
-  tests/test_pricing.py:12-31  covers src/billing/invoice.py, src/billing/book.py
-... 3 more test files not listed (limit 5)
+  tests/test_pricing.py:37-41  -- file references inventory.py, pricing.py, reports.py
+  tests/test_cli.py:13-19  -- file references cli.py, pricing.py
 ```
+
+The span is the one symbol of the test that references a file above it. The
+files after `-- file references` are the files that the whole test file
+references, so the span need not name each of them. A section that the cap
+cuts ends with a count, as a map of Django focused on
+`django/db/models/expressions.py` does:
+`... 846 more test files not listed (limit 5)`.
 
 A test qualifies only when it references a seeded or chosen file **by name**.
 An import alone does not list it. What the row is worth over a bare path is
@@ -503,8 +526,10 @@ rather than first-come-first-served:
   repeats until a round settles nobody, so short bodies are never cut while a
   longer one is still whole.
 * The bodies still over budget then share what is left equally. The tool cuts
-  each one to its leading lines, and each carries its own marker:
-  `... 109 of 769 lines shown: the batch did not fit the output ceiling.`
+  each one to its leading lines, and each carries its own marker. Django's
+  `QuerySet`, expanded with three other large classes, carries
+  `... 272 of 1267 lines shown: the batch did not fit the output ceiling.
+  Expand this id on its own for the whole body.`
 * Every requested id therefore comes back with its location, its signature
   and at least the head of its body. An id that got no content at all is a
   bug.
@@ -544,7 +569,14 @@ past the end. Good ranges in the same call still render alongside the report.
 agentless-mcp find-symbol quote --kind method --limit 20
 ```
 
-The command matches a substring or a qualified name, ranked exact-first.
+The command matches a substring or a qualified name, and the match ignores
+case. The cards come in five tiers: first a name exactly as the query writes
+it, then a name that differs from the query only in case, then a qualified
+name equal to the query, then a name that starts with the query, and then
+every other match. In one tier, the cards come in the order of the lowered
+name, then of the path. So `find-symbol Value` lists the class `Value` before
+the `value` methods.
+
 Output is incident cards: id, `@line-line`, kind, signature. Everything is in
 one place rather than joined across rows:
 
@@ -603,12 +635,13 @@ code spelling of a key is not a reference to the data file, and a string value
 in a data file references nothing. Use `grep` to find where a key is spelled.
 
 The tool now **labels every group with the evidence tier behind it**, so the
-over-reporting costs you nothing:
+over-reporting costs you nothing. These group headers come from
+`refs py:django/db/models/expressions.py::F --limit 10` on Django:
 
 ```
-core.py  (1 references, same-file)
-user.py  (2 references, resolved-via-import)
-shadow.py  (2 references, name-only-ambiguous)
+django/contrib/admin/checks.py  (1 reference, resolved-via-import)
+django/contrib/admin/static/admin/js/vendor/jquery/jquery.min.js  (1 reference, name-only-ambiguous)
+django/db/models/expressions.py  (1 reference, same-file)
 ```
 
 | Tier | What it means |
@@ -622,21 +655,31 @@ Read the top two tiers as callers and the bottom two as candidates. The tool
 never drops a row for a weak tier. The label is there so you can weigh the
 rows.
 
+The groups come in path order, and the groups of one file come in tier order,
+strongest first. The tier does not order the groups across files, so a weak
+group can come before a strong one: above, the name-only `jquery.min.js`
+group is second. The limit takes one site from each file in turn, in path
+order, so a cut never drops a whole file while another file keeps a second
+site.
+
 `--shared-callers` answers the DRY question: which other symbols do *your*
 callers already use, i.e. "do we already have a utility for this?". Rows are
 ranked, and the ranking is the useful part. The same `--limit` that bounds
 the reference groups bounds this listing too. The tool shows at most that
 many candidates, each with at most five of its shared callers. It prints
 everything past either cap as a `... N more not listed` count rather than
-silently drop it:
+silently drop it. On this project's fixture
+`tests/characterization/fixtures/repo_py`, `refs format_money --shared-callers`
+gives:
 
 ```
-symbols sharing callers with quote
-  py:util.py::format_currency    util.py:9  (2 shared callers in 2 files, score 0.278)
-      run_billing    billing.py:5
-      post    ledger.py:5
-  py:util.py::log    util.py:4  (3 shared callers in 3 files, score 0.234)
-      ...
+symbols sharing callers with format_money
+  [py:pricing.py::PriceBook] @26  (2 shared callers in 1 file, score 0.226)
+      reorder_report    reports.py:29
+      summarise    reports.py:69
+  [py:inventory.py::Inventory] @44  (2 shared callers in 1 file, score 0.183)
+      reorder_report    reports.py:29
+      summarise    reports.py:69
 ```
 
 `shared_files` counts the distinct files the shared callers live in. Four
@@ -650,11 +693,11 @@ builder that calls half the codebase contributes almost nothing, while a
 two-line caller contributes nearly a full vote. Shared callers with small
 fan-out are the informative ones.
 
-The tool never hides candidates defined under a test tree (a `test`/`tests`
-path segment, or a `conftest` module). But they rank below every production
-candidate whatever their score, grouped under a `defined in tests` heading.
-The question is whether a *production* utility already exists. Every row and
-every caller carries `file:line`.
+The tool never hides candidates defined in a test file, by the rule of the
+`map` section. But they rank below every production candidate whatever their
+score, grouped under a `defined in tests` heading. The question is whether a
+*production* utility already exists. Every candidate row carries the
+candidate's stable id and `@line`, and every caller carries `file:line`.
 
 ### `history` (`history`) -- why does this code exist
 
@@ -726,23 +769,28 @@ The output is the card `find-symbol` gives you, plus everything around it:
 - how its file sits in the import graph
 
 Both fan sections group by the same tiers `refs` labels, strongest first.
-Each section has a cap per tier, and the omitted count is printed.
+Each section has a cap per tier, and the omitted count is printed. On this
+project's fixture `tests/characterization/fixtures/repo_py`,
+`explain reorder_report` gives:
 
 ```
-py:reports.py::reorder_report
-  reports.py:29-44  function (python)
+[py:reports.py::reorder_report] @29-44
+  function
   def reorder_report(inventory: Inventory, prices: PriceBook) -> str
 
-references (fan-out): 8
+references (fan-out): 5
   same-file (2)
-    references SEPARATOR    reports.py:9    [py:reports.py::SEPARATOR]
-  resolved-via-import (4)
-    references PriceBook    pricing.py:26    [py:pricing.py::PriceBook]
-  ...
+    references SEPARATOR    [py:reports.py::SEPARATOR] @9
+    references _format_row    [py:reports.py::_format_row] @47
+  resolved-via-import (3)
+    references Inventory    [py:inventory.py::Inventory] @44
+    references PriceBook    [py:pricing.py::PriceBook] @26
+    references format_money    [py:pricing.py::format_money] @78
 
 referenced by (fan-in): none
 
 imports
+    declares  inventory -> inventory.py    reports.py:5
     declares  pricing -> pricing.py    reports.py:6
     imported by  nothing in this repository
 ```
@@ -843,6 +891,16 @@ One component is one row. Files that are all mutually reachable are a single
 knot, however many small loops run inside it. A repository with a five-file
 tangle therefore reports one five-file cycle rather than every loop within
 it.
+
+The rows come shortest chain first, then in the order of the chain's paths.
+The size of the component does not order them, so a limit can cut the largest
+knot. When a limit cuts the list, the last line says so and names the order.
+On Element Web, `cycles --limit 2` lists two three-file knots and leaves out a
+755-file one:
+
+```
+... 2 more cycles not listed (limit 2, shortest chain first)
+```
 
 The tool resolves import edges best effort. A module string this tool cannot
 map to a file in the repository contributes no edge. A cycle that runs
@@ -1100,8 +1158,8 @@ variable: MAX_ITEMS
 
 It returns matched stable ids and merged intervals, widened by `--context`.
 Anything that does not resolve comes back in `unrecognized` with a reason
-(`no class named 'Invoic'`, `'total' is ambiguous: defined in A, B`). A typo
-is therefore visible instead of quietly shrinking the answer.
+(`no class named 'Pricebok' in pricing.py`, `'total' is ambiguous: defined in
+A, B`). A typo is therefore visible instead of quietly shrinking the answer.
 
 ### `capabilities` (`capabilities`) -- what is loaded, what is capped
 
@@ -1145,10 +1203,12 @@ stale. Opt out with `--no-auto-index` or `AGENTLESS_MCP_NO_AUTO_INDEX`. A
 held lock is a silent skip, since another process is already refreshing. The
 CLI never indexes implicitly. This command is its one, explicit path. The
 database lives under `$XDG_CACHE_HOME/agentless-mcp/`, never inside the
-repository being analyzed. One line reports what happened:
+repository being analyzed. One line reports what happened. A first index of
+the fixture `tests/characterization/fixtures/repo_py` reports, with the cache
+root cut:
 
 ```
-indexed 42, reused 517, pruned 3, skipped 0, errors 0: 559 files, 17740 tags, 1204 imports, 98311 refs at g:1a2b3c4d in /home/you/.cache/agentless-mcp/9f2c.../tags.db
+indexed 3, reused 0, pruned 0, skipped 0, errors 0: 3 files, 33 tags, 8 imports, 573 refs at g:9e93a4f0 in .../agentless-mcp/e3391bfac8bd4e9b/agentless.db
 ```
 
 Each run ends by releasing cold repository caches until the cache root fits
@@ -1577,15 +1637,19 @@ to catch.
 #### `verdicts.jsonl`
 
 JSON Lines: one `run` record, then one `candidate` record each, in
-first-appearance order.
+first-appearance order. One candidate validated on the fixture
+`tests/characterization/fixtures/repo_py` writes these records, cut where
+they show `...`:
 
 ```
-{"record": "run", "receipt": {...}, "test_cmd": "...", "repro_cmd": "...",
- "baseline": "ok", "repro_verdict": "reproduces", "repro_valid": true, ...}
+{"record": "run", "receipt": {...}, "test_cmd": "python3 -c \"import pricing\"",
+ "repro_cmd": "grep -q USD pricing.py", ..., "baseline": "ok", ...,
+ "repro_verdict": "reproduces", "repro_valid": true, ...}
 {"record": "candidate", "id": "01-plus", "index": 0,
  "apply": {"status": "ok", "reasons": []}, "regression": "passed",
- "reproduction": "passed", "equivalence_key": "8f3a...",
- "execution_group": "sha256:91c...", "executed_as": "01-plus", "duration": 2.41}
+ "reproduction": "passed", "equivalence_key": "a0e7...", "duration": 0.019,
+ "budget_truncated": false, "execution_group": "sha256:7eb6...",
+ "executed_as": "01-plus"}
 ```
 
 `apply.status` is `ok`, `failed`, or `not_evaluated`. A failed apply carries

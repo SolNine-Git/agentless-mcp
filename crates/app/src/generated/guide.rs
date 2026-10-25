@@ -361,41 +361,64 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         ranked files the map may add a **test companion section**. \
         The\nranking does not produce that section. A test file is held \
         out of the ranking\nas a pure source: the walk follows its \
-        references and no rank flows back\nalong one, so a test never \
-        enters the ranked map however directly it\nexercises the files \
-        in it. It exercises the code and is never what the code\nis \
-        about, and the companion section is how it reaches the answer \
-        at all.\n\n```\ntests exercising the files above:\n  \
-        tests/test_pricing.py:12-31  covers src/billing/invoice.py, \
-        src/billing/book.py\n... 3 more test files not listed (limit \
-        5)\n```\n\nA test qualifies only when it references a seeded or \
-        chosen file **by name**.\nAn import alone does not list it. \
-        What the row is worth over a bare path is\nits line range, and \
-        an import gives nothing to point at.\n\nOne row per test file. \
-        A broad suite that touches six ranked files says so on\nits own \
-        row instead of taking six of them. Rows are ranked by flood \
-        depth\nfirst, then by how many ranked files the test covers, \
-        then by aggregated edge\nweight, then by path. The walk reaches \
-        two hops, so a test that exercises its\nsubject through a \
-        helper is still listed. The section is capped at five rows\nand \
-        is omitted entirely when it is empty, so a repository with no \
-        tests pays\nnothing for it.\n\nThe JSON form carries the same \
-        section under `test_companions`, shaped\n`{total, limit, \
-        omitted, rows}`. `total` is how many test files were \
-        found\nbefore the cap and `omitted` how many the cap left out. \
-        Each row is\n`{path, start, end, covers, depth, weight}`: \
-        `start` and `end` are the span of\nthe referencing symbol \
-        inside the test, never the whole file; `covers` names\nthe \
-        ranked or seeded files that one test reaches; `depth` is its \
-        distance from\nthem; `weight` is the aggregated edge weight \
-        behind it.\n\nTwo things the section cannot see, both \
-        properties of the graph rather than of\nthe section. A fixture \
-        with no grammar is never parsed, so it appears in no\nedge. And \
-        a test whose only use of its subject is a method on a value \
-        built\nelsewhere -- `s.Parse()`, `obj.method()` -- spells an \
-        attribute reference,\nwhich is not an edge at any tier.\n\n### \
-        `tree` (`read` operation `dir`) -- what \
-        exists\n\n```\nagentless-mcp tree --depth 4 --max-entries \
+        references, but no rank flows back\nalong one. So a test gains \
+        no rank from the files it exercises, however\ndirectly it \
+        exercises them. A test can still rank in two ways. In a map \
+        with\nno focus, every file gets an equal share of the walk's \
+        restart, tests\nincluded. And a ranked file can reference a \
+        name that a test file defines,\nwhich carries rank forward into \
+        the test. On the agentless-mcp repository, a\nmap focused on \
+        `crates/render/src/receipt.rs` \
+        lists\n`crates/render/src/tests/rows.rs`.\nThe companion \
+        section is how a test reaches the answer when the ranking \
+        does\nnot list it.\n\nA file is a test when a directory in its \
+        path is `test`, `tests`, `testing`,\n`spec`, `specs` or \
+        `__tests__`, when its stem is `conftest` or ends in\n`_test`, \
+        or when its name holds `.test.` or `.spec.`. The rule reads the \
+        path,\nnot the code. So a package named `test`, such as \
+        Django's `django/test/`,\nreads as tests. A Rust unit-test \
+        module such as `src/worktree/tests.rs`, and \
+        a\n`src/testing.rs`, do not, and they rank as source \
+        files.\n\nOn this project's fixture \
+        `tests/characterization/fixtures/repo_py_tests`, a\nmap focused \
+        on `pricing.py` ends with this section:\n\n```\ntests \
+        exercising the files above:\n  tests/test_pricing.py:37-41  -- \
+        file references inventory.py, pricing.py, reports.py\n  \
+        tests/test_cli.py:13-19  -- file references cli.py, \
+        pricing.py\n```\n\nThe span is the one symbol of the test that \
+        references a file above it. The\nfiles after `-- file \
+        references` are the files that the whole test file\nreferences, \
+        so the span need not name each of them. A section that the \
+        cap\ncuts ends with a count, as a map of Django focused \
+        on\n`django/db/models/expressions.py` does:\n`... 846 more test \
+        files not listed (limit 5)`.\n\nA test qualifies only when it \
+        references a seeded or chosen file **by name**.\nAn import \
+        alone does not list it. What the row is worth over a bare path \
+        is\nits line range, and an import gives nothing to point \
+        at.\n\nOne row per test file. A broad suite that touches six \
+        ranked files says so on\nits own row instead of taking six of \
+        them. Rows are ranked by flood depth\nfirst, then by how many \
+        ranked files the test covers, then by aggregated edge\nweight, \
+        then by path. The walk reaches two hops, so a test that \
+        exercises its\nsubject through a helper is still listed. The \
+        section is capped at five rows\nand is omitted entirely when it \
+        is empty, so a repository with no tests pays\nnothing for \
+        it.\n\nThe JSON form carries the same section under \
+        `test_companions`, shaped\n`{total, limit, omitted, rows}`. \
+        `total` is how many test files were found\nbefore the cap and \
+        `omitted` how many the cap left out. Each row is\n`{path, \
+        start, end, covers, depth, weight}`: `start` and `end` are the \
+        span of\nthe referencing symbol inside the test, never the \
+        whole file; `covers` names\nthe ranked or seeded files that one \
+        test reaches; `depth` is its distance from\nthem; `weight` is \
+        the aggregated edge weight behind it.\n\nTwo things the section \
+        cannot see, both properties of the graph rather than of\nthe \
+        section. A fixture with no grammar is never parsed, so it \
+        appears in no\nedge. And a test whose only use of its subject \
+        is a method on a value built\nelsewhere -- `s.Parse()`, \
+        `obj.method()` -- spells an attribute reference,\nwhich is not \
+        an edge at any tier.\n\n### `tree` (`read` operation `dir`) -- \
+        what exists\n\n```\nagentless-mcp tree --depth 4 --max-entries \
         500\n```\n\nThe listing is gitignore-aware, via `git ls-files` \
         where the directory is a\nrepository. The output marks both \
         truncations: depth elision and the entry\ncap. The tool never \
@@ -442,9 +465,11 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         repeats until a round settles nobody, so short bodies are never \
         cut while a\n  longer one is still whole.\n* The bodies still \
         over budget then share what is left equally. The tool cuts\n  \
-        each one to its leading lines, and each carries its own \
-        marker:\n  `... 109 of 769 lines shown: the batch did not fit \
-        the output ceiling.`\n* Every requested id therefore comes back \
+        each one to its leading lines, and each carries its own marker. \
+        Django's\n  `QuerySet`, expanded with three other large \
+        classes, carries\n  `... 272 of 1267 lines shown: the batch did \
+        not fit the output ceiling.\n  Expand this id on its own for \
+        the whole body.`\n* Every requested id therefore comes back \
         with its location, its signature\n  and at least the head of \
         its body. An id that got no content at all is a\n  bug.\n* A \
         summary line under the cards names how many bodies were \
@@ -473,9 +498,16 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         alongside the report.\n\n### `find-symbol` (`symbols` operation \
         `find`) -- name lookup\n\n```\nagentless-mcp find-symbol quote \
         --kind method --limit 20\n```\n\nThe command matches a \
-        substring or a qualified name, ranked exact-first.\nOutput is \
-        incident cards: id, `@line-line`, kind, signature. Everything \
-        is in\none place rather than joined across \
+        substring or a qualified name, and the match ignores\ncase. The \
+        cards come in five tiers: first a name exactly as the query \
+        writes\nit, then a name that differs from the query only in \
+        case, then a qualified\nname equal to the query, then a name \
+        that starts with the query, and then\nevery other match. In one \
+        tier, the cards come in the order of the lowered\nname, then of \
+        the path. So `find-symbol Value` lists the class `Value` \
+        before\nthe `value` methods.\n\nOutput is incident cards: id, \
+        `@line-line`, kind, signature. Everything is in\none place \
+        rather than joined across \
         rows:\n\n```\n[py:src/app/svc.py::Invoice.total] @12-30\n  \
         method\n  def total(self)\n```\n\nThe id carries the rest. Its \
         prefix names the language, and its qualified name\nnames the \
@@ -518,10 +550,14 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         to the data file, and a string value\nin a data file references \
         nothing. Use `grep` to find where a key is spelled.\n\nThe tool \
         now **labels every group with the evidence tier behind it**, so \
-        the\nover-reporting costs you nothing:\n\n```\ncore.py  (1 \
-        references, same-file)\nuser.py  (2 references, \
-        resolved-via-import)\nshadow.py  (2 references, \
-        name-only-ambiguous)\n```\n\n| Tier | What it means \
+        the\nover-reporting costs you nothing. These group headers come \
+        from\n`refs py:django/db/models/expressions.py::F --limit 10` \
+        on Django:\n\n```\ndjango/contrib/admin/checks.py  (1 \
+        reference, \
+        resolved-via-import)\ndjango/contrib/admin/static/admin/js/vendor/jquery/jquery.min.js  \
+        (1 reference, \
+        name-only-ambiguous)\ndjango/db/models/expressions.py  (1 \
+        reference, same-file)\n```\n\n| Tier | What it means \
         |\n|---|---|\n| `same-file` | the referencing file defines the \
         target itself |\n| `resolved-via-import` | the referencing file \
         imports the file the target is defined in, by name or as a \
@@ -533,42 +569,54 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         not to your target |\n\nRead the top two tiers as callers and \
         the bottom two as candidates. The tool\nnever drops a row for a \
         weak tier. The label is there so you can weigh \
-        the\nrows.\n\n`--shared-callers` answers the DRY question: \
+        the\nrows.\n\nThe groups come in path order, and the groups of \
+        one file come in tier order,\nstrongest first. The tier does \
+        not order the groups across files, so a weak\ngroup can come \
+        before a strong one: above, the name-only \
+        `jquery.min.js`\ngroup is second. The limit takes one site from \
+        each file in turn, in path\norder, so a cut never drops a whole \
+        file while another file keeps a \
+        second\nsite.\n\n`--shared-callers` answers the DRY question: \
         which other symbols do *your*\ncallers already use, i.e. \"do \
         we already have a utility for this?\". Rows are\nranked, and \
         the ranking is the useful part. The same `--limit` that \
         bounds\nthe reference groups bounds this listing too. The tool \
         shows at most that\nmany candidates, each with at most five of \
         its shared callers. It prints\neverything past either cap as a \
-        `... N more not listed` count rather than\nsilently drop \
-        it:\n\n```\nsymbols sharing callers with quote\n  \
-        py:util.py::format_currency    util.py:9  (2 shared callers in \
-        2 files, score 0.278)\n      run_billing    billing.py:5\n      \
-        post    ledger.py:5\n  py:util.py::log    util.py:4  (3 shared \
-        callers in 3 files, score 0.234)\n      \
-        ...\n```\n\n`shared_files` counts the distinct files the shared \
-        callers live in. Four\ncallers in one module is one team's \
-        habit. Four across four modules is a\nutility. `score` starts \
-        from that spread and applies two log dampings, both\nthe same \
-        treatment the map's edge weights use. The first damping keys on \
-        how\nmany files mention the candidate's name. A name every file \
-        mentions therefore\ncannot out-rank a genuinely shared helper \
-        just by colliding with more\ncallers. The second damping keys \
-        on each shared caller's own fan-out. A test\nbuilder that calls \
-        half the codebase contributes almost nothing, while a\ntwo-line \
-        caller contributes nearly a full vote. Shared callers with \
+        `... N more not listed` count rather than\nsilently drop it. On \
+        this project's \
+        fixture\n`tests/characterization/fixtures/repo_py`, `refs \
+        format_money --shared-callers`\ngives:\n\n```\nsymbols sharing \
+        callers with format_money\n  [py:pricing.py::PriceBook] @26  (2 \
+        shared callers in 1 file, score 0.226)\n      reorder_report    \
+        reports.py:29\n      summarise    reports.py:69\n  \
+        [py:inventory.py::Inventory] @44  (2 shared callers in 1 file, \
+        score 0.183)\n      reorder_report    reports.py:29\n      \
+        summarise    reports.py:69\n```\n\n`shared_files` counts the \
+        distinct files the shared callers live in. Four\ncallers in one \
+        module is one team's habit. Four across four modules is \
+        a\nutility. `score` starts from that spread and applies two log \
+        dampings, both\nthe same treatment the map's edge weights use. \
+        The first damping keys on how\nmany files mention the \
+        candidate's name. A name every file mentions therefore\ncannot \
+        out-rank a genuinely shared helper just by colliding with \
+        more\ncallers. The second damping keys on each shared caller's \
+        own fan-out. A test\nbuilder that calls half the codebase \
+        contributes almost nothing, while a\ntwo-line caller \
+        contributes nearly a full vote. Shared callers with \
         small\nfan-out are the informative ones.\n\nThe tool never \
-        hides candidates defined under a test tree (a \
-        `test`/`tests`\npath segment, or a `conftest` module). But they \
-        rank below every production\ncandidate whatever their score, \
-        grouped under a `defined in tests` heading.\nThe question is \
-        whether a *production* utility already exists. Every row \
-        and\nevery caller carries `file:line`.\n\n### `history` \
-        (`history`) -- why does this code exist\n\n```\nagentless-mcp \
-        history py:src/app/svc.py::Invoice.total --limit 10\n```\n\nThe \
-        command lists the commits that changed the symbol's lines, \
-        newest first,\neach with its full message body. `target` is a \
-        stable id from `map`,\n`skeleton`, `find-symbol`, `explain` or \
+        hides candidates defined in a test file, by the rule of \
+        the\n`map` section. But they rank below every production \
+        candidate whatever their\nscore, grouped under a `defined in \
+        tests` heading. The question is whether a\n*production* utility \
+        already exists. Every candidate row carries the\ncandidate's \
+        stable id and `@line`, and every caller carries \
+        `file:line`.\n\n### `history` (`history`) -- why does this code \
+        exist\n\n```\nagentless-mcp history \
+        py:src/app/svc.py::Invoice.total --limit 10\n```\n\nThe command \
+        lists the commits that changed the symbol's lines, newest \
+        first,\neach with its full message body. `target` is a stable \
+        id from `map`,\n`skeleton`, `find-symbol`, `explain` or \
         `resolve-locs`. A bare name is\nrefused, because history is \
         span-scoped and a name can resolve to \
         several\nspans.\n\n```\npy:src/app/svc.py::Invoice.total  \
@@ -620,30 +668,36 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         (fan-in)\n- how its file sits in the import graph\n\nBoth fan \
         sections group by the same tiers `refs` labels, strongest \
         first.\nEach section has a cap per tier, and the omitted count \
-        is printed.\n\n```\npy:reports.py::reorder_report\n  \
-        reports.py:29-44  function (python)\n  def \
-        reorder_report(inventory: Inventory, prices: PriceBook) -> \
-        str\n\nreferences (fan-out): 8\n  same-file (2)\n    references \
-        SEPARATOR    reports.py:9    [py:reports.py::SEPARATOR]\n  \
-        resolved-via-import (4)\n    references PriceBook    \
-        pricing.py:26    [py:pricing.py::PriceBook]\n  \
-        ...\n\nreferenced by (fan-in): none\n\nimports\n    declares  \
-        pricing -> pricing.py    reports.py:6\n    imported by  nothing \
-        in this repository\n```\n\nUse it as the orientation call for \
-        one symbol, in place of a `find-symbol`\nplus `refs` pair. \
-        `target` is a stable id or a qualified name. When a bare\nname \
-        has several definitions, the tool explains the first in path \
-        order and\nlists at most `limit` of the rest as `also defined \
-        at`, then a line that\ncounts the rest it leaves out. An \
-        unknown target is a message and exit 1,\nnever an \
-        exception.\n\nFan-out is *resolved* references, not a call \
-        list. It includes the classes a\nsignature names and the \
-        constants a body reads. It counts one relationship\nper pair, \
-        however many times the name appears. For the individual call \
-        sites\nwith their line numbers, use `refs`.\n\n### `path` \
-        (`orient` operation `path`) -- how are these two \
-        connected\n\n```\nagentless-mcp path reorder_report \
-        format_money\nagentless-mcp path py:reports.py::reorder_report \
+        is printed. On this\nproject's fixture \
+        `tests/characterization/fixtures/repo_py`,\n`explain \
+        reorder_report` gives:\n\n```\n[py:reports.py::reorder_report] \
+        @29-44\n  function\n  def reorder_report(inventory: Inventory, \
+        prices: PriceBook) -> str\n\nreferences (fan-out): 5\n  \
+        same-file (2)\n    references SEPARATOR    \
+        [py:reports.py::SEPARATOR] @9\n    references _format_row    \
+        [py:reports.py::_format_row] @47\n  resolved-via-import \
+        (3)\n    references Inventory    [py:inventory.py::Inventory] \
+        @44\n    references PriceBook    [py:pricing.py::PriceBook] \
+        @26\n    references format_money    \
+        [py:pricing.py::format_money] @78\n\nreferenced by (fan-in): \
+        none\n\nimports\n    declares  inventory -> inventory.py    \
+        reports.py:5\n    declares  pricing -> pricing.py    \
+        reports.py:6\n    imported by  nothing in this \
+        repository\n```\n\nUse it as the orientation call for one \
+        symbol, in place of a `find-symbol`\nplus `refs` pair. `target` \
+        is a stable id or a qualified name. When a bare\nname has \
+        several definitions, the tool explains the first in path order \
+        and\nlists at most `limit` of the rest as `also defined at`, \
+        then a line that\ncounts the rest it leaves out. An unknown \
+        target is a message and exit 1,\nnever an exception.\n\nFan-out \
+        is *resolved* references, not a call list. It includes the \
+        classes a\nsignature names and the constants a body reads. It \
+        counts one relationship\nper pair, however many times the name \
+        appears. For the individual call sites\nwith their line \
+        numbers, use `refs`.\n\n### `path` (`orient` operation `path`) \
+        -- how are these two connected\n\n```\nagentless-mcp path \
+        reorder_report format_money\nagentless-mcp path \
+        py:reports.py::reorder_report \
         py:pricing.py::format_money\n```\n\n```json\n{\"operation\": \
         \"path\", \"source\": \"reorder_report\", \"target\": \
         \"format_money\"}\n```\n\nThe command finds the fewest-hop \
@@ -704,10 +758,17 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         that are all mutually reachable are a single\nknot, however \
         many small loops run inside it. A repository with a \
         five-file\ntangle therefore reports one five-file cycle rather \
-        than every loop within\nit.\n\nThe tool resolves import edges \
-        best effort. A module string this tool cannot\nmap to a file in \
-        the repository contributes no edge. A cycle that runs\nthrough \
-        a dynamic import or an unusual path alias therefore will not \
+        than every loop within\nit.\n\nThe rows come shortest chain \
+        first, then in the order of the chain's paths.\nThe size of the \
+        component does not order them, so a limit can cut the \
+        largest\nknot. When a limit cuts the list, the last line says \
+        so and names the order.\nOn Element Web, `cycles --limit 2` \
+        lists two three-file knots and leaves out a\n755-file \
+        one:\n\n```\n... 2 more cycles not listed (limit 2, shortest \
+        chain first)\n```\n\nThe tool resolves import edges best \
+        effort. A module string this tool cannot\nmap to a file in the \
+        repository contributes no edge. A cycle that runs\nthrough a \
+        dynamic import or an unusual path alias therefore will not \
         appear.\n\n### `communities` (`orient` operation `communities`) \
         -- which files belong together\n\n```\nagentless-mcp \
         communities --resolution 0.5 --limit 20 --members \
@@ -935,19 +996,19 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         name\nline: 142\nvariable: MAX_ITEMS\n```\n\nIt returns matched \
         stable ids and merged intervals, widened by \
         `--context`.\nAnything that does not resolve comes back in \
-        `unrecognized` with a reason\n(`no class named 'Invoic'`, \
-        `'total' is ambiguous: defined in A, B`). A typo\nis therefore \
-        visible instead of quietly shrinking the answer.\n\n### \
-        `capabilities` (`capabilities`) -- what is loaded, what is \
-        capped\n\nThe report holds:\n\n- the server's own version\n- \
-        grammar versions, support tier and warm state per language\n- \
-        the file extensions each language claims\n- the tag-cache \
-        generation\n- the configured roots and the roots the client \
-        advertised\n- the project config in force\n- every bound (walk \
-        depth, file count, per-file bytes, output tokens)\n- the `lint` \
-        checks, each with the input it reads (`patch`, `pairs`, or\n  \
-        `pairs+clones`)\n\nThe report names an absent tag cache with \
-        the exact\n`agentless-mcp index --repo PATH` command that \
+        `unrecognized` with a reason\n(`no class named 'Pricebok' in \
+        pricing.py`, `'total' is ambiguous: defined in\nA, B`). A typo \
+        is therefore visible instead of quietly shrinking the \
+        answer.\n\n### `capabilities` (`capabilities`) -- what is \
+        loaded, what is capped\n\nThe report holds:\n\n- the server's \
+        own version\n- grammar versions, support tier and warm state \
+        per language\n- the file extensions each language claims\n- the \
+        tag-cache generation\n- the configured roots and the roots the \
+        client advertised\n- the project config in force\n- every bound \
+        (walk depth, file count, per-file bytes, output tokens)\n- the \
+        `lint` checks, each with the input it reads (`patch`, `pairs`, \
+        or\n  `pairs+clones`)\n\nThe report names an absent tag cache \
+        with the exact\n`agentless-mcp index --repo PATH` command that \
         builds it. Check the report\nwhen:\n\n- a view stops short and \
         you want to know which bound did it\n- a file was skipped and \
         you want to know whether its grammar is warmed\n- root \
@@ -973,14 +1034,16 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         indexes implicitly. This command is its one, explicit path. \
         The\ndatabase lives under `$XDG_CACHE_HOME/agentless-mcp/`, \
         never inside the\nrepository being analyzed. One line reports \
-        what happened:\n\n```\nindexed 42, reused 517, pruned 3, \
-        skipped 0, errors 0: 559 files, 17740 tags, 1204 imports, 98311 \
-        refs at g:1a2b3c4d in \
-        /home/you/.cache/agentless-mcp/9f2c.../tags.db\n```\n\nEach run \
-        ends by releasing cold repository caches until the cache root \
-        fits\nunder 5 GiB, least-recently-used first, and reports them \
-        on the summary line\nwhen it releases any. Nothing used in the \
-        last 24 hours is touched, so a\nworking set larger than the \
+        what happened. A first index of\nthe fixture \
+        `tests/characterization/fixtures/repo_py` reports, with the \
+        cache\nroot cut:\n\n```\nindexed 3, reused 0, pruned 0, skipped \
+        0, errors 0: 3 files, 33 tags, 8 imports, 573 refs at \
+        g:9e93a4f0 in \
+        .../agentless-mcp/e3391bfac8bd4e9b/agentless.db\n```\n\nEach \
+        run ends by releasing cold repository caches until the cache \
+        root fits\nunder 5 GiB, least-recently-used first, and reports \
+        them on the summary line\nwhen it releases any. Nothing used in \
+        the last 24 hours is touched, so a\nworking set larger than the \
         ceiling exceeds it rather than evicting a\nrepository still in \
         use -- deleting one costs a full re-index, which is more\nthan \
         it reclaims. Set `AGENTLESS_MCP_MAX_CACHE_BYTES` to another \
@@ -1448,21 +1511,26 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         your fix\nand for nothing else. That is the failure mode the \
         reproduction rung exists\nto catch.\n\n#### \
         `verdicts.jsonl`\n\nJSON Lines: one `run` record, then one \
-        `candidate` record each, in\nfirst-appearance \
-        order.\n\n```\n{\"record\": \"run\", \"receipt\": {...}, \
-        \"test_cmd\": \"...\", \"repro_cmd\": \"...\",\n \"baseline\": \
-        \"ok\", \"repro_verdict\": \"reproduces\", \"repro_valid\": \
-        true, ...}\n{\"record\": \"candidate\", \"id\": \"01-plus\", \
+        `candidate` record each, in\nfirst-appearance order. One \
+        candidate validated on the \
+        fixture\n`tests/characterization/fixtures/repo_py` writes these \
+        records, cut where\nthey show `...`:\n\n```\n{\"record\": \
+        \"run\", \"receipt\": {...}, \"test_cmd\": \"python3 -c \
+        \\\"import pricing\\\"\",\n \"repro_cmd\": \"grep -q USD \
+        pricing.py\", ..., \"baseline\": \"ok\", ...,\n \
+        \"repro_verdict\": \"reproduces\", \"repro_valid\": true, \
+        ...}\n{\"record\": \"candidate\", \"id\": \"01-plus\", \
         \"index\": 0,\n \"apply\": {\"status\": \"ok\", \"reasons\": \
         []}, \"regression\": \"passed\",\n \"reproduction\": \
-        \"passed\", \"equivalence_key\": \"8f3a...\",\n \
-        \"execution_group\": \"sha256:91c...\", \"executed_as\": \
-        \"01-plus\", \"duration\": 2.41}\n```\n\n`apply.status` is \
-        `ok`, `failed`, or `not_evaluated`. A failed apply carries\none \
-        reason per block (`not_found`, `ambiguous`, `unreadable`, and \
-        so on), and\nno test runs for it. `not_evaluated` means the run \
-        never reached this\ncandidate at all: an unverified baseline, \
-        or `--run-timeout` expiring. That\nstatus is deliberately not \
+        \"passed\", \"equivalence_key\": \"a0e7...\", \"duration\": \
+        0.019,\n \"budget_truncated\": false, \"execution_group\": \
+        \"sha256:7eb6...\",\n \"executed_as\": \
+        \"01-plus\"}\n```\n\n`apply.status` is `ok`, `failed`, or \
+        `not_evaluated`. A failed apply carries\none reason per block \
+        (`not_found`, `ambiguous`, `unreadable`, and so on), and\nno \
+        test runs for it. `not_evaluated` means the run never reached \
+        this\ncandidate at all: an unverified baseline, or \
+        `--run-timeout` expiring. That\nstatus is deliberately not \
         `failed`, because a report that says a patch\nfailed when \
         nothing ran invents evidence. Such candidates are excluded \
         from\nthe vote ladder rather than ranked, and the run says \
@@ -1618,30 +1686,30 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3599, 4432),
     ("stable-ids", 4434, 5752),
     ("the-two-surfaces", 5754, 11298),
-    ("per-tool-usage", 11300, 88880),
+    ("per-tool-usage", 11300, 92507),
     ("claude-code-specifics", 13058, 14689),
-    ("map", 14691, 22994),
-    ("tree", 22996, 23317),
-    ("skeleton", 23319, 24684),
-    ("expand", 24686, 26538),
-    ("slice", 26540, 27377),
-    ("find-symbol", 27379, 28017),
-    ("refs", 28019, 32774),
-    ("history", 32776, 35609),
-    ("explain", 35611, 37260),
-    ("path", 37262, 39997),
-    ("cycles", 39999, 41110),
-    ("communities", 41112, 43638),
-    ("diagram", 43640, 46411),
-    ("health", 46413, 52649),
-    ("html", 52651, 53602),
-    ("resolve-locs", 53604, 54403),
-    ("capabilities", 54405, 55215),
-    ("index", 55217, 57886),
-    ("lint", 57888, 77896),
-    ("validate-vote", 77898, 87279),
-    ("warmup", 87281, 88880),
-    ("project-defaults-agentless-mcp-json", 88882, 92835),
-    ("token-counting", 92837, 93251),
-    ("exit-codes", 93253, 93711),
+    ("map", 14691, 24286),
+    ("tree", 24288, 24609),
+    ("skeleton", 24611, 25976),
+    ("expand", 25978, 27951),
+    ("slice", 27953, 28790),
+    ("find-symbol", 28792, 29833),
+    ("refs", 29835, 35385),
+    ("history", 35387, 38220),
+    ("explain", 38222, 40167),
+    ("path", 40169, 42904),
+    ("cycles", 42906, 44412),
+    ("communities", 44414, 46940),
+    ("diagram", 46942, 49713),
+    ("health", 49715, 55951),
+    ("html", 55953, 56904),
+    ("resolve-locs", 56906, 57721),
+    ("capabilities", 57723, 58533),
+    ("index", 58535, 61297),
+    ("lint", 61299, 81307),
+    ("validate-vote", 81309, 90906),
+    ("warmup", 90908, 92507),
+    ("project-defaults-agentless-mcp-json", 92509, 96462),
+    ("token-counting", 96464, 96878),
+    ("exit-codes", 96880, 97338),
 ];

@@ -370,6 +370,70 @@
   The step and `scripts/platform_graph_fixtures.sh` are gone. On Linux,
   `cargo insta test --check --workspace --test-runner nextest` passes 1407 of
   1407 tests with no expected value changed, as on the base.
+- **`find-symbol` lists a name in the case of the query first.** The match
+  ignores case, and so did the rank: every name equal to the query in any case
+  shared one tier, and the path broke the tie. Now the tiers are the name as
+  the query writes it, the name in another case, an exact qualified name, a
+  name prefix, and every other match. The data keys that get an exact card
+  stay the same. Measured on django-15161 with the release binaries of 65b7d1a
+  and of this change: `find Value` moved the class `Value` from row 8, after
+  seven `value` methods, to row 1. `find Value` with limit 5 did not list the
+  class, and now lists it first. `find F` with limit 5 went from the minified
+  xregexp `f` first and the class `F` second to `F` and `DateFormat.F` first.
+  Over the 676 recorded bench300 find calls (668 answered by both builds), no
+  call gains or loses a gold-file match, the 3,779 listed rows and the 11,137
+  matches stay the same, and 10 calls list the same rows in another order.
+- **A count of one takes the singular form.** 17 message rows printed a plural
+  noun after a count of 1, such as "1 data keys match", "in 1 data files",
+  "(1 ids)", "1 files were skipped", "1 newest commits shown" and "(1 lines)".
+  A message template can now hold a choice field, `{count:one|many}`, which
+  prints the first form for a count of 1 and the second form for any other
+  count. `cargo xtask generate` refuses a choice on a text value, a choice
+  with a malformed body, and a choice whose count the template does not print.
+  The 17 rows use it for their nouns, verbs and pronouns: "1 data key
+  matches", "1 file was skipped and is absent", "1 entry that names no gated
+  check ... It is ignored". A count other than 1 prints as before. Measured with
+  the release binaries of 65b7d1a and of this change on django-15161, element
+  and this repository: `find eslint` went from "occurs in 1 data files outside
+  their outline" to "occurs in 1 data file outside its outline", `expand` of a
+  repeated id from "(1 ids)" to "(1 id)", `history` with limit 1 from "1 newest
+  commits shown" to "1 newest commit shown", and a slice of the one-line
+  `rustfmt.toml` from "(1 lines)" to "(1 line)".
+- **`cycles` names its order when a limit cuts the list.** The rows run
+  shortest chain first, and no answer said so, so `cycles --limit 2` on element
+  left out a 755-file knot with no word on why. The cut line now ends with the
+  order, and a cut of one cycle says "cycle": element `cycles --limit 2` went
+  from "... 2 more cycles not listed (limit 2)" to "... 2 more cycles not
+  listed (limit 2, shortest chain first)", and django `cycles --limit 15` from
+  "... 1 more cycles not listed (limit 15)" to "... 1 more cycle not listed
+  (limit 15, shortest chain first)". An answer that no limit cuts does not
+  change.
+- **The guide's example answers are answers of this build.** The `explain`
+  example still showed the old card ("reports.py:29-44  function (python)",
+  rows "references SEPARATOR    reports.py:9    [id]", a fan-out of 8). It is
+  now the answer for `reorder_report` on the `repo_py` fixture, and a test
+  holds it equal to the explain golden. The test companion row said "covers",
+  and the answer says "-- file references". The tier headers said "(1
+  references, same-file)". The shared-callers rows showed `id    file:line`,
+  and the answer shows `[id] @line`. The expand cut marker, the resolve-locs
+  reason, the index line (`tags.db`, now `agentless.db`) and the
+  `verdicts.jsonl` candidate record were also out of date. Each one is now a
+  real answer, cut to the lines its paragraph needs, and a second test holds
+  the companion example equal to the map golden of `repo_py_tests`.
+- **The guide says how a test file can still rank in the map, and which files
+  are tests.** It said that a test never enters the ranked map. The rule only
+  stops rank from flowing back along a test's own references: a test still
+  ranks in a map with no focus, and when a ranked file references a name that
+  the test defines. On django, the unfocused map ranks `django/test/__init__.py`.
+  On this repository, a map focused on `crates/render/src/receipt.rs` ranks
+  `crates/render/src/tests/rows.rs`. The map section now states the test-path
+  rule once, with what it reads as a test (`django/test/`) and what it does
+  not (a Rust `src/foo/tests.rs`). The shared-callers section refers to it.
+- **The guide states the order of `refs` groups and of `find-symbol` cards.**
+  `refs` groups come in path order and in tier order within a file, so on
+  django `refs F` lists the name-only `jquery.min.js` group second. The limit
+  takes one site per file in turn. The `find-symbol` section names the five
+  tiers above.
 
 ## 0.11.0rc1 -- 2026-10-23
 

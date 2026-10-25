@@ -83,7 +83,7 @@ fn three_unlisted_data_files_are_all_named_with_no_count_of_more() {
         room: 1,
     };
     let expected = "6 data keys in 3 files match and are not listed: l1.json (1), l2.json (2), \
-        l3.json (3). This answer has room for 1 data entries after the code matches. Grep finds \
+        l3.json (3). This answer has room for 1 data entry after the code matches. Grep finds \
         the spellings.";
     let text = find_text(&result(data));
     assert_eq!(text.lines().last(), Some(expected));
@@ -172,7 +172,7 @@ fn the_skipped_warning_names_code_files_only() {
     assert_eq!(skipped_line(&[skipped("package-lock.json")]), "");
     let line = skipped_line(&[skipped("seeded.json"), skipped("huge.py")]);
     assert!(
-        line.contains("1 files were skipped") && line.contains("huge.py"),
+        line.contains("1 file was skipped") && line.contains("huge.py"),
         "{line}"
     );
     assert!(!line.contains("seeded.json"), "{line}");

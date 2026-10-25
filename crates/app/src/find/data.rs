@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use facts::Symbol;
 
-use super::match_rank;
+use super::{Needle, match_rank};
 use crate::scan::FileSymbols;
 use crate::{SymbolCard, symbol_card};
 
@@ -14,8 +14,8 @@ use crate::{SymbolCard, symbol_card};
 const CARDS_PER_FILE: usize = 3;
 // The most data entries an answer shows: a card and a folded file count one each.
 pub(super) const DATA_ENTRIES: usize = 5;
-// The match ranks of an exact name and of an exact qualified name.
-const EXACT_RANKS: u8 = 1;
+// The match ranks of an exact name, in its case or another, and of an exact qualified name.
+const EXACT_RANKS: u8 = 2;
 
 /// The matching keys of data files: the entries the answer shows, and the files it leaves out.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -76,7 +76,7 @@ struct FileMatches<'a> {
 // file. Every file after the first that does not fit is unlisted.
 pub(super) fn data_matches(
     matches: Vec<(&FileSymbols, &Symbol)>,
-    needle: &str,
+    needle: &Needle<'_>,
     room: usize,
 ) -> DataMatches {
     let ranked = ranked(matches, needle);
@@ -115,7 +115,7 @@ pub(super) fn data_matches(
 }
 
 // The matches ranked as the code matches are: rank, lowered name, path, then scan order.
-fn ranked<'a>(matches: Vec<(&'a FileSymbols, &'a Symbol)>, needle: &str) -> Vec<Ranked<'a>> {
+fn ranked<'a>(matches: Vec<(&'a FileSymbols, &'a Symbol)>, needle: &Needle<'_>) -> Vec<Ranked<'a>> {
     let mut keyed: Vec<_> = (matches.into_iter().enumerate())
         .map(|(at, (file, symbol))| {
             let (rank, lowered) = match_rank(symbol, needle);

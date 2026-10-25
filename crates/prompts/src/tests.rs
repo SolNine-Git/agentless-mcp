@@ -4,11 +4,20 @@ use serde_json::{Map, Value};
 use text::testing::document;
 
 use crate::generated::catalog::CATALOG;
-use crate::template::fill;
+use crate::template::{Filled, Piece, fill};
 use crate::{Severity, contract_rules, envelope, messages};
 
 fn fixture(file: &str) -> Value {
     document(env!("CARGO_MANIFEST_DIR"), file)
+}
+
+// A fixture string fills its placeholder as it is, and a fixture int as its decimal text.
+fn filled(name: &str, value: &Value) -> Filled {
+    match value {
+        Value::String(text) => Filled::new(text.clone(), false),
+        Value::Number(number) => Filled::new(number.to_string(), number.as_u64() == Some(1)),
+        other => panic!("{name}: the fixture gives {other}"),
+    }
 }
 
 struct Case<'f> {
@@ -42,13 +51,8 @@ impl<'f> Case<'f> {
             .unwrap_or_else(|| panic!("{name}: the fixture gives no count"))
     }
 
-    // A fixture string fills its placeholder as it is, and a fixture int as its decimal text.
-    fn formatted(&self, name: &str) -> String {
-        match &self.arguments[name] {
-            Value::String(text) => text.clone(),
-            Value::Number(number) => number.to_string(),
-            other => panic!("{name}: the fixture gives {other}"),
-        }
+    fn filled(&self, name: &str) -> Filled {
+        filled(name, &self.arguments[name])
     }
 }
 
@@ -66,7 +70,7 @@ fn every_template_renders_the_text_of_the_fixture() {
             ));
             continue;
         }
-        let values: Vec<String> = names.iter().map(|name| case.formatted(name)).collect();
+        let values: Vec<Filled> = names.iter().map(|name| case.filled(name)).collect();
         let rendered = fill(pieces, &values);
         if rendered != case.text {
             mismatches.push(format!("{file}.{key}: {rendered:?} is not {:?}", case.text));
@@ -99,8 +103,72 @@ fn the_fixture_and_the_catalog_hold_the_same_templates() {
         .iter()
         .map(|(file, key, _, _)| (*file, *key))
         .collect();
-    assert_eq!(cataloged.len(), 161);
+    assert_eq!(cataloged.len(), 162);
     assert_eq!(fixed, cataloged);
+}
+
+// The positions of the counts that the template's choices read.
+fn chosen(pieces: &[Piece]) -> BTreeSet<usize> {
+    let positions = pieces.iter().filter_map(|piece| match piece {
+        Piece::Choice(position, _, _) => Some(*position),
+        _ => None,
+    });
+    positions.collect()
+}
+
+// The template with each chosen count set to `count` and every other value from the fixture.
+fn rendered_at(case: &Value, names: &[&str], pieces: &[Piece], count: usize) -> String {
+    let chosen = chosen(pieces);
+    let values: Vec<Filled> = (names.iter().enumerate())
+        .map(|(position, name)| {
+            if chosen.contains(&position) {
+                Filled::new(count.to_string(), count == 1)
+            } else {
+                filled(name, &case["arguments"][*name])
+            }
+        })
+        .collect();
+    fill(pieces, &values)
+}
+
+#[test]
+fn each_choice_takes_the_form_of_its_count_at_one_and_at_two() {
+    let fixture = fixture("counts");
+    let mut covered: BTreeSet<(&str, &str)> = BTreeSet::new();
+    let mut mismatches = Vec::new();
+    for (file, key, names, pieces) in CATALOG {
+        if chosen(pieces).is_empty() {
+            continue;
+        }
+        covered.insert((file, key));
+        let case = &fixture[file][key];
+        for (count, form) in [(1, "one"), (2, "many")] {
+            let rendered = rendered_at(case, names, pieces, count);
+            if case[form].as_str() != Some(rendered.as_str()) {
+                mismatches.push(format!("{file}.{key} at {count}: {rendered:?}"));
+            }
+        }
+    }
+    let fixed: BTreeSet<(&str, &str)> = (fixture.as_object().unwrap().iter())
+        .flat_map(|(file, rows)| {
+            let keys = rows.as_object().unwrap().keys();
+            keys.map(move |key| (file.as_str(), key.as_str()))
+        })
+        .collect();
+    assert_eq!(covered, fixed);
+    assert_eq!(covered.len(), 18);
+    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+}
+
+#[test]
+fn a_count_of_one_takes_the_singular_form_in_a_typed_render() {
+    assert_eq!(messages::GROUPED_IDS.render(1), "(1 id)");
+    assert_eq!(messages::GROUPED_IDS.render(0), "(0 ids)");
+    let values = ("src/app/svc.py", 9000, 9050, 1);
+    assert_eq!(
+        messages::SLICE_RANGE_BEYOND_FILE.render(values),
+        "unsatisfiable: line range 9000-9050 is beyond src/app/svc.py (1 line)"
+    );
 }
 
 #[test]

@@ -17,7 +17,7 @@ mod generated {
 
 pub use generated::{envelope, messages, parameter_descriptions, tool_descriptions};
 pub use rule::{ContractRule, Severity};
-pub use template::{Count, Kind, Signature, Template, Text};
+pub use template::{Count, Filled, Kind, Signature, Template, Text};
 
 /// Returns every contract rule, one record per rule and language, in file order.
 #[must_use]

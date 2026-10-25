@@ -1,0 +1,138 @@
+{
+  "messages": {
+    "config_boundary_globs_dropped": {
+      "arguments": {
+        "chars": 256,
+        "config": ".agentless-mcp.json"
+      },
+      "one": "boundary_globs in .agentless-mcp.json: 1 entry is not a repo-relative glob of at most 256 characters. It is ignored.",
+      "many": "boundary_globs in .agentless-mcp.json: 2 entries are not repo-relative globs of at most 256 characters. They are ignored."
+    },
+    "config_erosion_gate_unknown": {
+      "arguments": {
+        "checks": "complexity_delta, contract_drift, clone_delta",
+        "config": ".agentless-mcp.json"
+      },
+      "one": "erosion_gate in .agentless-mcp.json holds 1 entry that names no gated check (complexity_delta, contract_drift, clone_delta). It is ignored.",
+      "many": "erosion_gate in .agentless-mcp.json holds 2 entries that name no gated check (complexity_delta, contract_drift, clone_delta). They are ignored."
+    },
+    "complexity_crossed": {
+      "arguments": {
+        "new_cc": 12,
+        "old_cc": 10,
+        "old_sloc": 1,
+        "qualname": "Store.find",
+        "threshold": 10
+      },
+      "one": "Store.find: complexity 10 -> 12, 1 -> 1 source line. This change takes the function over the threshold (10). Put the new branches in a new named function and call it, or refactor this function first in its own change.",
+      "many": "Store.find: complexity 10 -> 12, 1 -> 2 source lines. This change takes the function over the threshold (10). Put the new branches in a new named function and call it, or refactor this function first in its own change."
+    },
+    "complexity_grew": {
+      "arguments": {
+        "new_cc": 17,
+        "old_cc": 16,
+        "old_sloc": 1,
+        "qualname": "register_search_tools",
+        "threshold": 10
+      },
+      "one": "register_search_tools: complexity 16 -> 17, 1 -> 1 source line. This function is already above the threshold (10), and this change adds more branching to it. Put the new branches in a new named function and call it, or refactor this function first in its own change.",
+      "many": "register_search_tools: complexity 16 -> 17, 1 -> 2 source lines. This function is already above the threshold (10), and this change adds more branching to it. Put the new branches in a new named function and call it, or refactor this function first in its own change."
+    },
+    "complexity_new_unit": {
+      "arguments": {
+        "new_cc": 14,
+        "qualname": "parse_rows",
+        "threshold": 10
+      },
+      "one": "parse_rows: complexity 14, 1 source line. This function is new, or moved from another file, and it is above the threshold (10). Split it into smaller named functions. If it moved here unchanged, it was already above the threshold in its old file.",
+      "many": "parse_rows: complexity 14, 2 source lines. This function is new, or moved from another file, and it is above the threshold (10). Split it into smaller named functions. If it moved here unchanged, it was already above the threshold in its old file."
+    },
+    "cycles_unlisted": {
+      "arguments": {
+        "limit": 2
+      },
+      "one": "... 1 more cycle not listed (limit 2, shortest chain first)",
+      "many": "... 2 more cycles not listed (limit 2, shortest chain first)"
+    },
+    "expand_batch_shortened": {
+      "arguments": {
+        "budget": 12000,
+        "total": 10
+      },
+      "one": "// note: 1 of 10 bodies was shortened to fit the 12000-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies.",
+      "many": "// note: 2 of 10 bodies were shortened to fit the 12000-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies."
+    },
+    "find_data_kind_excluded": {
+      "arguments": {},
+      "one": "1 data key matches, and a kind filter leaves data keys out. Retry with no kind to list it.",
+      "many": "2 data keys match, and a kind filter leaves data keys out. Retry with no kind to list them."
+    },
+    "find_data_outside": {
+      "arguments": {
+        "listed": ".pre-commit-config.yaml @10",
+        "query": "eslint"
+      },
+      "one": "'eslint' occurs in 1 data file outside its outline: .pre-commit-config.yaml @10. Grep finds every spelling.",
+      "many": "'eslint' occurs in 2 data files outside their outline: .pre-commit-config.yaml @10. Grep finds every spelling."
+    },
+    "find_data_outside_unread": {
+      "arguments": {
+        "budget": 33554432
+      },
+      "one": "note: the text search of data files stops at 33554432 bytes, so it did not read 1 data file. Grep reads every file.",
+      "many": "note: the text search of data files stops at 33554432 bytes, so it did not read 2 data files. Grep reads every file."
+    },
+    "find_data_unlisted": {
+      "arguments": {
+        "listed": "data.json (1)"
+      },
+      "one": "1 data key in 1 file matches and is not listed: data.json (1). This answer has room for 1 data entry after the code matches. Grep finds the spellings.",
+      "many": "2 data keys in 2 files match and are not listed: data.json (1). This answer has room for 2 data entries after the code matches. Grep finds the spellings."
+    },
+    "grouped_ids": {
+      "arguments": {},
+      "one": "(1 id)",
+      "many": "(2 ids)"
+    },
+    "history_more_commits": {
+      "arguments": {},
+      "one": "... 1 newest commit shown; older commits touch this span (raise limit for the rest)",
+      "many": "... 2 newest commits shown; older commits touch this span (raise limit for the rest)"
+    },
+    "history_output_capped": {
+      "arguments": {
+        "bytes": 2000000
+      },
+      "one": "... git output was cut at 2000000 bytes; the 1 complete commit above is shown",
+      "many": "... git output was cut at 2000000 bytes; the 2 complete commits above are shown"
+    },
+    "map_file_unreached": {
+      "arguments": {},
+      "one": "... 1 symbol in this file; the focus has no reference path to it, so no budget shows it",
+      "many": "... 2 symbols in this file; the focus has no reference path to it, so no budget shows them"
+    },
+    "overview_data_unlisted": {
+      "arguments": {
+        "cap": 500
+      },
+      "one": "1 more key is not listed: the outline stops at depth 2, at list items and at 500 keys. Grep finds it.",
+      "many": "2 more keys are not listed: the outline stops at depth 2, at list items and at 500 keys. Grep finds them."
+    },
+    "scan_skipped_files": {
+      "arguments": {
+        "listed": "huge.py (skipped: 1040000 bytes exceeds the per-file cap of 1000000 bytes)"
+      },
+      "one": "// warning: 1 file was skipped and is absent from this answer: huge.py (skipped: 1040000 bytes exceeds the per-file cap of 1000000 bytes). A symbol in a skipped file reads as missing here even though it may exist in the repository.",
+      "many": "// warning: 2 files were skipped and are absent from this answer: huge.py (skipped: 1040000 bytes exceeds the per-file cap of 1000000 bytes). A symbol in a skipped file reads as missing here even though it may exist in the repository."
+    },
+    "slice_range_beyond_file": {
+      "arguments": {
+        "end": 9050,
+        "path": "src/app/svc.py",
+        "start": 9000
+      },
+      "one": "unsatisfiable: line range 9000-9050 is beyond src/app/svc.py (1 line)",
+      "many": "unsatisfiable: line range 9000-9050 is beyond src/app/svc.py (2 lines)"
+    }
+  }
+}

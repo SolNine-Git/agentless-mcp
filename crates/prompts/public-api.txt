@@ -72,6 +72,7 @@ pub const prompts::messages::CONTRACT_NO_BOUNDARY: prompts::Template<prompts::Te
 pub const prompts::messages::CONTRACT_NO_BOUNDARY_EVIDENCE: &str
 pub const prompts::messages::CONTRACT_NO_RULES: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::CONTRACT_OLD_NOT_MEASURED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::CYCLES_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::DATA_KEY_NO_FAN_IN: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::EXPAND_BATCH_SHORTENED: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPAND_BODY_TRUNCATED: prompts::Template<(prompts::Count, prompts::Count)>
@@ -275,6 +276,7 @@ pub fn prompts::Count::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::R
 impl core::marker::Copy for prompts::Count
 impl prompts::Kind for prompts::Count
 pub type prompts::Count::Value<'a> = usize
+pub fn prompts::Count::is_one(&usize) -> bool
 impl core::marker::Freeze for prompts::Count
 impl core::marker::Send for prompts::Count
 impl core::marker::Sync for prompts::Count
@@ -282,6 +284,22 @@ impl core::marker::Unpin for prompts::Count
 impl core::marker::UnsafeUnpin for prompts::Count
 impl core::panic::unwind_safe::RefUnwindSafe for prompts::Count
 impl core::panic::unwind_safe::UnwindSafe for prompts::Count
+pub struct prompts::Filled
+impl core::clone::Clone for prompts::Filled
+pub fn prompts::Filled::clone(&self) -> Self
+impl core::cmp::Eq for prompts::Filled
+impl core::cmp::PartialEq for prompts::Filled
+pub fn prompts::Filled::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::Filled
+pub fn prompts::Filled::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for prompts::Filled
+impl core::marker::Freeze for prompts::Filled
+impl core::marker::Send for prompts::Filled
+impl core::marker::Sync for prompts::Filled
+impl core::marker::Unpin for prompts::Filled
+impl core::marker::UnsafeUnpin for prompts::Filled
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::Filled
+impl core::panic::unwind_safe::UnwindSafe for prompts::Filled
 pub struct prompts::Template<S>
 impl<S: prompts::Signature> prompts::Template<S>
 pub fn prompts::Template<S>::render(&self, <S as prompts::Signature>::Values) -> alloc::string::String
@@ -300,6 +318,7 @@ pub fn prompts::Text::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Re
 impl core::marker::Copy for prompts::Text
 impl prompts::Kind for prompts::Text
 pub type prompts::Text::Value<'a> = &'a str
+pub fn prompts::Text::is_one(&&str) -> bool
 impl core::marker::Freeze for prompts::Text
 impl core::marker::Send for prompts::Text
 impl core::marker::Sync for prompts::Text
@@ -309,29 +328,32 @@ impl core::panic::unwind_safe::RefUnwindSafe for prompts::Text
 impl core::panic::unwind_safe::UnwindSafe for prompts::Text
 pub trait prompts::Kind
 pub type prompts::Kind::Value<'a>: core::fmt::Display
+pub fn prompts::Kind::is_one(&Self::Value) -> bool
 impl prompts::Kind for prompts::Count
 pub type prompts::Count::Value<'a> = usize
+pub fn prompts::Count::is_one(&usize) -> bool
 impl prompts::Kind for prompts::Text
 pub type prompts::Text::Value<'a> = &'a str
+pub fn prompts::Text::is_one(&&str) -> bool
 pub trait prompts::Signature
 pub type prompts::Signature::Values<'a>
-pub fn prompts::Signature::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+pub fn prompts::Signature::filled(Self::Values) -> alloc::vec::Vec<prompts::Filled>
 impl<A: prompts::Kind, B: prompts::Kind, C: prompts::Kind, D: prompts::Kind, E: prompts::Kind, F: prompts::Kind> prompts::Signature for (A, B, C, D, E, F)
 pub type (A, B, C, D, E, F)::Values<'a> = (<A as prompts::Kind>::Value, <B as prompts::Kind>::Value, <C as prompts::Kind>::Value, <D as prompts::Kind>::Value, <E as prompts::Kind>::Value, <F as prompts::Kind>::Value)
-pub fn (A, B, C, D, E, F)::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+pub fn (A, B, C, D, E, F)::filled(Self::Values) -> alloc::vec::Vec<prompts::Filled>
 impl<A: prompts::Kind, B: prompts::Kind, C: prompts::Kind, D: prompts::Kind, E: prompts::Kind> prompts::Signature for (A, B, C, D, E)
 pub type (A, B, C, D, E)::Values<'a> = (<A as prompts::Kind>::Value, <B as prompts::Kind>::Value, <C as prompts::Kind>::Value, <D as prompts::Kind>::Value, <E as prompts::Kind>::Value)
-pub fn (A, B, C, D, E)::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+pub fn (A, B, C, D, E)::filled(Self::Values) -> alloc::vec::Vec<prompts::Filled>
 impl<A: prompts::Kind, B: prompts::Kind, C: prompts::Kind, D: prompts::Kind> prompts::Signature for (A, B, C, D)
 pub type (A, B, C, D)::Values<'a> = (<A as prompts::Kind>::Value, <B as prompts::Kind>::Value, <C as prompts::Kind>::Value, <D as prompts::Kind>::Value)
-pub fn (A, B, C, D)::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+pub fn (A, B, C, D)::filled(Self::Values) -> alloc::vec::Vec<prompts::Filled>
 impl<A: prompts::Kind, B: prompts::Kind, C: prompts::Kind> prompts::Signature for (A, B, C)
 pub type (A, B, C)::Values<'a> = (<A as prompts::Kind>::Value, <B as prompts::Kind>::Value, <C as prompts::Kind>::Value)
-pub fn (A, B, C)::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+pub fn (A, B, C)::filled(Self::Values) -> alloc::vec::Vec<prompts::Filled>
 impl<A: prompts::Kind, B: prompts::Kind> prompts::Signature for (A, B)
 pub type (A, B)::Values<'a> = (<A as prompts::Kind>::Value, <B as prompts::Kind>::Value)
-pub fn (A, B)::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+pub fn (A, B)::filled(Self::Values) -> alloc::vec::Vec<prompts::Filled>
 impl<K: prompts::Kind> prompts::Signature for K
 pub type K::Values<'a> = <K as prompts::Kind>::Value
-pub fn K::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+pub fn K::filled(Self::Values) -> alloc::vec::Vec<prompts::Filled>
 pub fn prompts::contract_rules() -> &'static [prompts::ContractRule]

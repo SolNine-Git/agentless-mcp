@@ -121,7 +121,7 @@ fn answer(
 // The result without the places outside the outlines and the unparsed places. A data key has no
 // kind, so a kind filter leaves every data key out and counts the ones that match.
 fn matched(scan: &SymbolFacts, request: &FindRequest, limit: usize) -> FindResult {
-    let needle = lower(&request.query);
+    let needle = Needle::new(&request.query);
     let symbols = scan.files.iter().flat_map(|file| {
         let symbols = file.symbols.iter();
         symbols.map(move |symbol| (file, symbol))
@@ -129,7 +129,11 @@ fn matched(scan: &SymbolFacts, request: &FindRequest, limit: usize) -> FindResul
     let (data, code): (Vec<_>, Vec<_>) = symbols
         .filter(|(file, symbol)| {
             let data = is_data_language(file.language);
-            matches(symbol, &needle, if data { None } else { request.kind })
+            matches(
+                symbol,
+                &needle.lowered,
+                if data { None } else { request.kind },
+            )
         })
         .partition(|(file, _)| is_data_language(file.language));
     let (data, data_kind_excluded) = match request.kind {
@@ -138,7 +142,7 @@ fn matched(scan: &SymbolFacts, request: &FindRequest, limit: usize) -> FindResul
     };
     let code_total = code.len();
     let other_kinds = match request.kind {
-        Some(_) if code_total == 0 => other_kinds(scan, &needle),
+        Some(_) if code_total == 0 => other_kinds(scan, &needle.lowered),
         _ => Vec::new(),
     };
     let cards = top_cards(code, &needle, limit);
@@ -158,7 +162,11 @@ fn matched(scan: &SymbolFacts, request: &FindRequest, limit: usize) -> FindResul
 
 // The cards of the first `limit` matches by rank, lowered name and path. The scan index breaks
 // the last ties, as a stable sort of the scan order does, so only the kept matches need a card.
-fn top_cards(matches: Vec<(&FileSymbols, &Symbol)>, needle: &str, limit: usize) -> Vec<SymbolCard> {
+fn top_cards(
+    matches: Vec<(&FileSymbols, &Symbol)>,
+    needle: &Needle<'_>,
+    limit: usize,
+) -> Vec<SymbolCard> {
     let mut keyed: Vec<_> = (matches.into_iter().enumerate())
         .map(|(at, (file, symbol))| {
             let (rank, lowered) = match_rank(symbol, needle);
@@ -217,17 +225,33 @@ fn short_ascii_holds(symbol: &Symbol, needle: &str) -> Option<bool> {
         .map(|joined| joined.contains(needle))
 }
 
-// An exact name first, then an exact qualified name, then a name that starts with the query.
-fn match_rank(symbol: &Symbol, needle: &str) -> (u8, String) {
+// The query as the caller wrote it, and lowered as every match compares it.
+struct Needle<'q> {
+    written: &'q str,
+    lowered: String,
+}
+
+impl<'q> Needle<'q> {
+    fn new(written: &'q str) -> Self {
+        let lowered = lower(written);
+        Self { written, lowered }
+    }
+}
+
+// The name as the query writes it first, then the name in another case, then an exact qualified
+// name, then a name that starts with the query.
+fn match_rank(symbol: &Symbol, needle: &Needle<'_>) -> (u8, String) {
     let lowered = lower(&symbol.name);
-    let rank = if lowered == needle {
+    let rank = if symbol.name == needle.written {
         0
-    } else if lower(&symbol.qualname()) == needle {
+    } else if lowered == needle.lowered {
         1
-    } else if lowered.starts_with(needle) {
+    } else if lower(&symbol.qualname()) == needle.lowered {
         2
-    } else {
+    } else if lowered.starts_with(&needle.lowered) {
         3
+    } else {
+        4
     };
     (rank, lowered)
 }
