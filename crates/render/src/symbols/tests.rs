@@ -12,6 +12,7 @@ fn card(path: &str, name: &str) -> app::SymbolCard {
         kind: SymbolKind::Constant,
         line: 2,
         end_line: 2,
+        name_line: 2,
         signature: format!("{name} = 1"),
         parent: String::new(),
         decorated: false,

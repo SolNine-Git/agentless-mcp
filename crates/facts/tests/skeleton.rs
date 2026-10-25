@@ -268,3 +268,31 @@ fn characterization() -> PathBuf {
 fn read(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
 }
+
+#[test]
+fn the_closing_tokens_after_an_elided_body_stay_and_a_comment_after_them_goes() {
+    let options = SkeletonOptions::default();
+    let rust = "impl Area for i32 { fn area(&self) -> f64 { 0.0 } }\nfn f() { 1 } // note\n";
+    let expected = "impl Area for i32 { fn area(&self) -> f64 { ... } }\nfn f() { ... }\n";
+    assert_eq!(skeleton(Language::Rust, rust, options), expected);
+    let javascript = "describe(\"x\", function () {\n  run();\n});\n";
+    let expected = "describe(\"x\", function () { ... });\n";
+    assert_eq!(
+        skeleton(Language::Javascript, javascript, options),
+        expected
+    );
+}
+
+#[test]
+fn sql_comment_keywords_and_comment_statements_are_code() {
+    let source = "CREATE TABLE users (\n    id INT PRIMARY KEY,\n    name TEXT COMMENT 'the \
+                  display name'\n);\n\nCOMMENT ON TABLE users IS 'people who sign in';\n\n-- a \
+                  real comment\nCREATE VIEW active AS SELECT id FROM users;\n";
+    let expected = "CREATE TABLE users (\n    id INT PRIMARY KEY,\n    name TEXT COMMENT 'the \
+                    display name'\n);\n\nCOMMENT ON TABLE users IS 'people who sign in';\n\n\
+                    CREATE VIEW active AS SELECT id FROM users;\n";
+    assert_eq!(
+        skeleton(Language::Sql, source, SkeletonOptions::default()),
+        expected
+    );
+}

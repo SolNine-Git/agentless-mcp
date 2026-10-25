@@ -70,7 +70,7 @@ impl Walk<'_, '_> {
 
     // A function owned by its class, else by the type its receiver names.
     fn function(&self, node: NodeId, owner: &str) -> Option<Symbol> {
-        let name = self.name(node)?;
+        let name = self.name_node(node)?;
         let owner = if owner.is_empty() {
             self.receiver_owner(node)
         } else {
@@ -79,13 +79,21 @@ impl Walk<'_, '_> {
         Some(self.function_symbol(node, node, name, owner))
     }
 
-    fn function_symbol(&self, node: NodeId, header: NodeId, name: &str, owner: &str) -> Symbol {
+    fn function_symbol(
+        &self,
+        node: NodeId,
+        header: NodeId,
+        name_node: NodeId,
+        owner: &str,
+    ) -> Symbol {
         let kind = if owner.is_empty() {
             SymbolKind::Function
         } else {
             SymbolKind::Method
         };
+        let name = self.tree.text(name_node);
         Symbol::at(self.tree, node, name, kind)
+            .named_by(self.tree, Some(name_node))
             .signed(&self.signature(header, name))
             .owned_by(owner)
             .public(self.is_public(node, name))
@@ -103,7 +111,7 @@ impl Walk<'_, '_> {
             return Visit::descend(None, node, Rc::clone(owner));
         };
         let symbol = self
-            .name(node)
+            .name_node(node)
             .map(|name| self.function_symbol(node, value, name, owner));
         Visit::stop(symbol)
     }
@@ -116,9 +124,11 @@ impl Walk<'_, '_> {
             return None;
         }
         let declarator = self.tree.field(node, Field::Declarator);
-        let name = self.name(declarator.unwrap_or(node))?;
+        let name_node = self.name_node(declarator.unwrap_or(node))?;
+        let name = self.tree.text(name_node);
         Some(
             Symbol::at(self.tree, node, name, SymbolKind::Constant)
+                .named_by(self.tree, Some(name_node))
                 .signed(self.header_text(node))
                 .owned_by(owner)
                 .public(self.is_public(node, name)),
@@ -126,10 +136,12 @@ impl Walk<'_, '_> {
     }
 
     fn class(&self, node: NodeId, owner: &Rc<str>) -> Visit {
-        let Some(name) = self.name(node) else {
+        let Some(name_node) = self.name_node(node) else {
             return Visit::stop(None);
         };
+        let name = self.tree.text(name_node);
         let symbol = Symbol::at(self.tree, node, name, SymbolKind::Class)
+            .named_by(self.tree, Some(name_node))
             .signed(&format!("{} {name}", self.keyword(node)))
             .owned_by(owner)
             .public(self.is_public(node, name));
@@ -140,18 +152,14 @@ impl Walk<'_, '_> {
         }
     }
 
-    // The name field's text, else the first child of a naming kind; an empty name is none.
-    fn name(&self, node: NodeId) -> Option<&str> {
+    // The name field's node, else the first child of a naming kind; an empty name is none.
+    fn name_node(&self, node: NodeId) -> Option<NodeId> {
         let tree = self.tree;
         let field = self.declarations.name_field;
-        let named = field.and_then(|field| tree.child_by_field(node, field));
-        let text = match named {
-            Some(named) => tree.text(named),
-            None => tree
-                .first_child_in(node, &self.declarations.names)
-                .map_or("", |child| tree.text(child)),
-        };
-        (!text.is_empty()).then_some(text)
+        let named = field
+            .and_then(|field| tree.child_by_field(node, field))
+            .or_else(|| tree.first_child_in(node, &self.declarations.names))?;
+        (!tree.text(named).is_empty()).then_some(named)
     }
 
     // The first type identifier in the receiver: `(c *Config)` and `(s *Stack[T])` nest it.

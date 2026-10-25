@@ -245,6 +245,65 @@
   create room")` went from "src/i18n/strings/el.json (1), .... This answer"
   to "src/i18n/strings/el.json (1), ... 41 more. This answer". No other
   message ends a list with three dots before its period.
+- **A definition's span starts at its first decorator, attribute or overload
+  signature.** The span left out a Python decorator, a Rust outer attribute
+  such as `#[derive]`, a TypeScript decorator in a class body or before
+  `export`, and the overload signatures of a TypeScript function or method.
+  `find`, `expand`, `locate`, `history`, the map and `health` now give the
+  span from that first line. A Java, C#, Kotlin, PHP, Scala, Swift or C++
+  grammar puts the annotations inside the definition, so those spans do not
+  change. The stable id and the name do not change. A symbol also stores the
+  line of its name. The slice scope header, the declarations that the
+  reference resolver skips, and the patch checks use that line. A reference on
+  a decorator, attribute or overload line now belongs to that definition, and
+  an overload signature is no longer a reference to its own function.
+  `FACTS_VERSION` is 7, so every index rebuilds. Measured with the release
+  binaries of 4ad5177 and of this change: on django-15161, `find F` went from
+  `@582-609` to `@581-609`, and `expand` shows line 581
+  `@deconstructible(path='django.db.models.F')`. `path` from `F` to
+  `deconstructible` went from 3 hops to 1, and `refs deconstructible` names
+  the decorated class where it said "(module level)". On element, `expand
+  SdkConfig.get` went from `@69-77` to `@67-77`, with its two overload
+  signatures, and `refs SdkConfig.get` from 2,019 to 2,017 references. On
+  lucene, a slice in an annotated method gives the scope header
+  `77|   public void message(String component, String message) {` where it
+  gave `76|   @Override`. The index moved 5,118 of 35,064 symbol starts on
+  django-15161, 8 of 33,701 on element and 2,593 of 12,620 on this
+  repository, and each moved start is the first line of the decorator,
+  attribute or overload run above the old start. Of the 266 core
+  gold regions of the flat60 bench instances, 2 start on an attribute or
+  decorator line that the old span left out, and 4 of the 1,065 optional
+  regions do. A forced index took the same time, median of 5 runs: django
+  0.49 to 0.49 s, element 0.37 to 0.38 s, this repository 0.42 to 0.43 s.
+- **A TOML table ends at its last key.** The span of a table ran over the
+  blank lines up to the next header, so `[toml:Cargo.toml::workspace.package]`
+  was `@5-13` and line 13 was `[workspace.dependencies]`. Now it is `@5-11`. A
+  table with no key ends at its header line. On this repository, 408 table
+  ends moved.
+- **An elided body keeps the code after it on its last line.** The overview
+  of `impl Area for i32 { fn area(&self) -> f64 { 0.0 } }` printed
+  `impl Area for i32 { fn area(&self) -> f64 { ... }` and lost the impl's `}`.
+  A JavaScript callback lost its `);` and an arrow function its `;`. Now the
+  overview keeps the text up to the end of the outermost node that ends on
+  that line, and a comment after it still goes. The reference skeletons
+  change for 10 C#, Java, JavaScript, Rust, TSX and TypeScript source files:
+  28 cases with their variants, 112 strings in all.
+- **An SQL overview keeps `COMMENT` clauses and `COMMENT ON` statements.** The
+  overview dropped every node whose kind name holds "comment", so `name TEXT
+  COMMENT 'the display name'` lost `COMMENT`, and `COMMENT ON TABLE users IS
+  '...';` printed as `;`. Now the overview drops the comment kinds of the
+  language, and the block comments of Kotlin and Swift and the HTML comments
+  of JavaScript.
+- **The guide no longer says that a code overview has line numbers.** The
+  skeleton section said "It preserves original line numbers, so a line you see
+  here is a line you can slice", but a code overview prints none. It now says
+  that the CLI option `--numbers` puts `N|` before each line, that the
+  `overview` operation has no such option, and that a data-file overview gives
+  each key's line as `@N`. Measured with `skeleton` and `skeleton --numbers`
+  on 5 files (django expressions.py and deconstruct.py, element SdkConfig.ts
+  and languageHandler.tsx, this repository's values.rs): numbers would add 18
+  to 3,703 bytes per file, 3.7 to 25.0 percent, and 5,385 of 26,463 bytes in
+  all (20.3 percent).
 
 ## 0.11.0rc1 -- 2026-10-23
 

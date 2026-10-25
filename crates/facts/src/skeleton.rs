@@ -9,6 +9,9 @@ const SENTINEL: &str = "...";
 const DOCSTRING_MAX_CHARS: usize = 200;
 const DOCSTRING_PARENTS: [&str; 4] = ["module", "block", "class_body", "program"];
 const DOC_COMMENT_MARKERS: [&str; 2] = ["outer_doc_comment_marker", "inner_doc_comment_marker"];
+// The comment kinds that the language tables leave out: Kotlin's and Swift's block comments, and
+// JavaScript's `<!--` comments.
+const UNLISTED_COMMENTS: [&str; 2] = ["multiline_comment", "html_comment"];
 
 /// What a skeleton keeps beyond the signatures: docstrings cut to one line, and line numbers.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -37,6 +40,7 @@ struct Skeleton<'a> {
     functions: &'a KindSet,
     extra_functions: &'a KindSet,
     bodies: &'a KindSet,
+    comments: &'a KindSet,
     body: Option<FieldId>,
     // The plan visits nodes in document order, so one cursor reads every body field cheaply.
     fields: RefCell<FieldCursor<'a>>,
@@ -69,6 +73,7 @@ impl<'a> Skeleton<'a> {
             functions: &extraction.declarations.functions,
             extra_functions: &extraction.skeleton_functions,
             bodies: &extraction.bodies,
+            comments: &extraction.comments,
             body: parsed.language().field("body"),
             fields: RefCell::new(FieldCursor::new(parsed)),
         }
@@ -102,7 +107,7 @@ impl<'a> Skeleton<'a> {
         if column > line.chars().count() - line.trim_start_matches(text::is_space).chars().count() {
             let head = rstrip(head);
             let sentinel = if opens_brace {
-                format!("{head} {{ {SENTINEL} }}")
+                format!("{head} {{ {SENTINEL} }}{}", self.closing_tail(body))
             } else {
                 format!("{head} {SENTINEL}")
             };
@@ -111,10 +116,11 @@ impl<'a> Skeleton<'a> {
         }
         let indent = " ".repeat(column);
         if opens_brace {
+            let tail = self.closing_tail(body);
             plan.elide(
                 first,
                 last,
-                vec![(first, format!("{indent}{{ {SENTINEL} }}"))],
+                vec![(first, format!("{indent}{{ {SENTINEL} }}{tail}"))],
             );
             return;
         }
@@ -138,10 +144,11 @@ impl<'a> Skeleton<'a> {
         kept
     }
 
-    // The kind name decides, not the language's comment kinds: kinds that table leaves out, such
-    // as `multiline_comment` and `html_comment`, go too.
+    // Not every kind whose name holds `comment`: SQL's `keyword_comment` and `comment_statement`
+    // are code.
     fn is_comment(&self, node: NodeId) -> bool {
-        self.parsed.kind_name(node).contains("comment")
+        self.comments.contains(self.parsed.kind(node))
+            || UNLISTED_COMMENTS.contains(&self.parsed.kind_name(node))
     }
 
     // A comment goes; the code that shares its first or last line stays, without the space it
@@ -312,6 +319,23 @@ impl<'a> Skeleton<'a> {
         let first = self.parsed.start_point(node).row as usize + 1;
         let last = self.parsed.end_point(node).row as usize + 1;
         (first, last)
+    }
+
+    // The code after a body on its last line, up to the end of the outermost node that ends on
+    // that line: an impl's `}` or a call's `);` stays, and a comment after them does not.
+    fn closing_tail(&self, body: NodeId) -> &'a str {
+        let end = self.parsed.end_point(body);
+        let mut close = end.column;
+        let mut node = body;
+        while let Some(parent) = self.parsed.parent(node) {
+            let parent_end = self.parsed.end_point(parent);
+            if parent_end.row != end.row {
+                break;
+            }
+            close = parent_end.column;
+            node = parent;
+        }
+        &self.lines[end.row as usize][end.column as usize..close as usize]
     }
 }
 

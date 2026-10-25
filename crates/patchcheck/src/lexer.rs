@@ -44,7 +44,7 @@ pub(crate) fn call_sites(text: &[char], refs: &[Ref], introduced: &[Symbol]) -> 
         .collect();
     let declared: BTreeSet<(&str, u32)> = introduced
         .iter()
-        .map(|symbol| (symbol.name.as_str(), symbol.line))
+        .map(|symbol| (symbol.name.as_str(), symbol.name_line))
         .collect();
     let starts = line_starts(text);
     let mut sites = Vec::new();

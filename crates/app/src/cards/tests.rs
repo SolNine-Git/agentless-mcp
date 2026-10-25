@@ -9,6 +9,7 @@ fn symbol(name: &str, parent: &str, kind: SymbolKind, lines: (u32, u32)) -> Symb
         kind,
         line: lines.0,
         end_line: lines.1,
+        name_line: lines.0,
         signature: format!("def {name}(self):"),
         parent: parent.to_owned(),
         decorated: false,

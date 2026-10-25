@@ -160,7 +160,7 @@ impl<'a> Resolver<'a> {
             .facts
             .symbols
             .iter()
-            .map(|symbol| (symbol.name.as_str(), symbol.line))
+            .map(|symbol| (symbol.name.as_str(), symbol.name_line))
             .collect();
         file.facts.refs.iter().filter_map(move |reference| {
             let wanted = names.is_none_or(|names| names.contains(reference.name.as_str()));

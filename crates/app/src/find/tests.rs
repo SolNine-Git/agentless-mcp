@@ -249,6 +249,7 @@ fn symbol(name: &str, parent: &str, kind: SymbolKind) -> Symbol {
         kind,
         line: 1,
         end_line: 1,
+        name_line: 1,
         signature: String::new(),
         parent: parent.to_owned(),
         decorated: false,

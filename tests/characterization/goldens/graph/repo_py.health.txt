@@ -14,7 +14,7 @@ no orphan candidates: every function has a counted edge
 
 21 symbols carry a counted edge (function, method or class, highest counted degree first)
   [py:inventory.py::Inventory] @44  Inventory  class  in 6  out 1
-  [py:inventory.py::Item] @25  Item  dataclass  in 6  out 0
+  [py:inventory.py::Item] @24  Item  dataclass  in 6  out 0
   [py:pricing.py::Tier] @11  Tier  enum  in 5  out 0
   [py:pricing.py::format_money] @78  format_money  function  in 3  out 2
   [py:reports.py::stock_value] @16  stock_value  function  in 1  out 4

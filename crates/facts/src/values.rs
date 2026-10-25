@@ -18,10 +18,12 @@ pub struct Facts {
 pub struct Symbol {
     pub name: String,
     pub kind: SymbolKind,
-    /// The 1-based first line.
+    /// The 1-based first line, at the first decorator, attribute or overload signature.
     pub line: u32,
     /// The 1-based last line.
     pub end_line: u32,
+    /// The 1-based line of the identifier that names the declaration.
+    pub name_line: u32,
     /// One line of at most 80 code points.
     pub signature: String,
     /// The owner that qualifies the name, or empty.

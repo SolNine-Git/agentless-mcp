@@ -456,8 +456,12 @@ agentless-mcp skeleton src/app/svc.py src/app/model.py
 ```
 
 The output holds signatures, class attributes, constants and imports. Bodies
-become `...`. The command strips comments and docstrings. It preserves
-original line numbers, so a line you see here is a line you can slice.
+become `...`. The command strips comments and docstrings. A code overview
+shows no line numbers. The CLI option `--numbers` puts `N|` before each line,
+and those numbers are the file's own lines. The `overview` operation has no
+such option: use `find` or `expand` for the span of one symbol, or `read`
+operation `slice` for exact lines. A data-file overview gives the line of
+each key as `@N`.
 
 Each file's block opens with the same `stable ids:` line the map uses -- e.g.
 `py:src/app/svc.py::<QualifiedName>`. The prefix derives from the file's

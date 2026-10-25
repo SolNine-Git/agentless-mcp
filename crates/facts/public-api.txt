@@ -403,6 +403,7 @@ pub facts::Symbol::is_public: bool
 pub facts::Symbol::kind: facts::SymbolKind
 pub facts::Symbol::line: u32
 pub facts::Symbol::name: alloc::string::String
+pub facts::Symbol::name_line: u32
 pub facts::Symbol::parent: alloc::string::String
 pub facts::Symbol::rationales: alloc::vec::Vec<facts::Rationale>
 pub facts::Symbol::signature: alloc::string::String

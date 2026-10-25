@@ -404,10 +404,14 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         declare\n\n```\nagentless-mcp skeleton src/app/svc.py \
         src/app/model.py\n```\n\nThe output holds signatures, class \
         attributes, constants and imports. Bodies\nbecome `...`. The \
-        command strips comments and docstrings. It preserves\noriginal \
-        line numbers, so a line you see here is a line you can \
-        slice.\n\nEach file's block opens with the same `stable ids:` \
-        line the map uses -- \
+        command strips comments and docstrings. A code overview\nshows \
+        no line numbers. The CLI option `--numbers` puts `N|` before \
+        each line,\nand those numbers are the file's own lines. The \
+        `overview` operation has no\nsuch option: use `find` or \
+        `expand` for the span of one symbol, or `read`\noperation \
+        `slice` for exact lines. A data-file overview gives the line \
+        of\neach key as `@N`.\n\nEach file's block opens with the same \
+        `stable ids:` line the map uses -- \
         e.g.\n`py:src/app/svc.py::<QualifiedName>`. The prefix derives \
         from the file's\nlanguage. Nested symbols qualify as \
         `Class.method`. To escalate to `expand` is\ntherefore a read \
@@ -1609,30 +1613,30 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3599, 4432),
     ("stable-ids", 4434, 5752),
     ("the-two-surfaces", 5754, 11298),
-    ("per-tool-usage", 11300, 88360),
+    ("per-tool-usage", 11300, 88612),
     ("claude-code-specifics", 13058, 14689),
     ("map", 14691, 22994),
     ("tree", 22996, 23317),
-    ("skeleton", 23319, 24432),
-    ("expand", 24434, 26286),
-    ("slice", 26288, 27125),
-    ("find-symbol", 27127, 27765),
-    ("refs", 27767, 32522),
-    ("history", 32524, 35357),
-    ("explain", 35359, 37008),
-    ("path", 37010, 39758),
-    ("cycles", 39760, 40871),
-    ("communities", 40873, 43118),
-    ("diagram", 43120, 45891),
-    ("health", 45893, 52129),
-    ("html", 52131, 53082),
-    ("resolve-locs", 53084, 53883),
-    ("capabilities", 53885, 54695),
-    ("index", 54697, 57366),
-    ("lint", 57368, 77376),
-    ("validate-vote", 77378, 86759),
-    ("warmup", 86761, 88360),
-    ("project-defaults-agentless-mcp-json", 88362, 92315),
-    ("token-counting", 92317, 92731),
-    ("exit-codes", 92733, 93191),
+    ("skeleton", 23319, 24684),
+    ("expand", 24686, 26538),
+    ("slice", 26540, 27377),
+    ("find-symbol", 27379, 28017),
+    ("refs", 28019, 32774),
+    ("history", 32776, 35609),
+    ("explain", 35611, 37260),
+    ("path", 37262, 40010),
+    ("cycles", 40012, 41123),
+    ("communities", 41125, 43370),
+    ("diagram", 43372, 46143),
+    ("health", 46145, 52381),
+    ("html", 52383, 53334),
+    ("resolve-locs", 53336, 54135),
+    ("capabilities", 54137, 54947),
+    ("index", 54949, 57618),
+    ("lint", 57620, 77628),
+    ("validate-vote", 77630, 87011),
+    ("warmup", 87013, 88612),
+    ("project-defaults-agentless-mcp-json", 88614, 92567),
+    ("token-counting", 92569, 92983),
+    ("exit-codes", 92985, 93443),
 ];

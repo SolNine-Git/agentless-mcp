@@ -123,7 +123,7 @@
           "depth": 0
         },
         {
-          "line": 25,
+          "line": 24,
           "signature": "class Item",
           "stable_id": "py:inventory.py::Item",
           "depth": 0
@@ -265,7 +265,7 @@
           "depth": 0
         },
         {
-          "line": 11,
+          "line": 10,
           "signature": "class Customer",
           "stable_id": "py:customers.py::Customer",
           "depth": 0

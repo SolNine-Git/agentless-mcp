@@ -130,14 +130,16 @@ fn scope_headers(
     let mut enclosing: Vec<&Symbol> = symbols
         .iter()
         .filter(|symbol| {
-            SCOPE_KINDS.contains(&symbol.kind) && symbol.line < start && symbol.end_line >= start
+            SCOPE_KINDS.contains(&symbol.kind)
+                && symbol.name_line < start
+                && symbol.end_line >= start
         })
         .collect();
-    enclosing.sort_by_key(|symbol| symbol.line);
+    enclosing.sort_by_key(|symbol| symbol.name_line);
     let mut headers = Vec::new();
     let mut last_header = None;
     for symbol in enclosing {
-        let header = symbol.line;
+        let header = symbol.name_line;
         if shown.contains(&header) || header as usize > lines.len() {
             continue;
         }

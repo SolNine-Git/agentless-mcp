@@ -19,7 +19,7 @@ inventory.py  (rank 0.1360)
   MAX_ITEMS = 500  [MAX_ITEMS] @12
   DEFAULT_WAREHOUSE = "main"  [DEFAULT_WAREHOUSE] @13
   REORDER_THRESHOLDS = { "fastener": 250, "tool": 5, "consumable": 40, }  [REORDER_THRESHOLDS] @17
-  class Item  [Item] @25
+  class Item  [Item] @24
       def needs_reorder(self) -> bool  [Item.needs_reorder] @32
   class Inventory  [Inventory] @44
       def __init__(self, warehouse: str = DEFAULT_WAREHOUSE) -> None  [Inventory.__init__] @49
@@ -48,7 +48,7 @@ orders.py  (rank 0.0902)
 customers.py  (rank 0.0815)
   stable ids: py:customers.py::<QualifiedName>
   DEFAULT_TIER = Tier.RETAIL  [DEFAULT_TIER] @7
-  class Customer  [Customer] @11
+  class Customer  [Customer] @10
       def is_trade(self) -> bool  [Customer.is_trade] @17
   def tier_of(customer: Customer) -> Tier  [tier_of] @22
 

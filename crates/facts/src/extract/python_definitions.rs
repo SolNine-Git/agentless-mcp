@@ -134,9 +134,8 @@ fn declaration(tree: &Tree, node: NodeId) -> (Option<Symbol>, Vec<Work>) {
 }
 
 fn function(tree: &Tree, node: NodeId, parent: &str) -> Symbol {
-    let name = tree
-        .field(node, Field::Name)
-        .map_or(UNKNOWN, |name| tree.text(name));
+    let name_node = tree.field(node, Field::Name);
+    let name = name_node.map_or(UNKNOWN, |name| tree.text(name));
     let parameters = tree
         .field(node, Field::Parameters)
         .map_or("()", |parameters| tree.text(parameters));
@@ -156,6 +155,7 @@ fn function(tree: &Tree, node: NodeId, parent: &str) -> Symbol {
         SymbolKind::Method
     };
     Symbol::at(tree, node, name, kind)
+        .named_by(tree, name_node)
         .signed(&format!("{prefix} {name}{parameters}{returns}"))
         .owned_by(parent)
         .decorated(!own_decorators(tree, node).is_empty())
@@ -205,9 +205,8 @@ fn decorated(tree: &Tree, node: NodeId, parent: String) -> Vec<Work> {
 // A class, then the steps of its members; `extra` are the decorators that a wrapping definition
 // carries.
 fn class(tree: &Tree, node: NodeId, extra: &[String]) -> (Option<Symbol>, Vec<Work>) {
-    let name = tree
-        .field(node, Field::Name)
-        .map_or(UNKNOWN, |name| tree.text(name));
+    let name_node = tree.field(node, Field::Name);
+    let name = name_node.map_or(UNKNOWN, |name| tree.text(name));
     let bases = bases(tree, node);
     let own;
     let decorators = if extra.is_empty() {
@@ -220,6 +219,7 @@ fn class(tree: &Tree, node: NodeId, extra: &[String]) -> (Option<Symbol>, Vec<Wo
         .field(node, Field::Superclasses)
         .map_or("", |superclasses| tree.text(superclasses));
     let symbol = Symbol::at(tree, node, name, class_kind(&bases, decorators))
+        .named_by(tree, name_node)
         .signed(&format!("class {name}{superclasses}"))
         .decorated(!decorators.is_empty())
         .public(conventionally_public(name))

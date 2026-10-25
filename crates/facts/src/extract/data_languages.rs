@@ -139,9 +139,10 @@ impl Walked {
                 .named_children(node)
                 .filter(|child| tree.is(*child, "pair"));
             let signature = format!("table {key}, {}", counted(pairs.count(), "key", "keys"));
-            let symbol = Symbol::at(tree, node, name, SymbolKind::Class)
+            let mut symbol = Symbol::at(tree, node, name, SymbolKind::Class)
                 .signed(&signature)
                 .owned_by(parent);
+            symbol.end_line = table_end_line(tree, node);
             self.tables.push(OutlineRow { depth: 1, symbol });
         }
         Level {
@@ -167,6 +168,15 @@ impl Walked {
             in_list: level.in_list,
         }
     }
+}
+
+// The line of a table's last pair, else its header line: the node itself runs on over the blank
+// lines up to the next header.
+fn table_end_line(tree: &Tree, table: NodeId) -> u32 {
+    tree.named_children(table)
+        .filter(|child| tree.is(*child, "pair"))
+        .last()
+        .map_or_else(|| tree.line(table), |pair| tree.end_line(pair))
 }
 
 fn nested_owner(owner: &str, key: &str) -> Rc<str> {

@@ -200,6 +200,7 @@ mod tests {
             kind: SymbolKind::Function,
             line,
             end_line: line,
+            name_line: line,
             signature: String::new(),
             parent: parent.to_owned(),
             decorated: false,

@@ -499,6 +499,7 @@ pub fn syntax::Parsed::named_child_count(&self, syntax::NodeId) -> usize
 pub fn syntax::Parsed::named_children(&self, syntax::NodeId) -> impl core::iter::traits::iterator::Iterator<Item = syntax::NodeId> + '_
 pub fn syntax::Parsed::node_count(&self) -> u32
 pub fn syntax::Parsed::parent(&self, syntax::NodeId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::Parsed::prev_sibling(&self, syntax::NodeId) -> core::option::Option<syntax::NodeId>
 pub fn syntax::Parsed::root(&self) -> syntax::NodeId
 pub fn syntax::Parsed::source(&self) -> &str
 pub fn syntax::Parsed::start_byte(&self, syntax::NodeId) -> u32

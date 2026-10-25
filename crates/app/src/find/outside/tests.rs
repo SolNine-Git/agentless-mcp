@@ -109,6 +109,7 @@ fn the_first_line_outside_skips_the_lines_where_outline_rows_start() {
         kind: SymbolKind::Constant,
         line: 2,
         end_line: 2,
+        name_line: 2,
         signature: String::new(),
         parent: String::new(),
         decorated: false,

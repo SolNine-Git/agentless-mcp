@@ -78,6 +78,7 @@ fn symbol(name: &str, kind: &str, line: u32, end_line: u32) -> Symbol {
         kind: SymbolKind::from_name(kind).unwrap_or_else(|| panic!("an unknown kind {kind}")),
         line,
         end_line,
+        name_line: line,
         signature: String::new(),
         parent: String::new(),
         decorated: false,

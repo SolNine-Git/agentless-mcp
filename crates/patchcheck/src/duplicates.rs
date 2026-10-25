@@ -146,7 +146,7 @@ fn body_key(
     language: Language,
 ) -> Result<Option<Key>, Unparsable> {
     let (Ok(start), Ok(end)) = (
-        usize::try_from(symbol.line),
+        usize::try_from(symbol.name_line),
         usize::try_from(symbol.end_line),
     ) else {
         return Ok(None);

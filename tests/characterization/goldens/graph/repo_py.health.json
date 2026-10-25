@@ -98,7 +98,7 @@
       {
         "stable_id": "py:inventory.py::Item",
         "path": "inventory.py",
-        "line": 25,
+        "line": 24,
         "label": "Item",
         "kind": "dataclass",
         "in_degree": 6,

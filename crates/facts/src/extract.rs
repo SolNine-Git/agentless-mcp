@@ -1,3 +1,4 @@
+mod attached;
 mod c_declarators;
 mod c_includes;
 mod data_languages;
@@ -75,13 +76,15 @@ fn imports(tree: &Tree, extraction: &Extraction) -> Vec<Import> {
 }
 
 impl Symbol {
-    // A public symbol that spans `node`, with no signature, owner, decorators or bases yet.
+    // A public symbol that spans `node` and what the grammar attaches before it, with no
+    // signature, owner, decorators or bases yet, and named on the line where `node` starts.
     fn at(tree: &Tree, node: NodeId, name: &str, kind: SymbolKind) -> Symbol {
         Symbol {
             name: name.to_owned(),
             kind,
-            line: tree.line(node),
+            line: attached::first_line(tree, node),
             end_line: tree.end_line(node),
+            name_line: tree.line(node),
             signature: String::new(),
             parent: String::new(),
             decorated: false,
@@ -90,6 +93,14 @@ impl Symbol {
             rationales: Vec::new(),
             duplicate_index: 0,
         }
+    }
+
+    // The line of the `name` node; with none, the symbol keeps the line where its node starts.
+    fn named_by(mut self, tree: &Tree, name: Option<NodeId>) -> Symbol {
+        if let Some(name) = name {
+            self.name_line = tree.line(name);
+        }
+        self
     }
 
     fn signed(mut self, signature: &str) -> Symbol {
