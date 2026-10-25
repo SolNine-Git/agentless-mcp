@@ -8,6 +8,7 @@ use crate::spelling::{rstrip, truncate};
 const SENTINEL: &str = "...";
 const DOCSTRING_MAX_CHARS: usize = 200;
 const DOCSTRING_PARENTS: [&str; 4] = ["module", "block", "class_body", "program"];
+const DOC_COMMENT_MARKERS: [&str; 2] = ["outer_doc_comment_marker", "inner_doc_comment_marker"];
 
 /// What a skeleton keeps beyond the signatures: docstrings cut to one line, and line numbers.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -17,7 +18,7 @@ pub struct SkeletonOptions {
 }
 
 /// Return the skeleton of a parse: each function body becomes `...`, comments go, and docstrings
-/// go or shrink to one line; every other line stays as the source spells it.
+/// and Rust doc comments go or shrink to one line; every other line stays as the source spells it.
 #[must_use]
 pub fn skeletonize(parsed: &Parsed, options: SkeletonOptions) -> String {
     let lines: Vec<&str> = parsed.source().split('\n').collect();
@@ -47,6 +48,16 @@ struct Plan {
     dropped: Vec<bool>,
     replaced: Vec<Option<String>>,
     owned: Vec<bool>,
+    // A line of a `///` or `//!` run: its marker kind, and whether the run has kept its text.
+    doc_runs: Vec<Option<(&'static str, bool)>>,
+}
+
+// A Rust doc comment: its marker kind, its marker as the source spells it, and the first line of
+// its text.
+struct DocComment<'a> {
+    kind: &'static str,
+    marker: &'a str,
+    text: String,
 }
 
 impl<'a> Skeleton<'a> {
@@ -67,10 +78,8 @@ impl<'a> Skeleton<'a> {
         let kind = self.parsed.kind(node);
         if self.functions.contains(kind) || self.extra_functions.contains(kind) {
             self.plan_function(plan, node, keep_docstring);
-        } else if self.parsed.kind_name(node).contains("comment") {
-            // The kind name decides, not the language's comment kinds: kinds that table leaves
-            // out, such as `multiline_comment` and `html_comment`, go too.
-            self.plan_comment(plan, node);
+        } else if self.is_comment(node) {
+            self.plan_comment(plan, node, keep_docstring);
         } else if self.is_leading_docstring(node) {
             self.plan_docstring(plan, node, keep_docstring);
         }
@@ -129,15 +138,31 @@ impl<'a> Skeleton<'a> {
         kept
     }
 
+    // The kind name decides, not the language's comment kinds: kinds that table leaves out, such
+    // as `multiline_comment` and `html_comment`, go too.
+    fn is_comment(&self, node: NodeId) -> bool {
+        self.parsed.kind_name(node).contains("comment")
+    }
+
     // A comment goes; the code that shares its first or last line stays, without the space it
-    // leaves.
-    fn plan_comment(&self, plan: &mut Plan, node: NodeId) {
-        let (first, last) = self.rows(node);
+    // leaves. A node inside a comment, such as Rust's `doc_comment`, is a part of that comment.
+    fn plan_comment(&self, plan: &mut Plan, node: NodeId, keep_docstring: bool) {
+        if self
+            .parsed
+            .parent(node)
+            .is_some_and(|parent| self.is_comment(parent))
+        {
+            return;
+        }
+        let first = self.rows(node).0;
+        let (last, tail) = self.comment_end(node);
         let head = &self.lines[first - 1][..self.parsed.start_point(node).column as usize];
-        let tail = &self.lines[last - 1][self.parsed.end_point(node).column as usize..];
         let (head_blank, tail_blank) = (text::strip(head).is_empty(), text::strip(tail).is_empty());
         if head_blank && tail_blank {
             plan.drop_range(first, last);
+            if keep_docstring {
+                self.plan_doc_comment(plan, node, head);
+            }
             return;
         }
         plan.drop_range(first + 1, last);
@@ -147,6 +172,55 @@ impl<'a> Skeleton<'a> {
             format!("{}{tail}", rstrip(head))
         };
         plan.replace(first, rstrip(&kept).to_owned());
+    }
+
+    // The comment's last line and the text after the comment there. A token that holds its
+    // closing newline ends at column 0 of the next row, so it ends on the row before.
+    fn comment_end(&self, node: NodeId) -> (usize, &'a str) {
+        let (first, last) = self.rows(node);
+        let column = self.parsed.end_point(node).column as usize;
+        if column == 0 && last > first {
+            return (last - 1, "");
+        }
+        (last, &self.lines[last - 1][column..])
+    }
+
+    // A Rust doc comment keeps its marker and the first line of its text. A line of a `///` or
+    // `//!` run goes when an earlier line of the run kept the text.
+    fn plan_doc_comment(&self, plan: &mut Plan, node: NodeId, indent: &str) {
+        let Some(doc) = self.doc_comment(node) else {
+            return;
+        };
+        let first = self.rows(node).0;
+        let has_text = !doc.text.is_empty();
+        if doc.marker.starts_with("/*") {
+            if has_text {
+                plan.replace(first, format!("{indent}{} {} */", doc.marker, doc.text));
+            }
+            return;
+        }
+        let run_has_text = plan.doc_run_has_text(first - 1, doc.kind);
+        plan.extend_doc_run(first, doc.kind, run_has_text || has_text);
+        if has_text && !run_has_text {
+            plan.replace(first, format!("{indent}{} {}", doc.marker, doc.text));
+        }
+    }
+
+    fn doc_comment(&self, node: NodeId) -> Option<DocComment<'a>> {
+        let parsed = self.parsed;
+        let marker = parsed
+            .children(node)
+            .find(|child| DOC_COMMENT_MARKERS.contains(&parsed.kind_name(*child)))?;
+        let body = parsed
+            .children(node)
+            .find(|child| parsed.kind_name(*child) == "doc_comment")
+            .map_or("", |child| parsed.text(child));
+        let start = parsed.start_byte(node) as usize;
+        Some(DocComment {
+            kind: parsed.kind_name(marker),
+            marker: &parsed.source()[start..parsed.end_byte(marker) as usize],
+            text: first_text_line(body),
+        })
     }
 
     fn plan_docstring(&self, plan: &mut Plan, node: NodeId, keep: bool) {
@@ -252,6 +326,26 @@ fn string_prefix(text: &str) -> &str {
     }
 }
 
+// The first line of a doc comment's text that holds a word, cut at its limit. A line after the
+// first drops the `*` that opens a block comment's line.
+fn first_text_line(body: &str) -> String {
+    let words = body
+        .split('\n')
+        .enumerate()
+        .map(|(index, line)| {
+            let line = line.trim_start_matches(text::is_space);
+            let line = if index > 0 {
+                line.strip_prefix('*').unwrap_or(line)
+            } else {
+                line
+            };
+            text::split_whitespace(line).collect::<Vec<&str>>()
+        })
+        .find(|words| !words.is_empty())
+        .unwrap_or_default();
+    truncate(&words.join(" "), DOCSTRING_MAX_CHARS)
+}
+
 // A triple quote anywhere in the text wins, else the text's first character.
 fn quote_of(inner: &str) -> &str {
     if inner.contains("\"\"\"") {
@@ -272,11 +366,20 @@ impl Plan {
             dropped: vec![false; lines + 1],
             replaced: vec![None; lines + 1],
             owned: vec![false; lines + 1],
+            doc_runs: vec![None; lines + 1],
         }
     }
 
     fn owns(&self, line: usize) -> bool {
         self.owned[line]
+    }
+
+    fn doc_run_has_text(&self, line: usize, kind: &str) -> bool {
+        self.doc_runs[line].is_some_and(|(run, has_text)| run == kind && has_text)
+    }
+
+    fn extend_doc_run(&mut self, line: usize, kind: &'static str, has_text: bool) {
+        self.doc_runs[line] = Some((kind, has_text));
     }
 
     fn drop_range(&mut self, first: usize, last: usize) {

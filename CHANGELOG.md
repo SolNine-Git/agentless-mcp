@@ -117,6 +117,24 @@
   go from 96,735 to 23,001 bytes, and the 36 refused calls of
   `crates/mcp/fixtures/calls.json` from 8,875 to 4,427 bytes.
 
+### Fixed
+
+- **The overview of a Rust or Lua file keeps the lines under a comment.** The
+  default overview and the `--docstrings` overview both had the defect. The
+  skeleton planned a node inside a comment as a comment of its own: the
+  `doc_comment` of a Rust `///`, `//!` or `/** */` comment, and the content of
+  a Lua comment. A `///` line lost its text and took the next source line, so
+  a field printed as `///    pub schema: i64,`, and a Lua comment left `--`.
+  Now the default overview drops Rust doc comments and Lua comments whole, and
+  every declaration line prints whole. With `--docstrings`, a run of `///` or
+  `//!` lines prints its marker and its first line of text, and a `/** */` or
+  `/*! */` comment prints on one line, at most 200 characters. Lua comments
+  stay dropped. The reference skeletons change in 3 Rust cases and 8 Lua
+  cases. Measured with the release binaries of the base and of this change:
+  36 files in 21 languages with no Rust doc comment and no Lua comment give
+  the same output in both modes, byte for byte. In 12 Rust and Lua files,
+  each changed line is a comment line or a source line that a comment covered.
+
 ## 0.11.0rc1 -- 2026-10-23
 
 The implementation moves from Python to Rust. 0.11.0rc1 is a pre-release on
