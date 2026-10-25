@@ -216,9 +216,9 @@ fn partition<'a>(
         if weighted.two_m > 0.0 {
             // Both scores share one loop, so at resolution 1.0 they are the same float.
             let fraction = internal / weighted.two_m;
-            // pow(x, 2.0) at run time: the compiler would fold it to x * x, which can differ in
-            // the last bit.
-            let share = (outgoing / weighted.two_m).powf(std::hint::black_box(2.0));
+            // Not powf: IEEE 754 rounds a product correctly, so each platform gives the same bits.
+            let ratio = outgoing / weighted.two_m;
+            let share = ratio * ratio;
             modularity += fraction - resolution * share;
             standard += fraction - share;
         }

@@ -359,6 +359,17 @@
   and languageHandler.tsx, this repository's values.rs): numbers would add 18
   to 3,703 bytes per file, 3.7 to 25.0 percent, and 5,385 of 26,463 bytes in
   all (20.3 percent).
+- **The macOS CI and release jobs pass again.** The modularity of a community
+  partition squared each community's share with the platform `pow`. Apple's
+  `pow(x, 2)` differs from glibc's by one ulp at a near-tie, so the macOS jobs
+  rewrote the graph fixtures with the Python reference of tag `v0.11.0rc1`
+  before the tests. That reference cannot write the fixtures of this tree,
+  which now hold a `name_line` in each symbol row and the new community
+  labels, so the step failed on both macOS targets. Now the share is the
+  product `ratio * ratio`, which IEEE 754 rounds correctly on every platform.
+  The step and `scripts/platform_graph_fixtures.sh` are gone. On Linux,
+  `cargo insta test --check --workspace --test-runner nextest` passes 1407 of
+  1407 tests with no expected value changed, as on the base.
 
 ## 0.11.0rc1 -- 2026-10-23
 
