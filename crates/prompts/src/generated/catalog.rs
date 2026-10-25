@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 171] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 172] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -577,6 +577,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 171] = [
         "find_usage_rest",
         &["name", "count"],
         messages::FIND_USAGE_REST.pieces(),
+    ),
+    (
+        "messages",
+        "find_usage_rest_owner",
+        &["name", "owner", "count"],
+        messages::FIND_USAGE_REST_OWNER.pieces(),
     ),
     (
         "messages",

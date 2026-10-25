@@ -269,3 +269,25 @@ fn a_cut_usage_list_names_its_order_and_counts_the_files_it_leaves_out() {
     let plain = serde_json::to_value(FindJson::of(&result(DataMatches::default())));
     assert!(plain.unwrap_or_default().get("usage").is_none());
 }
+
+#[test]
+fn the_rest_row_of_a_qualified_query_names_the_owner_as_the_head_does() {
+    let names: Vec<String> = (0..10).map(|at| format!("m{at}.py")).collect();
+    let rows: Vec<(&str, u32, u32)> = names.iter().map(|name| (name.as_str(), 1, 1)).collect();
+    let order = UsageOrder::NearestDeclaration;
+    let found = FindResult {
+        usage: Some(usage(Some("SdkConfig"), order, &rows, 118)),
+        ..result(DataMatches::default())
+    };
+    let text = find_text(&found);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(
+        lines[2],
+        "usage: 118 files spell 'pin' and 'SdkConfig' and do not declare 'pin'. The 10 nearest \
+         to a declaration:"
+    );
+    assert_eq!(
+        lines.last(),
+        Some(&"108 more files spell 'pin' and 'SdkConfig' and are not listed.")
+    );
+}

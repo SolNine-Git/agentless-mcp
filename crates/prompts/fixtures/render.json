@@ -621,6 +621,14 @@
       },
       "text": "37 more files spell 'where' and are not listed."
     },
+    "find_usage_rest_owner": {
+      "arguments": {
+        "count": 108,
+        "name": "get",
+        "owner": "SdkConfig"
+      },
+      "text": "108 more files spell 'get' and 'SdkConfig' and are not listed."
+    },
     "find_usage_row": {
       "arguments": {
         "count": 12,

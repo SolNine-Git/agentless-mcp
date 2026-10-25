@@ -766,6 +766,20 @@ pub const FIND_USAGE_REST: Template<(Text, Count)> = Template::new(&[
     Piece::Text(" not listed."),
 ]);
 
+/// A template that takes (`name`, `owner`, `count`).
+pub const FIND_USAGE_REST_OWNER: Template<(Text, Text, Count)> = Template::new(&[
+    Piece::Value(2),
+    Piece::Text(" more "),
+    Piece::Choice(2, "file spells", "files spell"),
+    Piece::Text(" '"),
+    Piece::Value(0),
+    Piece::Text("' and '"),
+    Piece::Value(1),
+    Piece::Text("' and "),
+    Piece::Choice(2, "is", "are"),
+    Piece::Text(" not listed."),
+]);
+
 /// A template that takes (`path`, `line`, `count`).
 pub const FIND_USAGE_ROW: Template<(Text, Count, Count)> = Template::new(&[
     Piece::Text("  "),

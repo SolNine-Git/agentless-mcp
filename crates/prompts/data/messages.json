@@ -53,6 +53,7 @@
   "find_usage_lines_all": "Most lines first:",
   "find_usage_row": "  {path} @{line} ({count} {count:line|lines})",
   "find_usage_rest": "{count} more {count:file spells|files spell} '{name}' and {count:is|are} not listed.",
+  "find_usage_rest_owner": "{count} more {count:file spells|files spell} '{name}' and '{owner}' and {count:is|are} not listed.",
   "overview_data_unlisted": "{count} more {count:key is|keys are} not listed: the outline stops at depth 2, at list items and at {cap} keys. Grep finds {count:it|them}.",
   "span_data_key_unlisted": "{path} keeps an outline of its keys, and {qualname} is not in it: the outline stops at depth 2, at list items and at {cap} keys. Read the lines with read slice, or Grep for the key.",
   "expand_body_truncated": "... {shown} of {total} lines shown: the batch did not fit the output ceiling. Expand this id on its own for the whole body.",

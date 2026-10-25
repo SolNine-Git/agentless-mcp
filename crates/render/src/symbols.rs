@@ -10,8 +10,9 @@ use prompts::messages::{
     FIND_DATA_OUTSIDE, FIND_DATA_OUTSIDE_UNREAD, FIND_DATA_UNLISTED, FIND_NO_DECLARATION,
     FIND_NO_MATCHES, FIND_NO_MATCHES_KIND, FIND_UNPARSED, FIND_USAGE_HEAD, FIND_USAGE_HEAD_OWNER,
     FIND_USAGE_LINES, FIND_USAGE_LINES_ALL, FIND_USAGE_NEAREST, FIND_USAGE_NEAREST_ALL,
-    FIND_USAGE_REST, FIND_USAGE_ROW,
+    FIND_USAGE_REST, FIND_USAGE_REST_OWNER, FIND_USAGE_ROW,
 };
+use prompts::{Count, Template, Text};
 use serde::Serialize;
 use text::one_line;
 
@@ -153,18 +154,31 @@ fn usage_text(usage: &Usage) -> String {
     let mut lines = vec![usage_head(usage)];
     lines.extend(files.rows().iter().map(usage_row));
     if files.omitted() > 0 {
-        lines.push(FIND_USAGE_REST.render((usage.name.as_str(), files.omitted())));
+        let rest = (&FIND_USAGE_REST_OWNER, &FIND_USAGE_REST);
+        lines.push(owner_form(usage, files.omitted(), rest));
     }
     lines.join("\n") + "\n"
 }
 
+// A row's form that names the owner of a qualified query, and its form with no owner.
+type OwnerForms = (
+    &'static Template<(Text, Text, Count)>,
+    &'static Template<(Text, Count)>,
+);
+
+// The head and the count of the files left out both name the owner of a qualified query.
+fn owner_form(usage: &Usage, count: usize, (with_owner, without): OwnerForms) -> String {
+    let name = usage.name.as_str();
+    match usage.owner.as_deref() {
+        Some(owner) => with_owner.render((name, owner, count)),
+        None => without.render((name, count)),
+    }
+}
+
 // A head of one file ends with a colon and takes no order.
 fn usage_head(usage: &Usage) -> String {
-    let (name, total) = (usage.name.as_str(), usage.files.total());
-    let head = match usage.owner.as_deref() {
-        Some(owner) => FIND_USAGE_HEAD_OWNER.render((name, owner, total)),
-        None => FIND_USAGE_HEAD.render((name, total)),
-    };
+    let total = usage.files.total();
+    let head = owner_form(usage, total, (&FIND_USAGE_HEAD_OWNER, &FIND_USAGE_HEAD));
     if total == 1 {
         return head;
     }

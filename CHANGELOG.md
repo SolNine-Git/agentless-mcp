@@ -29,7 +29,10 @@
   the arms missed at a usage site, 42 of the 161 gold files that a find call
   missed, and 199 of the 1,504 gold files that the arms did not name. The
   warm-cache wall time of `find-symbol` on four snapshots of 2,032 to 5,102
-  files stays within 6 ms of the base (10 runs each, median).
+  files stays within 6 ms of the base (10 runs each, median). For a qualified
+  query, the line that counts the files not listed names the owner too, as
+  the head does: "108 more files spell 'get' and 'SdkConfig' and are not
+  listed." Before this fix, the line named only the name.
 
 ### Removed
 

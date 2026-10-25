@@ -95,6 +95,7 @@ pub const prompts::messages::FIND_USAGE_LINES_ALL: &str
 pub const prompts::messages::FIND_USAGE_NEAREST: prompts::Template<prompts::Count>
 pub const prompts::messages::FIND_USAGE_NEAREST_ALL: &str
 pub const prompts::messages::FIND_USAGE_REST: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::FIND_USAGE_REST_OWNER: prompts::Template<(prompts::Text, prompts::Text, prompts::Count)>
 pub const prompts::messages::FIND_USAGE_ROW: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::GROUPED_IDS: prompts::Template<prompts::Count>
 pub const prompts::messages::HISTORY_BODY_TRUNCATED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>

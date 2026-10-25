@@ -111,6 +111,14 @@
       "one": "1 more file spells 'where' and is not listed.",
       "many": "2 more files spell 'where' and are not listed."
     },
+    "find_usage_rest_owner": {
+      "arguments": {
+        "name": "get",
+        "owner": "SdkConfig"
+      },
+      "one": "1 more file spells 'get' and 'SdkConfig' and is not listed.",
+      "many": "2 more files spell 'get' and 'SdkConfig' and are not listed."
+    },
     "find_usage_row": {
       "arguments": {
         "line": 754,
