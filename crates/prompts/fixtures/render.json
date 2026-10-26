@@ -652,12 +652,6 @@
       },
       "text": "... 2 more declared imports not listed (limit 20)"
     },
-    "explain_no_match": {
-      "arguments": {
-        "target": "Invoice.totl"
-      },
-      "text": "no symbol matches Invoice.totl"
-    },
     "explain_tie": {
       "arguments": {
         "count": 2,
@@ -1374,6 +1368,14 @@
       },
       "text": "no references to py:pkg/lib.py::target outside its own definition (complete scan: 42 files, 0 skipped)"
     },
+    "refs_absent_partial": {
+      "arguments": {
+        "count": 230,
+        "target": "py:a.py::helper",
+        "total": 1
+      },
+      "text": "no references to py:a.py::helper outside its own definition in the 230 files read (partial scan: 1 code file skipped)"
+    },
     "refs_callers_unlisted": {
       "arguments": {
         "count": 2,
@@ -1420,12 +1422,18 @@
       },
       "text": "[py:pkg/lib.py::other1] @5  (6 shared callers in 1 file, score 0.281)"
     },
-    "refs_target_unresolved": {
+    "refs_split": {
       "arguments": {
-        "name": "total",
-        "target": "py:src/app/svc.py::Invoice.total"
+        "count": 3,
+        "total": 21
       },
-      "text": "py:src/app/svc.py::Invoice.total resolves to no symbol; these are the references to the name total, wherever it is defined"
+      "text": "3 rows have binding evidence (same-file or resolved-via-import). 21 are candidates (unique or name-only-ambiguous)."
+    },
+    "refs_split_none": {
+      "arguments": {
+        "count": 6
+      },
+      "text": "no row has binding evidence: 6 are candidates (unique or name-only-ambiguous)."
     },
     "refs_unlisted": {
       "arguments": {
@@ -1541,6 +1549,55 @@
         "surface": "v1"
       },
       "text": "--surface v1 publishes the v1 tools. They are deprecated and are removed in 0.11.0. Move to the v2 tools: agentless-mcp guide --section the-two-surfaces has the mapping."
+    },
+    "target_candidates": {
+      "arguments": {
+        "count": 2,
+        "listed": "py:a.py::run, py:b.py::run",
+        "name": "run"
+      },
+      "text": "2 definitions of run: py:a.py::run, py:b.py::run. Pass one as the target."
+    },
+    "target_candidates_cut": {
+      "arguments": {
+        "count": 12,
+        "listed": "py:a.py::run, py:b.py::run",
+        "name": "run",
+        "shown": 2
+      },
+      "text": "12 definitions of run, and 2 are listed: py:a.py::run, py:b.py::run. Pass one as the target."
+    },
+    "target_is_file": {
+      "arguments": {
+        "target": "src/app.py"
+      },
+      "text": "src/app.py is a file. Pass the stable id of one of its symbols"
+    },
+    "target_no_file": {
+      "arguments": {
+        "path": "gone.py"
+      },
+      "text": "the scan read no file gone.py"
+    },
+    "target_no_line": {
+      "arguments": {
+        "line": 3,
+        "path": "pricing.py"
+      },
+      "text": "no symbol in pricing.py spans line 3"
+    },
+    "target_no_match": {
+      "arguments": {
+        "target": "Invoice.totl"
+      },
+      "text": "no symbol matches Invoice.totl"
+    },
+    "target_spelled": {
+      "arguments": {
+        "count": 4,
+        "name": "orderPinnedTopics"
+      },
+      "text": "4 files spell orderPinnedTopics in code, and no file declares it. Grep finds every spelling."
     },
     "tool_takes": {
       "arguments": {

@@ -32,7 +32,8 @@ pub const EXPLAIN_LIMIT: &str = "Maximum rows shown within each fan-in, fan-out,
         section of the explanation. Omit it to use the tool's default.";
 
 /// The parameter description keyed `explain_target`.
-pub const EXPLAIN_TARGET: &str = "Stable id, qualified name or name. Ties list the others.";
+pub const EXPLAIN_TARGET: &str = "Stable id, path::name, path:line, qualified name or name. Ties \
+        list the others.";
 
 /// The parameter description keyed `file_path`.
 pub const FILE_PATH: &str = "Repository-relative file.";
@@ -113,10 +114,12 @@ pub const ORIENT_OPERATION: &str = "The tool description says what each one take
 pub const OVERVIEW_PATHS: &str = "Repository-relative files.";
 
 /// The parameter description keyed `path_source`.
-pub const PATH_SOURCE: &str = "path: a stable id, qualified name or file path.";
+pub const PATH_SOURCE: &str = "path: a stable id, path::name, path:line, qualified name or file \
+        path.";
 
 /// The parameter description keyed `path_target`.
-pub const PATH_TARGET: &str = "path: a stable id, qualified name or file path.";
+pub const PATH_TARGET: &str = "path: a stable id, path::name, path:line, qualified name or file \
+        path.";
 
 /// The parameter description keyed `read_operation`.
 pub const READ_OPERATION: &str = "The tool description says what each one takes.";
@@ -128,7 +131,7 @@ pub const READ_PATH: &str = "Repository-relative path: the file for slice, the s
 pub const REFERENCE_LIMIT: &str = "Maximum sites, one per file in turn. Default 50.";
 
 /// The parameter description keyed `reference_target`.
-pub const REFERENCE_TARGET: &str = "Stable id, qualified name or name.";
+pub const REFERENCE_TARGET: &str = "Stable id, path::name, path:line, qualified name or name.";
 
 /// The parameter description keyed `repo_root`.
 pub const REPO_ROOT: &str = "Absolute path of one of the server's roots. Omit it to use the root \

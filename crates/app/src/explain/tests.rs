@@ -1,6 +1,7 @@
 use super::{ExplainRequest, Explanation, explain};
 use crate::IntArg;
 use crate::endpoints::scanned::{LINKED, Scanned};
+use crate::endpoints::{BindingStatus, CoverageStatus};
 
 fn explained(files: &[(&str, &str)], target: &str) -> Explanation {
     explained_at(files, target, 20)
@@ -119,4 +120,36 @@ fn every_other_definition_is_an_alternative_and_the_exact_band_counts_the_ties()
     let answer = explained(&files, "run");
     assert_eq!(answer.tied, 2);
     assert_eq!(answer.alternatives.rows(), ["py:b.py::run"]);
+}
+
+#[test]
+fn a_stable_id_of_a_file_the_scan_did_not_read_explains_nothing_and_lists_candidates() {
+    let answer = explained(&TWO_METHODS, "py:c.py::Value.as_sql");
+    assert!(answer.card.is_none());
+    assert_eq!(answer.binding.status, BindingStatus::NotFound);
+    assert_eq!(
+        answer.message,
+        "no symbol matches py:c.py::Value.as_sql: the scan read no file c.py. 2 definitions of \
+         as_sql: py:a.py::Value.as_sql, py:a.py::Other.as_sql. Pass one as the target."
+    );
+}
+
+#[test]
+fn a_path_qualified_name_explains_its_one_definition() {
+    let answer = explained(&LINKED, "pkg/money.py::format_money");
+    assert_eq!((answer.binding.form, answer.tied), ("path_name", 1));
+    let card = answer.card.unwrap_or_else(|| panic!("a card"));
+    assert_eq!(card.stable_id, "py:pkg/money.py::format_money");
+}
+
+#[test]
+fn a_skipped_code_file_makes_the_fan_in_partial() {
+    let code = format!("{}helper(2)\n", "x = 1\n".repeat(200_000));
+    let files = [
+        ("a.py", "def helper(value):\n    return value + 1\n"),
+        ("big.py", code.as_str()),
+    ];
+    let answer = explained(&files, "helper");
+    assert_eq!(answer.coverage.status, CoverageStatus::Partial);
+    assert_eq!(answer.skipped.len(), 1);
 }

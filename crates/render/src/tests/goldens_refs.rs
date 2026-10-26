@@ -54,7 +54,9 @@ fn refs_body(repo: &str, target: &str) -> String {
 
 #[test]
 fn a_qualified_name_names_its_one_definition_in_the_header() {
-    let expected = "3 references to py:pricing.py::PriceBook.quote\n\n\
+    let expected = "3 references to py:pricing.py::PriceBook.quote\n\
+                    no row has binding evidence: 3 are candidates (unique or \
+                    name-only-ambiguous).\n\n\
                     pricing.py  (1 reference, name-only-ambiguous)\n  \
                     [py:pricing.py::PriceBook.price_list] @62\n\n\
                     reports.py  (2 references, name-only-ambiguous)\n  \

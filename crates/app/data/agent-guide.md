@@ -125,6 +125,10 @@ Every place that accepts an id accepts both forms: `expand`, `refs`,
 `slice --symbol`, `explain`. Nothing else prints the `#2`. It exists so that
 you can address one of several same-named symbols at all.
 
+`expand`, `history`, `refs`, `explain` and `path` also take an id without its
+prefix, such as `src/app/svc.py::Invoice.total`. The prefix comes from the
+file's language.
+
 ---
 
 ## The two surfaces
@@ -656,7 +660,26 @@ The first line counts the references. When the target resolves to one
 definition, the line names that definition by its stable id. When several
 definitions share the name, the line says how many, because each row can
 reference any one of them. In every language, a line that only declares the
-name is not a reference.
+name is not a reference. When a row has no binding evidence, a second line
+splits the count: the rows that have binding evidence (same-file or
+resolved-via-import), and the candidates (unique or name-only-ambiguous).
+
+`target` is a stable id, an id without its prefix (`path::qualname`), a
+`path:line` (the innermost symbol that spans the line), a qualified name or a
+name. A target never falls back to definitions outside its own scope. A
+target that binds to nothing gets one line, and the command exits 1. The line
+says why. Then it names the definitions of the name as candidate ids, or it
+counts the code files that spell a name that no file declares:
+
+```
+no symbol matches py:gone.py::format_money: the scan read no file gone.py. 1 definition of format_money: py:pricing.py::format_money. Pass it as the target.
+```
+
+A bound target with no reference exits 0. Its line ends `(complete scan: N
+files, 0 skipped)` when the scan skipped nothing, and `(partial scan: M code
+files skipped)` when the scan skipped a code file. The JSON carries
+`binding.status` (`bound`, `ambiguous` or `not_found`) and `coverage.status`
+(`complete`, `partial` or `not_checked`).
 
 You get callees for free when you read a body. You do not get callers that
 way, and callers are what an error-path review or a blast-radius question
@@ -845,11 +868,11 @@ imports
 ```
 
 Use it as the orientation call for one symbol, in place of a `find-symbol`
-plus `refs` pair. `target` is a stable id or a qualified name. When a bare
+plus `refs` pair. `target` takes the forms that `refs` takes. When a bare
 name has several definitions, the tool explains the first in path order and
 lists at most `limit` of the rest as `also defined at`, then a line that
-counts the rest it leaves out. An unknown target is a message and exit 1,
-never an exception.
+counts the rest it leaves out. A target that binds to nothing is the line that
+`refs` gives, and exit 1, never an exception.
 
 Fan-out is *resolved* references, not a call list. It includes the classes a
 signature names and the constants a body reads. It counts one relationship
@@ -897,7 +920,8 @@ only a retrieval lead.
 Three answers are answers rather than errors:
 
 - no path (exit 0, with a note that unique and ambiguous edges were excluded)
-- an endpoint that names nothing (exit 1, naming it)
+- an endpoint that names nothing (exit 1, naming it). A stable id,
+  `path::qualname` or `path:line` endpoint never moves to another file.
 - an endpoint that names several things (exit 1, listing the candidate ids so
   you can pick one)
 

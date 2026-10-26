@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 235] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 243] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -607,12 +607,6 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 235] = [
         "explain_imports_unlisted",
         &["count", "limit"],
         messages::EXPLAIN_IMPORTS_UNLISTED.pieces(),
-    ),
-    (
-        "messages",
-        "explain_no_match",
-        &["target"],
-        messages::EXPLAIN_NO_MATCH.pieces(),
     ),
     (
         "messages",
@@ -1264,6 +1258,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 235] = [
     ),
     (
         "messages",
+        "refs_absent_partial",
+        &["target", "count", "total"],
+        messages::REFS_ABSENT_PARTIAL.pieces(),
+    ),
+    (
+        "messages",
         "refs_callers_unlisted",
         &["count", "limit"],
         messages::REFS_CALLERS_UNLISTED.pieces(),
@@ -1300,9 +1300,15 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 235] = [
     ),
     (
         "messages",
-        "refs_target_unresolved",
-        &["target", "name"],
-        messages::REFS_TARGET_UNRESOLVED.pieces(),
+        "refs_split",
+        &["count", "total"],
+        messages::REFS_SPLIT.pieces(),
+    ),
+    (
+        "messages",
+        "refs_split_none",
+        &["count"],
+        messages::REFS_SPLIT_NONE.pieces(),
     ),
     (
         "messages",
@@ -1411,6 +1417,48 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 235] = [
         "surface_v1_deprecated",
         &["surface"],
         messages::SURFACE_V1_DEPRECATED.pieces(),
+    ),
+    (
+        "messages",
+        "target_candidates",
+        &["name", "count", "listed"],
+        messages::TARGET_CANDIDATES.pieces(),
+    ),
+    (
+        "messages",
+        "target_candidates_cut",
+        &["name", "shown", "count", "listed"],
+        messages::TARGET_CANDIDATES_CUT.pieces(),
+    ),
+    (
+        "messages",
+        "target_is_file",
+        &["target"],
+        messages::TARGET_IS_FILE.pieces(),
+    ),
+    (
+        "messages",
+        "target_no_file",
+        &["path"],
+        messages::TARGET_NO_FILE.pieces(),
+    ),
+    (
+        "messages",
+        "target_no_line",
+        &["path", "line"],
+        messages::TARGET_NO_LINE.pieces(),
+    ),
+    (
+        "messages",
+        "target_no_match",
+        &["target"],
+        messages::TARGET_NO_MATCH.pieces(),
+    ),
+    (
+        "messages",
+        "target_spelled",
+        &["name", "count"],
+        messages::TARGET_SPELLED.pieces(),
     ),
     (
         "messages",

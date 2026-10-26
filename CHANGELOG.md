@@ -82,6 +82,52 @@
     `mcp__agentless__graph`. A prompt that calls `orient` with a moved
     operation must call `graph`.
 
+- **A `refs` target that binds to nothing exits 1.** The CLI exit code of
+  `refs` was 0 for every answer. It is now 1 when the target binds to no
+  definition, as for `explain`. The MCP answer of `find_referencing_symbols`
+  gives that line as a refusal with `isError` set, "Error calling tool
+  'find_referencing_symbols': no symbol matches X". A bound target with no
+  reference still exits 0 with `isError` unset. A script that reads the exit
+  code sees the change. Such a call does not unlock the search gate. Over the
+  251 recorded `refs` calls, 53 exit codes go from 0 to 1, and none goes from
+  1 to 0. The `refs`, `explain` and `path` target parameters list the new
+  forms. Measured on the tools/list answer with one root: the frame grows from
+  10,403 to 10,495 bytes. `find_referencing_symbols` and `symbols` each grow
+  by 23 bytes and 8 cl100k tokens, and `graph` by 46 bytes and 16 tokens. The
+  always-loaded set grows from 5,516 to 5,539 bytes and from 1,088 to 1,096
+  tokens.
+
+- **The `refs` header splits its count when a row has no binding evidence.**
+  The header counts every row, and a `unique` or `name-only-ambiguous` row read
+  as a caller beside it. A second line now counts the rows that have binding
+  evidence (same-file or resolved-via-import) and the candidates, for example
+  "3 rows have binding evidence (same-file or resolved-via-import). 21 are
+  candidates (unique or name-only-ambiguous)." or "no row has binding evidence:
+  6 are candidates (unique or name-only-ambiguous)." The count covers every
+  site before the limit cuts them. The group order and the cut do not change.
+  The JSON gains `bound_total` and `candidate_total`. Over the 251 recorded
+  `refs` calls, 149 answers gain the line: 115 bytes and 26 cl100k tokens at
+  the median, 116 bytes and 26 tokens at p90, 14,968 bytes and 3,410 tokens in
+  total.
+
+- **`refs` and `explain` answers carry a binding status and a coverage
+  status.** The JSON gains `binding` (`status` bound, ambiguous or not_found,
+  the `form` of the target, the count of `definitions`, and for not_found the
+  `reason`, the `candidates` and `candidates_omitted`) and `coverage` (`status`
+  complete, partial or not_checked, and `skipped_code_files`). Every earlier
+  field stays. `target_resolved` reads false for a target that binds to
+  nothing, where it read true for a name that no file declares. `explain`
+  prints the skipped-file warning that `refs` prints, and its JSON lists the
+  skipped files.
+
+- **`expand` and `history` take a `path::name`.** The text before the first
+  `::` is a file path, and the prefix comes from the file's language, so
+  `crates/json/src/float.rs::float_text` reads as
+  `rs:crates/json/src/float.rs::float_text`. A text that parses as a stable id
+  keeps that parse. A bare name, a dotted name and a `path:line` stay refused.
+  The 523 recorded `refs`, `explain`, `history` and `expand` calls hold no such
+  `expand` or `history` call, and all 267 of those answers stay the same.
+
 - **A `find-symbol` miss with usage files exits 0.** The CLI exit code of a
   query that matches no symbol was 1. When a code file spells the name, the
   answer now lists that file, and the command exits 0. The exit code stays 1
@@ -235,6 +281,45 @@
   file now records the view's error beside its text.
 
 ### Fixed
+
+- **A `path::name` target binds to its definition.** `refs
+  crates/json/src/float.rs::float_text` said "resolves to no symbol; these are
+  the references to the name float_text, wherever it is defined", then "no
+  references", while the stable id gave 24 references. The target fell to the
+  name lookup, which split at the last dot and looked up `rs::float_text`. A
+  text with a file path before its first `::` now reads as the stable id of
+  that file, in `refs`, `explain` and `path`. A `path:line` binds to the
+  innermost symbol that spans the line, and `Type::method` reads as
+  `Type.method`. Over the 251 recorded `refs` calls, all 20 `path::name`
+  calls now bind: 18 go from "no references" to 17 to 34 references, and 2
+  keep their 4 rows under a header that names
+  `py:openlibrary/core/models.py::User.preferences` in place of the notice.
+
+- **A target that binds to nothing says so, and no answer reads as a
+  completed zero.** A name that no file declares got "no references to X
+  outside its own definition (complete scan: N files, 0 skipped)". That line
+  claimed a definition and a complete search. It now gets "no symbol matches
+  X", and the count of the code files that spell the name, or the stable ids
+  of the definitions of the name when the target's file or qualifier matches
+  none of them. A target never falls back to definitions outside its own
+  scope: a stable id, a `path::name` or a qualified name that its file does
+  not define binds to nothing, in `refs`, `explain` and `path`. Before, `refs`
+  listed the rows of every definition of the last name, and `explain` and
+  `path` took another file's symbol, for example `explain
+  rs:crates/json/src/WRONG.rs::float_text` explained
+  `rs:crates/cli/src/args/declared.rs::float_text`. The notice "resolves to no
+  symbol" is gone. Over the 251 recorded `refs` calls, 53 answers change to
+  this line: 48 were "no references" for a name that no file declares
+  (`find-symbol` counts 0 to 59 files that use the name), and 5 were rows of
+  every definition of the last name
+  (`models.Image` 4 times, `config.IsValidImage` once), which now list 1 or 2
+  candidate ids.
+
+- **A `refs` absence over a scan that skipped a code file says that it is
+  partial.** The line read "no references to X outside its own definition"
+  under the skipped-file warning. It now ends "in the N files read (partial
+  scan: M code files skipped)". A skipped data file does not make the check
+  partial, because a data file holds no reference.
 
 - **A Rust `tests.rs` or `testing.rs` is a test path.** The rule read test
   directories, the stem `conftest`, the suffix `_test` and the infixes `.test.`

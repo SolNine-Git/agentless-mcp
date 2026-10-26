@@ -13,17 +13,25 @@ use text::one_line;
 
 use crate::envelope::{Listing, wrap_json};
 use crate::map::RationaleJson;
+use crate::refs::{BindingJson, CoverageJson};
+use crate::skipped::{SkippedJson, skipped_json, skipped_line};
 use crate::symbols::CardJson;
 use crate::{Rendered, View};
 
 impl View for Explanation {
     fn rendered(&self) -> Rendered<'_> {
-        Rendered::new(
-            explanation_text(self),
-            ExplainJson::of(self),
-            None,
-            wrap_json,
-        )
+        Rendered::new(warned_text(self), ExplainJson::of(self), None, wrap_json)
+    }
+}
+
+// A skipped code file can hold a caller, so the warning comes before the fan-in reads as whole.
+fn warned_text(explanation: &Explanation) -> String {
+    let text = explanation_text(explanation);
+    let skipped = skipped_line(&explanation.skipped);
+    if skipped.is_empty() {
+        text
+    } else {
+        format!("{skipped}\n\n{text}")
     }
 }
 
@@ -141,6 +149,10 @@ struct ExplainJson<'a> {
     target: &'a str,
     symbol: Option<CardJson<'a>>,
     message: &'a str,
+    binding: BindingJson<'a>,
+    coverage: CoverageJson,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    skipped: Vec<SkippedJson<'a>>,
     alternatives: &'a [String],
     #[serde(skip_serializing_if = "Option::is_none")]
     alternatives_omitted: Option<usize>,
@@ -198,6 +210,9 @@ impl<'a> ExplainJson<'a> {
             target: &explanation.target,
             symbol: explanation.card.as_ref().map(CardJson::of),
             message: &explanation.message,
+            binding: BindingJson::of(&explanation.binding),
+            coverage: CoverageJson::of(explanation.coverage),
+            skipped: skipped_json(&explanation.skipped),
             alternatives: explanation.alternatives.rows(),
             alternatives_omitted: Some(explanation.alternatives.omitted()).filter(|&left| left > 0),
             fan_out: explanation.fan_out.iter().map(GroupJson::of).collect(),

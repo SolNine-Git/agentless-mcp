@@ -1,10 +1,12 @@
-//! One stable id resolved to its symbol and the lines that the symbol spans in the working tree.
+//! One stable id, or a `path::name` written as one, resolved to its symbol and the lines that the
+//! symbol spans in the working tree.
 
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use facts::{OUTLINE_CAP, StableId, Symbol, is_data_language, line_count};
+use facts::{OUTLINE_CAP, StableId, StableIdError, Symbol, is_data_language, line_count};
+use graph::path_name_id;
 use prompts::messages::{SPAN_DATA_KEY_UNLISTED, SPAN_SYMBOL_UNDEFINED};
 use store::{FileText, Served};
 use syntax::Language;
@@ -69,7 +71,7 @@ pub(crate) fn data_key_span(
     reading: &Reading<'_>,
     raw: &str,
 ) -> Option<Noted<Result<SymbolSpan, Missed>>> {
-    let parsed: StableId = raw.parse().ok()?;
+    let parsed = parsed_id(raw).ok()?;
     let language = Language::from_path(parsed.path())?;
     is_data_language(language).then(|| resolve_symbol_span(reading, raw))
 }
@@ -81,7 +83,7 @@ pub(crate) fn resolve_symbol_span_in(
     raw: &str,
     files: &mut ParsedFiles,
 ) -> Noted<Result<SymbolSpan, Missed>> {
-    let parsed: StableId = match raw.parse() {
+    let parsed = match parsed_id(raw) {
         Ok(parsed) => parsed,
         Err(error) => return Noted::new(Err(Missed::Reason(error.to_string()))),
     };
@@ -93,6 +95,13 @@ pub(crate) fn resolve_symbol_span_in(
             .and_then(|file| span(&parsed, file)),
         diagnostics: file.diagnostics.clone(),
     }
+}
+
+// A text that parses as a stable id keeps that parse, so only a text the parser refuses can read
+// as a `path::name`. Any other text keeps the parser's refusal.
+fn parsed_id(raw: &str) -> Result<StableId, StableIdError> {
+    raw.parse()
+        .or_else(|refused| path_name_id(raw).ok_or(refused))
 }
 
 fn span(parsed: &StableId, file: &ParsedFile) -> Result<SymbolSpan, Missed> {

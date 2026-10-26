@@ -3,16 +3,16 @@
 
 use graph::{Definition, NameIndex, SymbolEdge, SymbolGraph, Tier};
 use kernel::Bounded;
-use prompts::messages::{DATA_KEY_NO_FAN_IN, EXPLAIN_NO_MATCH};
+use prompts::messages::{DATA_KEY_NO_FAN_IN, TARGET_NO_MATCH};
 
 use crate::bounds::within;
-use crate::endpoints::{best_band, resolve_target};
+use crate::endpoints::{BindingStatus, Coverage, TargetBinding, best_band, bind, data_key_binding};
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::over_scan;
 use crate::span::{Missed, SymbolSpan, data_key_span};
 use crate::symbol_graph::{tier_at, verbs, with_resolved};
 use crate::{
-    Error, IntArg, Noted, RationaleNode, Reading, Services, SymbolCard, rationale_nodes,
+    Error, IntArg, Noted, RationaleNode, Reading, Services, Skipped, SymbolCard, rationale_nodes,
     symbol_card,
 };
 
@@ -51,6 +51,12 @@ pub struct Explanation {
     pub tied: usize,
     /// Whether the card is a data key's, which has no fan-out, fan-in or imports.
     pub data_key: bool,
+    /// What the target bound to, and why it bound to nothing.
+    pub binding: TargetBinding,
+    /// How much of the repository the fan-in checked.
+    pub coverage: Coverage,
+    /// The files the scan passed over.
+    pub skipped: Vec<Skipped>,
 }
 
 /// The edges of one evidence tier, cut at the limit, with the count before the cut.
@@ -112,7 +118,13 @@ pub fn explain(
     }
     over_scan(services, reading, |facts| {
         with_resolved(&facts.files, reading.deadline, |index, graph| {
-            Ok(explanation(index, graph, target, limit))
+            let explained = explanation(index, graph, target, limit);
+            let coverage = Coverage::of(&explained.binding, &facts.skipped);
+            Ok(Explanation {
+                coverage,
+                skipped: facts.skipped.clone(),
+                ..explained
+            })
         })
     })
 }
@@ -123,11 +135,12 @@ fn explanation(
     target: &str,
     limit: usize,
 ) -> Explanation {
-    let ordered = resolve_target(index, target).definitions;
-    if ordered.is_empty() {
-        return uncarded(target, EXPLAIN_NO_MATCH.render(target));
+    let bound = bind(index, target, limit, &TARGET_NO_MATCH);
+    if bound.binding.status == BindingStatus::NotFound {
+        return uncarded(target, bound.binding);
     }
-    let tied = best_band(&ordered, target).len();
+    let ordered = bound.definitions;
+    let tied = best_band(&ordered, &bound.key).len();
     let chosen = &ordered[0];
     let node = chosen.stable_id().to_string();
     let degrees = graph.ambiguous_degrees();
@@ -165,6 +178,9 @@ fn explanation(
         imports_in,
         tied,
         data_key: false,
+        binding: bound.binding,
+        coverage: Coverage::not_checked(),
+        skipped: Vec::new(),
     }
 }
 
@@ -173,7 +189,10 @@ fn explanation(
 fn keyed(target: &str, span: Result<SymbolSpan, Missed>) -> Explanation {
     match span {
         Ok(span) => data_key(target, &span),
-        Err(missed) => uncarded(target, missed.reason()),
+        Err(missed) => {
+            let reason = missed.reason();
+            uncarded(target, data_key_binding(target, Some(&reason)))
+        }
     }
 }
 
@@ -182,10 +201,8 @@ fn data_key(target: &str, span: &SymbolSpan) -> Explanation {
     Explanation {
         card: Some(card),
         data_key: true,
-        ..uncarded(
-            target,
-            DATA_KEY_NO_FAN_IN.render((target, span.symbol.name.as_str())),
-        )
+        message: DATA_KEY_NO_FAN_IN.render((target, span.symbol.name.as_str())),
+        ..uncarded(target, data_key_binding(target, None))
     }
 }
 
@@ -199,11 +216,11 @@ fn card(definition: &Definition<'_>) -> SymbolCard {
     )
 }
 
-fn uncarded(target: &str, message: String) -> Explanation {
+fn uncarded(target: &str, binding: TargetBinding) -> Explanation {
     Explanation {
         target: target.to_owned(),
         card: None,
-        message,
+        message: binding.message.clone(),
         alternatives: Bounded::cut(Vec::new(), 0),
         rationales: Vec::new(),
         fan_out: Vec::new(),
@@ -212,6 +229,9 @@ fn uncarded(target: &str, message: String) -> Explanation {
         imports_in: Bounded::cut(Vec::new(), 0),
         tied: 1,
         data_key: false,
+        binding,
+        coverage: Coverage::not_checked(),
+        skipped: Vec::new(),
     }
 }
 

@@ -68,3 +68,23 @@ fn an_exactly_spelled_qualified_name_outranks_a_suffix_match() {
     let found = resolved(&files, &["Job.run"]);
     assert_eq!(found, [row("py:b.py::Job.run", "Job.run", "")]);
 }
+
+#[test]
+fn a_file_qualified_endpoint_never_moves_to_another_file() {
+    let texts = [
+        "py:pkg/gone.py::format_money",
+        "pkg/money.py::format_money",
+        "pkg/money.py:2",
+    ];
+    let moved = "no symbol or file matches py:pkg/gone.py::format_money: the scan read no file \
+                 pkg/gone.py. 1 definition of format_money: py:pkg/money.py::format_money. Pass \
+                 it as the target.";
+    assert_eq!(
+        resolved(&LINKED, &texts),
+        [
+            row("", "py:pkg/gone.py::format_money", moved),
+            row("py:pkg/money.py::format_money", "format_money", ""),
+            row("py:pkg/money.py::format_money", "format_money", ""),
+        ]
+    );
+}

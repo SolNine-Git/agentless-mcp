@@ -28,7 +28,10 @@ pub use cycles::{Cycle, import_cycles};
 pub use files::{FileGraph, Weighting};
 pub use flood::{Flood, Reached, flood_backward};
 pub use imports::ImportTargets;
-pub use lookup::{Lookup, definitions_for, references_to, resolve_definitions};
+pub use lookup::{
+    Lookup, Target, TargetForm, definitions_for, holds_file, lookup_target, parse_target,
+    path_name_id, references_to, resolve_definitions,
+};
 pub use names::{Definition, NameIndex, Site, common_name_damping, name_multiplier};
 pub use owners::{LineOwners, enclosing_symbol};
 pub use path::{DEFAULT_MAX_VISITED, Hop, PathBounds, PathPolicy, PathResult, shortest_path};

@@ -28,6 +28,27 @@ fn an_id_that_names_no_symbol_of_its_file_claims_no_earlier_state() {
 }
 
 #[test]
+fn a_path_qualified_name_resolves_as_its_stable_id_does_and_a_name_stays_refused() {
+    let scanned = Scanned::new(&LINKED);
+    let reading = scanned.reading();
+    let Ok(span) = resolve_symbol_span(&reading, "pkg/money.py::format_money").value else {
+        panic!("a path::name resolves");
+    };
+    assert_eq!(
+        span.stable_id().to_string(),
+        "py:pkg/money.py::format_money"
+    );
+    let Err(missed) = resolve_symbol_span(&reading, "format_money").value else {
+        panic!("a bare name does not resolve");
+    };
+    assert!(
+        missed
+            .reason()
+            .starts_with("not a stable id: 'format_money'")
+    );
+}
+
+#[test]
 fn ids_that_share_parsed_files_resolve_as_each_id_alone_does() {
     let scanned = Scanned::new(&LINKED);
     let reading = scanned.reading();

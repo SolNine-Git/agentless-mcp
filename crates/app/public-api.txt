@@ -441,6 +441,28 @@ impl core::marker::Unpin for app::BaselineStatus
 impl core::marker::UnsafeUnpin for app::BaselineStatus
 impl core::panic::unwind_safe::RefUnwindSafe for app::BaselineStatus
 impl core::panic::unwind_safe::UnwindSafe for app::BaselineStatus
+pub enum app::BindingStatus
+pub app::BindingStatus::Ambiguous
+pub app::BindingStatus::Bound
+pub app::BindingStatus::NotFound
+impl app::BindingStatus
+pub fn app::BindingStatus::as_str(self) -> &'static str
+impl core::clone::Clone for app::BindingStatus
+pub fn app::BindingStatus::clone(&self) -> Self
+impl core::cmp::Eq for app::BindingStatus
+impl core::cmp::PartialEq for app::BindingStatus
+pub fn app::BindingStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::BindingStatus
+pub fn app::BindingStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::BindingStatus
+impl core::marker::StructuralPartialEq for app::BindingStatus
+impl core::marker::Freeze for app::BindingStatus
+impl core::marker::Send for app::BindingStatus
+impl core::marker::Sync for app::BindingStatus
+impl core::marker::Unpin for app::BindingStatus
+impl core::marker::UnsafeUnpin for app::BindingStatus
+impl core::panic::unwind_safe::RefUnwindSafe for app::BindingStatus
+impl core::panic::unwind_safe::UnwindSafe for app::BindingStatus
 pub enum app::CapValue
 pub app::CapValue::Float(f64)
 pub app::CapValue::Int(u64)
@@ -485,6 +507,28 @@ impl core::marker::Unpin for app::CheckInput
 impl core::marker::UnsafeUnpin for app::CheckInput
 impl core::panic::unwind_safe::RefUnwindSafe for app::CheckInput
 impl core::panic::unwind_safe::UnwindSafe for app::CheckInput
+pub enum app::CoverageStatus
+pub app::CoverageStatus::Complete
+pub app::CoverageStatus::NotChecked
+pub app::CoverageStatus::Partial
+impl app::CoverageStatus
+pub fn app::CoverageStatus::as_str(self) -> &'static str
+impl core::clone::Clone for app::CoverageStatus
+pub fn app::CoverageStatus::clone(&self) -> Self
+impl core::cmp::Eq for app::CoverageStatus
+impl core::cmp::PartialEq for app::CoverageStatus
+pub fn app::CoverageStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CoverageStatus
+pub fn app::CoverageStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::CoverageStatus
+impl core::marker::StructuralPartialEq for app::CoverageStatus
+impl core::marker::Freeze for app::CoverageStatus
+impl core::marker::Send for app::CoverageStatus
+impl core::marker::Sync for app::CoverageStatus
+impl core::marker::Unpin for app::CoverageStatus
+impl core::marker::UnsafeUnpin for app::CoverageStatus
+impl core::panic::unwind_safe::RefUnwindSafe for app::CoverageStatus
+impl core::panic::unwind_safe::UnwindSafe for app::CoverageStatus
 pub enum app::DataEntry
 pub app::DataEntry::Card(app::SymbolCard)
 pub app::DataEntry::Folded(app::FoldedFile)
@@ -1171,6 +1215,25 @@ impl<'a> core::marker::Unpin for app::ConfigView<'a>
 impl<'a> core::marker::UnsafeUnpin for app::ConfigView<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for app::ConfigView<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for app::ConfigView<'a>
+pub struct app::Coverage
+pub app::Coverage::skipped_code_files: usize
+pub app::Coverage::status: app::CoverageStatus
+impl core::clone::Clone for app::Coverage
+pub fn app::Coverage::clone(&self) -> Self
+impl core::cmp::Eq for app::Coverage
+impl core::cmp::PartialEq for app::Coverage
+pub fn app::Coverage::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Coverage
+pub fn app::Coverage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::Coverage
+impl core::marker::StructuralPartialEq for app::Coverage
+impl core::marker::Freeze for app::Coverage
+impl core::marker::Send for app::Coverage
+impl core::marker::Sync for app::Coverage
+impl core::marker::Unpin for app::Coverage
+impl core::marker::UnsafeUnpin for app::Coverage
+impl core::panic::unwind_safe::RefUnwindSafe for app::Coverage
+impl core::panic::unwind_safe::UnwindSafe for app::Coverage
 pub struct app::CycleReport
 pub app::CycleReport::cycles: kernel::bounded::Bounded<app::CycleRow>
 pub app::CycleReport::skipped: alloc::vec::Vec<app::Skipped>
@@ -1428,7 +1491,9 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::ExplainRequest
 impl core::panic::unwind_safe::UnwindSafe for app::ExplainRequest
 pub struct app::Explanation
 pub app::Explanation::alternatives: kernel::bounded::Bounded<alloc::string::String>
+pub app::Explanation::binding: app::TargetBinding
 pub app::Explanation::card: core::option::Option<app::SymbolCard>
+pub app::Explanation::coverage: app::Coverage
 pub app::Explanation::data_key: bool
 pub app::Explanation::fan_in: alloc::vec::Vec<app::TierGroup>
 pub app::Explanation::fan_out: alloc::vec::Vec<app::TierGroup>
@@ -1436,6 +1501,7 @@ pub app::Explanation::imports_in: kernel::bounded::Bounded<app::ImportRow>
 pub app::Explanation::imports_out: kernel::bounded::Bounded<app::ImportRow>
 pub app::Explanation::message: alloc::string::String
 pub app::Explanation::rationales: alloc::vec::Vec<app::RationaleNode>
+pub app::Explanation::skipped: alloc::vec::Vec<app::Skipped>
 pub app::Explanation::target: alloc::string::String
 pub app::Explanation::tied: usize
 impl core::clone::Clone for app::Explanation
@@ -2458,6 +2524,7 @@ impl core::marker::UnsafeUnpin for app::RefGroup
 impl core::panic::unwind_safe::RefUnwindSafe for app::RefGroup
 impl core::panic::unwind_safe::UnwindSafe for app::RefGroup
 pub struct app::RefListing
+pub app::RefListing::bound: usize
 pub app::RefListing::files: usize
 pub app::RefListing::limit: usize
 pub app::RefListing::rows: alloc::vec::Vec<app::RefGroup>
@@ -2520,6 +2587,8 @@ impl core::marker::UnsafeUnpin for app::RefsRequest
 impl core::panic::unwind_safe::RefUnwindSafe for app::RefsRequest
 impl core::panic::unwind_safe::UnwindSafe for app::RefsRequest
 pub struct app::RefsResult
+pub app::RefsResult::binding: app::TargetBinding
+pub app::RefsResult::coverage: app::Coverage
 pub app::RefsResult::data_key: core::option::Option<alloc::string::String>
 pub app::RefsResult::definition: core::option::Option<alloc::string::String>
 pub app::RefsResult::definitions: usize
@@ -2769,6 +2838,28 @@ impl core::marker::Unpin for app::Tags
 impl core::marker::UnsafeUnpin for app::Tags
 impl core::panic::unwind_safe::RefUnwindSafe for app::Tags
 impl core::panic::unwind_safe::UnwindSafe for app::Tags
+pub struct app::TargetBinding
+pub app::TargetBinding::candidates: kernel::bounded::Bounded<alloc::string::String>
+pub app::TargetBinding::definitions: usize
+pub app::TargetBinding::form: &'static str
+pub app::TargetBinding::message: alloc::string::String
+pub app::TargetBinding::reason: alloc::string::String
+pub app::TargetBinding::status: app::BindingStatus
+impl core::clone::Clone for app::TargetBinding
+pub fn app::TargetBinding::clone(&self) -> Self
+impl core::cmp::Eq for app::TargetBinding
+impl core::cmp::PartialEq for app::TargetBinding
+pub fn app::TargetBinding::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::TargetBinding
+pub fn app::TargetBinding::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::TargetBinding
+impl core::marker::Freeze for app::TargetBinding
+impl core::marker::Send for app::TargetBinding
+impl core::marker::Sync for app::TargetBinding
+impl core::marker::Unpin for app::TargetBinding
+impl core::marker::UnsafeUnpin for app::TargetBinding
+impl core::panic::unwind_safe::RefUnwindSafe for app::TargetBinding
+impl core::panic::unwind_safe::UnwindSafe for app::TargetBinding
 pub struct app::TierGroup
 pub app::TierGroup::rows: alloc::vec::Vec<app::EdgeRow>
 pub app::TierGroup::tier: &'static str

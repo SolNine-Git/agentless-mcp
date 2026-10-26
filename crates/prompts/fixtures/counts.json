@@ -469,6 +469,13 @@
       "one": "no references to py:pkg/lib.py::target outside its own definition (complete scan: 1 file, 0 skipped)",
       "many": "no references to py:pkg/lib.py::target outside its own definition (complete scan: 2 files, 0 skipped)"
     },
+    "refs_absent_partial": {
+      "arguments": {
+        "target": "py:a.py::helper"
+      },
+      "one": "no references to py:a.py::helper outside its own definition in the 1 file read (partial scan: 1 code file skipped)",
+      "many": "no references to py:a.py::helper outside its own definition in the 2 files read (partial scan: 2 code files skipped)"
+    },
     "refs_callers_unlisted": {
       "arguments": {
         "limit": 5
@@ -499,6 +506,16 @@
       "one": "[py:pkg/lib.py::other1] @5  (1 shared caller in 1 file, score 0.281)",
       "many": "[py:pkg/lib.py::other1] @5  (2 shared callers in 2 files, score 0.281)"
     },
+    "refs_split": {
+      "arguments": {},
+      "one": "1 row has binding evidence (same-file or resolved-via-import). 1 is a candidate (unique or name-only-ambiguous).",
+      "many": "2 rows have binding evidence (same-file or resolved-via-import). 2 are candidates (unique or name-only-ambiguous)."
+    },
+    "refs_split_none": {
+      "arguments": {},
+      "one": "no row has binding evidence: 1 is a candidate (unique or name-only-ambiguous).",
+      "many": "no row has binding evidence: 2 are candidates (unique or name-only-ambiguous)."
+    },
     "refs_unlisted": {
       "arguments": {
         "limit": 2
@@ -512,6 +529,30 @@
       },
       "one": "... 1 more reference not listed (limit 2), including every reference in 1 more file",
       "many": "... 2 more references not listed (limit 2), including every reference in 2 more files"
+    },
+    "target_candidates": {
+      "arguments": {
+        "listed": "py:a.py::run",
+        "name": "run"
+      },
+      "one": "1 definition of run: py:a.py::run. Pass it as the target.",
+      "many": "2 definitions of run: py:a.py::run. Pass one as the target."
+    },
+    "target_candidates_cut": {
+      "arguments": {
+        "count": 12,
+        "listed": "py:a.py::run",
+        "name": "run"
+      },
+      "one": "12 definitions of run, and 1 is listed: py:a.py::run. Pass one as the target.",
+      "many": "12 definitions of run, and 2 are listed: py:a.py::run. Pass one as the target."
+    },
+    "target_spelled": {
+      "arguments": {
+        "name": "orderPinnedTopics"
+      },
+      "one": "1 file spells orderPinnedTopics in code, and no file declares it. Grep finds every spelling.",
+      "many": "2 files spell orderPinnedTopics in code, and no file declares it. Grep finds every spelling."
     }
   }
 }

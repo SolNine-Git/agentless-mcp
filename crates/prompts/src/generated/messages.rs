@@ -807,10 +807,6 @@ pub const EXPLAIN_IMPORTS_UNLISTED: Template<(Count, Count)> = Template::new(&[
     Piece::Text(")"),
 ]);
 
-/// A template that takes `target`.
-pub const EXPLAIN_NO_MATCH: Template<Text> =
-    Template::new(&[Piece::Text("no symbol matches "), Piece::Value(0)]);
-
 /// A template that takes (`target`, `count`).
 pub const EXPLAIN_TIE: Template<(Text, Count)> = Template::new(&[
     Piece::Text("ambiguous: "),
@@ -1864,6 +1860,21 @@ pub const REFS_ABSENT_COMPLETE: Template<(Text, Count)> = Template::new(&[
     Piece::Text(", 0 skipped)"),
 ]);
 
+/// A template that takes (`target`, `count`, `total`).
+pub const REFS_ABSENT_PARTIAL: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Text("no references to "),
+    Piece::Value(0),
+    Piece::Text(" outside its own definition in the "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+    Piece::Text(" read (partial scan: "),
+    Piece::Value(2),
+    Piece::Text(" code "),
+    Piece::Choice(2, "file", "files"),
+    Piece::Text(" skipped)"),
+]);
+
 /// A template that takes (`count`, `limit`).
 pub const REFS_CALLERS_UNLISTED: Template<(Count, Count)> = Template::new(&[
     Piece::Text("... "),
@@ -1934,12 +1945,25 @@ pub const REFS_SHARED_CANDIDATE: Template<(Text, Count, Count, Text)> = Template
     Piece::Text(")"),
 ]);
 
-/// A template that takes (`target`, `name`).
-pub const REFS_TARGET_UNRESOLVED: Template<(Text, Text)> = Template::new(&[
+/// A template that takes (`count`, `total`).
+pub const REFS_SPLIT: Template<(Count, Count)> = Template::new(&[
     Piece::Value(0),
-    Piece::Text(" resolves to no symbol; these are the references to the name "),
+    Piece::Text(" "),
+    Piece::Choice(0, "row has", "rows have"),
+    Piece::Text(" binding evidence (same-file or resolved-via-import). "),
     Piece::Value(1),
-    Piece::Text(", wherever it is defined"),
+    Piece::Text(" "),
+    Piece::Choice(1, "is a candidate", "are candidates"),
+    Piece::Text(" (unique or name-only-ambiguous)."),
+]);
+
+/// A template that takes `count`.
+pub const REFS_SPLIT_NONE: Template<Count> = Template::new(&[
+    Piece::Text("no row has binding evidence: "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "is a candidate", "are candidates"),
+    Piece::Text(" (unique or name-only-ambiguous)."),
 ]);
 
 /// A template that takes (`count`, `limit`).
@@ -2117,6 +2141,66 @@ pub const SURFACE_V1_DEPRECATED: Template<Text> = Template::new(&[
         0.11.0. Move to the v2 tools: agentless-mcp guide --section \
         the-two-surfaces has the mapping.",
     ),
+]);
+
+/// A template that takes (`name`, `count`, `listed`).
+pub const TARGET_CANDIDATES: Template<(Text, Count, Text)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "definition", "definitions"),
+    Piece::Text(" of "),
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(2),
+    Piece::Text(". Pass "),
+    Piece::Choice(1, "it", "one"),
+    Piece::Text(" as the target."),
+]);
+
+/// A template that takes (`name`, `shown`, `count`, `listed`).
+pub const TARGET_CANDIDATES_CUT: Template<(Text, Count, Count, Text)> = Template::new(&[
+    Piece::Value(2),
+    Piece::Text(" definitions of "),
+    Piece::Value(0),
+    Piece::Text(", and "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "is", "are"),
+    Piece::Text(" listed: "),
+    Piece::Value(3),
+    Piece::Text(". Pass one as the target."),
+]);
+
+/// A template that takes `target`.
+pub const TARGET_IS_FILE: Template<Text> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" is a file. Pass the stable id of one of its symbols"),
+]);
+
+/// A template that takes `path`.
+pub const TARGET_NO_FILE: Template<Text> =
+    Template::new(&[Piece::Text("the scan read no file "), Piece::Value(0)]);
+
+/// A template that takes (`path`, `line`).
+pub const TARGET_NO_LINE: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("no symbol in "),
+    Piece::Value(0),
+    Piece::Text(" spans line "),
+    Piece::Value(1),
+]);
+
+/// A template that takes `target`.
+pub const TARGET_NO_MATCH: Template<Text> =
+    Template::new(&[Piece::Text("no symbol matches "), Piece::Value(0)]);
+
+/// A template that takes (`name`, `count`).
+pub const TARGET_SPELLED: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file spells", "files spell"),
+    Piece::Text(" "),
+    Piece::Value(0),
+    Piece::Text(" in code, and no file declares it. Grep finds every spelling."),
 ]);
 
 /// A template that takes (`tool`, `accepted`).

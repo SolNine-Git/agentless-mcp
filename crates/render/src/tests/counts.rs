@@ -1,9 +1,10 @@
 use std::path::Path;
 
 use app::{
-    CallerRef, ChartGroup, ChartNode, CommunityReport, CommunityRow, CycleReport, CycleRow,
-    DiagramView, ExpandResult, Flowchart, HealthComplexity, HealthComplexityRow, HealthReport,
-    HealthSymbol, RefGroup, RefListing, RefSite, RefsResult, SharedCaller, Skipped,
+    BindingStatus, CallerRef, ChartGroup, ChartNode, CommunityReport, CommunityRow, Coverage,
+    CoverageStatus, CycleReport, CycleRow, DiagramView, ExpandResult, Flowchart, HealthComplexity,
+    HealthComplexityRow, HealthReport, HealthSymbol, RefGroup, RefListing, RefSite, RefsResult,
+    SharedCaller, Skipped, TargetBinding,
 };
 use io::ProjectConfig;
 use kernel::Bounded;
@@ -269,6 +270,7 @@ fn refs(groups: Vec<RefGroup>, total: usize, files: usize) -> RefsResult {
         groups: RefListing {
             rows: groups,
             total,
+            bound: total,
             limit: 1,
             files,
         },
@@ -277,6 +279,18 @@ fn refs(groups: Vec<RefGroup>, total: usize, files: usize) -> RefsResult {
         target_resolved: true,
         definition: Some("py:lib.py::target".to_owned()),
         definitions: 1,
+        binding: TargetBinding {
+            status: BindingStatus::Bound,
+            form: "stable_id",
+            definitions: 1,
+            reason: String::new(),
+            candidates: Bounded::cut(Vec::new(), 0),
+            message: String::new(),
+        },
+        coverage: Coverage {
+            status: CoverageStatus::Complete,
+            skipped_code_files: 0,
+        },
         data_key: None,
         unresolved: None,
         skipped: Vec::new(),
@@ -333,6 +347,29 @@ fn a_count_of_one_takes_the_singular_in_the_fan_in() {
          callers in 1 file, score 0.500)\n      c1    a.py:1\n      c2    a.py:2\n      c3    \
          a.py:3\n      c4    a.py:4\n      c5    a.py:5\n... 1 more caller not listed (limit \
          5)\n... 1 more candidate not listed (limit 1)\n"
+    );
+}
+
+#[test]
+fn a_scan_that_skipped_a_code_file_makes_the_absence_partial() {
+    let partial = RefsResult {
+        coverage: Coverage {
+            status: CoverageStatus::Partial,
+            skipped_code_files: 1,
+        },
+        skipped: vec![Skipped {
+            path: "huge.py".to_owned(),
+            reason: "skipped: 1040000 bytes exceeds the per-file cap of 1000000 bytes".to_owned(),
+        }],
+        ..refs(Vec::new(), 0, 0)
+    };
+    assert_eq!(
+        body(&partial),
+        "// warning: 1 file was skipped and is absent from this answer: huge.py (skipped: 1040000 \
+         bytes exceeds the per-file cap of 1000000 bytes). A symbol in a skipped file reads as \
+         missing here even though it may exist in the repository.\n\nno references to \
+         py:lib.py::target outside its own definition in the 1 file read (partial scan: 1 code \
+         file skipped)\n"
     );
 }
 

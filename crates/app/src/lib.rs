@@ -75,6 +75,7 @@ pub use cycles::{CycleReport, CycleRow, CyclesRequest, cycles};
 pub use diagram::{
     ChartEdge, ChartGroup, ChartNode, DiagramRequest, DiagramView, Flowchart, diagram,
 };
+pub use endpoints::{BindingStatus, Coverage, CoverageStatus, TargetBinding};
 pub use env::{EnvConfig, Services, UnreadCwd, WALK_BUDGET};
 pub use error::Error;
 pub use expand::{ExpandRequest, ExpandResult, expand};

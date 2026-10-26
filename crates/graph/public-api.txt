@@ -27,6 +27,52 @@ impl core::marker::Unpin for graph::Relation
 impl core::marker::UnsafeUnpin for graph::Relation
 impl core::panic::unwind_safe::RefUnwindSafe for graph::Relation
 impl core::panic::unwind_safe::UnwindSafe for graph::Relation
+pub enum graph::Target<'t>
+pub graph::Target::Id(facts::stable_id::StableId, graph::TargetForm)
+pub graph::Target::Line(&'t str, u32)
+pub graph::Target::Named(alloc::borrow::Cow<'t, str>)
+impl graph::Target<'_>
+pub fn graph::Target<'_>::last_name(&self) -> core::option::Option<&str>
+impl<'t> core::clone::Clone for graph::Target<'t>
+pub fn graph::Target<'t>::clone(&self) -> Self
+impl<'t> core::cmp::Eq for graph::Target<'t>
+impl<'t> core::cmp::PartialEq for graph::Target<'t>
+pub fn graph::Target<'t>::eq(&self, &Self) -> bool
+impl<'t> core::fmt::Debug for graph::Target<'t>
+pub fn graph::Target<'t>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'t> core::marker::StructuralPartialEq for graph::Target<'t>
+impl<'t> core::marker::Freeze for graph::Target<'t>
+impl<'t> core::marker::Send for graph::Target<'t>
+impl<'t> core::marker::Sync for graph::Target<'t>
+impl<'t> core::marker::Unpin for graph::Target<'t>
+impl<'t> core::marker::UnsafeUnpin for graph::Target<'t>
+impl<'t> core::panic::unwind_safe::RefUnwindSafe for graph::Target<'t>
+impl<'t> core::panic::unwind_safe::UnwindSafe for graph::Target<'t>
+pub enum graph::TargetForm
+pub graph::TargetForm::Name
+pub graph::TargetForm::Path
+pub graph::TargetForm::PathLine
+pub graph::TargetForm::PathName
+pub graph::TargetForm::QualifiedName
+pub graph::TargetForm::StableId
+impl graph::TargetForm
+pub fn graph::TargetForm::as_str(self) -> &'static str
+impl core::clone::Clone for graph::TargetForm
+pub fn graph::TargetForm::clone(&self) -> Self
+impl core::cmp::Eq for graph::TargetForm
+impl core::cmp::PartialEq for graph::TargetForm
+pub fn graph::TargetForm::eq(&self, &Self) -> bool
+impl core::fmt::Debug for graph::TargetForm
+pub fn graph::TargetForm::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for graph::TargetForm
+impl core::marker::StructuralPartialEq for graph::TargetForm
+impl core::marker::Freeze for graph::TargetForm
+impl core::marker::Send for graph::TargetForm
+impl core::marker::Sync for graph::TargetForm
+impl core::marker::Unpin for graph::TargetForm
+impl core::marker::UnsafeUnpin for graph::TargetForm
+impl core::panic::unwind_safe::RefUnwindSafe for graph::TargetForm
+impl core::panic::unwind_safe::UnwindSafe for graph::TargetForm
 pub enum graph::Tier
 pub graph::Tier::Ambiguous
 pub graph::Tier::Imported
@@ -331,6 +377,7 @@ impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::LineOwners<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::LineOwners<'a>
 pub struct graph::Lookup<'a>
 pub graph::Lookup::definitions: alloc::vec::Vec<graph::Definition<'a>>
+pub graph::Lookup::form: graph::TargetForm
 pub graph::Lookup::scoped: bool
 impl<'a> core::clone::Clone for graph::Lookup<'a>
 pub fn graph::Lookup<'a>::clone(&self) -> Self
@@ -595,12 +642,16 @@ pub fn graph::definitions_for<'a>(&graph::NameIndex<'a>, &str) -> alloc::vec::Ve
 pub fn graph::detect_communities<'a>(&graph::FileGraph<'a>, f64, core::option::Option<&kernel::deadline::Deadline>) -> core::result::Result<graph::CommunityPartition<'a>, kernel::deadline::Stopped>
 pub fn graph::enclosing_symbol(&[facts::values::Symbol], u32) -> core::option::Option<&facts::values::Symbol>
 pub fn graph::flood_backward<'a, 's>(&graph::FileGraph<'a>, impl core::iter::traits::collect::IntoIterator<Item = &'s str>, u32) -> graph::Flood<'a>
+pub fn graph::holds_file(&graph::NameIndex<'_>, &str) -> bool
 pub fn graph::import_cycles<'a>(&graph::SymbolGraph<'a>) -> alloc::vec::Vec<graph::Cycle<'a>>
 pub fn graph::in_name_graph(&graph::FileFacts) -> bool
 pub fn graph::joins_name_graph(syntax::language::Language) -> bool
+pub fn graph::lookup_target<'a>(&graph::NameIndex<'a>, &graph::Target<'_>) -> graph::Lookup<'a>
 pub fn graph::name_multiplier(&str, &alloc::collections::btree::set::BTreeSet<alloc::string::String>) -> f64
 pub fn graph::normpath(&str) -> alloc::string::String
 pub fn graph::pagerank<'a>(&graph::FileGraph<'a>, &alloc::collections::btree::map::BTreeMap<alloc::string::String, f64>, impl core::ops::function::Fn(&str) -> bool, core::option::Option<&kernel::deadline::Deadline>) -> core::result::Result<graph::PageRank<'a>, kernel::deadline::Stopped>
+pub fn graph::parse_target(&str) -> graph::Target<'_>
+pub fn graph::path_name_id(&str) -> core::option::Option<facts::stable_id::StableId>
 pub fn graph::rank_order<'a>(&graph::PageRank<'a>, impl core::ops::function::Fn(&str) -> bool) -> alloc::vec::Vec<&'a str>
 pub fn graph::references_to<'a>(&graph::NameIndex<'a>, &graph::Definition<'a>) -> alloc::vec::Vec<graph::Site<'a>>
 pub fn graph::resolve_definitions<'a>(&graph::NameIndex<'a>, &str) -> graph::Lookup<'a>
