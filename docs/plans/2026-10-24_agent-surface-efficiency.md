@@ -1,6 +1,34 @@
 # Plan: a cheaper, sharper agent surface
 
-**Date**: 2026-10-24 | **Status**: revision 3. C1 and C2 are built, screened and kept. C4 is built and measured by replay; its screen comes next. Revision 3 adds the C2 screens, the C4 replay, a survey of other code-context tools, and a classifier of where the agentless arms lose gold files | **Evidence**: [benchmark-methodology.md](../analysis/benchmark-methodology.md), the 2026-10-24 entries
+**Date**: 2026-10-24 | **Status**: revision 4. Paused after C3 and TR landed; see Status (2026-10-25) | **Evidence**: [benchmark-methodology.md](../analysis/benchmark-methodology.md), the 2026-10-24 entries
+
+## Status (2026-10-25)
+
+Paused by the owner after C3 and TR landed, to save cost. The confirmation below runs only when the owner says so.
+
+### Landed and kept
+
+| Change | Commit | Measurement |
+|---|---|---|
+| C1 | 14c431b | flat60 screen: read errors 45 to 0, turns -13%, context tokens -17% (both CIs exclude 0) |
+| C2, C2b, C4, C5, D, D2 | c103f63 to ea6ed16 | 300-instance confirmation, forced arm, 14c431b against ea6ed16: context per session -9.5% and answer bytes -10.2% (both CIs exclude 0), quality 0 of 21 metrics changed, WCC -0.0055 [-0.0147, +0.0035]; first-turn context -1,873 tokens from the C2, C2b and C4 step |
+| Correctness batch (OV, CB1-CB5, D3, CI1) | d7c0a70 to f6105a2 | flat60 screen: quality 0 of 21, WCC +0.0026 |
+| U-a, usage files in `find` | 8d0dbba, 6388ff5 | flat60 screen: quality 0 of 21, WCC -0.0117 [-0.0316, +0.0076]; named gold files 111 to 117 (11 gained, 5 lost, 8 of the gains through a usage block) |
+| Follow-up batch FB1-FB4 | bc86507, 854c90c, 87e8c6e, edea4a4 | flat60 screen: quality 0 of 21, WCC -0.0044 [-0.0273, +0.0186], first-turn +0; Loc-Bench retrieval tier 0 of 150 ranked lists changed (FB3, FB1). FB2 removes 40,162 declaration rows from lucene refs answers; FB2 makes refs of a name with many definitions about 16% slower on lucene (measure first) |
+| C3, progressive disclosure | 542f481 | Not screened (owner, cost). tools/list with one root 10,534 to 10,403 bytes; the always-loaded set 9,565 to 5,516 bytes (1,881 to 1,106 cl100k). Derived first-turn change: about -99 tokens with tool search off (the bench as configured), about -1,280 with tool search on |
+| TR, target resolution and honest absence | ef6a1a2 | Replay of 523 recorded calls: at the base, 65 of 251 refs answers were false zeros (18 unprefixed `path::name`, 47 undeclared names). After: 20 bind, 53 say that no symbol matches (exit 1, isError), 149 gain a line that splits binding rows from candidates; 0 unclassified changes. Always-loaded set +23 bytes |
+
+Not kept: U-b (several names per `find` call). Its screen showed 0 of 110 `find` calls with a list.
+
+Lesson: a flat60 placebo (the same build in two windows) moved 5 of 21 metrics. A 60-instance screen shows mechanism and gross changes only. Quality decisions wait for the confirmation.
+
+### Left
+
+1. **The confirmation**, when the owner says so: 300 instances, four arms (forced, hooked, ungated `claude_code_agentless`, native baseline), the new build against ea6ed16. The bench as configured runs with tool search off. swe-explore-bench now has an opt-in `BENCH_TOOL_SEARCH=1` that adds ToolSearch to `--tools` (uncommitted there), which C3 needs to show its effect.
+2. A review of the branch, then the merge.
+3. C6 to C10 are not started.
+4. The owner's review `docs/analysis/2026-10-25_tool-surface-usefulness-review.md` raised six defects. TR fixed defect 1 and the headline part of defect 3, and C3 states that `path` ignores edge direction (defect 4). Defect 2 (no Rust cross-crate binding tier), defect 5 (cross-language candidate edges), defect 6 (a union schema per tool) and its gate items (log fields, an ungated arm, enrichment) are open.
+5. Owner actions outside the repository after C3: add `mcp__agentless__graph` to `permissions.allow`, and update the skill files that call `orient` with a moved operation.
 
 ## Problem
 
