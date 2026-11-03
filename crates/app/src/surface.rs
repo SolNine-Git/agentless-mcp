@@ -242,7 +242,7 @@ static FIND_REFERENCING_SYMBOLS: Tool = Tool {
     title: "Find referencing symbols",
     description: described::FIND_REFERENCING_SYMBOLS,
     effect: Effect::ReadOnly,
-    always_load: false,
+    always_load: true,
     params: &[
         required("target", parameter::REFERENCE_TARGET),
         REPO_ROOT,

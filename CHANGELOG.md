@@ -46,7 +46,7 @@
 
 ### Changed
 
-- **The structure views move to the new tool `graph`, and four tools load
+- **The structure views move to the new tool `graph`, and three tools load
   on request.** This change breaks MCP callers:
   - `graph` holds `communities`, `cycles`, `health`, `diagram` and `path`.
     The `operation` enum of `orient` is `["map"]`, and `orient` keeps the
@@ -59,21 +59,33 @@
     gives it is refused. The CLI keeps `--no-cache`.
   - The schemas list `repo_root` only when the server has more than one
     distinct `--root` or a `--roots-from` file. Every tool still accepts it.
-  - `find_referencing_symbols` and `capabilities` lose the
-    `anthropic/alwaysLoad` hint. A client that defers tool schemas now loads
-    them, `history` and `graph` on request. `orient`, `symbols` and `read`
-    keep the hint.
+  - `capabilities` loses the `anthropic/alwaysLoad` hint. A client that
+    defers tool schemas now loads it, `history` and `graph` on request.
+    `orient`, `symbols`, `read` and `find_referencing_symbols` keep the hint.
+  - `find_referencing_symbols` keeps the hint because no agent called it
+    while its schema was deferred. A first build of this change removed the
+    hint. In the forced benchmark arm on 300 tasks, with Claude Code tool
+    search on (build ef6a1a2), no session called the tool. With every schema
+    loaded (build ea6ed16, tool search off), 31 sessions called it 38 times.
+    Four sessions fetched its schema with ToolSearch and did not call it. The
+    two runs also differ in build and in time window. The design set the rule
+    before the run: restore the hint if the sessions that call the tool fall
+    by half.
   - The `graph` description and the guide's `path` section say that the
     chain ignores edge direction, so it is not a call path.
-  - Measured with the release binaries of edea4a4 and of this change, one
-    `--root`: the tools/list answer line goes from 10,534 to 10,403 bytes.
-    The always-loaded set goes from 5 tools, 9,565 bytes and 1,881 cl100k
-    tokens to 3 tools, 5,516 bytes and 1,106 cl100k tokens. The deferred set
-    goes from 1 tool, 926 bytes and 171 tokens to 4 tools, 4,844 bytes and
-    900 tokens. The bytes are the compact tools/list entries. With several
-    roots, the line is 11,620 bytes and the always-loaded set is 6,038 bytes
-    and 1,220 tokens.
-  - Both builds answered the same 56 calls over this repository at 8d0dbba
+  - Measured with the release binaries of edea4a4 and of the build that
+    keeps the hint on `find_referencing_symbols`, one `--root`. The bytes are
+    the compact tools/list entries, and the cl100k tokens count each tool's
+    name, description and input schema. The always-loaded set goes from 5
+    tools, 9,565 bytes and 1,851 tokens to 4 tools, 6,906 bytes and 1,342
+    tokens. The deferred set goes from 1 tool, 926 bytes and 165 tokens to 3
+    tools, 3,574 bytes and 654 tokens. The tools/list answer line goes from
+    10,534 to 10,523 bytes. The later figures include the growth that the
+    `refs` exit-code entry below adds. With two roots, the line is 11,740
+    bytes, the always-loaded set is 7,602 bytes and 1,494 tokens, and the
+    deferred set is 4,095 bytes and 767 tokens.
+  - The release binaries of edea4a4 and of the first build of this change
+    answered the same 56 calls over this repository at 8d0dbba
     and the snapshot psf__requests-2931: 30 answers are the same, 12 moved
     operations give the same body on `graph` as on `orient` at the base, 12
     calls of a moved operation on `orient` get the refusal above, and 2
@@ -91,10 +103,10 @@
   code sees the change. Such a call does not unlock the search gate. Over the
   251 recorded `refs` calls, 53 exit codes go from 0 to 1, and none goes from
   1 to 0. The `refs`, `explain` and `path` target parameters list the new
-  forms. Measured on the tools/list answer with one root: the frame grows from
-  10,403 to 10,495 bytes. `find_referencing_symbols` and `symbols` each grow
-  by 23 bytes and 8 cl100k tokens, and `graph` by 46 bytes and 16 tokens. The
-  always-loaded set grows from 5,516 to 5,539 bytes and from 1,088 to 1,096
+  forms. Measured on the tools/list answer with one root: the frame grows by
+  92 bytes. `find_referencing_symbols` and `symbols` each grow by 23 bytes
+  and 8 cl100k tokens, and `graph` by 46 bytes and 16 tokens. The
+  always-loaded set holds the first two, so it grows by 46 bytes and 16
   tokens.
 
 - **The `refs` header splits its count when a row has no binding evidence.**

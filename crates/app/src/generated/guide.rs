@@ -105,8 +105,8 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         its\nprefix, such as `src/app/svc.py::Invoice.total`. The \
         prefix comes from the\nfile's language.\n\n---\n\n## The two \
         surfaces\n\nThe CLI has one subcommand per question. The MCP \
-        server publishes **seven\ntools**, three of them loaded \
-        eagerly. That number is a decision rather\nthan an accident. \
+        server publishes **seven\ntools**, four of them loaded eagerly. \
+        That number is a decision rather\nthan an accident. \
         Selection\naccuracy falls as a tool list grows. The questions \
         therefore fold behind an\n`operation` parameter by intent \
         (orientation, structure, symbols, contents)\ninstead of being \
@@ -116,64 +116,64 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         deliberately, so the expensive\nfan-in call keeps its own \
         decision point and cost warning. `history` is its\nown tool for \
         the same reason: it answers why rather than where. \
-        `orient`,\n`symbols` and `read` ask to be loaded eagerly. A \
-        deferring client fetches the\nschemas of \
-        `find_referencing_symbols`, `history`, `capabilities` and \
-        `graph`\non demand. The escalation chain is `orient` to locate, \
-        then `symbols` for\ndeclarations and bodies, then `read` for \
-        exact lines.\n\n| MCP tool | Operations | CLI | Answers \
-        |\n|---|---|---|---|\n| `orient` | `map` | `map` | where does \
-        this live |\n| `graph` | `communities`, `cycles`, `diagram`, \
-        `path`, `health` | `communities` / `cycles` / `diagram` / \
-        `path` / `health` | how is the repository put together |\n| \
-        `symbols` | `find`, `overview`, `expand`, `explain`, `locate` | \
-        `find-symbol` / `skeleton` / `expand` / `explain` / \
-        `resolve-locs` | what is this symbol, what does it declare, \
-        what does it do |\n| `find_referencing_symbols` | *(none)* | \
-        `refs` | who calls it (blast radius) |\n| `history` | *(none)* \
-        | `history` | why does this code exist (the commits that \
-        touched a span) |\n| `read` | `slice`, `dir` | `slice` / `tree` \
-        | these exact lines, what exists |\n| `capabilities` | *(none)* \
-        | `capabilities` | what is loaded, what is capped |\n| *(no MCP \
-        tool)* | | `html` | searchable human graph export to stdout or \
-        XDG cache |\n| *(no MCP tool)* | | `index`, `warmup`, `patch`, \
-        `lint`, `validate`, `vote` | write side and install time \
-        |\n\nThe schema of `operation` lists the valid values as an \
-        enum. The server checks\nevery argument before the call runs. A \
-        refusal gives one sentence for each bad\nparameter. The \
-        sentence names the parameter and the value that the call \
-        gave,\nand it gives the form that the parameter accepts. A \
-        wrong `operation` value\ngets the list of valid operations, and \
-        the name of the tool that has that\noperation when another tool \
-        has it. A parameter foreign to the selected\noperation gets the \
-        list of what that operation takes and requires. A \
-        refusal\nkeeps `isError` true. The server never returns a \
-        schema validation dump. The\nserver also sets `isError` true \
-        when a call gives no data for any item that it\nnames. When a \
-        call gives data for some of its items, `isError` stays false \
-        and\nthe answer names each item that failed.\n\n**Previous \
-        surface.** These seven are the v2 surface, the only one. \
-        Before\n0.11.0, a server started with `--surface v1` published \
-        the original twelve\nper-question tools for un-migrated \
-        operators. A server started with\n`--surface both` published \
-        the union, which was fifteen names rather than\neighteen \
-        because `find_referencing_symbols`, `capabilities` and \
-        `history`\nstood alone on both surfaces. 0.11.0 removed both: \
-        the server refuses either\nvalue at start-up. This is the \
-        mapping for readers who migrate:\n\n| v1 tool (behind \
-        `--surface v1`) | v2 call |\n|---|---|\n| `repo_map` | `orient` \
-        operation `map` |\n| `list_dir` | `read` operation `dir` |\n| \
-        `get_symbols_overview` | `symbols` operation `overview` |\n| \
-        `expand_symbols` | `symbols` operation `expand` |\n| \
-        `read_slice` | `read` operation `slice` |\n| `find_symbol` | \
-        `symbols` operation `find` |\n| `explain_symbol` | `symbols` \
-        operation `explain` |\n| `analyze_structure` | `graph` \
-        operations `path` / `cycles` / `communities` / `diagram` / \
-        `health` |\n| `resolve_locations` | `symbols` operation \
-        `locate` |\n\n`find_referencing_symbols` and `capabilities` are \
-        the same tools on both\nsurfaces. Every v2 operation routes to \
-        exactly the handler its v1 counterpart\ncalled, with the same \
-        defaults. A v2 answer is therefore byte-identical to\nits v1 \
+        `orient`,\n`symbols`, `read` and `find_referencing_symbols` ask \
+        to be loaded eagerly. A\ndeferring client fetches the schemas \
+        of `history`, `capabilities` and `graph`\non demand. The \
+        escalation chain is `orient` to locate, then `symbols` \
+        for\ndeclarations and bodies, then `read` for exact lines.\n\n| \
+        MCP tool | Operations | CLI | Answers |\n|---|---|---|---|\n| \
+        `orient` | `map` | `map` | where does this live |\n| `graph` | \
+        `communities`, `cycles`, `diagram`, `path`, `health` | \
+        `communities` / `cycles` / `diagram` / `path` / `health` | how \
+        is the repository put together |\n| `symbols` | `find`, \
+        `overview`, `expand`, `explain`, `locate` | `find-symbol` / \
+        `skeleton` / `expand` / `explain` / `resolve-locs` | what is \
+        this symbol, what does it declare, what does it do |\n| \
+        `find_referencing_symbols` | *(none)* | `refs` | who calls it \
+        (blast radius) |\n| `history` | *(none)* | `history` | why does \
+        this code exist (the commits that touched a span) |\n| `read` | \
+        `slice`, `dir` | `slice` / `tree` | these exact lines, what \
+        exists |\n| `capabilities` | *(none)* | `capabilities` | what \
+        is loaded, what is capped |\n| *(no MCP tool)* | | `html` | \
+        searchable human graph export to stdout or XDG cache |\n| *(no \
+        MCP tool)* | | `index`, `warmup`, `patch`, `lint`, `validate`, \
+        `vote` | write side and install time |\n\nThe schema of \
+        `operation` lists the valid values as an enum. The server \
+        checks\nevery argument before the call runs. A refusal gives \
+        one sentence for each bad\nparameter. The sentence names the \
+        parameter and the value that the call gave,\nand it gives the \
+        form that the parameter accepts. A wrong `operation` \
+        value\ngets the list of valid operations, and the name of the \
+        tool that has that\noperation when another tool has it. A \
+        parameter foreign to the selected\noperation gets the list of \
+        what that operation takes and requires. A refusal\nkeeps \
+        `isError` true. The server never returns a schema validation \
+        dump. The\nserver also sets `isError` true when a call gives no \
+        data for any item that it\nnames. When a call gives data for \
+        some of its items, `isError` stays false and\nthe answer names \
+        each item that failed.\n\n**Previous surface.** These seven are \
+        the v2 surface, the only one. Before\n0.11.0, a server started \
+        with `--surface v1` published the original twelve\nper-question \
+        tools for un-migrated operators. A server started \
+        with\n`--surface both` published the union, which was fifteen \
+        names rather than\neighteen because `find_referencing_symbols`, \
+        `capabilities` and `history`\nstood alone on both surfaces. \
+        0.11.0 removed both: the server refuses either\nvalue at \
+        start-up. This is the mapping for readers who migrate:\n\n| v1 \
+        tool (behind `--surface v1`) | v2 call |\n|---|---|\n| \
+        `repo_map` | `orient` operation `map` |\n| `list_dir` | `read` \
+        operation `dir` |\n| `get_symbols_overview` | `symbols` \
+        operation `overview` |\n| `expand_symbols` | `symbols` \
+        operation `expand` |\n| `read_slice` | `read` operation `slice` \
+        |\n| `find_symbol` | `symbols` operation `find` |\n| \
+        `explain_symbol` | `symbols` operation `explain` |\n| \
+        `analyze_structure` | `graph` operations `path` / `cycles` / \
+        `communities` / `diagram` / `health` |\n| `resolve_locations` | \
+        `symbols` operation `locate` |\n\n`find_referencing_symbols` \
+        and `capabilities` are the same tools on both\nsurfaces. Every \
+        v2 operation routes to exactly the handler its v1 \
+        counterpart\ncalled, with the same defaults. A v2 answer is \
+        therefore byte-identical to\nits v1 \
         counterpart's.\n\nEverything that writes or executes is \
         CLI-only, and always will be. A tool\nthat an analysed \
         repository's contents could talk an agent into calling \
@@ -240,16 +240,17 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         prompts.\nFriction at the prompt is what sends a model back to \
         Grep. Second, the client\nmay defer tool schemas, in a main \
         session and in a subagent alike, and a\ndeferred tool is not \
-        callable until its schema loads. Three of the seven\n(`orient`, \
-        `symbols` and `read`) ask to be loaded eagerly for that reason, \
-        so\nan agent knows what they answer before it picks its first \
-        move.\n`find_referencing_symbols`, `history`, `capabilities` \
-        and `graph` do not, so\ntheir schemas cost no context until a \
-        question needs them. Grep is loaded\nfrom the first turn either \
-        way, so the\norder in which an agent reaches for the two \
-        decides which one it uses. Install\nthe structural-first gate \
-        in `contrib/hooks/`: it denies broad Grep, Glob \
-        and\ntree-searching Bash commands until `orient(map)`, \
+        callable until its schema loads. Four of the seven\n(`orient`, \
+        `symbols`, `read` and `find_referencing_symbols`) ask to be \
+        loaded\neagerly for that reason, so an agent knows what they \
+        answer before it picks\nits first move. `history`, \
+        `capabilities` and `graph` do not, so their\nschemas cost no \
+        context until a question needs them. Grep is loaded\nfrom the \
+        first turn either way, so the\norder in which an agent reaches \
+        for the two decides which one it uses. Install\nthe \
+        structural-first gate in `contrib/hooks/`: it denies broad \
+        Grep, Glob and\ntree-searching Bash commands until \
+        `orient(map)`, \
         `graph(path)`,\n`symbols(find|overview|expand|explain)`, \
         `read(slice)` or\n`find_referencing_symbols` has localized the \
         session.\nExact-file Grep remains available, while diagnostics, \
@@ -1756,31 +1757,31 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-canonical-recipe", 484, 3_597),
     ("the-funnel-and-where-it-stops", 3_599, 4_432),
     ("stable-ids", 4_434, 5_923),
-    ("the-two-surfaces", 5_925, 11_609),
-    ("per-tool-usage", 11_611, 96_591),
-    ("claude-code-specifics", 13_227, 15_040),
-    ("map", 15_042, 24_951),
-    ("tree", 24_953, 25_274),
-    ("skeleton", 25_276, 26_641),
-    ("expand", 26_643, 28_616),
-    ("slice", 28_618, 29_455),
-    ("find-symbol", 29_457, 32_142),
-    ("refs", 32_144, 39_340),
-    ("history", 39_342, 42_175),
-    ("explain", 42_177, 44_152),
-    ("path", 44_154, 46_930),
-    ("cycles", 46_932, 48_437),
-    ("communities", 48_439, 50_962),
-    ("diagram", 50_964, 53_734),
-    ("health", 53_736, 59_971),
-    ("html", 59_973, 60_924),
-    ("resolve-locs", 60_926, 61_741),
-    ("capabilities", 61_743, 62_638),
-    ("index", 62_640, 65_381),
-    ("lint", 65_383, 85_391),
-    ("validate-vote", 85_393, 94_990),
-    ("warmup", 94_992, 96_591),
-    ("project-defaults-agentless-mcp-json", 96_593, 100_546),
-    ("token-counting", 100_548, 100_962),
-    ("exit-codes", 100_964, 101_422),
+    ("the-two-surfaces", 5_925, 11_608),
+    ("per-tool-usage", 11_610, 96_589),
+    ("claude-code-specifics", 13_226, 15_038),
+    ("map", 15_040, 24_949),
+    ("tree", 24_951, 25_272),
+    ("skeleton", 25_274, 26_639),
+    ("expand", 26_641, 28_614),
+    ("slice", 28_616, 29_453),
+    ("find-symbol", 29_455, 32_140),
+    ("refs", 32_142, 39_338),
+    ("history", 39_340, 42_173),
+    ("explain", 42_175, 44_150),
+    ("path", 44_152, 46_928),
+    ("cycles", 46_930, 48_435),
+    ("communities", 48_437, 50_960),
+    ("diagram", 50_962, 53_732),
+    ("health", 53_734, 59_969),
+    ("html", 59_971, 60_922),
+    ("resolve-locs", 60_924, 61_739),
+    ("capabilities", 61_741, 62_636),
+    ("index", 62_638, 65_379),
+    ("lint", 65_381, 85_389),
+    ("validate-vote", 85_391, 94_988),
+    ("warmup", 94_990, 96_589),
+    ("project-defaults-agentless-mcp-json", 96_591, 100_544),
+    ("token-counting", 100_546, 100_960),
+    ("exit-codes", 100_962, 101_420),
 ];

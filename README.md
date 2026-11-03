@@ -393,16 +393,16 @@ The prefix carries the server name you registered. These entries assume the
 ### Eager tool schemas
 
 Claude Code can defer an MCP server's tools: they arrive as bare names, and
-the schema is fetched before the tool can be called. Three of the seven tools
-(`orient`, `symbols` and `read`) publish an `alwaysLoad` hint that asks a
-deferring client to hold their schemas from the first turn, so the gate below
-redirects an agent that already knows what each tool answers. Measured, the
-hint costs nothing: the deferred and eager arms were indistinguishable on
-every localization metric, and deferral spent a round trip fetching the
-schemas anyway. The gate is the load-bearing part either way.
-`find_referencing_symbols`, `history`, `capabilities` and `graph` publish no
-hint by design. They answer questions that most sessions do not ask, so a
-deferring client fetches their schemas only when an agent asks.
+the schema is fetched before the tool can be called. Four of the seven tools
+(`orient`, `symbols`, `read` and `find_referencing_symbols`) publish an
+`alwaysLoad` hint that asks a deferring client to hold their schemas from the
+first turn, so the gate below redirects an agent that already knows what each
+tool answers. Measured, the hint costs nothing: the deferred and eager arms
+were indistinguishable on every localization metric, and deferral spent a
+round trip fetching the schemas anyway. The gate is the load-bearing part
+either way. `history`, `capabilities` and `graph` publish no hint by design.
+They answer questions that most sessions do not ask, so a deferring client
+fetches their schemas only when an agent asks.
 
 ### Structural-first gate (recommended hooks)
 

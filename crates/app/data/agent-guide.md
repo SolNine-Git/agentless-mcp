@@ -134,7 +134,7 @@ file's language.
 ## The two surfaces
 
 The CLI has one subcommand per question. The MCP server publishes **seven
-tools**, three of them loaded eagerly. That number is a decision rather
+tools**, four of them loaded eagerly. That number is a decision rather
 than an accident. Selection
 accuracy falls as a tool list grows. The questions therefore fold behind an
 `operation` parameter by intent (orientation, structure, symbols, contents)
@@ -143,8 +143,8 @@ adapter-level only: same services, same answers, same wording.
 `find_referencing_symbols` stays its own tool deliberately, so the expensive
 fan-in call keeps its own decision point and cost warning. `history` is its
 own tool for the same reason: it answers why rather than where. `orient`,
-`symbols` and `read` ask to be loaded eagerly. A deferring client fetches the
-schemas of `find_referencing_symbols`, `history`, `capabilities` and `graph`
+`symbols`, `read` and `find_referencing_symbols` ask to be loaded eagerly. A
+deferring client fetches the schemas of `history`, `capabilities` and `graph`
 on demand. The escalation chain is `orient` to locate, then `symbols` for
 declarations and bodies, then `read` for exact lines.
 
@@ -259,11 +259,11 @@ First, allowlist the seven read tools in `~/.claude/settings.json` permissions
 without permission prompts.
 Friction at the prompt is what sends a model back to Grep. Second, the client
 may defer tool schemas, in a main session and in a subagent alike, and a
-deferred tool is not callable until its schema loads. Three of the seven
-(`orient`, `symbols` and `read`) ask to be loaded eagerly for that reason, so
-an agent knows what they answer before it picks its first move.
-`find_referencing_symbols`, `history`, `capabilities` and `graph` do not, so
-their schemas cost no context until a question needs them. Grep is loaded
+deferred tool is not callable until its schema loads. Four of the seven
+(`orient`, `symbols`, `read` and `find_referencing_symbols`) ask to be loaded
+eagerly for that reason, so an agent knows what they answer before it picks
+its first move. `history`, `capabilities` and `graph` do not, so their
+schemas cost no context until a question needs them. Grep is loaded
 from the first turn either way, so the
 order in which an agent reaches for the two decides which one it uses. Install
 the structural-first gate in `contrib/hooks/`: it denies broad Grep, Glob and

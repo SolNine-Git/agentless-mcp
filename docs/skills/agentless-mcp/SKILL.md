@@ -61,13 +61,14 @@ A skill that consumes this server should carry the seven tools --
 `mcp__agentless__find_referencing_symbols`, `mcp__agentless__read`,
 `mcp__agentless__capabilities`, `mcp__agentless__history` -- in its own
 allowed-tools and call them directly. This server has no write, exec or fetch
-tools. Three of the seven (`orient`, `symbols` and `read`) ask to be loaded
-eagerly by a client that defers schemas, so an agent knows them before it
-chooses. `find_referencing_symbols`, `history`, `capabilities` and `graph`
-load on demand. A dispatch prompt should still name them and the order to use
-them in. The structural-first gate enforces that order. Its hook commands are
-`agentless-mcp hook gate-check` and `agentless-mcp hook gate-mark`, and
-`contrib/hooks/settings-example.json` holds their settings. It
+tools. Four of the seven (`orient`, `symbols`, `read` and
+`find_referencing_symbols`) ask to be loaded eagerly by a client that defers
+schemas, so an agent knows them before it chooses. `history`, `capabilities`
+and `graph` load on demand. A dispatch prompt should still name them and the
+order to use them in. The structural-first gate enforces that order. Its hook
+commands are `agentless-mcp hook gate-check` and
+`agentless-mcp hook gate-mark`, and `contrib/hooks/settings-example.json` holds
+their settings. It
 denies broad Grep, Glob and tree-searching Bash commands until `orient(map)`,
 `graph(path)`, `symbols(find|overview|expand|explain)`, `read(slice)` or
 `find_referencing_symbols` has localized the session. Exact-file Grep remains
