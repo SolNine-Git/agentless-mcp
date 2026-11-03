@@ -86,3 +86,20 @@ fn an_expansion_with_one_resolved_id_answers_and_names_the_other_id() {
         unresolved: py:shapes.py::gone -- shapes.py does not define gone\n";
     assert_eq!(body(&called(&server, &arguments)), expected);
 }
+
+#[test]
+fn an_explanation_of_a_target_that_binds_to_nothing_is_an_error_and_a_card_is_not() {
+    let (_sandbox, server) = served();
+    let missed = json!({"operation": "explain", "target": "zz_none"});
+    assert_eq!(
+        called(&server, &missed),
+        refused("no symbol matches zz_none")
+    );
+    let line = json!({"operation": "explain", "target": "shapes.py:9"});
+    assert_eq!(
+        called(&server, &line),
+        refused("no symbol matches shapes.py:9: no symbol in shapes.py spans line 9")
+    );
+    let found = json!({"operation": "explain", "target": "area"});
+    assert!(body(&called(&server, &found)).starts_with("[py:shapes.py::area] @1-2\n"));
+}

@@ -29,8 +29,8 @@ pub use files::{FileGraph, Weighting};
 pub use flood::{Flood, Reached, flood_backward};
 pub use imports::ImportTargets;
 pub use lookup::{
-    Lookup, Target, TargetForm, definitions_for, holds_file, lookup_target, parse_target,
-    path_name_id, references_to, resolve_definitions,
+    Lookup, Target, TargetForm, data_key_at, definitions_for, holds_file, lookup_target,
+    parse_target, path_end, path_name_id, references_to, resolve_definitions,
 };
 pub use names::{Definition, NameIndex, Site, common_name_damping, name_multiplier};
 pub use owners::{LineOwners, enclosing_symbol};

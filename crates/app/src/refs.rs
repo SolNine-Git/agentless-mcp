@@ -8,12 +8,13 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use facts::{Declared, Role};
 use graph::{Definition, NameIndex, Resolver, Scopes, Site, TargetForm, references_to};
-use kernel::{Bounded, Deadline};
-use prompts::messages::TARGET_NO_MATCH;
+use kernel::Bounded;
 
 use crate::bounds::within;
 use crate::detached::answered_over;
-use crate::endpoints::{BindingStatus, Bound, Coverage, TargetBinding, bind, data_key_binding};
+use crate::endpoints::{
+    BindingStatus, Bound, Coverage, Scope, TARGET_WORDING, TargetBinding, bind, data_key_binding,
+};
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::RepoFacts;
 use crate::span::{Missed, SymbolSpan, data_key_span};
@@ -171,29 +172,27 @@ pub fn refs(
     if let Some(found) = data_key_span(reading, &request.target) {
         return found.map(|span| Ok(keyed(request, limit, span)));
     }
-    let stoplist = &reading.repo.config.stoplist;
     let loaded = RepoFacts::load(services, reading);
-    let deadline = reading.deadline;
     loaded.map(|facts| {
-        facts.and_then(|facts| {
-            answered_over(facts, |facts| {
-                fan_in(facts, stoplist, request, limit, deadline)
-            })
-        })
+        facts.and_then(|facts| answered_over(facts, |facts| fan_in(facts, reading, request, limit)))
     })
 }
 
 fn fan_in(
     facts: &RepoFacts,
-    stoplist: &BTreeSet<String>,
+    reading: &Reading<'_>,
     request: &RefsRequest,
     limit: usize,
-    deadline: Option<&Deadline>,
 ) -> Result<RefsResult, Error> {
     let index = NameIndex::build(&facts.files);
     let scopes = Scopes::build(&facts.files);
     let resolver = Resolver::new(&index, &scopes);
-    let bound = bind(&index, &request.target, limit, &TARGET_NO_MATCH);
+    let scope = Scope {
+        index: &index,
+        skipped: &facts.skipped,
+        root: &reading.repo.root,
+    };
+    let bound = bind(&scope, &request.target, limit, &TARGET_WORDING);
     let scanned = RefsResult {
         coverage: Coverage::of(&bound.binding, &facts.skipped),
         skipped: facts.skipped.clone(),
@@ -219,7 +218,8 @@ fn fan_in(
         files: sites.iter().map(Site::path).collect::<BTreeSet<_>>().len(),
     };
     let ranked = if request.shared_callers {
-        shared::shared_callers(&sites, &target_ids, &index, stoplist, deadline)?
+        let stoplist = &reading.repo.config.stoplist;
+        shared::shared_callers(&sites, &target_ids, &index, stoplist, reading.deadline)?
     } else {
         Vec::new()
     };

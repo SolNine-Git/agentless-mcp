@@ -5,7 +5,9 @@ use graph::{Hop, PathBounds, PathResult, SymbolGraph, shortest_path};
 pub use graph::PathPolicy;
 
 use crate::bounds::at_least;
-use crate::endpoints::{Located, data_key_endpoint, endpoint};
+use crate::endpoints::{
+    Located, PATH_SOURCE_WORDING, PATH_TARGET_WORDING, Scope, data_key_endpoint, endpoint,
+};
 use crate::scan::over_scan;
 use crate::symbol_graph::{verbs, with_resolved};
 use crate::{Error, IntArg, Noted, Reading, Services};
@@ -95,8 +97,17 @@ pub fn path(
         [Some(start), Some(finish)] => Noted::new(Ok(unresolved(request, start, finish))),
         [start, finish] => over_scan(services, reading, |facts| {
             with_resolved(&facts.files, reading.deadline, |index, graph| {
-                let start = start.unwrap_or_else(|| endpoint(index, graph, &request.source));
-                let finish = finish.unwrap_or_else(|| endpoint(index, graph, &request.target));
+                let scope = Scope {
+                    index,
+                    skipped: &facts.skipped,
+                    root: &reading.repo.root,
+                };
+                let source = &request.source;
+                let start =
+                    start.unwrap_or_else(|| endpoint(&scope, graph, source, &PATH_SOURCE_WORDING));
+                let target = &request.target;
+                let finish =
+                    finish.unwrap_or_else(|| endpoint(&scope, graph, target, &PATH_TARGET_WORDING));
                 walked(request, start, finish, graph, bounds)
             })
         }),

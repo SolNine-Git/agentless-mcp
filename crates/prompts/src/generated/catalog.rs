@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 243] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 248] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1246,6 +1246,18 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 243] = [
     ),
     (
         "messages",
+        "path_source_candidates",
+        &["name", "count", "listed"],
+        messages::PATH_SOURCE_CANDIDATES.pieces(),
+    ),
+    (
+        "messages",
+        "path_source_candidates_cut",
+        &["name", "shown", "count", "listed"],
+        messages::PATH_SOURCE_CANDIDATES_CUT.pieces(),
+    ),
+    (
+        "messages",
         "refs_absent",
         &["target"],
         messages::REFS_ABSENT.pieces(),
@@ -1429,6 +1441,24 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 243] = [
         "target_candidates_cut",
         &["name", "shown", "count", "listed"],
         messages::TARGET_CANDIDATES_CUT.pieces(),
+    ),
+    (
+        "messages",
+        "target_data_file",
+        &["path"],
+        messages::TARGET_DATA_FILE.pieces(),
+    ),
+    (
+        "messages",
+        "target_data_key",
+        &["target", "line"],
+        messages::TARGET_DATA_KEY.pieces(),
+    ),
+    (
+        "messages",
+        "target_file_skipped",
+        &["path", "reason"],
+        messages::TARGET_FILE_SKIPPED.pieces(),
     ),
     (
         "messages",

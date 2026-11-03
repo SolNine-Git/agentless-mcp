@@ -99,7 +99,7 @@ pub fn parse_target(text: &str) -> Target<'_> {
 }
 
 /// Return the stable id that a `path::qualname` text spells, with the prefix of the path's
-/// language, or `None` for any other text.
+/// language and `::` inside the qualified name read as `.`, or `None` for any other text.
 #[must_use]
 pub fn path_name_id(text: &str) -> Option<StableId> {
     let (path, qualname) = text.split_once("::")?;
@@ -107,7 +107,25 @@ pub fn path_name_id(text: &str) -> Option<StableId> {
         return None;
     }
     let prefix = Language::from_path(path)?.extraction().prefix;
+    let qualname = qualified(qualname);
     format!("{prefix}:{path}::{qualname}").parse().ok()
+}
+
+/// Return where the path that a `path::name`, `path:line` or file path target starts with ends.
+#[must_use]
+pub fn path_end(text: &str) -> usize {
+    if let Some((path, _)) = text.split_once("::") {
+        return path.len();
+    }
+    path_line(text).map_or(text.len(), |(path, _)| path.len())
+}
+
+/// Return the stable id of the innermost key that spans `line` in the data file at `path`.
+#[must_use]
+pub fn data_key_at(index: &NameIndex<'_>, path: &str, line: u32) -> Option<StableId> {
+    let files = index.files();
+    let at = (files.iter()).position(|file| file.path == path && !in_name_graph(file))?;
+    innermost(files, at, line).map(|definition| definition.stable_id())
 }
 
 /// Resolve a parsed target to definitions, each form at its own scope.

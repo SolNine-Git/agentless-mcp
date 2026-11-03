@@ -3,7 +3,7 @@
 
 use app::{
     BindingStatus, Coverage, CoverageStatus, ROW_INDENT, RefGroup, RefListing, RefSite, RefsResult,
-    SharedCaller, TargetBinding, file_site, locator,
+    SharedCaller, Skipped, TargetBinding, file_site, locator,
 };
 use json::{fixed, round_half_even};
 use prompts::messages::{
@@ -49,6 +49,19 @@ fn refs_text(result: &RefsResult) -> String {
         body
     } else {
         format!("{skipped}\n\n{body}")
+    }
+}
+
+/// Returns the refusal of a target that bound to nothing: its line, then the skipped-file warning
+/// when the scan skipped a code file.
+#[must_use]
+pub fn unbound_refusal(message: &str, skipped: &[Skipped]) -> String {
+    let line = one_line(message).into_owned();
+    let warning = skipped_line(skipped);
+    if warning.is_empty() {
+        line
+    } else {
+        format!("{line}\n{warning}")
     }
 }
 

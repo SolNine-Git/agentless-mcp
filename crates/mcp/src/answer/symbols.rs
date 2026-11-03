@@ -5,7 +5,7 @@ use app::ops::limits::{
 };
 use app::{ExpandRequest, ExplainRequest, FileView, FindRequest, LocsRequest, SkeletonRequest};
 use facts::SymbolKind;
-use render::{ToolForm, expand_stderr_rows, one_line, tool_text};
+use render::{ToolForm, expand_stderr_rows, one_line, tool_text, unbound_refusal};
 
 use super::Context;
 use crate::arguments::Arguments;
@@ -27,13 +27,7 @@ pub(super) fn answer(context: &Context<'_>, call: &Call) -> Result<String, Failu
         }
         "overview" => overview(context, arguments),
         "expand" => expand(context, arguments),
-        "explain" => {
-            let request = ExplainRequest {
-                target: arguments.text_or_empty("target"),
-                limit: arguments.int_or("limit", DEFAULT_EXPLAIN_LIMIT),
-            };
-            context.viewed(app::explain(services, reading, &request))
-        }
+        "explain" => explain(context, arguments),
         "locate" => {
             let request = LocsRequest {
                 path: arguments.text_or_empty("path"),
@@ -71,6 +65,23 @@ fn overview_failure(views: &[FileView]) -> Option<String> {
     }
     let reasons: Vec<_> = views.iter().map(|view| one_line(&view.error)).collect();
     Some(reasons.join("\n"))
+}
+
+// A target that binds to nothing gives no card, so its line is a refusal, as refs gives it.
+fn explain(context: &Context<'_>, arguments: &Arguments) -> Result<String, Failure> {
+    let request = ExplainRequest {
+        target: arguments.text_or_empty("target"),
+        limit: arguments.int_or("limit", DEFAULT_EXPLAIN_LIMIT),
+    };
+    let outcome = app::explain(&context.inner.services, &context.reading, &request);
+    if let Ok(explanation) = &outcome.value
+        && explanation.card.is_none()
+    {
+        context.logged(&outcome.diagnostics);
+        let refusal = unbound_refusal(&explanation.message, &explanation.skipped);
+        return Err(Failure::Refused(refusal));
+    }
+    context.viewed(outcome)
 }
 
 // The ids that missed follow the bodies, on the one channel a tool answer has. An expansion where

@@ -1842,6 +1842,34 @@ pub const PATH_NEEDS_ENDPOINTS: Template<Text> = Template::new(&[
     ),
 ]);
 
+/// A template that takes (`name`, `count`, `listed`).
+pub const PATH_SOURCE_CANDIDATES: Template<(Text, Count, Text)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "definition", "definitions"),
+    Piece::Text(" of "),
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(2),
+    Piece::Text(". Pass "),
+    Piece::Choice(1, "it", "one"),
+    Piece::Text(" as the source."),
+]);
+
+/// A template that takes (`name`, `shown`, `count`, `listed`).
+pub const PATH_SOURCE_CANDIDATES_CUT: Template<(Text, Count, Count, Text)> = Template::new(&[
+    Piece::Value(2),
+    Piece::Text(" definitions of "),
+    Piece::Value(0),
+    Piece::Text(", and "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "is", "are"),
+    Piece::Text(" listed: "),
+    Piece::Value(3),
+    Piece::Text(". Pass one as the source."),
+]);
+
 /// A template that takes `target`.
 pub const REFS_ABSENT: Template<Text> = Template::new(&[
     Piece::Text("no references to "),
@@ -2169,6 +2197,33 @@ pub const TARGET_CANDIDATES_CUT: Template<(Text, Count, Count, Text)> = Template
     Piece::Text(" listed: "),
     Piece::Value(3),
     Piece::Text(". Pass one as the target."),
+]);
+
+/// A template that takes `path`.
+pub const TARGET_DATA_FILE: Template<Text> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(
+        " is a data file, and its keys are not symbols that refs, \
+        explain or path bind",
+    ),
+]);
+
+/// A template that takes (`target`, `line`).
+pub const TARGET_DATA_KEY: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("The key "),
+    Piece::Value(0),
+    Piece::Text(" spans line "),
+    Piece::Value(1),
+    Piece::Text(". Expand that id to read the key."),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const TARGET_FILE_SKIPPED: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("the scan did not read "),
+    Piece::Value(0),
+    Piece::Text(" ("),
+    Piece::Value(1),
+    Piece::Text(")"),
 ]);
 
 /// A template that takes `target`.

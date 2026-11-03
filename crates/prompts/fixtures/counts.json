@@ -547,6 +547,23 @@
       "one": "12 definitions of run, and 1 is listed: py:a.py::run. Pass one as the target.",
       "many": "12 definitions of run, and 2 are listed: py:a.py::run. Pass one as the target."
     },
+    "path_source_candidates": {
+      "arguments": {
+        "listed": "py:a.py::run",
+        "name": "run"
+      },
+      "one": "1 definition of run: py:a.py::run. Pass it as the source.",
+      "many": "2 definitions of run: py:a.py::run. Pass one as the source."
+    },
+    "path_source_candidates_cut": {
+      "arguments": {
+        "count": 12,
+        "listed": "py:a.py::run",
+        "name": "run"
+      },
+      "one": "12 definitions of run, and 1 is listed: py:a.py::run. Pass one as the source.",
+      "many": "12 definitions of run, and 2 are listed: py:a.py::run. Pass one as the source."
+    },
     "target_spelled": {
       "arguments": {
         "name": "orderPinnedTopics"

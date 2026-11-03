@@ -49,6 +49,27 @@ fn a_path_qualified_name_resolves_as_its_stable_id_does_and_a_name_stays_refused
 }
 
 #[test]
+fn a_path_name_with_a_rust_style_method_resolves_and_a_path_without_a_language_stays_refused() {
+    let scanned = Scanned::new(&[(
+        "jobs.py",
+        "class Job:\n    def run(self):\n        return 2\n",
+    )]);
+    let reading = scanned.reading();
+    let Ok(span) = resolve_symbol_span(&reading, "jobs.py::Job::run").value else {
+        panic!("a path::Type::method resolves");
+    };
+    assert_eq!(span.stable_id().to_string(), "py:jobs.py::Job.run");
+    let Err(missed) = resolve_symbol_span(&reading, "Job::run::x").value else {
+        panic!("a name with no file does not resolve");
+    };
+    assert_eq!(
+        missed.reason(),
+        "not a stable id: 'Job::run::x'; expected <langprefix>:<relpath>::<qualname>, for \
+         example py:src/app/svc.py::Invoice.total"
+    );
+}
+
+#[test]
 fn ids_that_share_parsed_files_resolve_as_each_id_alone_does() {
     let scanned = Scanned::new(&LINKED);
     let reading = scanned.reading();

@@ -2,17 +2,22 @@
 //! match first, which explain and refs read, the binding and coverage statuses of their answers,
 //! and the endpoint that path starts from.
 
+use std::borrow::Cow;
+use std::path::Path;
+
 use facts::is_data_language;
 use graph::{
-    Definition, NameIndex, SymbolGraph, Target, TargetForm, holds_file, lookup_target, parse_target,
+    Definition, NameIndex, SymbolGraph, Target, TargetForm, data_key_at, holds_file, lookup_target,
+    parse_target, path_end,
 };
 use kernel::Bounded;
-use prompts::Template;
-use prompts::Text;
 use prompts::messages::{
-    PATH_DATA_KEY_NO_EDGES, PATH_ENDPOINT_NO_MATCH, SPAN_SYMBOL_UNDEFINED, TARGET_CANDIDATES,
-    TARGET_CANDIDATES_CUT, TARGET_IS_FILE, TARGET_NO_FILE, TARGET_NO_LINE, TARGET_SPELLED,
+    PATH_DATA_KEY_NO_EDGES, PATH_ENDPOINT_NO_MATCH, PATH_SOURCE_CANDIDATES,
+    PATH_SOURCE_CANDIDATES_CUT, SPAN_SYMBOL_UNDEFINED, TARGET_CANDIDATES, TARGET_CANDIDATES_CUT,
+    TARGET_DATA_FILE, TARGET_DATA_KEY, TARGET_FILE_SKIPPED, TARGET_IS_FILE, TARGET_NO_FILE,
+    TARGET_NO_LINE, TARGET_NO_MATCH, TARGET_SPELLED,
 };
+use prompts::{Count, Template, Text};
 use syntax::Language;
 
 use crate::span::data_key_span;
@@ -22,6 +27,77 @@ use crate::{Noted, Reading, Skipped};
 const ENDPOINT_CANDIDATES: usize = 10;
 const BINDING_VALUES: [&str; 3] = ["bound", "ambiguous", "not_found"];
 const COVERAGE_VALUES: [&str; 3] = ["complete", "partial", "not_checked"];
+
+// The words of a target that bound to nothing: the first line, and the advice that names the
+// parameter to pass a candidate as.
+pub(crate) struct Wording {
+    first: Template<Text>,
+    candidates: Template<(Text, Count, Text)>,
+    cut: Template<(Text, Count, Count, Text)>,
+}
+
+pub(crate) const TARGET_WORDING: Wording = Wording {
+    first: TARGET_NO_MATCH,
+    candidates: TARGET_CANDIDATES,
+    cut: TARGET_CANDIDATES_CUT,
+};
+
+pub(crate) const PATH_SOURCE_WORDING: Wording = Wording {
+    first: PATH_ENDPOINT_NO_MATCH,
+    candidates: PATH_SOURCE_CANDIDATES,
+    cut: PATH_SOURCE_CANDIDATES_CUT,
+};
+
+pub(crate) const PATH_TARGET_WORDING: Wording = Wording {
+    first: PATH_ENDPOINT_NO_MATCH,
+    candidates: TARGET_CANDIDATES,
+    cut: TARGET_CANDIDATES_CUT,
+};
+
+// What a target binds against: the scan's name index, the files the scan skipped, and the root
+// that a path is read below.
+pub(crate) struct Scope<'s, 'a> {
+    pub(crate) index: &'s NameIndex<'a>,
+    pub(crate) skipped: &'s [Skipped],
+    pub(crate) root: &'s Path,
+}
+
+impl Scope<'_, '_> {
+    // A path form written from the root, such as `./a.py::run`, or as an absolute path below it
+    // reads as the path below the root. Any other text stays as the caller wrote it.
+    fn rooted<'t>(&self, text: &'t str) -> Cow<'t, str> {
+        if !(text.starts_with("./") || text.starts_with('/')) {
+            return Cow::Borrowed(text);
+        }
+        let (path, rest) = text.split_at(path_end(text));
+        match below_root(self.root, path) {
+            Some(below) => Cow::Owned(format!("{below}{rest}")),
+            None => Cow::Borrowed(text),
+        }
+    }
+
+    // Why the scan holds no facts for `path`, or `None` when it read the file.
+    fn file_reason(&self, path: &str) -> Option<String> {
+        if holds_file(self.index, path) {
+            return None;
+        }
+        if let Some(entry) = self.skipped.iter().find(|entry| entry.path == path) {
+            return Some(TARGET_FILE_SKIPPED.render((path, entry.reason.as_str())));
+        }
+        let outside = io::contained_path(self.root, Path::new(path)).err();
+        Some(outside.map_or_else(
+            || TARGET_NO_FILE.render(path),
+            |refusal| refusal.to_string(),
+        ))
+    }
+}
+
+// The path below `root` that `path` resolves to, or `None` for a path outside it.
+fn below_root(root: &Path, path: &str) -> Option<String> {
+    let absolute = io::contained_path(root, Path::new(path)).ok()?;
+    let below = absolute.strip_prefix(root).ok()?;
+    below.to_str().map(str::to_owned)
+}
 
 /// Whether a target bound to definitions at its own scope.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -120,13 +196,14 @@ pub(crate) struct Bound<'a> {
 // A target never falls back outside its own scope. A qualified name that no file path confirms
 // still names the definitions whose qualified name it spells, such as `Class.method`.
 pub(crate) fn bind<'a>(
-    index: &NameIndex<'a>,
+    scope: &Scope<'_, 'a>,
     text: &str,
     limit: usize,
-    first: &Template<Text>,
+    wording: &Wording,
 ) -> Bound<'a> {
-    let target = parse_target(text);
-    let lookup = lookup_target(index, &target);
+    let rooted = scope.rooted(text);
+    let target = parse_target(&rooted);
+    let lookup = lookup_target(scope.index, &target);
     let key = match &target {
         Target::Named(named) => named.to_string(),
         _ => text.to_owned(),
@@ -139,11 +216,12 @@ pub(crate) fn bind<'a>(
     }
     if !(lookup.scoped || named) || ranked.is_empty() {
         let unbound = Unbound {
-            index,
+            scope,
             target: &target,
             form: lookup.form,
+            wording,
         };
-        return unbound.bound(text, &ranked, limit, first);
+        return unbound.bound(text, &ranked, limit);
     }
     let status = if ranked.len() == 1 {
         BindingStatus::Bound
@@ -185,28 +263,23 @@ pub(crate) fn data_key_binding(text: &str, missed: Option<&str>) -> TargetBindin
     }
 }
 
-// A target that bound to nothing, and the scan it was looked up in.
+// A target that bound to nothing, the scan it was looked up in, and the words of its answer.
 struct Unbound<'i, 'a, 't> {
-    index: &'i NameIndex<'a>,
+    scope: &'i Scope<'i, 'a>,
     target: &'i Target<'t>,
     form: TargetForm,
+    wording: &'i Wording,
 }
 
 impl<'a> Unbound<'_, 'a, '_> {
     // The definitions of the name become the candidates, and none of them is bound.
-    fn bound(
-        &self,
-        text: &str,
-        candidates: &[Definition<'a>],
-        limit: usize,
-        first: &Template<Text>,
-    ) -> Bound<'a> {
-        let ids = candidates
-            .iter()
+    fn bound(&self, text: &str, candidates: &[Definition<'a>], limit: usize) -> Bound<'a> {
+        let ids = (self.file_first(candidates).into_iter())
             .map(|definition| definition.stable_id().to_string());
         let candidates = Bounded::cut(ids.collect(), limit);
         let reason = self.reason();
-        let message = joined(first.render(text), &reason, &self.advice(&candidates));
+        let first = self.wording.first.render(text);
+        let message = joined(first, &reason, &self.advice(&candidates));
         Bound {
             definitions: Vec::new(),
             key: text.to_owned(),
@@ -222,33 +295,68 @@ impl<'a> Unbound<'_, 'a, '_> {
         }
     }
 
+    // A target that names a file lists the definitions in that file first, each part in rank
+    // order, so a cut keeps the one the caller most likely meant.
+    fn file_first<'c>(&self, ranked: &'c [Definition<'a>]) -> Vec<&'c Definition<'a>> {
+        let Target::Id(id, _) = self.target else {
+            return ranked.iter().collect();
+        };
+        let (inside, outside): (Vec<_>, Vec<_>) =
+            (ranked.iter()).partition(|definition| definition.path() == id.path());
+        inside.into_iter().chain(outside).collect()
+    }
+
     // Only a target that names a file has a reason beyond the absence itself.
     fn reason(&self) -> String {
-        let index = self.index;
+        let scope = self.scope;
         match self.target {
-            Target::Id(id, _) if !holds_file(index, id.path()) => TARGET_NO_FILE.render(id.path()),
-            Target::Id(id, _) => SPAN_SYMBOL_UNDEFINED.render((id.path(), id.qualname())),
-            Target::Line(path, _) if !holds_file(index, path) => TARGET_NO_FILE.render(path),
-            Target::Line(path, line) => TARGET_NO_LINE.render((path, *line as usize)),
+            Target::Id(id, _) => scope
+                .file_reason(id.path())
+                .unwrap_or_else(|| SPAN_SYMBOL_UNDEFINED.render((id.path(), id.qualname()))),
+            Target::Line(path, line) => {
+                (scope.file_reason(path)).unwrap_or_else(|| line_reason(path, *line))
+            }
             Target::Named(text) if self.form == TargetForm::Path => TARGET_IS_FILE.render(text),
             Target::Named(_) => String::new(),
         }
     }
 
-    // The definitions of the name, or else the files that spell a name nothing declares.
+    // The definitions of the name, or else the files that spell a name nothing declares. A line
+    // of a data file gets the key that spans it.
     fn advice(&self, candidates: &Bounded<String>) -> String {
+        if let Target::Line(path, line) = self.target {
+            return key_advice(self.scope.index, path, *line);
+        }
         let name = match self.target.last_name() {
             Some(name) if self.form != TargetForm::Path => name,
             _ => return String::new(),
         };
         let listed = candidates.rows().join(", ");
+        let wording = self.wording;
         match (candidates.total(), candidates.omitted()) {
-            (0, _) => spelled(self.index, name),
-            (total, 0) => TARGET_CANDIDATES.render((name, total, &listed)),
-            (total, _) => {
-                TARGET_CANDIDATES_CUT.render((name, candidates.rows().len(), total, &listed))
-            }
+            (0, _) => spelled(self.scope.index, name),
+            (total, 0) => wording.candidates.render((name, total, &listed)),
+            (total, _) => wording
+                .cut
+                .render((name, candidates.rows().len(), total, &listed)),
         }
+    }
+}
+
+// A data file's keys stay out of the name graph, so no line of one binds.
+fn line_reason(path: &str, line: u32) -> String {
+    if Language::from_path(path).is_some_and(is_data_language) {
+        TARGET_DATA_FILE.render(path)
+    } else {
+        TARGET_NO_LINE.render((path, line as usize))
+    }
+}
+
+// The id of the data key that spans the line, which expand reads, or nothing.
+fn key_advice(index: &NameIndex<'_>, path: &str, line: u32) -> String {
+    match data_key_at(index, path, line) {
+        Some(id) => TARGET_DATA_KEY.render((&id.to_string(), line as usize)),
+        None => String::new(),
     }
 }
 
@@ -310,14 +418,20 @@ pub(crate) struct Located {
 
 // A stable id and a path are exact. A name resolves only when its best band holds one symbol:
 // picking one of several would put a guess at the end of a path that reads as evidence.
-pub(crate) fn endpoint(index: &NameIndex<'_>, graph: &SymbolGraph<'_>, text: &str) -> Located {
-    if let Some(definition) = graph.definitions().get(text) {
-        return located(text.to_owned(), definition.symbol().qualname());
+pub(crate) fn endpoint(
+    scope: &Scope<'_, '_>,
+    graph: &SymbolGraph<'_>,
+    text: &str,
+    wording: &Wording,
+) -> Located {
+    let rooted = scope.rooted(text);
+    if let Some(definition) = graph.definitions().get(&*rooted) {
+        return located(rooted.into_owned(), definition.symbol().qualname());
     }
-    if graph.has_file(text) {
-        return located(text.to_owned(), text.to_owned());
+    if graph.has_file(&rooted) {
+        return located(rooted.to_string(), rooted.into_owned());
     }
-    let bound = bind(index, text, ENDPOINT_CANDIDATES, &PATH_ENDPOINT_NO_MATCH);
+    let bound = bind(scope, text, ENDPOINT_CANDIDATES, wording);
     if bound.binding.status == BindingStatus::NotFound {
         return refused(text, bound.binding.message);
     }

@@ -1355,6 +1355,23 @@
       },
       "text": "orient operation 'path' needs both source and target: each is a stable id, a qualified name, or a repository-relative file path. Retry naming both ends."
     },
+    "path_source_candidates": {
+      "arguments": {
+        "count": 1,
+        "listed": "py:a.py::run",
+        "name": "run"
+      },
+      "text": "1 definition of run: py:a.py::run. Pass it as the source."
+    },
+    "path_source_candidates_cut": {
+      "arguments": {
+        "count": 12,
+        "listed": "py:a.py::run, py:b.py::run",
+        "name": "run",
+        "shown": 2
+      },
+      "text": "12 definitions of run, and 2 are listed: py:a.py::run, py:b.py::run. Pass one as the source."
+    },
     "refs_absent": {
       "arguments": {
         "target": "py:pkg/lib.py::target"
@@ -1566,6 +1583,26 @@
         "shown": 2
       },
       "text": "12 definitions of run, and 2 are listed: py:a.py::run, py:b.py::run. Pass one as the target."
+    },
+    "target_data_file": {
+      "arguments": {
+        "path": "Cargo.toml"
+      },
+      "text": "Cargo.toml is a data file, and its keys are not symbols that refs, explain or path bind"
+    },
+    "target_data_key": {
+      "arguments": {
+        "line": 5,
+        "target": "toml:Cargo.toml::workspace.package"
+      },
+      "text": "The key toml:Cargo.toml::workspace.package spans line 5. Expand that id to read the key."
+    },
+    "target_file_skipped": {
+      "arguments": {
+        "path": "pkg/big.py",
+        "reason": "skipped: 1717815 bytes exceeds the per-file cap of 1000000 bytes"
+      },
+      "text": "the scan did not read pkg/big.py (skipped: 1717815 bytes exceeds the per-file cap of 1000000 bytes)"
     },
     "target_is_file": {
       "arguments": {

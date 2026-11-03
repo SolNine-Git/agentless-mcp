@@ -8,6 +8,7 @@ use app::{
     CommunitiesRequest, CyclesRequest, DiagramRequest, HealthRequest, IntArg, PathPolicy,
     PathRequest,
 };
+use render::one_line;
 
 use super::Context;
 use super::orient::focus_entries;
@@ -38,9 +39,23 @@ pub(super) fn answer(context: &Context<'_>, call: &Call) -> Result<String, Failu
             context.viewed(app::health(services, reading, &HealthRequest { limit }))
         }
         "diagram" => context.viewed(app::diagram(services, reading, &diagram(arguments))),
-        "path" => context.viewed(app::path(services, reading, &path(arguments))),
+        "path" => traced(context, arguments),
         other => Err(Failure::Unplanned(format!("graph has no step for {other}"))),
     }
+}
+
+// An endpoint that resolves to no one node gives no path, so its line is a refusal. Two resolved
+// endpoints with no path between them are an answer.
+fn traced(context: &Context<'_>, arguments: &Arguments) -> Result<String, Failure> {
+    let services = &*context.inner.services;
+    let outcome = app::path(services, &context.reading, &path(arguments));
+    if let Ok(trace) = &outcome.value
+        && !trace.endpoints_resolved
+    {
+        context.logged(&outcome.diagnostics);
+        return Err(Failure::Refused(one_line(&trace.message).into_owned()));
+    }
+    context.viewed(outcome)
 }
 
 // A diagram has one centre: the text, or the first entry of a list; an empty one is none.
@@ -66,3 +81,6 @@ fn path(arguments: &Arguments) -> PathRequest {
         max_visited: IntArg::from_usize(DEFAULT_MAX_VISITED),
     }
 }
+
+#[cfg(test)]
+mod tests;

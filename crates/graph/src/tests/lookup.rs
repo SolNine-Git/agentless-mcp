@@ -4,7 +4,7 @@ use facts::StableId;
 use serde_json::{Value, json};
 
 use super::corpus::{Corpus, ids};
-use crate::lookup::{Target, TargetForm, lookup_target, parse_target, path_name_id};
+use crate::lookup::{Target, TargetForm, lookup_target, parse_target, path_end, path_name_id};
 use crate::names::NameIndex;
 
 fn id(text: &str) -> StableId {
@@ -30,6 +30,13 @@ fn each_form_parses_to_its_own_target() {
             "crates/json/src/float.rs::float_text",
             Target::Id(
                 id("rs:crates/json/src/float.rs::float_text"),
+                TargetForm::PathName,
+            ),
+        ),
+        (
+            "crates/app/src/endpoints.rs::BindingStatus::as_str",
+            Target::Id(
+                id("rs:crates/app/src/endpoints.rs::BindingStatus.as_str"),
                 TargetForm::PathName,
             ),
         ),
@@ -59,6 +66,23 @@ fn a_path_name_takes_the_prefix_of_its_language_and_nothing_else_does() {
     assert_eq!(spelled("py:a.py::f"), None);
     assert_eq!(spelled("a.py::"), None);
     assert_eq!(spelled("format_money"), None);
+    assert_eq!(
+        spelled("src/lib.rs::Status::as_str#2").as_deref(),
+        Some("rs:src/lib.rs::Status.as_str#2")
+    );
+}
+
+#[test]
+fn the_path_of_each_path_form_ends_where_its_name_or_line_starts() {
+    let cases = [
+        ("./a.py::Job::run", ("./a.py", "::Job::run")),
+        ("/r/a.py:12", ("/r/a.py", ":12")),
+        ("/r/pkg/a.py", ("/r/pkg/a.py", "")),
+        ("./notes.txt:3", ("./notes.txt:3", "")),
+    ];
+    for (text, expected) in cases {
+        assert_eq!(text.split_at(path_end(text)), expected, "{text:?}");
+    }
 }
 
 #[test]

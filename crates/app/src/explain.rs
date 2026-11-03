@@ -1,12 +1,15 @@
 //! One symbol's card: where it is defined, what it touches and what touches it, each side
 //! grouped by evidence tier, and the imports of its file.
 
-use graph::{Definition, NameIndex, SymbolEdge, SymbolGraph, Tier};
+use graph::{Definition, SymbolEdge, SymbolGraph, Tier};
 use kernel::Bounded;
-use prompts::messages::{DATA_KEY_NO_FAN_IN, TARGET_NO_MATCH};
+use prompts::messages::DATA_KEY_NO_FAN_IN;
 
 use crate::bounds::within;
-use crate::endpoints::{BindingStatus, Coverage, TargetBinding, best_band, bind, data_key_binding};
+use crate::endpoints::{
+    BindingStatus, Coverage, Scope, TARGET_WORDING, TargetBinding, best_band, bind,
+    data_key_binding,
+};
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::over_scan;
 use crate::span::{Missed, SymbolSpan, data_key_span};
@@ -118,7 +121,12 @@ pub fn explain(
     }
     over_scan(services, reading, |facts| {
         with_resolved(&facts.files, reading.deadline, |index, graph| {
-            let explained = explanation(index, graph, target, limit);
+            let scope = Scope {
+                index,
+                skipped: &facts.skipped,
+                root: &reading.repo.root,
+            };
+            let explained = explanation(&scope, graph, target, limit);
             let coverage = Coverage::of(&explained.binding, &facts.skipped);
             Ok(Explanation {
                 coverage,
@@ -130,12 +138,12 @@ pub fn explain(
 }
 
 fn explanation(
-    index: &NameIndex<'_>,
+    scope: &Scope<'_, '_>,
     graph: &SymbolGraph<'_>,
     target: &str,
     limit: usize,
 ) -> Explanation {
-    let bound = bind(index, target, limit, &TARGET_NO_MATCH);
+    let bound = bind(scope, target, limit, &TARGET_WORDING);
     if bound.binding.status == BindingStatus::NotFound {
         return uncarded(target, bound.binding);
     }

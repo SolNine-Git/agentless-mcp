@@ -135,6 +135,7 @@ pub fn render::receipt_lines(&render::Receipt<'_>, &str) -> alloc::vec::Vec<allo
 pub fn render::strip_fence(&str) -> alloc::string::String
 pub fn render::text(&render::Receipt<'_>, &impl render::View) -> alloc::string::String
 pub fn render::tool_text(&render::Receipt<'_>, render::ToolForm<'_>) -> alloc::string::String
+pub fn render::unbound_refusal(&str, &[app::scan::Skipped]) -> alloc::string::String
 pub fn render::validate_jsonl(&render::Receipt<'_>, &app::validate::records::ValidateReport) -> alloc::string::String
 pub fn render::vote_summary(&patch::vote::VoteReport) -> alloc::string::String
 pub fn render::vote_text(&patch::vote::VoteReport) -> alloc::string::String

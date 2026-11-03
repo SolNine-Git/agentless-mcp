@@ -638,6 +638,7 @@ pub const graph::DEFAULT_RESOLUTION: f64
 pub const graph::ROOT_LABEL: &str
 pub fn graph::common_name_damping(u32) -> f64
 pub fn graph::community_label(&[&str]) -> alloc::string::String
+pub fn graph::data_key_at(&graph::NameIndex<'_>, &str, u32) -> core::option::Option<facts::stable_id::StableId>
 pub fn graph::definitions_for<'a>(&graph::NameIndex<'a>, &str) -> alloc::vec::Vec<graph::Definition<'a>>
 pub fn graph::detect_communities<'a>(&graph::FileGraph<'a>, f64, core::option::Option<&kernel::deadline::Deadline>) -> core::result::Result<graph::CommunityPartition<'a>, kernel::deadline::Stopped>
 pub fn graph::enclosing_symbol(&[facts::values::Symbol], u32) -> core::option::Option<&facts::values::Symbol>
@@ -651,6 +652,7 @@ pub fn graph::name_multiplier(&str, &alloc::collections::btree::set::BTreeSet<al
 pub fn graph::normpath(&str) -> alloc::string::String
 pub fn graph::pagerank<'a>(&graph::FileGraph<'a>, &alloc::collections::btree::map::BTreeMap<alloc::string::String, f64>, impl core::ops::function::Fn(&str) -> bool, core::option::Option<&kernel::deadline::Deadline>) -> core::result::Result<graph::PageRank<'a>, kernel::deadline::Stopped>
 pub fn graph::parse_target(&str) -> graph::Target<'_>
+pub fn graph::path_end(&str) -> usize
 pub fn graph::path_name_id(&str) -> core::option::Option<facts::stable_id::StableId>
 pub fn graph::rank_order<'a>(&graph::PageRank<'a>, impl core::ops::function::Fn(&str) -> bool) -> alloc::vec::Vec<&'a str>
 pub fn graph::references_to<'a>(&graph::NameIndex<'a>, &graph::Definition<'a>) -> alloc::vec::Vec<graph::Site<'a>>

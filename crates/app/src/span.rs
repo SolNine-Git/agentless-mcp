@@ -97,11 +97,16 @@ pub(crate) fn resolve_symbol_span_in(
     }
 }
 
-// A text that parses as a stable id keeps that parse, so only a text the parser refuses can read
-// as a `path::name`. Any other text keeps the parser's refusal.
+// Only a text the parser refuses, or splits into a path that starts with `:` as it splits
+// `path::Type::method`, can read as a `path::name`. Any other text keeps the parser's refusal.
 fn parsed_id(raw: &str) -> Result<StableId, StableIdError> {
-    raw.parse()
-        .or_else(|refused| path_name_id(raw).ok_or(refused))
+    match raw.parse::<StableId>() {
+        Ok(id) if !id.path().starts_with(':') => Ok(id),
+        Ok(_) => path_name_id(raw).ok_or_else(|| StableIdError::Malformed {
+            text: raw.to_owned(),
+        }),
+        Err(refused) => path_name_id(raw).ok_or(refused),
+    }
 }
 
 fn span(parsed: &StableId, file: &ParsedFile) -> Result<SymbolSpan, Missed> {
