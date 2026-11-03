@@ -341,12 +341,9 @@ fn transport(namespace: &Namespace) -> Result<ServerTransport, String> {
 }
 
 const CLIENT_ROOTS_OVER_HTTP: &str = "--allow-client-roots cannot be combined with --transport \
-     http. That flag lets the connected client's advertised roots authorise repositories, which \
-     is safe under stdio because the client is the process that spawned this server. Over HTTP \
-     the client is whatever reaches the port, and loopback is not per-user isolated, so any \
-     local process could name its own root and read anything this server's user can read -- \
-     the --root allowlist would stop deciding what is servable. Drop --allow-client-roots and \
-     enrol the repositories with --root or --roots-from.";
+     http. The flag has no effect: only --root and --roots-from name the repositories this \
+     server may serve. Drop --allow-client-roots and enroll the repositories with --root or \
+     --roots-from.";
 
 // --host and --port have no socket to bind under stdio.
 fn stdio_only(host: bool, port: bool) -> Result<ServerTransport, String> {

@@ -917,25 +917,30 @@ default. Repository-wide `unique` edges require `--include-unique`
 name-only evidence otherwise reads like an architecture finding when it is
 only a retrieval lead.
 
-Three answers are answers rather than errors:
+Three answers name their cause:
 
-- no path (exit 0, with a note that unique and ambiguous edges were excluded)
-- an endpoint that names nothing (exit 1, naming it). A stable id,
-  `path::qualname` or `path:line` endpoint never moves to another file.
-- an endpoint that names several things (exit 1, listing the candidate ids so
-  you can pick one)
+- no path (exit 0, `isError` false, with a note that unique and ambiguous
+  edges were excluded)
+- an endpoint that names nothing (exit 1, `isError` true, naming it). A stable
+  id, `path::qualname` or `path:line` endpoint never moves to another file.
+- an endpoint that names several things (exit 1, `isError` true, listing the
+  candidate ids so you can pick one)
 
 `--max-visited` bounds the search. When the search hits the bound, the answer
 says so instead of reporting "no path".
 
-**Endpoint matching is exact-first.** The tool matches a name on its last
-segment, so `Resolver.resolve` also matches `ToolHandlers.resolve` and a
-module-level `resolve`. But a definition whose qualified name *is* what you
-typed outranks every one that merely ends with it. Only definitions of equal
-standing are reported as ambiguous. `explain` uses the same order. When a
-dotted name such as `Resolver.resolve` is the qualified name of a definition,
-`explain` and `refs` answer about the exact matches only, and `explain` lists
-only the other exact matches under `also defined at`.
+**Endpoint matching is exact-first.** A dotted name such as
+`Resolver.resolve` binds only to a definition whose qualified name is
+`Resolver.resolve`, or to one whose module path and qualified name end with
+it, such as `resolver.Resolver.resolve` for the method in `resolver.py`. It
+never matches `ToolHandlers.resolve` or a module-level `resolve`. A dotted
+name that binds to neither binds to nothing, and the answer lists the
+definitions of `resolve` as candidates. A bare name such as `resolve` names
+each definition of that name. A definition whose qualified name is the bare
+name, such as a module-level `resolve`, outranks a method that only ends with
+it. Only definitions of equal standing are reported as ambiguous. `explain`
+and `refs` bind a target in the same way, and `explain` lists the other bound
+definitions under `also defined at`.
 
 ### `cycles` (`graph` operation `cycles`) -- module-level import knots
 

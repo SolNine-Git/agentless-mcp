@@ -797,58 +797,64 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         `name-only-ambiguous` edges require\n`--include-ambiguous` \
         (`include_ambiguous: true`). A path built out of\nname-only \
         evidence otherwise reads like an architecture finding when it \
-        is\nonly a retrieval lead.\n\nThree answers are answers rather \
-        than errors:\n\n- no path (exit 0, with a note that unique and \
-        ambiguous edges were excluded)\n- an endpoint that names \
-        nothing (exit 1, naming it). A stable id,\n  `path::qualname` \
-        or `path:line` endpoint never moves to another file.\n- an \
-        endpoint that names several things (exit 1, listing the \
-        candidate ids so\n  you can pick one)\n\n`--max-visited` bounds \
-        the search. When the search hits the bound, the answer\nsays so \
-        instead of reporting \"no path\".\n\n**Endpoint matching is \
-        exact-first.** The tool matches a name on its last\nsegment, so \
-        `Resolver.resolve` also matches `ToolHandlers.resolve` and \
-        a\nmodule-level `resolve`. But a definition whose qualified \
-        name *is* what you\ntyped outranks every one that merely ends \
-        with it. Only definitions of equal\nstanding are reported as \
-        ambiguous. `explain` uses the same order. When a\ndotted name \
-        such as `Resolver.resolve` is the qualified name of a \
-        definition,\n`explain` and `refs` answer about the exact \
-        matches only, and `explain` lists\nonly the other exact matches \
-        under `also defined at`.\n\n### `cycles` (`graph` operation \
-        `cycles`) -- module-level import knots\n\n```\nagentless-mcp \
-        cycles --limit 20\n```\n\n```json\n{\"operation\": \
-        \"cycles\"}\n```\n\nEvery import cycle in the repository, by \
-        strongly connected component over\nthe resolved import edges, \
-        each rendered as a chain that closes:\n\n```\n2 import \
-        cycles\n    1. (2 files) app/store.py -> app/model.py -> \
-        app/store.py\n    2. (3 files) a.py -> b.py -> c.py -> \
-        a.py\n```\n\nThe chain is a real walk, not the component's \
-        members in alphabetical order.\nUse it when an import error, a \
-        partially initialized module or a layering\nquestion needs the \
-        knots named. No cycles is an ordinary answer and exits \
-        0.\n\nOne component is one row. Files that are all mutually \
-        reachable are a single\nknot, however many small loops run \
-        inside it. A repository with a five-file\ntangle therefore \
-        reports one five-file cycle rather than every loop \
-        within\nit.\n\nThe rows come shortest chain first, then in the \
-        order of the chain's paths.\nThe size of the component does not \
-        order them, so a limit can cut the largest\nknot. When a limit \
-        cuts the list, the last line says so and names the order.\nOn \
-        Element Web, `cycles --limit 2` lists two three-file knots and \
-        leaves out a\n755-file one:\n\n```\n... 2 more cycles not \
-        listed (limit 2, shortest chain first)\n```\n\nThe tool \
-        resolves import edges best effort. A module string this tool \
-        cannot\nmap to a file in the repository contributes no edge. A \
-        cycle that runs\nthrough a dynamic import or an unusual path \
-        alias therefore will not appear.\n\n### `communities` (`graph` \
-        operation `communities`) -- which files belong \
-        together\n\n```\nagentless-mcp communities --resolution 0.5 \
-        --limit 20 --members 12\n```\n\n```json\n{\"operation\": \
-        \"communities\", \"resolution\": 0.5}\n```\n\nThis is a rollup \
-        rather than a ranking. `map` says which files matter. \
-        This\ncommand says which files are one thing. Use it first in \
-        an unfamiliar\nrepository, before you read anything.\n\n```\n2 \
+        is\nonly a retrieval lead.\n\nThree answers name their \
+        cause:\n\n- no path (exit 0, `isError` false, with a note that \
+        unique and ambiguous\n  edges were excluded)\n- an endpoint \
+        that names nothing (exit 1, `isError` true, naming it). A \
+        stable\n  id, `path::qualname` or `path:line` endpoint never \
+        moves to another file.\n- an endpoint that names several things \
+        (exit 1, `isError` true, listing the\n  candidate ids so you \
+        can pick one)\n\n`--max-visited` bounds the search. When the \
+        search hits the bound, the answer\nsays so instead of reporting \
+        \"no path\".\n\n**Endpoint matching is exact-first.** A dotted \
+        name such as\n`Resolver.resolve` binds only to a definition \
+        whose qualified name is\n`Resolver.resolve`, or to one whose \
+        module path and qualified name end with\nit, such as \
+        `resolver.Resolver.resolve` for the method in `resolver.py`. \
+        It\nnever matches `ToolHandlers.resolve` or a module-level \
+        `resolve`. A dotted\nname that binds to neither binds to \
+        nothing, and the answer lists the\ndefinitions of `resolve` as \
+        candidates. A bare name such as `resolve` names\neach \
+        definition of that name. A definition whose qualified name is \
+        the bare\nname, such as a module-level `resolve`, outranks a \
+        method that only ends with\nit. Only definitions of equal \
+        standing are reported as ambiguous. `explain`\nand `refs` bind \
+        a target in the same way, and `explain` lists the other \
+        bound\ndefinitions under `also defined at`.\n\n### `cycles` \
+        (`graph` operation `cycles`) -- module-level import \
+        knots\n\n```\nagentless-mcp cycles --limit \
+        20\n```\n\n```json\n{\"operation\": \"cycles\"}\n```\n\nEvery \
+        import cycle in the repository, by strongly connected component \
+        over\nthe resolved import edges, each rendered as a chain that \
+        closes:\n\n```\n2 import cycles\n    1. (2 files) app/store.py \
+        -> app/model.py -> app/store.py\n    2. (3 files) a.py -> b.py \
+        -> c.py -> a.py\n```\n\nThe chain is a real walk, not the \
+        component's members in alphabetical order.\nUse it when an \
+        import error, a partially initialized module or a \
+        layering\nquestion needs the knots named. No cycles is an \
+        ordinary answer and exits 0.\n\nOne component is one row. Files \
+        that are all mutually reachable are a single\nknot, however \
+        many small loops run inside it. A repository with a \
+        five-file\ntangle therefore reports one five-file cycle rather \
+        than every loop within\nit.\n\nThe rows come shortest chain \
+        first, then in the order of the chain's paths.\nThe size of the \
+        component does not order them, so a limit can cut the \
+        largest\nknot. When a limit cuts the list, the last line says \
+        so and names the order.\nOn Element Web, `cycles --limit 2` \
+        lists two three-file knots and leaves out a\n755-file \
+        one:\n\n```\n... 2 more cycles not listed (limit 2, shortest \
+        chain first)\n```\n\nThe tool resolves import edges best \
+        effort. A module string this tool cannot\nmap to a file in the \
+        repository contributes no edge. A cycle that runs\nthrough a \
+        dynamic import or an unusual path alias therefore will not \
+        appear.\n\n### `communities` (`graph` operation `communities`) \
+        -- which files belong together\n\n```\nagentless-mcp \
+        communities --resolution 0.5 --limit 20 --members \
+        12\n```\n\n```json\n{\"operation\": \"communities\", \
+        \"resolution\": 0.5}\n```\n\nThis is a rollup rather than a \
+        ranking. `map` says which files matter. This\ncommand says \
+        which files are one thing. Use it first in an \
+        unfamiliar\nrepository, before you read anything.\n\n```\n2 \
         communities over 7 files (modularity 0.363 at resolution \
         1)\n    1. billing around billing/invoice.py  (4 files)\n       \
         billing/invoice.py\n       billing/ledger.py\n... 2 more files \
@@ -1758,7 +1764,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3_599, 4_432),
     ("stable-ids", 4_434, 5_923),
     ("the-two-surfaces", 5_925, 11_608),
-    ("per-tool-usage", 11_610, 96_589),
+    ("per-tool-usage", 11_610, 96_890),
     ("claude-code-specifics", 13_226, 15_038),
     ("map", 15_040, 24_949),
     ("tree", 24_951, 25_272),
@@ -1769,19 +1775,19 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("refs", 32_142, 39_338),
     ("history", 39_340, 42_173),
     ("explain", 42_175, 44_150),
-    ("path", 44_152, 46_928),
-    ("cycles", 46_930, 48_435),
-    ("communities", 48_437, 50_960),
-    ("diagram", 50_962, 53_732),
-    ("health", 53_734, 59_969),
-    ("html", 59_971, 60_922),
-    ("resolve-locs", 60_924, 61_739),
-    ("capabilities", 61_741, 62_636),
-    ("index", 62_638, 65_379),
-    ("lint", 65_381, 85_389),
-    ("validate-vote", 85_391, 94_988),
-    ("warmup", 94_990, 96_589),
-    ("project-defaults-agentless-mcp-json", 96_591, 100_544),
-    ("token-counting", 100_546, 100_960),
-    ("exit-codes", 100_962, 101_420),
+    ("path", 44_152, 47_229),
+    ("cycles", 47_231, 48_736),
+    ("communities", 48_738, 51_261),
+    ("diagram", 51_263, 54_033),
+    ("health", 54_035, 60_270),
+    ("html", 60_272, 61_223),
+    ("resolve-locs", 61_225, 62_040),
+    ("capabilities", 62_042, 62_937),
+    ("index", 62_939, 65_680),
+    ("lint", 65_682, 85_690),
+    ("validate-vote", 85_692, 95_289),
+    ("warmup", 95_291, 96_890),
+    ("project-defaults-agentless-mcp-json", 96_892, 100_845),
+    ("token-counting", 100_847, 101_261),
+    ("exit-codes", 101_263, 101_721),
 ];

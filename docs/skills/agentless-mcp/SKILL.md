@@ -41,8 +41,8 @@ Route by trigger, at the moment of tool choice:
   only a string reaches needs the text pass. The two surfaces are
   complementary. Neither replaces the other.
 
-Pass `repo_root` on every call. The server requires it whenever the server
-holds more than one repository. If you omit it then, the first call of a
+Pass `repo_root` when the schema lists it. The server requires it whenever the
+server holds more than one repository. If you omit it then, the first call of a
 session is a refusal rather than an answer. The refusal names the roots you
 may choose from.
 

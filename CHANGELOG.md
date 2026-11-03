@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+Each cl100k count of the tool surface in this section uses one method:
+tiktoken `cl100k_base`, `encode_ordinary`, over the compact JSON array of the
+counted tools/list entries, each entry cut to its `name`, `description` and
+`inputSchema`. The count of one tool is the count of an array of one entry.
+Each byte count is of the served bytes.
+
 ### Added
 
 - **`find-symbol` lists the code files that use a name and do not declare
@@ -21,7 +27,7 @@
   answer gains a `usage` member, left out when no file spells the name. The
   `symbols` description gains "then the files that use the name and do not
   declare it": its tools/list entry grows from 2,444 to 2,500 bytes and from
-  528 to 541 cl100k tokens. Measured with the release binaries of f6105a2 and
+  477 to 490 cl100k tokens. Measured with the release binaries of f6105a2 and
   of this change over the 676 `find` calls that the forced and hooked
   benchmark arms recorded: 465 answers gain a block, and the text answers
   grow by 19.3% in cl100k tokens (median 71, p90 178, max 294 for an answer
@@ -75,8 +81,7 @@
     chain ignores edge direction, so it is not a call path.
   - Measured with the release binaries of edea4a4 and of the build that
     keeps the hint on `find_referencing_symbols`, one `--root`. The bytes are
-    the compact tools/list entries, and the cl100k tokens count each tool's
-    name, description and input schema. The always-loaded set goes from 5
+    the compact tools/list entries. The always-loaded set goes from 5
     tools, 9,565 bytes and 1,851 tokens to 4 tools, 6,906 bytes and 1,342
     tokens. The deferred set goes from 1 tool, 926 bytes and 165 tokens to 3
     tools, 3,574 bytes and 654 tokens. The tools/list answer line goes from
@@ -215,9 +220,10 @@
   300-instance benchmark motivates the change: the server refused 232 of 705
   forced-arm `read` calls that sent one flat pair. The `lines` description
   now reads "One [start, end] range, or a list of them such as
-  [[10, 40], [90, 120]]. 1-based and inclusive. Required unless whole_file is
-  true." A refused `lines` value now lists the problems against each of the
-  two forms, so `[[1]]` gives 2 problems where it gave 1.
+  [[10, 40], [90, 120]]. 1-based and inclusive." A refused `lines` value gets
+  one sentence that names both forms: "lines is [[1]], but must be one
+  [start, end] pair of 1-based line numbers, such as [10, 20], or a list of
+  pairs, such as [[10, 20], [40, 50]]."
 - **The tools/list answer is a third smaller, and `operation` is an enum.**
   The six served tool descriptions and their parameter descriptions are
   shorter. The `operation` parameter of `orient`, `symbols` and `read` lists
@@ -231,7 +237,7 @@
   bounds, required list and `_meta`, and the agent guide no longer calls
   `operation` a plain string. The tools/list answer of the debug
   `agentless-mcp-server` goes from 15,242 to 10,266 bytes, and the cl100k
-  count of its six tool entries from 3,406 to 2,270.
+  count of its six tool entries from 3,092 to 1,956.
 - **Text answers are shorter: a one-line receipt, a shorter card, and whole ids
   in the fan-in.** The receipt is one line that starts with the same
   `// agentless-mcp receipt (repository data below)` marker, so a client that
@@ -293,6 +299,68 @@
   file now records the view's error beside its text.
 
 ### Fixed
+
+The bullets from here to the `path::name` bullet are measured with the release
+binaries of 811b348 and of this change, over MCP stdio and the CLI.
+
+- **A refusal of a target that binds to nothing names the skipped code
+  files.** The MCP refusal of `find_referencing_symbols` dropped the
+  skipped-file warning, and a target in a skipped file read "the scan read no
+  file X" for a file that exists. The reason is now "the scan did not read X
+  (<skip reason>)" in `refs`, `explain` and `path`. The `refs` and `explain`
+  refusals add the warning line after the message, with at most 5 paths, as
+  the warning names them. Over a repository whose `pkg/big.py` has 1,717,815
+  bytes, `find_referencing_symbols` of `py:pkg/big.py::x` gave "no symbol
+  matches py:pkg/big.py::x: the scan read no file pkg/big.py" and now gives
+  "no symbol matches py:pkg/big.py::x: the scan did not read pkg/big.py
+  (skipped: 1717815 bytes exceeds the per-file cap of 1000000 bytes)", then
+  the warning line. Over the 523 recorded calls, 14 MCP refusals of `refs`
+  gain the warning line, and no other answer changes.
+- **A `path` source that binds to nothing says to pass a candidate as the
+  source.** `graph(path)` from `crates/json/src/WRONG.rs::float_text` ended
+  "Pass one as the target." It now ends "Pass one as the source."
+- **`explain` and `graph(path)` give no data as an error.** An `explain` that
+  binds to nothing and a `path` endpoint that resolves to no one node (no
+  match, several definitions or a data key) set `isError` false, so a guessed
+  name unlocked the search gate. Each is now a refusal with `isError` true,
+  as for `refs` and as the CLI's exit 1. Two resolved endpoints with no path
+  between them stay an answer. `symbols(explain)` of `HashMap` goes from
+  `isError` false to true. Over the 523 recorded calls, 1 `explain` answer
+  becomes a refusal.
+- **A `path::Type::method` target binds.** `refs
+  crates/app/src/endpoints.rs::BindingStatus::as_str` gave "does not define
+  BindingStatus::as_str" and exit 1, while `refs BindingStatus::as_str` gave
+  529 references. The `::` inside the qualified name now reads as `.`, so
+  both give 529 references. `expand` and `history` of the same text gave
+  ":BindingStatus: unreadable"; `expand` now gives the body at lines 36-39,
+  and `history` gives the 5 commits of that span.
+- **A `path:line` into a data file names the key at that line.** `explain
+  crates/prompts/data/messages.json:95` said "no symbol in
+  crates/prompts/data/messages.json spans line 95", though the key
+  `target_no_match` spans it. It now says "crates/prompts/data/messages.json
+  is a data file, and its keys are not symbols that refs, explain or path
+  bind. The key json:crates/prompts/data/messages.json::target_no_match spans
+  line 95. Expand that id to read the key." `explain Cargo.toml:5` names
+  `toml:Cargo.toml::workspace.package`.
+- **A missed target that names a file lists that file's definitions first.**
+  `refs crates/json/src/float.rs::float_text#2 --limit 1` listed only
+  `rs:crates/cli/src/args/declared.rs::float_text`, and now lists
+  `rs:crates/json/src/float.rs::float_text`. A path written from the root,
+  `./crates/json/src/float.rs::float_text`, or as an absolute path below the
+  root gave "the scan read no file ./crates/json/src/float.rs" and now gives
+  the 24 references. An absolute path outside the root, `/etc/foo.py::x`,
+  gives "path refused: resolved to /etc/foo.py, which is outside the root R".
+- **The HTTP refusal of `--allow-client-roots` no longer says that the flag
+  lets client roots name repositories.** No code reads them. The refusal now
+  says "The flag has no effect: only --root and --roots-from name the
+  repositories this server may serve."
+- **The guide and the skill say what the target binding does.** The `path`
+  section said that a dotted name matches on its last segment, so
+  `Resolver.resolve` also matched `ToolHandlers.resolve`. It now says that a
+  dotted name binds only to an exact qualified name or a module-path match,
+  and otherwise binds to nothing and lists the candidates. Its three answers
+  now give their `isError` value. The skill says to pass `repo_root` when the
+  schema lists it, not on every call.
 
 - **A `path::name` target binds to its definition.** `refs
   crates/json/src/float.rs::float_text` said "resolves to no symbol; these are
@@ -619,8 +687,7 @@
   marked 'locals not checked' comes from a language that has no scope
   analysis. Measured from the release `agentless-mcp-server`, one stdio
   session: `tools/list` goes from 10,266 to 10,479 bytes, and the cl100k count
-  of the compact tool entry (encode_ordinary, tiktoken-rs 0.12.1) from 276 to
-  321.
+  of the tool entry from 221 to 266.
 - **The tools agree on when a call that gives no data is an error.** The same
   missing file gave `isError` true in `symbols locate`, but false in `read
   slice`, `symbols overview` and `symbols expand`. A path outside the root gave
