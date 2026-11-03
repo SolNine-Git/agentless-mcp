@@ -66,6 +66,15 @@ fn status(status: &str, message: &str) -> Vec<String> {
     vec![status.to_owned(), message.to_owned()]
 }
 
+// Each text binds to nothing as refs and explain bind it, and its message gives the reason.
+fn assert_not_found(files: &[(&str, &str)], limit: usize, reasons: &[(&str, String)]) {
+    let texts: Vec<&str> = reasons.iter().map(|(text, _)| *text).collect();
+    let expected: Vec<Vec<String>> = (reasons.iter())
+        .map(|(text, reason)| status("not_found", &format!("no symbol matches {text}: {reason}")))
+        .collect();
+    assert_eq!(bound(files, &texts, limit), expected);
+}
+
 #[test]
 fn a_stable_id_a_path_and_a_unique_name_resolve_exactly() {
     let texts = ["py:pkg/money.py::format_money", "pkg/report.py", "render"];
@@ -195,21 +204,14 @@ fn a_line_of_a_data_file_names_the_data_file_and_the_key_that_spans_the_line() {
     ];
     let data = "conf.json is a data file, and its keys are not symbols that refs, explain or path \
                 bind";
-    assert_eq!(
-        bound(&files, &["conf.json:3", "conf.json:1"], 10),
-        [
-            status(
-                "not_found",
-                &format!(
-                    "no symbol matches conf.json:3: {data}. The key json:conf.json::version spans \
-                     line 3. Expand that id to read the key."
-                )
-            ),
-            status(
-                "not_found",
-                &format!("no symbol matches conf.json:1: {data}")
-            ),
-        ]
+    let key = "The key json:conf.json::version spans line 3. Expand that id to read the key.";
+    assert_not_found(
+        &files,
+        10,
+        &[
+            ("conf.json:3", format!("{data}. {key}")),
+            ("conf.json:1", data.to_owned()),
+        ],
     );
 }
 
@@ -220,18 +222,11 @@ fn a_target_that_names_a_file_lists_the_definitions_in_that_file_first() {
         ("b.py", "def run():\n    return 2\n"),
     ];
     let advice = "2 definitions of run, and 1 is listed: py:b.py::run. Pass one as the target.";
-    assert_eq!(
-        bound(&files, &["b.py::run#2", "py:b.py::run#2"], 1),
-        [
-            status(
-                "not_found",
-                &format!("no symbol matches b.py::run#2: b.py does not define run#2. {advice}")
-            ),
-            status(
-                "not_found",
-                &format!("no symbol matches py:b.py::run#2: b.py does not define run#2. {advice}")
-            ),
-        ]
+    let reason = format!("b.py does not define run#2. {advice}");
+    assert_not_found(
+        &files,
+        1,
+        &[("b.py::run#2", reason.clone()), ("py:b.py::run#2", reason)],
     );
 }
 
