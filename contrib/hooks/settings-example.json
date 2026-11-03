@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/env python3 /ABSOLUTE/PATH/TO/contrib/hooks/agentless_gate_check.py"
+            "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook gate-check"
           }
         ]
       },
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/env python3 /ABSOLUTE/PATH/TO/contrib/hooks/agentless_erosion_gate.py",
+            "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook erosion",
             "timeout": 15
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/env python3 /ABSOLUTE/PATH/TO/contrib/hooks/agentless_gate_mark.py"
+            "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook gate-mark"
           }
         ]
       }

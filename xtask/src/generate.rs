@@ -16,11 +16,11 @@ use std::process::Command;
 
 use crate::{Failure, process, repo};
 
-const ENVELOPE: &str = "src/agentless_mcp/prompts/envelope.json";
-const MESSAGES: &str = "src/agentless_mcp/prompts/messages.json";
-const RULES: &str = "src/agentless_mcp/prompts/contract_rules.json";
-const TOOLS: &str = "src/agentless_mcp/prompts/tool_descriptions.json";
-const PARAMETERS: &str = "src/agentless_mcp/prompts/parameter_descriptions.json";
+const ENVELOPE: &str = "crates/prompts/data/envelope.json";
+const MESSAGES: &str = "crates/prompts/data/messages.json";
+const RULES: &str = "crates/prompts/data/contract_rules.json";
+const TOOLS: &str = "crates/prompts/data/tool_descriptions.json";
+const PARAMETERS: &str = "crates/prompts/data/parameter_descriptions.json";
 const OUTPUT: &str = "crates/prompts/src/generated";
 
 type Files = Vec<(&'static str, String)>;

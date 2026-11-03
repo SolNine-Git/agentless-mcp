@@ -189,7 +189,7 @@ pub const REPO_MAP: &str = "Where does this bug or feature live? The structural 
         auto-sized budget lands in a 2000-8000 token band, counted by \
         the server's own chars/4 estimator and not by your model's \
         tokenizer -- on this tool's id-dense output a real BPE count \
-        runs 10-35% higher, the band tests/unit/test_token_counter.py \
+        runs 10-35% higher, the band crates/app/src/tokens/tests.rs \
         pins, so read budget as a reproducible knob rather than a \
         promise about your bill. To orient in a repository you have not \
         read yet, call analyze_structure(operation='communities') first \

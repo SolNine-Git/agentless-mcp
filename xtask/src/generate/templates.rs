@@ -275,7 +275,7 @@ mod tests {
     use super::{Piece, Template, catalog, module, parse};
     use crate::generate::placeholders::Kind;
 
-    const FILE: &str = "src/agentless_mcp/prompts/messages.json";
+    const FILE: &str = "crates/prompts/data/messages.json";
 
     fn problems_of(text: &str) -> Vec<String> {
         parse(FILE, text).unwrap_err()

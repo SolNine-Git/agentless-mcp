@@ -9,8 +9,8 @@ figure from it.
 It replaces [`archive/evidence.md`](archive/evidence.md), which reported a run
 whose every agentless figure was invalid. Why that happened, and what the
 procedure now does about it, is the "Integrity incidents" section. That section
-is not history for its own sake. Both incidents produced numbers that looked
-ordinary, and each one is the reason for a check that now runs before scoring.
+is not history for its own sake. Each incident produced numbers that looked
+ordinary, and each one is the reason for a rule or a check in the procedure.
 
 ## The instrument
 
@@ -58,9 +58,9 @@ that turned out to be the second.
 
 ## Integrity incidents
 
-Three runs produced complete, plausible, and entirely invalid results. Each is
-described with the signature that identifies it, because the signature is what
-a future run checks itself against.
+Four incidents produced complete, plausible, and entirely invalid results. Each
+is described with the signature that identifies it, because the signature is
+what a future run checks itself against.
 
 **1. The blind server, 2026-08-19 to 2026-08-24.** The harness unpacks each
 instance's snapshot repository into a gitignored directory inside the bench work
@@ -105,7 +105,36 @@ comparison are pinned with `git worktree` to explicit commits, always. The
 control arm was pinned and the treatment arm was not, which is how a
 comparison acquired a moving side without anyone choosing it.
 
-**4. Operational rules.** Each one below was learned by losing a run to it.
+**4. The operator's configuration in every session, found 2026-10-24.** The
+harness runs each instance as a child `claude -p` session. Until 2026-10-24
+that session loaded the operator's user configuration: the global agentless
+gate hook on Grep, Glob and Bash, `~/.claude/CLAUDE.md`, the output style, and,
+in the baseline, the user-level MCP servers, among them a user-scope agentless
+server. So the native-only baseline was not native-only. In the 2026-09-27
+baseline, 50 of 60 sessions called agentless tools. In the 2026-10-24 pilot
+baseline, all 60 sessions connected to the user agentless server and to two
+documentation servers, 47 sessions made 83 agentless calls (all refused), and
+the global gate denied a Grep, Glob or Bash call in 39 sessions. The hooked
+arms ran two gates, the harness's and the operator's. `--allowed-tools`
+restricts nothing under `bypassPermissions`, so every arm could call Bash,
+the forced arm included (50 calls in the pilot). The extra context also rode
+on every turn, so the baseline's token figures are inflated as well: 218,300
+context tokens per instance in the pilot, against 26,052 in the isolated
+300-instance run. The baseline comparisons of those two runs are therefore
+invalid. The August runs were not measured and are not known to be clean, so
+their baseline comparisons in the Results section are unverified. A harness
+review found the incident in the CLI's own MCP logs
+under `results/<arm>/.xdg-cache/claude-cli-nodejs/` and in the global gate
+log joined on session id, not in the scores. *Rule:* every child session runs
+with `--setting-sources project,local`, with `--tools` set to the arm's list,
+with `--strict-mcp-config` and only the arm's own server (none for the
+baseline), and with `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`, because
+`--setting-sources` alone still loads `~/.claude/CLAUDE.md`. *Signature of a
+contaminated run:* a baseline that has CLI MCP logs at all or envelopes with
+`permission_denials`, or a stream transcript whose `system`/`init` event
+lists a tool, an MCP server or an output style other than the arm's.
+
+**5. Operational rules.** Each one below was learned by losing a run to it.
 
 - Archive the result directories before any re-run. `--resume` silently
   no-ops over an existing row instead of replacing it.
@@ -116,6 +145,10 @@ comparison acquired a moving side without anyone choosing it.
 - Never edit an arm's fingerprinted treatment files while that arm is running.
 - A parse-failure row, meaning an instance with empty regions, is purged
   per-instance and resumed. It is not a CLI error and it is not a score.
+- A session that ends with `is_error` is an instance error, not a score of
+  zero. An account usage limit fails every running session this way ("You've
+  hit your session limit"). `--resume` after the reset runs exactly those
+  instances again.
 
 Semantic regressions can survive every integrity check above. The
 [`declaration-role regression record`](declaration-role-regression.md)
@@ -200,20 +233,26 @@ instruments cannot see is acceptable when a test proves it and the
 instruments show no degradation. Run the four steps below in order, and
 report each step's result in the release's commit messages.
 
-**1. The suites.** Run `uv run pre-commit run --all-files` (ruff, mypy,
-codespell, the import-linter contract, deptry) and the full `pytest` suite.
-Regenerate a golden deliberately: predict the diff first, then read the
-regenerated golden in the diff. A golden diff that was predicted is evidence;
-one that was not is a defect to explain.
+**1. The suites.** Run the commands that [AGENTS.md](../../AGENTS.md)
+lists: the cargo gates of CI's rust job, and `uv run pre-commit run
+--all-files` (the file hooks, ruff, codespell and the commit-stage cargo
+hooks). Change a golden deliberately: predict the diff first, then read the
+changed golden in the diff. A golden diff that was predicted is evidence. One
+that was not is a defect to explain.
 
 **2. The retrieval tier, as a byte-diff.** Freeze the build under test. Use
-a detached worktree, or copy the tree without `.git` and `.venv`
-(`rsync -a --exclude .git --exclude .venv`) and run
-`uv sync --all-extras --frozen` in the copy. Never point the harness at the
-shared working tree (incident 3). Then, with `LOC_BENCH_FORWARD_RAW_PATHS`
-unset:
+a detached worktree, or copy the tree without `.git`, `.venv` and `target`
+(`rsync -a --exclude .git --exclude .venv --exclude /target`). Build the
+binary in the frozen tree with `cargo build --release --locked -p agentless`.
+Never point the harness at the shared working tree (incident 3). Then, with
+`LOC_BENCH_FORWARD_RAW_PATHS` unset:
 
-    uv run loc-bench run --agentless <frozen copy> --name <arm>
+    uv run loc-bench run --agentless <frozen copy> \
+        --agentless-bin <frozen copy>/target/release/agentless-mcp --name <arm>
+
+`--agentless-bin` runs that binary in place of
+`uv run --project <frozen copy> agentless-mcp`. That form needs a project
+that installs `agentless-mcp`, and the root `pyproject.toml` installs none.
 
 Compare `ranked_files` per instance against the stored arm for the base
 commit. The records carry no agentless commit, so prove which arm is the
@@ -236,10 +275,14 @@ checkouts in `loc-bench-harness/repos/`, on the same queries:
 - `refs --json` and `explain` on the record's seed names
 - `refs --json` on a few symbols sampled from the scan
 
-The tool is `scripts/surface_dump.py`, which runs under the base build's
-interpreter, and `scripts/surface_cmp.py`. Their docstrings give the
-commands and the scratch environment. `surface_dump.py targets` samples the
-targets once from the base build's full scan, because the one listing that
+The tools are `surface_dump.py` and `scripts/surface_cmp.py`. The repository
+no longer holds `surface_dump.py`, because its `targets` mode imports the
+Python build. Until a Rust `targets` exists, run it from a copy of the tag
+`v0.11.0rc1`, under that copy's interpreter. Its `dump` mode takes each
+build's argv prefix, which for a Rust build is the path of its binary. The
+docstrings give the commands and the scratch environment.
+`surface_dump.py targets` samples the targets once from one full scan, made
+by the Python build of that copy, because the one listing that
 both command lines print, `find-symbol`, stops at 500 rows and at the token
 ceiling (it cut 134 of 150 instances at 8930bd6). Each `surface_dump.py
 dump` records the `find-symbol` listing of its own build, and
@@ -393,6 +436,11 @@ lost about 0.35 of coverage each time against a control at 0.906 recall,
 which reads as a turn spent on why during a where task; three callers cannot
 resolve it, and it is the hypothesis a future run should split on.
 
+**Invalid (incident 4).** The comparison below ran against a baseline whose
+sessions called agentless tools in 50 of 60 instances. It is kept as the
+record of what was claimed, not as a result. The 300-instance run after it
+replaces it.
+
 **The current build against the grep-only baseline, measured 2026-09-27.**
 Every comparison above this one dates from 0.6.1 on 2026-08-24, before the
 0.6.3 ranking fix, so the project held no current end-to-end number. This run
@@ -451,6 +499,51 @@ worktree path, which is incident 3 closed by hash rather than by assertion.
 Result tags `n082_baseline` and `n082_treatment`, proof logs under
 `mcp_proof_082/`.
 
+**The Rust build against the native baseline, isolated sessions, measured
+2026-10-24.** This is the first run under the rules of incident 4. It uses
+300 instances (`bench300.jsonl`), the 60 pilot instances and 240 more, all
+git-initialised. Three arms: `claude_code` (Read, Grep, Glob, no MCP server),
+`claude_code_agentless_hooked` and `claude_code_agentless_forced` (Read and
+the six agentless tools), the server from `contrib/bench-server` at 206f832
+(PyPI 0.11.0rc1). Model `claude-sonnet-5-5`, top 10, 900 s timeout, the
+three arms concurrent, 300 of 300 scored in each. An account usage limit
+failed 277 instances, which `--resume` ran again with no failure. Health:
+in all 900 sessions the output style is `default`, the tools and MCP servers
+are exactly the arm's, the global gate log has no row, and every proof log
+has a `tools/list`. Paired, n=300:
+
+| metric | baseline | hooked | forced | hooked - baseline | forced - baseline |
+| --- | --- | --- | --- | --- | --- |
+| `weighted_core_coverage` | 0.1233 | 0.1297 | 0.1151 | +0.0064 (-0.0043 to +0.0169) | -0.0082 (-0.0191 to +0.0026) |
+| `hit_file_rate` | 0.4974 | 0.4788 | 0.4599 | -0.0186 (-0.0362 to -0.0014) | -0.0375 (-0.0554 to -0.0198) |
+| `noise_region_rate` | 0.0450 | 0.0277 | 0.0291 | -0.0173 (-0.0289 to -0.0065) | -0.0158 (-0.0288 to -0.0035) |
+| precision | 0.8059 | 0.8175 | 0.8368 | +0.0116 (-0.0110 to +0.0345) | +0.0310 (+0.0048 to +0.0574) |
+| recall | 0.1366 | 0.1417 | 0.1396 | +0.0051 (-0.0033 to +0.0130) | +0.0030 (-0.0079 to +0.0143) |
+| context tokens | 26,052 | 71,844 | 59,419 | +176% (+43,122 to +48,570) | +128% (+29,658 to +37,483) |
+| turns | 4.67 | 5.87 | 6.25 | +1.20 (+1.0 to +1.4) | +1.58 (+1.3 to +1.9) |
+
+**What it says.** With the current Sonnet the agentless tools do not raise
+coverage: WCC, recall and F1 cross zero in both arms. Both arms are more
+precise and name fewer gold files (2.20 and 2.00 files per instance against
+2.38). The lost files are in languages the server parses (91 of the 96 that
+forced lost), so the loss is answer width, not language support. Forced is
+below hooked on WCC (-0.0146, -0.0249 to -0.0048), so withholding native
+search costs coverage. The context cost is mostly fixed: the first turn of a
+session carries 5,518 context tokens in the baseline and 11,010 in the hooked
+arm (medians), so the agentless surface adds about 5,500 tokens to every
+turn. Without the 4 instances above the 200 MB walk bound (n=296), every
+interval above keeps its sign and its significance.
+
+**One input shape fails a third of the `read` calls.** The stream
+transcripts record each tool call. The agent sends `lines` as one flat pair,
+`[18, 45]`, where the schema takes a list of pairs, `[[18, 45]]`, and the
+server refuses it: 232 of 705 `read` calls in the forced arm (167 of 300
+sessions), 110 of 322 in the hooked arm (81 sessions). After the refusal the
+next `read` call repeated the same error 63 times in forced and 29 times in
+hooked. Result labels `claude_code_bench300`,
+`claude_code_agentless_hooked_bench300` and
+`claude_code_agentless_forced_bench300`.
+
 
 **0.9.1 against 0.9.0, measured 2026-10-09.** Every step of the release
 gate ran; no agentic run did, because the exposure check put four of the
@@ -482,15 +575,20 @@ it.
 1. Rebuild the server under test and confirm the client sees it. A repository
    fix is not live until the `uv tool install` is rebuilt.
 2. Pin every arm to a commit with `git worktree add --detach <dir> <sha>`, or
-   with a frozen copy of the tree (see the release gate, step 2), and point
-   the arm at it with `AGENTLESS_PROJECT`. Never point an arm at the live
+   with a frozen copy of the tree (see the release gate, step 2). Point the
+   arm at that tree's server project with
+   `AGENTLESS_PROJECT=<dir>/contrib/bench-server`. The pin in
+   `contrib/bench-server/pyproject.toml` names the release that the
+   agentless arms run, and its `uv.lock` pins that release's files by hash.
+   To benchmark another release, change the pin and its `uv.lock` in a
+   commit, and pin the arm to that commit. Never point an arm at the live
    checkout: another session editing it mid-run splits the arm across two
    builds, as incident 3 records.
-3. Give each worktree the server extra -- `uv sync --project <dir> --extra mcp`
-   -- because a fresh worktree's `.venv` has none, and a CLI smoke test passes
-   without it.
+3. The server project needs no extra. The `mcp` and `tokens` extras are
+   empty, and the binary holds the server.
 4. Run the preflight against each worktree:
-   `python3 probe_mcp_server.py repos/<instance_id> <worktree>`. It must
+   `python3 probe_mcp_server.py repos/<instance_id> <dir>/contrib/bench-server`.
+   It must
    print the tool count that build publishes: `5` up to 0.7.3, `6` from
    0.8.0. The run scripts, for example `run_061_agentless.sh`, refuse to
    start otherwise. Confirm separately that an `orient(map)` call against an
@@ -515,7 +613,7 @@ it.
 
 ## The archived analysis record
 
-Four earlier documents are kept, unedited, under
+Five earlier documents are kept, unedited, under
 [`archive/`](archive/). Each carries a banner naming its successor. They are
 history, not live guidance.
 
@@ -525,8 +623,9 @@ history, not live guidance.
   deleted file.
 - [`archive/functional-assessment.md`](archive/functional-assessment.md)
   assessed the 0.3.0-era revision. Its M1 finding, that `--timeout` is a
-  termination deadline rather than a hard wall-clock bound, is still cited from
-  `core/sandbox.py`, which is why the file is archived rather than deleted.
+  termination deadline rather than a hard wall-clock bound, was cited from the
+  Python build's `core/sandbox.py`, which is why the file was archived rather
+  than deleted.
 - [`archive/audit-postmortem.md`](archive/audit-postmortem.md) explains why a
   nine-phase audit found defects that review had not. Its central rule is the
   one the guardrails above implement: **reproduce, do not read**, and a stated
@@ -537,7 +636,7 @@ history, not live guidance.
   is the 0.3.1 effectiveness and design review. Its three headline findings were
   fixed on the day it was written, and the tool surface it describes is the
   retired v1 surface.
-
-`docs/supply-chain-audit.md` is deliberately not in that list. It is the current
-trust rationale for the exact grammar-pack pin, it is cited from
-`pyproject.toml`, and it describes behaviour the code still has.
+- [`archive/supply-chain-audit.md`](archive/supply-chain-audit.md) is the
+  2026-08-18 audit of the grammar pack's download at first use, which the
+  Python build relied on. The Rust build links the vendored grammar sources
+  and downloads nothing, so the audit no longer describes the code.

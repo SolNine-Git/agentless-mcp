@@ -26,10 +26,6 @@ keeping the upstream semantics:
         the candidate filter ladder and the majority-vote ranking key, from
         Agentless agentless/repair/rerank.py
 
-The Python reference tree in the repository, which no wheel or sdist ships,
-holds the earlier ports of the same code: src/agentless_mcp/core/slices.py,
-locs.py, patches.py, and vote.py.
-
 The wheel and the sdist ship this file in a notices/ directory, together
 with the licenses of the third-party code that the binaries hold. In the
 repository, packaging/notices.sh writes that directory. Its paths are:

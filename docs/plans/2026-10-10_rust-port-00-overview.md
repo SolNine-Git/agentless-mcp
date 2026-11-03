@@ -1,6 +1,6 @@
 # Rust Port of agentless-mcp: Overview
 
-**Date**: 2026-10-10 | **Status**: approved design; P0a merged (PR #60); P0b and P0d committed on `feat/rust-port`; P0c next | **Design page**: [agentless-rs Blueprint](https://claude.ai/artifact/Qo75kbiyP12HhMN1E17Nsp) (revision 4, private) | **Phase plans**: [P0](2026-10-10_rust-port-p0-groundwork.md), [P1](2026-10-10_rust-port-p1-per-write-path.md), [P2](2026-10-10_rust-port-p2-read-surface.md), [P3](2026-10-10_rust-port-p3-write-surface.md), [P4](2026-10-10_rust-port-p4-mcp-and-retirement.md)
+**Date**: 2026-10-10 | **Status**: approved design. P0 to P3 and P4 items 1-5 merged in PR #62 (`021548f`) and released as 0.11.0rc1. P0c was dropped, and the parity base is the Python tree at `8930bd6`. P4 item 6 runs on `chore/complete-rust-migration` | **Design page**: [agentless-rs Blueprint](https://claude.ai/artifact/Qo75kbiyP12HhMN1E17Nsp) (revision 4, private) | **Phase plans**: [P0](2026-10-10_rust-port-p0-groundwork.md), [P1](2026-10-10_rust-port-p1-per-write-path.md), [P2](2026-10-10_rust-port-p2-read-surface.md), [P3](2026-10-10_rust-port-p3-write-surface.md), [P4](2026-10-10_rust-port-p4-mcp-and-retirement.md)
 
 ## Problem Statement
 

@@ -21,27 +21,41 @@ pub fn catch_file_size_signal() {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
     use std::os::unix::process::ExitStatusExt;
+    use std::process::ExitStatus;
+    use std::time::Duration;
 
     use rustix::process::{Resource, Rlimit, getrlimit, setrlimit};
 
     use super::*;
-    use crate::fixtures::{is_child, run_child, tree};
+    use crate::fixtures::{is_child, tree};
+    use crate::testing::run_child_through;
     use crate::{strerror, write_file};
 
     const CAUGHT: &str = "filesize::tests::child_writes_past_its_limit_with_the_signal_caught";
     const UNCAUGHT: &str = "filesize::tests::child_writes_past_its_limit_with_the_default_action";
+    const CHILD_TIMEOUT: Duration = Duration::from_secs(60);
 
     #[test]
     fn a_write_past_the_limit_is_an_error_only_when_the_signal_is_caught() {
-        let (status, stderr) = run_child(CAUGHT);
+        let (status, stderr) = run_child_below_a_tree(CAUGHT);
         assert_eq!(status.code(), Some(0), "{status:?} {stderr}");
         assert!(
             stderr.contains("the write failed: File too large"),
             "{stderr}"
         );
-        let (status, stderr) = run_child(UNCAUGHT);
+        let (status, stderr) = run_child_below_a_tree(UNCAUGHT);
         assert_eq!(status.signal(), Some(SIGXFSZ), "{status:?} {stderr}");
+    }
+
+    // The signal ends a child before it removes its own tree, so the child makes that tree below
+    // a tree of this process, which this process removes.
+    fn run_child_below_a_tree(name: &str) -> (ExitStatus, String) {
+        let parent = tree();
+        let mut tmpdir = OsString::from("TMPDIR=");
+        tmpdir.push(parent.path());
+        run_child_through(name, CHILD_TIMEOUT, &[OsString::from("env"), tmpdir])
     }
 
     #[test]

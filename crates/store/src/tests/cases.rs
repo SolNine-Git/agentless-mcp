@@ -9,7 +9,7 @@ use crate::{FactsDb, Source, open_facts};
 
 pub(super) const ROOT: &str = "/agentless-store-fixture/repo";
 
-// scripts/store_fixtures.py writes every section, one case per row, in these field orders.
+// The recorded reference cases hold every section, one case per row, in these field orders.
 #[derive(Deserialize)]
 pub(super) struct Cases {
     pub(super) lookups: Vec<LookupCase>,

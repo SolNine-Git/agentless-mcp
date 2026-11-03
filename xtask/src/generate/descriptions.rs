@@ -26,7 +26,7 @@ pub fn module(summary: &str, doc: impl Fn(&str) -> String, descriptions: &[Descr
 mod tests {
     use super::{module, parse};
 
-    const FILE: &str = "src/agentless_mcp/prompts/tool_descriptions.json";
+    const FILE: &str = "crates/prompts/data/tool_descriptions.json";
 
     fn names_file_and_key(text: &str, key: &str, says: &str) {
         let problems = parse(FILE, text).unwrap_err();

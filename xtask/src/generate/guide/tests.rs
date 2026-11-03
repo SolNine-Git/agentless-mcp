@@ -63,7 +63,7 @@ fn each_synthetic_guide_splits_as_the_reference_says() {
 }
 
 #[test]
-fn the_packaged_guide_splits_into_the_reference_sections() {
+fn the_guide_source_splits_into_the_reference_sections() {
     let document = fixture();
     let text = document["text"][0].as_str().unwrap();
     let root = repo::root().unwrap();

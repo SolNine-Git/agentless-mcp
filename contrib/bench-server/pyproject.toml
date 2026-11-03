@@ -1,0 +1,10 @@
+# The agentless-mcp server that the SWE-Explore-Bench agentless arms run:
+# AGENTLESS_PROJECT=<checkout or worktree>/contrib/bench-server. uv.lock pins the wheel by hash.
+[project]
+name = "agentless-bench-server"
+version = "0"
+requires-python = ">=3.10"
+dependencies = ["agentless-mcp==0.11.0rc1"]
+
+[tool.uv]
+package = false

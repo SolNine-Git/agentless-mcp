@@ -1,4 +1,4 @@
-// The fixtures of scripts/store_index_fixtures.py: each case with the result of the reference
+// The recorded reference cases of the store index: each case with the result of the reference
 // build.
 
 use std::ffi::OsStr;

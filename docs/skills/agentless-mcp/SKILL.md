@@ -64,19 +64,20 @@ allowed-tools and call them directly. This server has no write, exec or fetch
 tools. Five of the six ask to be loaded eagerly by a client that defers
 schemas, so an agent knows them before it chooses; `history` loads on
 demand. A dispatch prompt should still name them and the order to use them
-in. The structural-first gate in `contrib/hooks/` enforces that order: it
+in. The structural-first gate enforces that order. Its hook commands are
+`agentless-mcp hook gate-check` and `agentless-mcp hook gate-mark`, and
+`contrib/hooks/settings-example.json` holds their settings. It
 denies broad Grep, Glob and tree-searching Bash commands until `orient(map|path)`,
 `symbols(find|overview|expand|explain)`, `read(slice)` or
 `find_referencing_symbols` has localized the session. Exact-file Grep remains
 available; diagnostics, `read(dir)` and the shape listings do not unlock broad
-discovery. Equivalent v1
-tools also unlock the temporary compatibility surface.
-See `agentless-mcp guide --section claude-code-specifics` for both.
+discovery.
+See `agentless-mcp guide --section claude-code-specifics` for the gate.
 
-These are the v2 names, the default surface. A server started with
-`--surface v1` (or `both`) still publishes the previous twelve per-question
-tools (`repo_map`, `expand_symbols`, and the rest). Both are deprecated, and
-0.11.0 removes them. The mapping is in
+These are the v2 names, and v2 is the only surface. 0.11.0 removed the
+twelve per-question v1 tools (`repo_map`, `expand_symbols`, and the rest):
+`--surface v1` and `--surface both` stop the server at start-up with exit 2.
+The mapping from each v1 tool to its v2 call is in
 `agentless-mcp guide --section the-two-surfaces`.
 
 If the MCP tools are unavailable, use the corresponding CLI commands: `map`,
