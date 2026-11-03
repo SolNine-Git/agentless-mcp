@@ -4,5 +4,6 @@ mod files;
 mod lookup;
 mod names;
 mod properties;
+mod rust;
 mod symbols;
 mod units;

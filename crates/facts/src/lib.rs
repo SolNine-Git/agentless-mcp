@@ -22,4 +22,6 @@ pub use skeleton::{SkeletonOptions, skeletonize};
 pub use slices::{OutsideFile, line_count, line_prefix, slice_lines};
 pub use spelling::base_name;
 pub use stable_id::{StableId, StableIdError, rationale_handle, split_ordinal};
-pub use values::{Facts, Import, Rationale, RationaleKind, Ref, Role, Symbol, SymbolKind};
+pub use values::{
+    Facts, Import, Manifest, Rationale, RationaleKind, Ref, Role, Symbol, SymbolKind,
+};

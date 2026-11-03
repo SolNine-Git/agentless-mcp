@@ -625,29 +625,38 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         gives. Use\n`grep` to find where a key is spelled.\n\nThe tool \
         now **labels every group with the evidence tier behind it**, so \
         the\nover-reporting costs you nothing. These group headers come \
-        from\n`refs py:django/db/models/expressions.py::F --limit 10` \
-        on Django:\n\n```\ndjango/contrib/admin/checks.py  (1 \
-        reference, \
-        resolved-via-import)\ndjango/contrib/admin/static/admin/js/vendor/jquery/jquery.min.js  \
-        (1 reference, \
-        name-only-ambiguous)\ndjango/db/models/expressions.py  (1 \
-        reference, same-file)\n```\n\n| Tier | What it means \
-        |\n|---|---|\n| `same-file` | the referencing file defines the \
-        target itself |\n| `resolved-via-import` | the referencing file \
-        imports the file the target is defined in, by name or as a \
-        whole module |\n| `unique` | nothing connects the two files, \
-        but the repository defines that name exactly once |\n| \
-        `name-only-ambiguous` | the name matched and nothing else did \
-        \u{2014} including the shadowing case, where the file has its \
-        own definition of the name and its references bind to that one, \
-        not to your target |\n\nRead the top two tiers as callers and \
-        the bottom two as candidates. The tool\nnever drops a row for a \
-        weak tier. The label is there so you can weigh \
-        the\nrows.\n\nThe groups come in path order, and the groups of \
-        one file come in tier order,\nstrongest first. The tier does \
-        not order the groups across files, so a weak\ngroup can come \
-        before a strong one: above, the name-only \
-        `jquery.min.js`\ngroup is second. The limit takes one site from \
+        from\n`refs py:django/db/models/expressions.py::F --limit 500` \
+        on Django:\n\n```\ntests/lookup/test_decimalfield.py  (2 \
+        references, \
+        resolved-via-import)\ntests/migrations/test_state.py  (9 \
+        references, \
+        name-only-ambiguous)\ntests/model_fields/test_integerfield.py  \
+        (1 reference, resolved-via-import)\n```\n\n| Tier | What it \
+        means |\n|---|---|\n| `same-file` | the referencing file \
+        defines the target itself |\n| `resolved-via-import` | the \
+        referencing file imports the file the target is defined in, by \
+        name or as a whole module. A Rust `use` binds through the Cargo \
+        manifests and the module files of the workspace, and a module \
+        path such as `crate::m::name` binds through that module |\n| \
+        `unique` | nothing connects the two files, but the repository \
+        defines that name exactly once in the language family of the \
+        referencing file |\n| `name-only-ambiguous` | the name matched \
+        definitions in the language family of the referencing file and \
+        nothing else did \u{2014} including the shadowing case, where \
+        the file has its own definition of the name and its references \
+        bind to that one, not to your target |\n\nRead the top two \
+        tiers as callers and the bottom two as candidates. The \
+        tool\nnever drops a row for a weak tier. The label is there so \
+        you can weigh the\nrows.\n\nA language family is a set of \
+        languages whose code can name the symbols of\nthe others: \
+        JavaScript, TypeScript and TSX; C and C++; Java, Kotlin \
+        and\nScala. Each other language is a family of its own. A \
+        spelling in another\nfamily is no candidate, so a Python target \
+        lists no JavaScript row.\n\nThe groups come in path order, and \
+        the groups of one file come in tier order,\nstrongest first. \
+        The tier does not order the groups across files, so a \
+        weak\ngroup can come before a strong one: above, the name-only \
+        `test_state.py`\ngroup is second. The limit takes one site from \
         each file in turn, in path\norder, so a cut never drops a whole \
         file while another file keeps a \
         second\nsite.\n\n`--shared-callers` answers the DRY question: \
@@ -789,13 +798,13 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         origin references the arrival\".\n`<-` is \"the arrival \
         references the origin\".\n\n**Read the tiers on the hops.** A \
         chain is only as good as its weakest link.\nA `unique` hop is a \
-        name that matched the repository's only definition,\nwithout \
-        any import connecting the two files. Sometimes that is a real \
-        edge.\nSometimes it is a local variable that happens to share a \
-        name with a function\nelsewhere. Only `same-file` and \
-        `resolved-via-import` edges participate by\ndefault. \
-        Repository-wide `unique` edges require \
-        `--include-unique`\n(`include_unique: true`). \
+        name that matched the repository's only definition in\nits \
+        language family, without any import connecting the two \
+        files.\nSometimes that is a real edge.\nSometimes it is a local \
+        variable that happens to share a name with a \
+        function\nelsewhere. Only `same-file` and `resolved-via-import` \
+        edges participate by\ndefault. Repository-wide `unique` edges \
+        require `--include-unique`\n(`include_unique: true`). \
         `name-only-ambiguous` edges require\n`--include-ambiguous` \
         (`include_ambiguous: true`). A path built out of\nname-only \
         evidence otherwise reads like an architecture finding when it \
@@ -1768,7 +1777,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3_599, 4_432),
     ("stable-ids", 4_434, 5_923),
     ("the-two-surfaces", 5_925, 11_608),
-    ("per-tool-usage", 11_610, 97_154),
+    ("per-tool-usage", 11_610, 97_718),
     ("claude-code-specifics", 13_226, 15_038),
     ("map", 15_040, 25_069),
     ("tree", 25_071, 25_392),
@@ -1776,22 +1785,22 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("expand", 26_761, 28_734),
     ("slice", 28_736, 29_573),
     ("find-symbol", 29_575, 32_260),
-    ("refs", 32_262, 39_458),
-    ("history", 39_460, 42_293),
-    ("explain", 42_295, 44_270),
-    ("path", 44_272, 47_349),
-    ("cycles", 47_351, 48_856),
-    ("communities", 48_858, 51_381),
-    ("diagram", 51_383, 54_297),
-    ("health", 54_299, 60_534),
-    ("html", 60_536, 61_487),
-    ("resolve-locs", 61_489, 62_304),
-    ("capabilities", 62_306, 63_201),
-    ("index", 63_203, 65_944),
-    ("lint", 65_946, 85_954),
-    ("validate-vote", 85_956, 95_553),
-    ("warmup", 95_555, 97_154),
-    ("project-defaults-agentless-mcp-json", 97_156, 101_109),
-    ("token-counting", 101_111, 101_525),
-    ("exit-codes", 101_527, 101_985),
+    ("refs", 32_262, 39_999),
+    ("history", 40_001, 42_834),
+    ("explain", 42_836, 44_811),
+    ("path", 44_813, 47_913),
+    ("cycles", 47_915, 49_420),
+    ("communities", 49_422, 51_945),
+    ("diagram", 51_947, 54_861),
+    ("health", 54_863, 61_098),
+    ("html", 61_100, 62_051),
+    ("resolve-locs", 62_053, 62_868),
+    ("capabilities", 62_870, 63_765),
+    ("index", 63_767, 66_508),
+    ("lint", 66_510, 86_518),
+    ("validate-vote", 86_520, 96_117),
+    ("warmup", 96_119, 97_718),
+    ("project-defaults-agentless-mcp-json", 97_720, 101_673),
+    ("token-counting", 101_675, 102_089),
+    ("exit-codes", 102_091, 102_549),
 ];

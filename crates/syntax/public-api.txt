@@ -71,6 +71,7 @@ pub const syntax::Language::ALL: [syntax::Language; 22]
 pub fn syntax::Language::abi_version(self) -> usize
 pub fn syntax::Language::extensions(self) -> &'static [&'static str]
 pub fn syntax::Language::extraction(self) -> &'static syntax::Extraction
+pub fn syntax::Language::family(self) -> syntax::Language
 pub fn syntax::Language::field(self, &str) -> core::option::Option<syntax::FieldId>
 pub fn syntax::Language::from_name(&str) -> core::option::Option<syntax::Language>
 pub fn syntax::Language::from_path(&str) -> core::option::Option<syntax::Language>
@@ -153,6 +154,7 @@ impl core::panic::unwind_safe::UnwindSafe for syntax::QueryRunError
 pub enum syntax::RoleRule
 pub syntax::RoleRule::Plain
 pub syntax::RoleRule::Python
+pub syntax::RoleRule::Rust
 impl core::clone::Clone for syntax::RoleRule
 pub fn syntax::RoleRule::clone(&self) -> Self
 impl core::cmp::Eq for syntax::RoleRule

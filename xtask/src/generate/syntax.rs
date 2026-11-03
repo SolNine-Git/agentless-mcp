@@ -178,6 +178,7 @@ enum ImportRule {
 enum RoleRule {
     Plain,
     Python,
+    Rust,
 }
 
 #[derive(Debug, Deserialize)]

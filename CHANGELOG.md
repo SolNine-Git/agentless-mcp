@@ -325,6 +325,125 @@ Each byte count is of the served bytes.
   `crates/app/fixtures/read/views.json` whose ranges all fail. Each row of that
   file now records the view's error beside its text.
 
+- **A Rust `use` binds through the Cargo manifests and the module files.** A
+  Rust `use` resolved only when the importing file's directory held a file of
+  that name, so a `use` of another workspace crate never bound, and a
+  cross-crate call fell to `unique` or `name-only-ambiguous`. Each scanned
+  `Cargo.toml` with a `[package] name` now declares a crate. Its name is the
+  `[lib] name`, else the package name with `-` read as `_`, and its root is
+  the `[lib] path`, else `src/lib.rs`. `src/main.rs`, `src/bin/*`, `tests/*`,
+  `benches/*` and `examples/*` are their own crate roots. A crate root or a
+  `mod.rs` holds its child modules in its own directory, and any other `m.rs`
+  holds them in `m/`. A path starts at `crate`, `self`, `super`, a child
+  module or a workspace crate, and walks down the module files. The first
+  segment that names no module is the item. Inside an inline `mod` body, the
+  first `super` names the file's own module. Use trees, aliases and `pub use`
+  re-exports bind, and a glob binds every name of its module and what that
+  module re-exports. A segment can also name a module that a file re-exports,
+  or the directory of an inline module. Two more binding passes read these,
+  over the Rust files only, and only when the scan holds a Cargo manifest. A
+  module path `a::b::name`, with each segment in lower case, binds `name`
+  through that module. A path whose first segment names nothing in the
+  repository binds nothing: `std::path::PathBuf` is no longer a candidate for
+  a repository function `path`. `#[path]`, `include!` and macro-made modules
+  are not read, and a path inside macro arguments falls back to the name. The
+  TOML extraction stores the manifest values as a typed fact. A value that is
+  not a plain one-line string is absent, and a manifest without a package name
+  declares no crate. An `Import` gains `inline_depth`, the count of inline
+  `mod` bodies around it. `FACTS_VERSION` is 8, so every index rebuilds once.
+  - Measured with a dump of every resolved site, a measurement patch on the
+    release build of this change that does not ship, against the same dump of
+    the base, on this repository at c2daf41 and four snapshots. Rust sites at
+    `resolved-via-import` go from 679 to 25,354 here, 190 to 71,538 in ruff, 0
+    to 3,638 in ripgrep, 220 to 55,984 in nushell and 97 to 7,356 in tokio.
+    The cross-crate rows among them go from 0 to 7,429, 37,199, 646, 40,753
+    and 1,013. Here, the Rust sites at `unique` go from 36,135 to 19,205 and
+    at `name-only-ambiguous` from 85,235 to 73,535; these counts include the
+    two entries below. 109, 157, 7, 356 and 111 sites bind another definition
+    than before: aliases such as `use app::ops::Value as Declared`, and
+    qualified calls such as `hook::erosion` in a file that defines its own
+    `erosion`. In the GF design, 20 of 20 sampled promoted sites and 8 of 8
+    rebound sites read correct in the source. This build gives the same rows
+    on four of the five trees. On nushell, it differs in one file,
+    crates/nu-command/src/example_test.rs: `use super::super::{Ansi, ...}`
+    inside `mod test_examples` reaches the crate root, so 42 more sites go to
+    `resolved-via-import` and 24 more sites bind.
+  - The resolved imports show the module cycles inside a crate. `cycles` goes
+    from 1 to 20 here, 1 to 33 in ruff, 0 to 6 in ripgrep, 0 to 29 in nushell,
+    0 to 21 in tokio and 0 to 1 in teleport. Each is a mutual `use` between
+    the modules of one crate, for example crates/app/src/ops.rs re-exports
+    ops/table.rs, and table.rs uses `super::{Arity, ...}`. Rust permits them,
+    and `cycles` lists them. The patch lint's new-cycle check reads the same
+    edges, with the patched manifests, so a patch that closes such a cycle
+    gets a finding.
+
+- **A Rust lifetime or label is no reference.** The identifier inside `'a` or
+  `'outer` was a reference, so `'a` was a candidate for every definition named
+  `a`: `explain rs:crates/graph/src/rank.rs::pagerank` listed `references a
+  [lua:tests/characterization/fixtures/complexity_lua/sample.lua::a]`. Rust
+  gets its own role rule (`roles = "rust"` in
+  crates/syntax/languages/rust.toml). It skips the identifiers under a
+  `lifetime` or a `label`, and it stores the module path that qualifies the
+  last segment of a path. The role stays `reference`. Measured with the same
+  dumps, from the line text of the sites that leave: lifetimes and labels were
+  2,423 `unique` rows here, 9,660 rows in ruff, 122 in ripgrep, 186 in nushell
+  and 1,754 in tokio. The explain answer above has no Lua row.
+
+- **A name-only candidate stays inside its language family.** The `unique` and
+  `name-only-ambiguous` tiers, the file graph's name and base-class edges, and
+  the `refs` spellings took every definition of a name in any language, so a
+  Rust function was a candidate for a Python fixture method of the same name.
+  A family is a set of languages whose code can name each other's symbols:
+  JavaScript, TypeScript and TSX; C and C++; Java, Kotlin and Scala. Each
+  other language is a family of its own (`Language::family`). The resolver's
+  name-only match keeps the definitions in the family of the spelling file,
+  the file graph keeps the targets in the family of the source file, and
+  `refs` keeps the spellings in the family of the definition. Imports and
+  same-file bindings do not change. A name defined in two families can become
+  `unique` in each. The guide's tier table now says that `unique` and
+  `name-only-ambiguous` count the definitions in the family of the referencing
+  file. Its `refs` example on django uses `--limit 500` and other groups,
+  because the `jquery.min.js` row it showed leaves.
+  - Measured with the same dumps. The candidate rows with a candidate in
+    another language go from 12,483 to 4 here, 58,445 to 3 in ruff, 259 to 0
+    in ripgrep, 1,563 to 0 in nushell, 39,926 to 24,028 in tutanota, 33,135 to
+    10,868 in matplotlib and 74,445 to 3,003 in teleport. Every row left is
+    inside a family. The file-graph name edges between two languages go from
+    3,866 to 1, 83,487 to 1, 25 to 0, 273 to 0, 16,698 to 5,578, 6,411 to
+    2,947 and 31,467 to 38. One real edge leaves: in teleport, Go calls a Rust
+    `extern "C"` function through cgo (`C.write_rdp_pointer` in
+    lib/srv/desktop/rdp/rdpclient/client.go, 4 sites).
+  - The ranking of the three entries, measured with the release build of
+    this change against the build of 5d4f81b. The Loc-Bench retrieval tier
+    ranks other files in 45 of 150 instances seeded and in 72 of 150
+    no-seed. In the GF design's runs of one rule at a time, the family rule
+    alone gives these counts. MAP moves -0.0009 [-0.0027, +0.0007] seeded
+    and -0.0015 [-0.0055, +0.0022] no-seed (paired bootstrap, 95%).
+    Recall@10 moves +0.004 seeded (4 gold files enter the top 10, 2 leave)
+    and -0.011 no-seed (1 enters, 3 leave). Over the 363 `orient(map)` calls
+    of the conf2 hooked and forced benchmark arms, replayed through the CLI
+    of both builds, the gold files (`read_core_files`) in the ranked rows go
+    from 649 to 654 of 2,209: 8 calls gain one, and 3 calls lose one.
+  - The changed reference outcomes of the three entries:
+    `crates/facts/fixtures/extract_rust.json` (10 cases: 7 for the use trees,
+    3 for the lifetimes of `unicode.rs`), the blob pin in
+    `crates/store/src/tests/blobs.rs`, the corpora `ext_python`,
+    `ext_scripts`, `fixtures_tree`, `shapes`, `tier1` and `tier2` in
+    `crates/graph/fixtures/corpora/` (every removed file-graph pair and
+    resolver candidate crosses a family, no pair is added, and `fixtures_tree`
+    reweights 30 pairs), the runs `health_unmeasured`,
+    `health_unmeasured_json`, `health_unmeasured_indexed` and
+    `health_unmeasured_indexed_json` in
+    `crates/cli/fixtures/read_graph/scenarios.json`, the runs `refs_alias` and
+    `refs_alias_json` in `crates/cli/fixtures/read_symbols/scenarios.json`,
+    the tier2 `price` fan-in in `crates/render/src/tests/goldens_graph.rs`
+    (its Lua row leaves), the site total of one `refs` test in
+    `crates/app/src/refs/tests.rs` (8 to 6), and the guide text in
+    `crates/app/fixtures/guide/guide.json` and the runs `guide_whole` and
+    `guide_section` of `crates/cli/fixtures/read/scenarios.json`. No
+    tests/characterization golden and no count in
+    `crates/app/fixtures/read/tokens.json` changes.
+
 ### Fixed
 
 - **A diagram past its edge bound draws its heaviest reference edges, not
@@ -892,6 +1011,22 @@ binaries of 811b348 and of this change, over MCP stdio and the CLI.
   django `refs F` lists the name-only `jquery.min.js` group second. The limit
   takes one site per file in turn. The `find-symbol` section names the five
   tiers above.
+- **A cross-crate Rust call reaches a binding tier.** The owner's review of
+  2026-10-25 (defect 2) found every cross-crate call of `float_text` at
+  `name-only-ambiguous`. On this repository at c2daf41, `refs
+  rs:crates/json/src/float.rs::float_text` now gives binding evidence for 10
+  of its 24 rows, where it gave 3. The rows that stay candidates are paths
+  inside macro arguments (`format!`, `json!`) and the spellings of the cli
+  crate's own `float_text`. At 9c8b293, `refs
+  rs:crates/graph/src/rank.rs::pagerank` gives 13 of 13 rows at
+  `resolved-via-import`, where it gave 1, and `path crates/app/src/map.rs
+  crates/graph/src/rank.rs` finds 2 hops over imports, where it found no path.
+- **No candidate edge crosses a language family.** The review (defect 5) found
+  `explain rs:crates/app/src/budget.rs::allocate` listing a fan-out reference
+  to `Inventory.remove` in a Python fixture. On this repository at c2daf41,
+  its fan-out goes from 27 to 24 rows: the 3 `Inventory.remove` rows of the
+  Python and TypeScript fixtures leave. Its 6 fan-in rows go from `unique` to
+  `resolved-via-import`.
 
 ## 0.11.0rc1 -- 2026-10-23
 

@@ -28,11 +28,12 @@ pub enum ImportRule {
     None,
 }
 
-/// How the reference pass gives each identifier occurrence its role.
+/// How the reference pass reads each identifier occurrence: its role and its qualifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RoleRule {
     Plain,
     Python,
+    Rust,
 }
 
 /// How one import statement binds names into the importing file.

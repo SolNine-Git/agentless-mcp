@@ -4,6 +4,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use kernel::{Deadline, Stopped, checkpoint};
+use syntax::Language;
 
 use crate::names::{NameIndex, common_name_damping, name_multiplier};
 use crate::scan::{FileFacts, in_name_graph};
@@ -58,6 +59,15 @@ impl<'a> FileGraph<'a> {
         let files = index.files();
         let mut nodes: Vec<&'a str> = files.iter().map(|file| file.path.as_str()).collect();
         nodes.sort_unstable();
+        let families: Vec<Option<Language>> = nodes
+            .iter()
+            .map(|node| scopes.language_of(node).map(Language::family))
+            .collect();
+        let sources = Sources {
+            index,
+            weighting,
+            families: &families,
+        };
         let mut graph = FileGraph {
             nodes,
             edges: Vec::new(),
@@ -65,7 +75,7 @@ impl<'a> FileGraph<'a> {
         };
         for (position, file) in files.iter().enumerate() {
             checkpoint(deadline)?;
-            for (target, weight) in graph.file_edges(file, index, scopes.at(position), weighting) {
+            for (target, weight) in graph.file_edges(file, scopes.at(position), &sources) {
                 graph.add(&file.path, target, weight);
             }
         }
@@ -123,13 +133,13 @@ impl<'a> FileGraph<'a> {
     fn file_edges(
         &self,
         file: &'a FileFacts,
-        index: &NameIndex<'a>,
         scope: &ImportScope<'a>,
-        weighting: &Weighting<'_>,
+        sources: &Sources<'_, 'a>,
     ) -> Vec<(&'a str, f64)> {
+        let weighting = sources.weighting;
         let mut edges = Vec::new();
         if in_name_graph(file) {
-            edges = self.reference_contributions(file, index, weighting.stoplist);
+            edges = self.reference_contributions(file, sources);
         }
         let import_weight = if weighting.relation_weights {
             RELATION_IMPORT_WEIGHT
@@ -139,7 +149,7 @@ impl<'a> FileGraph<'a> {
         let imports = import_targets(scope, &file.path).into_iter();
         edges.extend(imports.map(|target| (target, import_weight)));
         if weighting.relation_weights {
-            let inherited = self.inheritance_targets(file, index).into_iter();
+            let inherited = self.inheritance_targets(file, sources).into_iter();
             edges.extend(inherited.map(|target| (target, RELATION_INHERITANCE_WEIGHT)));
         }
         edges
@@ -159,13 +169,14 @@ impl<'a> FileGraph<'a> {
     }
 
     // One (target, contribution) per name-reference edge: names in sorted order, each name's
-    // defining files together, so the floats accumulate in one sequence.
+    // defining files in the file's language family together, so the floats sum in one sequence.
     fn reference_contributions(
         &self,
         file: &'a FileFacts,
-        index: &NameIndex<'a>,
-        stoplist: &BTreeSet<String>,
+        sources: &Sources<'_, 'a>,
     ) -> Vec<(&'a str, f64)> {
+        let index = sources.index;
+        let stoplist = sources.weighting.stoplist;
         let mut names: Vec<&str> = (file.facts.refs.iter())
             .filter(|reference| reference.is_reference())
             .map(|reference| reference.name.as_str())
@@ -180,6 +191,7 @@ impl<'a> FileGraph<'a> {
             if targets.binary_search(&file.path.as_str()).is_ok() {
                 continue;
             }
+            let targets = self.in_family(file, targets, sources.families);
             let spread = || index.edge_spread(name);
             let contribution =
                 REFERENCE_WEIGHT * reference_weight(name, count, stoplist, targets.len(), spread);
@@ -187,32 +199,56 @@ impl<'a> FileGraph<'a> {
                 continue;
             }
             let known = targets
-                .iter()
+                .into_iter()
                 .filter(|target| self.position(target).is_some());
-            contributions.extend(known.map(|target| (*target, contribution)));
+            contributions.extend(known.map(|target| (target, contribution)));
         }
         contributions
     }
 
     // One target per base per declaring symbol, repeats included.
-    fn inheritance_targets(&self, file: &'a FileFacts, index: &NameIndex<'a>) -> Vec<&'a str> {
+    fn inheritance_targets(&self, file: &'a FileFacts, sources: &Sources<'_, 'a>) -> Vec<&'a str> {
         let names = file.facts.symbols.iter().flat_map(|symbol| &symbol.bases);
         let mut targets = Vec::new();
         for name in names
             .map(|base| facts::base_name(base))
             .filter(|name| !name.is_empty())
         {
-            let defining = index.defining_paths(name);
+            let defining = sources.index.defining_paths(name);
             // A same-file definition shadows repository-wide name matches here too.
             if defining.binary_search(&file.path.as_str()).is_err() {
-                let known = defining
-                    .iter()
+                let known = self
+                    .in_family(file, defining, sources.families)
+                    .into_iter()
                     .filter(|target| self.position(target).is_some());
-                targets.extend(known.copied());
+                targets.extend(known);
             }
         }
         targets
     }
+
+    // The targets whose language is in the family of `file`'s language, or is not known.
+    fn in_family(
+        &self,
+        file: &FileFacts,
+        targets: &[&'a str],
+        families: &[Option<Language>],
+    ) -> Vec<&'a str> {
+        let family = file.language.family();
+        let speaks = |target: &&&'a str| {
+            let defined = self.position(target).and_then(|at| families[at]);
+            defined.is_none_or(|defined| defined == family)
+        };
+        targets.iter().filter(speaks).copied().collect()
+    }
+}
+
+// What each file's edges read besides its own facts and scope: the name index, the weighting,
+// and the family of each node's language by node position.
+struct Sources<'s, 'a> {
+    index: &'s NameIndex<'a>,
+    weighting: &'s Weighting<'s>,
+    families: &'s [Option<Language>],
 }
 
 // count * multiplier * evidence / damping, left to right; no candidate weighs nothing.

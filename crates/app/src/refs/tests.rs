@@ -237,7 +237,7 @@ fn a_bare_path_names_a_file_and_binds_to_nothing() {
 fn the_bound_count_covers_every_site_before_the_limit_cuts_them() {
     let answer = referenced_at(&ALIASED, "py:a.py::helper", 1);
     let groups = &answer.groups;
-    assert_eq!((groups.total, groups.bound, groups.shown()), (8, 6, 1));
+    assert_eq!((groups.total, groups.bound, groups.shown()), (6, 6, 1));
 }
 
 #[test]

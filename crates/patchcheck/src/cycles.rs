@@ -86,8 +86,8 @@ fn cycles_of(files: &[FileFacts]) -> Vec<Cycle<'_>> {
     import_cycles(&SymbolGraph::imports(&Scopes::build(files)))
 }
 
-// Each scanned file with only its import table, read again from the patched text for an edited
-// file: the import graph reads nothing else.
+// Each scanned file with only its import table and Cargo manifest, read again from the patched
+// text for an edited file: the import graph reads nothing else.
 fn patched_files(
     facts: &PatchBaseline<'_>,
     contents: &[(String, String)],
@@ -100,9 +100,12 @@ fn patched_files(
     facts
         .files()
         .map(|file| {
-            let imports = match patched.get(file.path.as_str()) {
-                Some(text) => extract(parse, file.language, text)?.imports,
-                None => file.facts.imports.clone(),
+            let (imports, manifest) = match patched.get(file.path.as_str()) {
+                Some(text) => {
+                    let read = extract(parse, file.language, text)?;
+                    (read.imports, read.manifest)
+                }
+                None => (file.facts.imports.clone(), file.facts.manifest.clone()),
             };
             Ok(FileFacts {
                 path: file.path.clone(),
@@ -110,6 +113,7 @@ fn patched_files(
                 line_count: file.line_count,
                 facts: Facts {
                     imports,
+                    manifest,
                     ..Facts::default()
                 },
             })

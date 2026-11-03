@@ -2,6 +2,7 @@ use kernel::Key;
 use sha2::{Digest, Sha256};
 
 use super::indexed::file;
+use crate::blob::decode_facts;
 use crate::{FACTS_VERSION, analyze, encode};
 
 // Each blob shape: decorated definitions, imports, references, and the metrics of a file that
@@ -24,8 +25,8 @@ const TEXTS: [(&str, &str); 4] = [
 
 // A stored row is served while FACTS_VERSION holds, so these blobs change only with a bump.
 const PINNED: (u32, &str) = (
-    7,
-    "0a445f74febcbbd383a77bcd51165ae5fed812fd64057f9057fa987aaaed7773",
+    8,
+    "b075c424ddf4c5c8109841e8daaaeae0d67d597f962d89ee4fde694b7e06a6fe",
 );
 
 fn blob_digest() -> String {
@@ -52,4 +53,27 @@ fn the_blobs_of_the_sample_texts_change_only_with_a_facts_version_bump() {
         "the blobs or FACTS_VERSION changed: bump FACTS_VERSION for a blob change, then pin the \
          new version with the new digest"
     );
+}
+
+#[test]
+fn a_manifest_fact_reads_back_from_the_rest_blob_and_a_file_without_one_stores_none() {
+    let texts = [
+        (
+            "Cargo.toml",
+            "[package]\nname = \"a-b\"\n\n[lib]\npath = \"lib.rs\"\n",
+        ),
+        ("d.rs", TEXTS[3].1),
+    ];
+    for (path, text) in texts {
+        let analysis = analyze(&file(path, text), false).expect("the text parses");
+        let blobs = encode(&analysis).blobs.expect("the blobs encode");
+        let read = decode_facts(&blobs.symbols, &blobs.rest).expect("the blobs decode");
+        assert_eq!(read, analysis.facts, "{path}");
+        let stored = String::from_utf8(blobs.rest).expect("a JSON blob");
+        assert_eq!(
+            stored.contains("\"manifest\""),
+            path == "Cargo.toml",
+            "{stored}"
+        );
+    }
 }

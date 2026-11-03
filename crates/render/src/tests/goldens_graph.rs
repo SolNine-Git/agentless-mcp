@@ -78,8 +78,7 @@ fn the_limit_cuts_the_other_definitions_and_counts_the_rest() {
                     also defined at scala:Pricing.scala::Invoice.price\n\
                     ... 5 more definitions not listed (limit 2)\n\n\
                     references (fan-out): none\n\n\
-                    referenced by (fan-in): 1\n  name-only-ambiguous (1)\n    \
-                    referenced by Invoice.price    [lua:pricing.lua::Invoice.price] @12\n\n\
+                    referenced by (fan-in): none\n\n\
                     imports\n    declares  none resolved inside this repository\n    \
                     imported by  nothing in this repository\n";
     assert_eq!(explain_body("tier2", "price", "2"), expected);

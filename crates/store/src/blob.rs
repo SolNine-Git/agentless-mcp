@@ -1,6 +1,6 @@
 //! The three blobs of one agentless.db row: the symbols, the other facts, and the metrics.
 
-use facts::{Facts, Import, Ref, Symbol};
+use facts::{Facts, Import, Manifest, Ref, Symbol};
 use kernel::Span;
 use serde::{Deserialize, Serialize};
 
@@ -30,6 +30,8 @@ struct Rest<'a> {
     imports: &'a [Import],
     refs: &'a [Ref],
     errors: &'a [Span],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    manifest: Option<&'a Manifest>,
 }
 
 #[derive(Deserialize)]
@@ -37,6 +39,8 @@ struct OwnedRest {
     imports: Vec<Import>,
     refs: Vec<Ref>,
     errors: Vec<Span>,
+    #[serde(default)]
+    manifest: Option<Manifest>,
 }
 
 /// Encodes `analysis` for its row. A blob that does not encode fails the write of the row.
@@ -69,6 +73,7 @@ fn encode_rest(facts: &Facts) -> Result<Vec<u8>, SqlError> {
         imports: &facts.imports,
         refs: &facts.refs,
         errors: &facts.errors,
+        manifest: facts.manifest.as_ref(),
     })
 }
 
@@ -85,12 +90,14 @@ pub(crate) fn decode_facts(symbols: &[u8], rest: &[u8]) -> Result<Facts, SqlErro
         imports,
         refs,
         errors,
+        manifest,
     } = decoded(rest)?;
     Ok(Facts {
         symbols: decode_symbols(symbols)?,
         imports,
         refs,
         errors,
+        manifest,
     })
 }
 

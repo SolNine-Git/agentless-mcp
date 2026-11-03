@@ -10,70 +10,124 @@ pub(super) fn imports(tree: &Tree) -> Vec<Import> {
     tree.each_of_kind("use_declaration", |node| import(tree, node))
 }
 
+// The module the declaration's paths share, and each use-tree leaf as a member path below it
+// with its local name: `use a::{b, c::{d, e as f}}` gives module `a` and `b`, `c::d`, `c::e`.
 fn import(tree: &Tree, node: NodeId) -> Option<Import> {
     let argument = tree.field(node, Field::Argument)?;
-    let target = target(tree, argument);
-    if target.module.is_empty() {
+    let mut leaves: Vec<(String, String)> = Vec::new();
+    let module = match tree.kind(argument) {
+        "scoped_identifier" => split_last(&spaceless(tree.text(argument)), None, &mut leaves),
+        "use_as_clause" => {
+            let alias = field_text(tree, argument, Field::Alias);
+            let path = field_text(tree, argument, Field::Path);
+            split_last(&path, Some(alias), &mut leaves)
+        }
+        "scoped_use_list" => {
+            if let Some(list) = tree.field(argument, Field::List) {
+                collect(tree, list, "", &mut leaves);
+            }
+            field_text(tree, argument, Field::Path)
+        }
+        "use_list" => {
+            collect(tree, argument, "", &mut leaves);
+            String::new()
+        }
+        "use_wildcard" => wildcard_path(tree, argument),
+        _ => spaceless(tree.text(argument)),
+    };
+    if module.is_empty() && leaves.is_empty() {
         return None;
     }
-    let first = target.module.split("::").next().unwrap_or_default();
-    let mut import = Import::at(tree, node, target.module, RELATIVE_ROOTS.contains(&first))
-        .naming(target.names, target.local_names);
-    target.alias.clone_into(&mut import.alias);
+    let first = module.split("::").next().unwrap_or_default();
+    let (names, locals): (Vec<String>, Vec<String>) = leaves.into_iter().unzip();
+    let mut import =
+        Import::at(tree, node, &module, RELATIVE_ROOTS.contains(&first)).naming(names, locals);
+    import.binds_all = tree.is(argument, "use_wildcard");
+    import.inline_depth = inline_depth(tree, node);
     Some(import)
 }
 
-struct Target<'a> {
-    module: &'a str,
-    names: Vec<String>,
-    local_names: Vec<String>,
-    alias: &'a str,
+// `a::b::c` gives the module `a::b` and the leaf `c`, bound under `alias` when one is given.
+fn split_last(path: &str, alias: Option<String>, leaves: &mut Vec<(String, String)>) -> String {
+    let (module, last) = path.rsplit_once("::").unwrap_or(("", path));
+    leaves.push((last.to_owned(), alias.unwrap_or_else(|| last.to_owned())));
+    module.to_owned()
 }
 
-// `use a::b as c` keeps the path and the alias; `use a::{b, c as d}` keeps the path and lists.
-fn target<'a>(tree: &Tree<'a>, argument: NodeId) -> Target<'a> {
-    let text = |field| {
-        tree.field(argument, field)
-            .map_or("", |node| tree.text(node))
-    };
-    match tree.kind(argument) {
-        "use_as_clause" => Target {
-            module: text(Field::Path),
-            names: Vec::new(),
-            local_names: Vec::new(),
-            alias: text(Field::Alias),
-        },
-        "scoped_use_list" => {
-            let entries: Vec<(String, String)> = tree
-                .field(argument, Field::List)
-                .map(|list| {
-                    tree.named_children(list)
-                        .map(|entry| entry_names(tree, entry))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let (names, local_names) = entries.into_iter().unzip();
-            Target {
-                module: text(Field::Path),
-                names,
-                local_names,
-                alias: "",
+// Each leaf below `node` as (member path below the declaration's module, local name).
+fn collect(tree: &Tree, node: NodeId, prefix: &str, leaves: &mut Vec<(String, String)>) {
+    match tree.kind(node) {
+        "use_list" => {
+            for child in tree.named_children(node) {
+                collect(tree, child, prefix, leaves);
             }
         }
-        _ => Target {
-            module: tree.text(argument),
-            names: Vec::new(),
-            local_names: Vec::new(),
-            alias: "",
-        },
+        "scoped_use_list" => {
+            let inner = joined(prefix, &field_text(tree, node, Field::Path));
+            if let Some(list) = tree.field(node, Field::List) {
+                collect(tree, list, &inner, leaves);
+            }
+        }
+        "line_comment" | "block_comment" => {}
+        _ => leaves.push(leaf(tree, node, prefix)),
     }
 }
 
-fn entry_names(tree: &Tree, entry: NodeId) -> (String, String) {
-    if !tree.is(entry, "use_as_clause") {
-        let text = tree.text(entry).to_owned();
-        return (text.clone(), text);
+// A glob binds under its own path, an alias under the alias, any other leaf under its last
+// segment.
+fn leaf(tree: &Tree, node: NodeId, prefix: &str) -> (String, String) {
+    match tree.kind(node) {
+        "use_wildcard" => {
+            let path = wildcard_path(tree, node);
+            let glob = if path.is_empty() {
+                "*".to_owned()
+            } else {
+                format!("{path}::*")
+            };
+            let member = joined(prefix, &glob);
+            (member.clone(), member)
+        }
+        "use_as_clause" => {
+            let member = joined(prefix, &field_text(tree, node, Field::Path));
+            let alias = tree
+                .field(node, Field::Alias)
+                .map_or("", |alias| tree.text(alias));
+            (member, alias.to_owned())
+        }
+        _ => {
+            let member = joined(prefix, &spaceless(tree.text(node)));
+            let local = member.rsplit("::").next().unwrap_or_default().to_owned();
+            (member, local)
+        }
     }
-    let text = |field| tree.field(entry, field).map_or("", |node| tree.text(node));
-    (text(Field::Path).to_owned(), text(Field::Alias).to_owned())
+}
+
+fn joined(prefix: &str, path: &str) -> String {
+    match (prefix.is_empty(), path.is_empty()) {
+        (true, _) => path.to_owned(),
+        (false, true) => prefix.to_owned(),
+        (false, false) => format!("{prefix}::{path}"),
+    }
+}
+
+// The path before `::*`, or empty for a bare `*`.
+fn wildcard_path(tree: &Tree, wildcard: NodeId) -> String {
+    let path = tree.named_children(wildcard).next();
+    path.map_or(String::new(), |path| spaceless(tree.text(path)))
+}
+
+// How many inline `mod name { ... }` bodies enclose the declaration.
+fn inline_depth(tree: &Tree, node: NodeId) -> u32 {
+    let ancestors = std::iter::successors(tree.parsed.parent(node), |up| tree.parsed.parent(*up));
+    let modules = ancestors.filter(|up| tree.is(*up, "mod_item")).count();
+    u32::try_from(modules).expect("a file nests fewer than 2^32 modules")
+}
+
+fn field_text(tree: &Tree, node: NodeId, field: Field) -> String {
+    tree.field(node, field)
+        .map_or(String::new(), |found| spaceless(tree.text(found)))
+}
+
+fn spaceless(text: &str) -> String {
+    text.chars().filter(|c| !c.is_whitespace()).collect()
 }

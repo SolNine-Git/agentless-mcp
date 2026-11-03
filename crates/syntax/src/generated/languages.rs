@@ -1700,7 +1700,7 @@ static RUST_EXTRACTION: ExtractionTable = ExtractionTable {
     prefix: "rs",
     symbols: SymbolRule::Rust,
     imports: ImportRule::Rust,
-    roles: RoleRule::Plain,
+    roles: RoleRule::Rust,
     identifiers: &["field_identifier", "identifier", "type_identifier"],
     bodies: &["block"],
     skeleton_functions: &["function_item"],

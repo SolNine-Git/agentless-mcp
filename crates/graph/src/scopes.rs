@@ -4,12 +4,18 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use facts::Import;
+use syntax::Language;
 
 use crate::imports::{resolve_import_target, resolve_imported_submodule};
 use crate::paths::PathIndex;
+use crate::rust_paths::RustTree;
 use crate::scan::FileFacts;
 
 type Bindings<'a> = BTreeMap<&'a str, BTreeSet<&'a str>>;
+
+// The binding passes after the first that let a path segment name a module that a Rust file
+// re-exports: a re-export of a re-export takes the second.
+const EXPORT_PASSES: usize = 2;
 
 // One import statement, or one module it names, and the repository file it reached.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -29,6 +35,15 @@ pub struct ImportScope<'a> {
     pub(crate) named: Bindings<'a>,
     pub(crate) members: BTreeMap<&'a str, BTreeSet<(&'a str, &'a str)>>,
     pub(crate) statements: Vec<ResolvedImport<'a>>,
+    // Each Rust module path that qualifies a name here, with what it names.
+    pub(crate) qualified: BTreeMap<&'a str, Qualified<'a>>,
+}
+
+// What a Rust module path names: a module file of this repository, or a module outside it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Qualified<'a> {
+    Module(&'a str),
+    Foreign,
 }
 
 impl<'a> ImportScope<'a> {
@@ -72,7 +87,17 @@ impl<'a> Scopes<'a> {
     #[must_use]
     pub fn build(files: &'a [FileFacts]) -> Scopes<'a> {
         let paths = PathIndex::build(files.iter().map(|file| file.path.as_str()));
-        let per_file = files.iter().map(|file| bind_file(file, &paths)).collect();
+        let mut rust = RustTree::build(files, &paths);
+        let mut per_file: Vec<ImportScope<'a>> = files
+            .iter()
+            .map(|file| bind_file(file, &paths, &rust))
+            .collect();
+        if rust.holds_manifest() {
+            for _ in 0..EXPORT_PASSES {
+                rust.exports = exports_of(files, &per_file);
+                rebind_rust(files, &mut per_file, &paths, &rust);
+            }
+        }
         let mut by_path: Vec<(&'a str, usize)> = files
             .iter()
             .enumerate()
@@ -96,6 +121,12 @@ impl<'a> Scopes<'a> {
     #[must_use]
     pub fn get(&self, path: &str) -> Option<&ImportScope<'a>> {
         self.position(path).map(|position| &self.per_file[position])
+    }
+
+    // The language of the file at `path`.
+    pub(crate) fn language_of(&self, path: &str) -> Option<Language> {
+        self.position(path)
+            .map(|position| self.files[position].language)
     }
 
     // The scan position of the file at `path`; a repeated path answers with its last file.
@@ -141,12 +172,281 @@ struct Statement<'a> {
     position: usize,
 }
 
-fn bind_file<'a>(file: &'a FileFacts, paths: &PathIndex<'a>) -> ImportScope<'a> {
+fn bind_file<'a>(
+    file: &'a FileFacts,
+    paths: &PathIndex<'a>,
+    rust: &RustTree<'_, 'a>,
+) -> ImportScope<'a> {
     let mut scope = ImportScope::default();
-    for (position, import) in file.facts.imports.iter().enumerate() {
-        scope.bind_statement(&file.path, position, import, paths);
+    if file.language != Language::Rust {
+        for (position, import) in file.facts.imports.iter().enumerate() {
+            scope.bind_statement(&file.path, position, import, paths);
+        }
+        return scope;
     }
+    for (position, import) in file.facts.imports.iter().enumerate() {
+        scope.bind_rust_statement(&file.path, position, import, rust);
+    }
+    scope.qualify(file, rust);
     scope
+}
+
+fn rebind_rust<'a>(
+    files: &'a [FileFacts],
+    per_file: &mut [ImportScope<'a>],
+    paths: &PathIndex<'a>,
+    rust: &RustTree<'_, 'a>,
+) {
+    let rebound = files.iter().zip(per_file);
+    for (file, scope) in rebound.filter(|(file, _)| file.language == Language::Rust) {
+        *scope = bind_file(file, paths, rust);
+    }
+}
+
+// The module file that each Rust file binds under one local name, for the next binding pass.
+fn exports_of<'a>(
+    files: &'a [FileFacts],
+    per_file: &[ImportScope<'a>],
+) -> BTreeMap<(&'a str, &'a str), &'a str> {
+    let mut exports = BTreeMap::new();
+    let rust = files
+        .iter()
+        .zip(per_file)
+        .filter(|(file, _)| file.language == Language::Rust);
+    for (file, scope) in rust {
+        for (local, targets) in &scope.module_bindings {
+            if let (1, Some(target)) = (targets.len(), targets.first()) {
+                exports.insert((file.path.as_str(), *local), *target);
+            }
+        }
+    }
+    exports
+}
+
+// The local names that the file's `use` declarations of this repository's paths bind, resolved
+// or not.
+fn internal_locals<'a>(
+    path: &'a str,
+    imports: &'a [Import],
+    rust: &RustTree<'_, 'a>,
+) -> BTreeSet<&'a str> {
+    let mut locals = BTreeSet::new();
+    for import in imports {
+        let first = import.module.split("::").next().unwrap_or_default();
+        for (member, local) in import.bound_names() {
+            let lead = if first.is_empty() {
+                member.split("::").next().unwrap_or_default()
+            } else {
+                first
+            };
+            if rust.names_repository_module(path, lead) {
+                locals.insert(local);
+            }
+        }
+        if import.names.is_empty() && rust.names_repository_module(path, first) {
+            locals.insert(import.module.rsplit("::").next().unwrap_or_default());
+        }
+    }
+    locals
+}
+
+// One `use` declaration's walks: the module tree, the importing file, and how many inline modules
+// enclose the declaration.
+struct Walk<'r, 'p, 'a> {
+    rust: &'r RustTree<'p, 'a>,
+    path: &'a str,
+    inline: u32,
+}
+
+impl<'a> Walk<'_, '_, 'a> {
+    fn resolve(&self, segments: &[&str]) -> Option<(&'a str, usize)> {
+        self.rust.resolve(self.path, segments, self.inline)
+    }
+
+    // The module that a whole path names, when every segment names a module.
+    fn whole(&self, segments: &[&str]) -> Option<&'a str> {
+        self.resolve(segments)
+            .filter(|(_, used)| *used == segments.len())
+            .map(|(target, _)| target)
+    }
+}
+
+impl<'a> ImportScope<'a> {
+    // Each leaf of one `use` declaration walks the module tree; the declaration keeps one row
+    // per distinct target, or one unresolved row when no leaf resolves.
+    fn bind_rust_statement(
+        &mut self,
+        path: &'a str,
+        position: usize,
+        import: &'a Import,
+        rust: &RustTree<'_, 'a>,
+    ) {
+        let walk = Walk {
+            rust,
+            path,
+            inline: import.inline_depth,
+        };
+        let base: Vec<&'a str> = if import.module.is_empty() {
+            Vec::new()
+        } else {
+            import.module.split("::").collect()
+        };
+        let mut targets: Vec<(String, &'a str)> = Vec::new();
+        if import.names.is_empty()
+            && let Some(target) = walk.whole(&base)
+        {
+            if import.binds_all {
+                self.wholesale.insert(target);
+            } else {
+                self.bind_module(base.last().copied().unwrap_or_default(), target);
+            }
+            targets.push((import.module.clone(), target));
+        }
+        for (member, local) in import.bound_names() {
+            let mut segments = base.clone();
+            segments.extend(member.split("::"));
+            if let Some(target) = self.bind_leaf(&walk, &mut segments, local) {
+                targets.push((segments.join("::"), target));
+            }
+        }
+        self.push_rust_rows(import, position, targets);
+    }
+
+    // A glob binds the module wholesale, `self` binds the module, any other leaf an item; the
+    // segments end as the module path the row names.
+    fn bind_leaf(
+        &mut self,
+        walk: &Walk<'_, '_, 'a>,
+        segments: &mut Vec<&'a str>,
+        local: &'a str,
+    ) -> Option<&'a str> {
+        let last = segments.pop().unwrap_or_default();
+        match last {
+            "*" => walk.whole(segments).inspect(|target| {
+                self.wholesale.insert(target);
+            }),
+            "self" => walk.whole(segments).inspect(|target| {
+                let local = if local == "self" {
+                    segments.last().copied().unwrap_or_default()
+                } else {
+                    local
+                };
+                self.bind_module(local, target);
+            }),
+            _ => {
+                segments.push(last);
+                self.bind_item(walk, segments, local)
+            }
+        }
+    }
+
+    fn push_rust_rows(
+        &mut self,
+        import: &'a Import,
+        position: usize,
+        targets: Vec<(String, &'a str)>,
+    ) {
+        let mut seen: Vec<&'a str> = Vec::new();
+        for (module, target) in targets {
+            if seen.contains(&target) {
+                continue;
+            }
+            seen.push(target);
+            self.statements.push(ResolvedImport {
+                module: Cow::Owned(module),
+                line: import.line,
+                resolved: Some(target),
+                relative: import.is_relative,
+                statement: position,
+            });
+        }
+        if seen.is_empty() {
+            self.statements.push(ResolvedImport {
+                module: Cow::Borrowed(&import.module),
+                line: import.line,
+                resolved: None,
+                relative: import.is_relative,
+                statement: position,
+            });
+        }
+    }
+
+    // A path whose every segment names a module binds that module; one whose last segment does
+    // not binds that item of the module before it; a longer item path binds nothing.
+    fn bind_item(
+        &mut self,
+        walk: &Walk<'_, '_, 'a>,
+        segments: &[&'a str],
+        local: &'a str,
+    ) -> Option<&'a str> {
+        let (target, used) = walk.resolve(segments)?;
+        if used == segments.len() {
+            self.bind_module(local, target);
+        } else if used + 1 == segments.len() && !local.is_empty() && local != "_" {
+            let member = segments[used];
+            self.named.entry(local).or_default().insert(target);
+            self.members
+                .entry(local)
+                .or_default()
+                .insert((target, member));
+        }
+        Some(target)
+    }
+
+    fn bind_module(&mut self, local: &'a str, target: &'a str) {
+        if local.is_empty() || local == "_" {
+            return;
+        }
+        self.named.entry(local).or_default().insert(target);
+        self.module_bindings
+            .entry(local)
+            .or_default()
+            .insert(target);
+    }
+
+    // The module each qualifier of the file's references names; a qualifier that starts with a
+    // repository name the file's `use` leaves unbound stays out, so its names fall back.
+    fn qualify(&mut self, file: &'a FileFacts, rust: &RustTree<'_, 'a>) {
+        let internal = internal_locals(&file.path, &file.facts.imports, rust);
+        for reference in &file.facts.refs {
+            let qualifier = reference.qualifier.as_str();
+            if qualifier.is_empty() || self.qualified.contains_key(qualifier) {
+                continue;
+            }
+            let first = qualifier.split("::").next().unwrap_or_default();
+            if internal.contains(first) && !self.module_bindings.contains_key(first) {
+                continue;
+            }
+            if let Some(found) = self.qualified_module(&file.path, qualifier, rust) {
+                self.qualified.insert(qualifier, found);
+            }
+        }
+    }
+
+    // What a qualifier names: `None` when its walk stops inside this repository, or when a lone
+    // local name binds several modules.
+    fn qualified_module(
+        &self,
+        path: &'a str,
+        qualifier: &'a str,
+        rust: &RustTree<'_, 'a>,
+    ) -> Option<Qualified<'a>> {
+        let segments: Vec<&str> = qualifier.split("::").collect();
+        let first = segments[0];
+        if segments.len() == 1
+            && let Some(targets) = self.module_bindings.get(first)
+        {
+            let only = targets.first().copied().filter(|_| targets.len() == 1);
+            return only.map(Qualified::Module);
+        }
+        if let Some((module, used)) = rust.resolve(path, &segments, 0) {
+            return (used == segments.len()).then_some(Qualified::Module(module));
+        }
+        let known = self.module_bindings.contains_key(first)
+            || self.named.contains_key(first)
+            || rust.names_repository_module(path, first);
+        (!known).then_some(Qualified::Foreign)
+    }
 }
 
 impl<'a> ImportScope<'a> {

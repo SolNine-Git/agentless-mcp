@@ -14,6 +14,7 @@ mod path;
 mod paths;
 mod rank;
 mod resolver;
+mod rust_paths;
 mod scan;
 mod scopes;
 mod symbols;

@@ -1,23 +1,90 @@
+use std::collections::{HashMap, HashSet};
+
 use syntax::{Extraction, KindSet, NodeId, RoleRule};
 
 use super::python_scopes::{self, Roles};
-use super::tree::Tree;
+use super::tree::{Field, Tree};
 use crate::values::{Ref, Role};
 
 const KEY_QUOTES: [char; 2] = ['"', '\''];
+const RUST_UNNAMED: [&str; 2] = ["lifetime", "label"];
+const RUST_PATHS: [&str; 2] = ["scoped_identifier", "scoped_type_identifier"];
 
 // Every identifier occurrence in document order, with its role where the language has a role
 // analysis and `reference` where it has none.
 pub(super) fn refs(tree: &Tree, extraction: &Extraction) -> Vec<Ref> {
     let roles = (extraction.roles == RoleRule::Python).then(|| python_scopes::roles(tree));
+    let paths = (extraction.roles == RoleRule::Rust).then(|| RustPaths::of(tree));
     let wanted = &extraction.identifiers;
     tree.preorder(tree.root())
         .filter(|node| wanted.contains(tree.parsed.kind(*node)))
+        .filter(|node| {
+            paths
+                .as_ref()
+                .is_none_or(|paths| !paths.unnamed.contains(node))
+        })
         .filter_map(|node| {
             let name = identifier_name(tree, node, wanted);
-            (!name.is_empty()).then(|| occurrence(tree, node, name, roles.as_ref()))
+            let mut found =
+                (!name.is_empty()).then(|| occurrence(tree, node, name, roles.as_ref()))?;
+            if let Some(qualifier) = paths.as_ref().and_then(|paths| paths.qualifiers.get(&node)) {
+                qualifier.clone_into(&mut found.qualifier);
+            }
+            Some(found)
         })
         .collect()
+}
+
+// The identifiers inside Rust lifetimes and labels, which name no symbol, and the module path
+// that qualifies the last segment of each `a::b::name` whose path is all modules.
+#[derive(Default)]
+struct RustPaths {
+    unnamed: HashSet<NodeId>,
+    qualifiers: HashMap<NodeId, String>,
+}
+
+impl RustPaths {
+    fn of(tree: &Tree) -> RustPaths {
+        let mut paths = RustPaths::default();
+        for node in tree.preorder(tree.root()) {
+            if tree.is_any(node, &RUST_UNNAMED) {
+                paths.unnamed.extend(tree.preorder(node).skip(1));
+            } else if tree.is_any(node, &RUST_PATHS) {
+                paths.qualify(tree, node);
+            }
+        }
+        paths
+    }
+
+    fn qualify(&mut self, tree: &Tree, node: NodeId) {
+        let (Some(path), Some(name)) =
+            (tree.field(node, Field::Path), tree.field(node, Field::Name))
+        else {
+            return;
+        };
+        let text: String = tree
+            .text(path)
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        if module_like(&text) {
+            self.qualifiers.insert(name, text);
+        }
+    }
+}
+
+// A module path: each segment starts lower case, as `crate`, `self`, `super` and module names do.
+fn module_like(path: &str) -> bool {
+    !path.is_empty()
+        && path.split("::").all(|segment| {
+            segment
+                .chars()
+                .next()
+                .is_some_and(|first| first.is_ascii_lowercase() || first == '_')
+                && segment
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
 }
 
 fn occurrence(tree: &Tree, node: NodeId, name: &str, roles: Option<&Roles>) -> Ref {

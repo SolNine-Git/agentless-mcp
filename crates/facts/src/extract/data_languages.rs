@@ -7,7 +7,7 @@ use syntax::{Language, NodeId};
 
 use super::tree::{Field, Tree};
 use crate::spelling::{SIGNATURE_MAX_CHARS, truncate};
-use crate::values::{Symbol, SymbolKind, qualified};
+use crate::values::{Manifest, Symbol, SymbolKind, qualified};
 
 const PAIRS: [&str; 2] = ["pair", "block_mapping_pair"];
 const TOML_TABLES: [&str; 2] = ["table", "table_array_element"];
@@ -168,6 +168,50 @@ impl Walked {
             in_list: level.in_list,
         }
     }
+}
+
+// The `[package]` and `[lib]` values of a Cargo manifest, each the first string pair of its key.
+// A document without a package name declares no package.
+pub(super) fn manifest(tree: &Tree) -> Option<Manifest> {
+    let mut values: [Option<String>; 3] = [None, None, None];
+    let tables = tree
+        .named_children(tree.root())
+        .filter(|node| tree.is(*node, "table"));
+    for table in tables {
+        let header = data_key(tree, table, Language::Toml);
+        let pairs = tree
+            .named_children(table)
+            .filter(|child| tree.is(*child, "pair"));
+        for pair in pairs {
+            let slot = match (header, data_key(tree, pair, Language::Toml)) {
+                ("package", "name") => 0,
+                ("lib", "name") => 1,
+                ("lib", "path") => 2,
+                _ => continue,
+            };
+            if values[slot].is_none() {
+                values[slot] = string_value(tree, pair);
+            }
+        }
+    }
+    let [package, lib_name, lib_path] = values;
+    Some(Manifest {
+        package: package?,
+        lib_name,
+        lib_path,
+    })
+}
+
+// A one-line string with no quote or backslash inside, without its quotes; any other value is
+// absent, never a default.
+fn string_value(tree: &Tree, pair: NodeId) -> Option<String> {
+    let value = pair_value(tree, pair).filter(|value| tree.is(*value, "string"))?;
+    let text = tree.text(value);
+    let inner = KEY_QUOTES
+        .iter()
+        .find_map(|quote| text.strip_prefix(*quote)?.strip_suffix(*quote))?;
+    let plain = !inner.is_empty() && !inner.contains(['"', '\'', '\\', '\n']);
+    plain.then(|| inner.to_owned())
 }
 
 // The line of a table's last pair, else its header line: the node itself runs on over the blank
