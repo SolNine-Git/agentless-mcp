@@ -52,6 +52,33 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **A test companion whose name points at a listed file comes first.** The
+  map's section "tests exercising the files above" ranked its rows by flood
+  depth, then by the targets covered, the weight and the path. Now a test
+  whose file name points at a seed or a listed file comes before them. The
+  rule removes the last extension, then one affix: the prefix `test_`, or one
+  suffix of `_test`, `_tests`, `_spec`, `.test`, `.spec`, `-test`, `-spec`,
+  `Test`, `Tests`, `Spec` and `_unittest`. The rest must equal the stem of a
+  seed or a listed file: `test_pricing.py` for `pricing.py`, `os_test.go` for
+  `os.go`. The rule reads the file name only, so `test_utils.py` points at
+  every listed `utils.py`. It adds no test that the two-hop walk did not
+  reach, and the cap stays at five rows. It changes no ranked file: the
+  Loc-Bench retrieval tier keeps 150 of 150 ranked lists, seeded and no-seed.
+  Measured over the 363 `orient(map)` calls of the conf2 hooked and forced
+  benchmark arms, replayed through the CLI of c2daf41 and of this change: the
+  ranked files change in 0 calls and the companion rows in 240, and the rows
+  stay 1,708. The gold tests (`read_core_files`) in companion rows go from 72
+  to 98 in the hooked arm and from 20 to 33 in the forced arm, 92 to 130 in
+  all: 54 gained and 16 lost. The sessions that see a gold test in a
+  companion row go from 79 to 114. Per call, the paired gain is +0.090
+  [+0.042, +0.142] hooked and +0.188 [+0.058, +0.319] forced. In each loss, a
+  name-matched test took the place of a gold test that matched no listed
+  file, such as Django's `tests/validators/tests.py`. One case of
+  `crates/app/fixtures/read/companions.json` changes: in `repo_py_tests`
+  with the focus `cli.py` and `inventory` and `--max-files 2`,
+  `tests/test_cli.py` moves above `tests/test_pricing.py`. The guide's
+  companion paragraph gives the new order.
+
 - **The structure views move to the new tool `graph`, and three tools load
   on request.** This change breaks MCP callers:
   - `graph` holds `communities`, `cycles`, `health`, `diagram` and `path`.

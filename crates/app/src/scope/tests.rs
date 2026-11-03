@@ -1,4 +1,4 @@
-use super::{in_metric_scope, is_fixture_path, is_test_path};
+use super::{in_metric_scope, is_fixture_path, is_test_path, test_subject};
 use crate::testing::MANIFEST_DIR;
 
 #[test]
@@ -30,4 +30,30 @@ fn a_rust_file_with_the_stem_tests_or_testing_is_a_test_path() {
         assert_eq!(is_test_path(path), test, "test: {path:?}");
     }
     assert!(!in_metric_scope("crates/app/src/testing.rs"));
+}
+
+#[test]
+fn a_test_name_points_at_its_stem_without_the_one_affix() {
+    let cases = [
+        ("tests/test_x.py", Some("x")),
+        ("pkg/x_test.go", Some("x")),
+        ("src/x.test.ts", Some("x")),
+        ("src/x.spec.ts", Some("x")),
+        ("spec/x_spec.rb", Some("x")),
+        ("src/test/java/XTest.java", Some("X")),
+        ("x-test.js", Some("x")),
+        ("x_unittest.py", Some("x")),
+        ("x_tests.py", Some("x")),
+        ("x-spec.js", Some("x")),
+        ("XTests.cs", Some("X")),
+        ("XSpec.scala", Some("X")),
+        ("tests/test_x_test.py", Some("x_test")),
+        ("x.py", None),
+        ("django/tests.py", None),
+        ("tests/test_.py", None),
+        ("Test.java", None),
+    ];
+    for (path, subject) in cases {
+        assert_eq!(test_subject(path), subject, "{path:?}");
+    }
 }

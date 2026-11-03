@@ -410,22 +410,24 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         is\nits line range, and an import gives nothing to point \
         at.\n\nOne row per test file. A broad suite that touches six \
         ranked files says so on\nits own row instead of taking six of \
-        them. Rows are ranked by flood depth\nfirst, then by how many \
-        ranked files the test covers, then by aggregated edge\nweight, \
-        then by path. The walk reaches two hops, so a test that \
-        exercises its\nsubject through a helper is still listed. The \
-        section is capped at five rows\nand is omitted entirely when it \
-        is empty, so a repository with no tests pays\nnothing for \
-        it.\n\nThe JSON form carries the same section under \
-        `test_companions`, shaped\n`{total, limit, omitted, rows}`. \
-        `total` is how many test files were found\nbefore the cap and \
-        `omitted` how many the cap left out. Each row is\n`{path, \
-        start, end, covers, depth, weight}`: `start` and `end` are the \
-        span of\nthe referencing symbol inside the test, never the \
-        whole file; `covers` names\nthe files of the text row, without \
-        the `(not listed)` mark; `depth` is the\ntest's distance from \
-        the seeded and ranked files; `weight` is the aggregated\nedge \
-        weight behind it.\n\nTwo things the section cannot see, both \
+        them. A test whose file name points at a\nseeded or listed file \
+        comes first (`test_pricing.py` for `pricing.py`,\n`os_test.go` \
+        for `os.go`). The other keys follow in order: flood depth, \
+        how\nmany ranked files the test covers, aggregated edge weight, \
+        and path. The walk\nreaches two hops, so a test that exercises \
+        its subject through a helper is\nstill listed. The section is \
+        capped at five rows and is omitted entirely when\nit is empty, \
+        so a repository with no tests pays nothing for it.\n\nThe JSON \
+        form carries the same section under `test_companions`, \
+        shaped\n`{total, limit, omitted, rows}`. `total` is how many \
+        test files were found\nbefore the cap and `omitted` how many \
+        the cap left out. Each row is\n`{path, start, end, covers, \
+        depth, weight}`: `start` and `end` are the span of\nthe \
+        referencing symbol inside the test, never the whole file; \
+        `covers` names\nthe files of the text row, without the `(not \
+        listed)` mark; `depth` is the\ntest's distance from the seeded \
+        and ranked files; `weight` is the aggregated\nedge weight \
+        behind it.\n\nTwo things the section cannot see, both \
         properties of the graph rather than of\nthe section. A fixture \
         with no grammar is never parsed, so it appears in no\nedge. And \
         a test whose only use of its subject is a method on a value \
@@ -1764,30 +1766,30 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3_599, 4_432),
     ("stable-ids", 4_434, 5_923),
     ("the-two-surfaces", 5_925, 11_608),
-    ("per-tool-usage", 11_610, 96_890),
+    ("per-tool-usage", 11_610, 97_010),
     ("claude-code-specifics", 13_226, 15_038),
-    ("map", 15_040, 24_949),
-    ("tree", 24_951, 25_272),
-    ("skeleton", 25_274, 26_639),
-    ("expand", 26_641, 28_614),
-    ("slice", 28_616, 29_453),
-    ("find-symbol", 29_455, 32_140),
-    ("refs", 32_142, 39_338),
-    ("history", 39_340, 42_173),
-    ("explain", 42_175, 44_150),
-    ("path", 44_152, 47_229),
-    ("cycles", 47_231, 48_736),
-    ("communities", 48_738, 51_261),
-    ("diagram", 51_263, 54_033),
-    ("health", 54_035, 60_270),
-    ("html", 60_272, 61_223),
-    ("resolve-locs", 61_225, 62_040),
-    ("capabilities", 62_042, 62_937),
-    ("index", 62_939, 65_680),
-    ("lint", 65_682, 85_690),
-    ("validate-vote", 85_692, 95_289),
-    ("warmup", 95_291, 96_890),
-    ("project-defaults-agentless-mcp-json", 96_892, 100_845),
-    ("token-counting", 100_847, 101_261),
-    ("exit-codes", 101_263, 101_721),
+    ("map", 15_040, 25_069),
+    ("tree", 25_071, 25_392),
+    ("skeleton", 25_394, 26_759),
+    ("expand", 26_761, 28_734),
+    ("slice", 28_736, 29_573),
+    ("find-symbol", 29_575, 32_260),
+    ("refs", 32_262, 39_458),
+    ("history", 39_460, 42_293),
+    ("explain", 42_295, 44_270),
+    ("path", 44_272, 47_349),
+    ("cycles", 47_351, 48_856),
+    ("communities", 48_858, 51_381),
+    ("diagram", 51_383, 54_153),
+    ("health", 54_155, 60_390),
+    ("html", 60_392, 61_343),
+    ("resolve-locs", 61_345, 62_160),
+    ("capabilities", 62_162, 63_057),
+    ("index", 63_059, 65_800),
+    ("lint", 65_802, 85_810),
+    ("validate-vote", 85_812, 95_409),
+    ("warmup", 95_411, 97_010),
+    ("project-defaults-agentless-mcp-json", 97_012, 100_965),
+    ("token-counting", 100_967, 101_381),
+    ("exit-codes", 101_383, 101_841),
 ];

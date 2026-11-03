@@ -452,12 +452,13 @@ An import alone does not list it. What the row is worth over a bare path is
 its line range, and an import gives nothing to point at.
 
 One row per test file. A broad suite that touches six ranked files says so on
-its own row instead of taking six of them. Rows are ranked by flood depth
-first, then by how many ranked files the test covers, then by aggregated edge
-weight, then by path. The walk reaches two hops, so a test that exercises its
-subject through a helper is still listed. The section is capped at five rows
-and is omitted entirely when it is empty, so a repository with no tests pays
-nothing for it.
+its own row instead of taking six of them. A test whose file name points at a
+seeded or listed file comes first (`test_pricing.py` for `pricing.py`,
+`os_test.go` for `os.go`). The other keys follow in order: flood depth, how
+many ranked files the test covers, aggregated edge weight, and path. The walk
+reaches two hops, so a test that exercises its subject through a helper is
+still listed. The section is capped at five rows and is omitted entirely when
+it is empty, so a repository with no tests pays nothing for it.
 
 The JSON form carries the same section under `test_companions`, shaped
 `{total, limit, omitted, rows}`. `total` is how many test files were found

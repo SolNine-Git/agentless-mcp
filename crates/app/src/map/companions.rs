@@ -8,9 +8,10 @@ use facts::Symbol;
 use graph::{FileFacts, FileGraph, LineOwners, NameIndex, Reached, flood_backward};
 use kernel::{Bounded, Deadline, Stopped, checkpoint};
 use metrics::compensated_sum;
+use text::{posix_name, split_suffix};
 
 use crate::ops::limits::{MAX_TEST_COMPANIONS, TEST_COMPANION_DEPTH};
-use crate::scope::is_test_path;
+use crate::scope::{is_test_path, test_subject};
 
 /// The test files a map lists, how many there were, and whether the walk stopped early.
 #[derive(Clone, Debug, PartialEq)]
@@ -38,8 +39,7 @@ pub struct Companion {
     pub weight: f64,
 }
 
-// One row per test file; ordered by depth, the targets covered, the weight, then the path.
-// `deadline` is checked before each reached file, a test file or not.
+// One row per test file. `deadline` is checked before each reached file, a test file or not.
 pub(super) fn companions_for(
     graph: &FileGraph<'_>,
     by_path: &BTreeMap<&str, &FileFacts>,
@@ -59,6 +59,20 @@ pub(super) fn companions_for(
             rows.extend(companion(graph, file, index, row, &nearer[&row.depth]));
         }
     }
+    Ok(Companions {
+        rows: ranked(rows, targets),
+        exhausted: reach.exhausted,
+    })
+}
+
+// The rows a cap keeps: a test whose name points at a target first, then depth, the targets
+// covered, the weight, then the path.
+fn ranked(mut rows: Vec<Companion>, targets: &BTreeSet<&str>) -> Bounded<Companion> {
+    let stems: BTreeSet<&str> = (targets.iter())
+        .map(|path| split_suffix(posix_name(path)).0)
+        .collect();
+    let matched =
+        |row: &Companion| test_subject(&row.path).is_some_and(|stem| stems.contains(stem));
     let covered = |row: &Companion| {
         let named = row
             .covers
@@ -68,15 +82,13 @@ pub(super) fn companions_for(
     };
     rows.sort_by(|a, b| {
         let weight = b.weight.partial_cmp(&a.weight).unwrap_or(Ordering::Equal);
-        (a.depth.cmp(&b.depth))
+        (matched(b).cmp(&matched(a)))
+            .then(a.depth.cmp(&b.depth))
             .then(covered(b).cmp(&covered(a)))
             .then(weight)
             .then_with(|| a.path.cmp(&b.path))
     });
-    Ok(Companions {
-        rows: Bounded::cut(rows, MAX_TEST_COMPANIONS),
-        exhausted: reach.exhausted,
-    })
+    Bounded::cut(rows, MAX_TEST_COMPANIONS)
 }
 
 // The row of one reached test file, when it references a file that it came through.

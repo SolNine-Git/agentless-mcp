@@ -1,10 +1,25 @@
 //! The path rules that decide which files each pair check and the clone index read.
 
 use syntax::{Language, Tier};
+use text::{posix_name, split_suffix};
 
 const TEST_DIRECTORIES: [&str; 6] = ["test", "tests", "testing", "spec", "specs", "__tests__"];
 const FIXTURE_DIRECTORIES: [&str; 2] = ["fixtures", "testdata"];
 const RUST_TEST_STEMS: [&str; 2] = ["tests", "testing"];
+const TEST_PREFIX: &str = "test_";
+const TEST_SUFFIXES: [&str; 11] = [
+    "_test",
+    "_tests",
+    "_spec",
+    ".test",
+    ".spec",
+    "-test",
+    "-spec",
+    "Test",
+    "Tests",
+    "Spec",
+    "_unittest",
+];
 
 /// Returns true when `path` is a test file, by a directory segment or by its file name.
 #[must_use]
@@ -19,6 +34,16 @@ pub fn is_test_path(path: &str) -> bool {
         || file.contains(".test.")
         || file.contains(".spec.")
         || is_rust_test_module(path, stem)
+}
+
+/// Returns the stem that a test file's name points at, without its test affix: None for no affix
+/// or an empty rest.
+#[must_use]
+pub fn test_subject(path: &str) -> Option<&str> {
+    let (stem, _) = split_suffix(posix_name(path));
+    let suffixed = || (TEST_SUFFIXES.iter()).find_map(|suffix| stem.strip_suffix(suffix));
+    let rest = stem.strip_prefix(TEST_PREFIX).or_else(suffixed);
+    rest.filter(|rest| !rest.is_empty())
 }
 
 /// Returns true when a directory segment of `path` names a fixture directory.
