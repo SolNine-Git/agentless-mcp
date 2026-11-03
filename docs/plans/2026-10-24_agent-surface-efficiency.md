@@ -1,10 +1,10 @@
 # Plan: a cheaper, sharper agent surface
 
-**Date**: 2026-10-24 | **Status**: revision 4. Paused after C3 and TR landed; see Status (2026-10-25) | **Evidence**: [benchmark-methodology.md](../analysis/benchmark-methodology.md), the 2026-10-24 entries
+**Date**: 2026-10-24 | **Status**: revision 4. C1 to C5, TR, R3R and RF landed; see Status (2026-11-02) | **Evidence**: [benchmark-methodology.md](../analysis/benchmark-methodology.md), the 2026-10-24 entries
 
-## Status (2026-10-25)
+## Status (2026-11-02)
 
-Paused by the owner after C3 and TR landed, to save cost. The confirmation below runs only when the owner says so.
+The owner paused the plan on 2026-10-25, after C3 and TR, to save cost. The owner resumed it on 2026-10-29 with the second confirmation.
 
 ### Landed and kept
 
@@ -15,20 +15,35 @@ Paused by the owner after C3 and TR landed, to save cost. The confirmation below
 | Correctness batch (OV, CB1-CB5, D3, CI1) | d7c0a70 to f6105a2 | flat60 screen: quality 0 of 21, WCC +0.0026 |
 | U-a, usage files in `find` | 8d0dbba, 6388ff5 | flat60 screen: quality 0 of 21, WCC -0.0117 [-0.0316, +0.0076]; named gold files 111 to 117 (11 gained, 5 lost, 8 of the gains through a usage block) |
 | Follow-up batch FB1-FB4 | bc86507, 854c90c, 87e8c6e, edea4a4 | flat60 screen: quality 0 of 21, WCC -0.0044 [-0.0273, +0.0186], first-turn +0; Loc-Bench retrieval tier 0 of 150 ranked lists changed (FB3, FB1). FB2 removes 40,162 declaration rows from lucene refs answers; FB2 makes refs of a name with many definitions about 16% slower on lucene (measure first) |
-| C3, progressive disclosure | 542f481 | Not screened (owner, cost). tools/list with one root 10,534 to 10,403 bytes; the always-loaded set 9,565 to 5,516 bytes (1,881 to 1,106 cl100k). Derived first-turn change: about -99 tokens with tool search off (the bench as configured), about -1,280 with tool search on |
-| TR, target resolution and honest absence | ef6a1a2 | Replay of 523 recorded calls: at the base, 65 of 251 refs answers were false zeros (18 unprefixed `path::name`, 47 undeclared names). After: 20 bind, 53 say that no symbol matches (exit 1, isError), 149 gain a line that splits binding rows from candidates; 0 unclassified changes. Always-loaded set +23 bytes |
+| C3, progressive disclosure | 542f481 | tools/list with one root 10,534 to 10,403 bytes. The always-loaded set goes from 5 tools, 9,565 bytes and 1,851 cl100k tokens to 3 tools, 5,516 bytes and 1,088 tokens (name, description and input schema per tool). Confirmation 2 below |
+| TR, target resolution and honest absence | ef6a1a2 | Replay of 523 recorded calls: at the base, 65 of 251 refs answers were false zeros (18 unprefixed `path::name`, 47 undeclared names). After: 20 bind, 53 say that no symbol matches (exit 1, isError), 149 gain a line that splits binding rows from candidates; 0 unclassified changes |
+| R3R, refs loads on every turn again | 811b348 | C3's kill rule triggered in confirmation 2 (refs sessions 31 to 0, below). refs entry 1,338 to 1,366 bytes; the always-loaded set is 4 tools, 6,906 bytes and 1,342 cl100k tokens with one root |
+| RF, fixes from the branch review | d70c916, 18ffbb9 | Replay of the 523 recorded calls over MCP stdio: 14 refs refusals gain the skipped-file warning, 1 explain becomes a refusal (isError true), 0 unclassified changes; over the CLI, 523 of 523 answers are the same. tools/list is byte-equal (10,523 bytes with one root, 11,740 with two). Loc-Bench retrieval tier: 0 of 150 ranked lists changed, seeded and no-seed. The surface figures in CHANGELOG.md are recounted with one cl100k method |
 
 Not kept: U-b (several names per `find` call). Its screen showed 0 of 110 `find` calls with a list.
 
-Lesson: a flat60 placebo (the same build in two windows) moved 5 of 21 metrics. A 60-instance screen shows mechanism and gross changes only. Quality decisions wait for the confirmation.
+Lesson: a flat60 placebo (the same build in two windows) moved 5 of 21 metrics, and an n=300 native placebo across two windows moved 6 of 21. A screen shows mechanism and gross changes only, and a comparison across windows credits nothing to the build. Quality decisions need arms in the same window.
+
+### Confirmation 2 (2026-10-29)
+
+bench300.jsonl, 300 instances, four arms in one window: native Claude Code, ungated `claude_code_agentless`, forced and hooked. Build ef6a1a2. Claude Code tool search was on in the three agentless arms. 1,200 of 1,200 sessions were healthy. The run cost $50.45.
+
+| Arm against native (paired, n=300) | Quality metrics better / worse | WCC | Context per session |
+|---|---|---|---|
+| forced | 3 / 0 | +0.0019 [-0.0099, +0.0140] | +46.0% |
+| hooked | 4 / 0 | +0.0054 [-0.0053, +0.0166] | +115.8% |
+| ungated | 3 / 5 | -0.0091 [-0.0174, -0.0010] | +34.7% |
+
+- The hooked arm against the ungated arm: 14 of 21 metrics better, 0 worse, WCC +0.0146 [+0.0054, +0.0242]. The ungated agents made 27 agentless calls in 300 sessions. This answers the review's question about the gate: without it, the surface costs context and finds fewer gold files, so the gate stays.
+- The forced arm against ea6ed16 (confirmation 1, another window): 7 of 21 metrics better, 0 worse, WCC +0.0135; context -14.1%, turns -8.3%; first-turn context 7,716 to 7,076 tokens. The native arm moved 6 of 21 metrics between the same two windows, so these gains are not credited to the build. The run shows no quality loss.
+- C3's kill rule triggered: refs sessions in the forced arm went from 31 (38 calls) to 0. Four sessions fetched the refs schema with ToolSearch and did not call it. R3R restored the hint.
 
 ### Left
 
-1. **The confirmation**, when the owner says so: 300 instances, four arms (forced, hooked, ungated `claude_code_agentless`, native baseline), the new build against ea6ed16. The bench as configured runs with tool search off. swe-explore-bench now has an opt-in `BENCH_TOOL_SEARCH=1` that adds ToolSearch to `--tools` (uncommitted there), which C3 needs to show its effect.
-2. A review of the branch, then the merge.
-3. C6 to C10 are not started.
-4. The owner's review `docs/analysis/2026-10-25_tool-surface-usefulness-review.md` raised six defects. TR fixed defect 1 and the headline part of defect 3, and C3 states that `path` ignores edge direction (defect 4). Defect 2 (no Rust cross-crate binding tier), defect 5 (cross-language candidate edges), defect 6 (a union schema per tool) and its gate items (log fields, an ungated arm, enrichment) are open.
-5. Owner actions outside the repository after C3: add `mcp__agentless__graph` to `permissions.allow`, and update the skill files that call `orient` with a moved operation.
+1. **The merge.** The pull request of feat/agent-surface-efficiency into main, with a merge commit. Release steps only on the owner's word.
+2. **C6 to C10.** C7 phase 1 measured the hub penalty: no rule passed the pre-registered tier test on both halves, so it stops. The name-matched test-companion rule from the same phase is in build: over the 363 conf2 map calls, the gold tests that the map shows go from 92 to 130, and 0 of 150 tier ranked lists change. It lands after this merge. C6, C8a, C8b, C9 and C10 are not started.
+3. **The owner's review** (`docs/analysis/2026-10-25_tool-surface-usefulness-review.md`). Done: defect 1 and the headline of defect 3 (TR), the stated direction of `path` (C3), the gated, ungated and native comparison (confirmation 2), and the branch review findings (RF). In build, after this merge: defect 2 (a Rust `use` binds through the workspace manifests; in the prototype, refs of `pagerank` bind 13 of 13 rows, against 1), defect 5 (a candidate binds only inside one language family, and a Rust lifetime is not a reference), and a diagram that drew no edges. Not started: defect 6 (a schema per operation), the enriched arm, and the gate log fields.
+4. **Owner actions after the merge:** redeploy the uv tool build and restart mcp-agentless.service.
 
 ## Problem
 
