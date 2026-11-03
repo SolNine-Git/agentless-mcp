@@ -327,6 +327,26 @@ Each byte count is of the served bytes.
 
 ### Fixed
 
+- **A diagram past its edge bound draws its heaviest reference edges, not
+  none.** The diagram counted declared and reference edges together, and past
+  the edge bound it drew no reference edge. So a diagram whose modules had no
+  declared import between them drew 0 edges: over a copy of this repository at
+  9c8b293, `graph(diagram, focus=["crates/graph/src/rank.rs"], max_nodes=12)`
+  drew 12 modules, 0 edges and "%% 91 reference edges not drawn (edge bound
+  40)". The diagram now draws every declared import between the drawn
+  modules, and the bound never drops one. Then it draws the reference edges in
+  descending weight while the bound has room, with equal weights in node id
+  order, so one graph always gives one picture. The template
+  `diagram_edges_unlisted` is now "%% {count} lighter reference
+  {count:edge|edges} not drawn (edge bound {limit})". The same call draws 40
+  edges and "%% 51 lighter reference edges not drawn (edge bound 40)". With
+  the release binaries of 18ffbb9 and of this change, over 40 synthetic
+  diagram calls (12 modules, the focus is the first file of a recorded map
+  answer, 39 repositories): diagrams with no edge 7 to 0, solid edges 879 to
+  879, dashed edges 95 to 459. 18 answers change, and none loses a module or
+  an import edge. 80 path calls over the same repositories give the same
+  answers. The guide paragraph "Edge kinds are told apart" says the new rule.
+
 The bullets from here to the `path::name` bullet are measured with the release
 binaries of 811b348 and of this change, over MCP stdio and the CLI.
 

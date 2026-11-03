@@ -632,7 +632,7 @@ pub const DATA_KEY_NO_FAN_IN: Template<(Text, Text)> = Template::new(&[
 pub const DIAGRAM_EDGES_UNLISTED: Template<(Count, Count)> = Template::new(&[
     Piece::Text("%% "),
     Piece::Value(0),
-    Piece::Text(" reference "),
+    Piece::Text(" lighter reference "),
     Piece::Choice(0, "edge", "edges"),
     Piece::Text(" not drawn (edge bound "),
     Piece::Value(1),

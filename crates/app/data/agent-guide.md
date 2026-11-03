@@ -1061,9 +1061,11 @@ Five properties worth knowing:
 - **Edge kinds are told apart.** Solid arrows are declared imports. Dashed
   arrows are name references. A fixed `%% solid: imports, dashed: references`
   comment names the encoding, so the picture cannot imply an import cycle the
-  `cycles` operation denies. Reference edges past the edge bound (default 40)
-  are elided wholesale, never sampled, and a comment counts them. That bound
-  never drops import edges.
+  `cycles` operation denies. The diagram draws every import edge between the
+  drawn modules, and the edge bound (default 40) never drops one. Then it
+  draws the heaviest reference edges while the bound has room, with equal
+  weights in node id order, and a comment counts the lighter reference edges
+  that it does not draw.
 - **Bounded.** `--max-nodes` (default 40) keeps the highest-PageRank modules
   and adds an explicit `... N more modules` node. The tool always keeps a
   focus seed.

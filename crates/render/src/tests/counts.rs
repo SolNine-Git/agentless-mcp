@@ -226,7 +226,7 @@ fn a_count_of_one_takes_the_singular_in_the_diagram_and_its_caveat_marks_each_no
     assert_eq!(
         mermaid(&view),
         "flowchart LR\n    subgraph s0[\"pkg around pkg/a.py\"]\n        n0[\"pkg/a.py\"]\n    \
-         end\n    %% 1 reference edge not drawn (edge bound 1)\n    n_elided[\"... 1 more \
+         end\n    %% 1 lighter reference edge not drawn (edge bound 1)\n    n_elided[\"... 1 more \
          module\"]\n"
     );
     let summaries = [

@@ -912,17 +912,19 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         are declared imports. Dashed\n  arrows are name references. A \
         fixed `%% solid: imports, dashed: references`\n  comment names \
         the encoding, so the picture cannot imply an import cycle \
-        the\n  `cycles` operation denies. Reference edges past the edge \
-        bound (default 40)\n  are elided wholesale, never sampled, and \
-        a comment counts them. That bound\n  never drops import \
-        edges.\n- **Bounded.** `--max-nodes` (default 40) keeps the \
-        highest-PageRank modules\n  and adds an explicit `... N more \
-        modules` node. The tool always keeps a\n  focus seed.\n- \
-        **Deterministic.** Node ids are synthetic (`n0`, `n1`) in \
-        sorted path\n  order. The renderer emits edges in id order and \
-        prints no float. The same\n  tree renders to the same bytes, \
-        which is what makes `--check` meaningful.\n- **Labels are \
-        untrusted content.** A path is a filename, and a filename \
+        the\n  `cycles` operation denies. The diagram draws every \
+        import edge between the\n  drawn modules, and the edge bound \
+        (default 40) never drops one. Then it\n  draws the heaviest \
+        reference edges while the bound has room, with equal\n  weights \
+        in node id order, and a comment counts the lighter reference \
+        edges\n  that it does not draw.\n- **Bounded.** `--max-nodes` \
+        (default 40) keeps the highest-PageRank modules\n  and adds an \
+        explicit `... N more modules` node. The tool always keeps a\n  \
+        focus seed.\n- **Deterministic.** Node ids are synthetic (`n0`, \
+        `n1`) in sorted path\n  order. The renderer emits edges in id \
+        order and prints no float. The same\n  tree renders to the same \
+        bytes, which is what makes `--check` meaningful.\n- **Labels \
+        are untrusted content.** A path is a filename, and a filename \
         can\n  say anything. Ids never come from repository content. \
         Every label is quoted\n  and reduced to an allowlist of \
         characters. The renderer emits no `click`,\n  `style` or \
@@ -1766,7 +1768,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3_599, 4_432),
     ("stable-ids", 4_434, 5_923),
     ("the-two-surfaces", 5_925, 11_608),
-    ("per-tool-usage", 11_610, 97_010),
+    ("per-tool-usage", 11_610, 97_154),
     ("claude-code-specifics", 13_226, 15_038),
     ("map", 15_040, 25_069),
     ("tree", 25_071, 25_392),
@@ -1780,16 +1782,16 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("path", 44_272, 47_349),
     ("cycles", 47_351, 48_856),
     ("communities", 48_858, 51_381),
-    ("diagram", 51_383, 54_153),
-    ("health", 54_155, 60_390),
-    ("html", 60_392, 61_343),
-    ("resolve-locs", 61_345, 62_160),
-    ("capabilities", 62_162, 63_057),
-    ("index", 63_059, 65_800),
-    ("lint", 65_802, 85_810),
-    ("validate-vote", 85_812, 95_409),
-    ("warmup", 95_411, 97_010),
-    ("project-defaults-agentless-mcp-json", 97_012, 100_965),
-    ("token-counting", 100_967, 101_381),
-    ("exit-codes", 101_383, 101_841),
+    ("diagram", 51_383, 54_297),
+    ("health", 54_299, 60_534),
+    ("html", 60_536, 61_487),
+    ("resolve-locs", 61_489, 62_304),
+    ("capabilities", 62_306, 63_201),
+    ("index", 63_203, 65_944),
+    ("lint", 65_946, 85_954),
+    ("validate-vote", 85_956, 95_553),
+    ("warmup", 95_555, 97_154),
+    ("project-defaults-agentless-mcp-json", 97_156, 101_109),
+    ("token-counting", 101_111, 101_525),
+    ("exit-codes", 101_527, 101_985),
 ];

@@ -122,7 +122,7 @@
   "diagram_summary_grouped": "diagram of {count} {count:module|modules}, grouped by community; {total} elided",
   "diagram_summary_focus_grouped": "diagram of {count} {count:module|modules} around {target}, grouped by community; {total} elided",
   "diagram_elided": "... {count} more {count:module|modules}",
-  "diagram_edges_unlisted": "%% {count} reference {count:edge|edges} not drawn (edge bound {limit})",
+  "diagram_edges_unlisted": "%% {count} lighter reference {count:edge|edges} not drawn (edge bound {limit})",
   "diagram_not_converged": "the ranking that chose these modules did not converge, so which ones the bound kept is a partial answer",
   "diagram_titles": "subgraph titles name whole communities, including the {count} {count:module|modules} the rank bound left out of this diagram",
   "health_over": "health over {count} {count:symbol|symbols}",

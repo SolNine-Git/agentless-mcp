@@ -25,7 +25,7 @@ pub struct DiagramRequest {
     pub focus: Option<String>,
     /// The most modules drawn.
     pub max_nodes: IntArg,
-    /// The most edges before the reference edges are left out.
+    /// The most edges before the lighter reference edges are left out.
     pub max_edges: IntArg,
     /// Whether the modules are drawn inside community subgraphs.
     pub group_by_communities: bool,
@@ -248,33 +248,54 @@ fn chart_nodes(
     (groups, rest)
 }
 
-// The edges between two drawn modules in id order. Reference edges are all or nothing against
-// the bound, because a sampled subset cannot tell an elision from an absence.
+struct Pair {
+    from: usize,
+    to: usize,
+    weight: f64,
+    declared: bool,
+}
+
 fn chart_edges(
     graph: &FileGraph<'_>,
     ids: &BTreeMap<&str, usize>,
     imports: &BTreeSet<(&str, &str)>,
     max_edges: usize,
 ) -> (Vec<ChartEdge>, usize) {
-    let mut pairs: Vec<(usize, usize, bool)> = (graph.edges())
+    let pairs = (graph.edges())
         .filter(|(source, target, _)| source != target)
-        .filter_map(|(source, target, _)| {
-            let declared = imports.contains(&(source, target));
-            Some((*ids.get(source)?, *ids.get(target)?, declared))
+        .filter_map(|(source, target, weight)| {
+            Some(Pair {
+                from: *ids.get(source)?,
+                to: *ids.get(target)?,
+                weight,
+                declared: imports.contains(&(source, target)),
+            })
         })
         .collect();
-    pairs.sort_unstable();
-    let references = pairs.iter().filter(|(_, _, declared)| !declared).count();
-    let fits = pairs.len() <= max_edges;
-    let edges = (pairs.into_iter())
-        .filter(|(_, _, declared)| *declared || fits)
-        .map(|(source, target, declared)| ChartEdge {
-            from: format!("n{source}"),
-            to: format!("n{target}"),
-            solid: declared,
+    bounded(pairs, max_edges)
+}
+
+// Every declared import, then the heaviest reference edges while the bound has room, in id
+// order. Ties take the lower ids, so the same graph always draws the same subset.
+fn bounded(pairs: Vec<Pair>, max_edges: usize) -> (Vec<ChartEdge>, usize) {
+    let (mut drawn, mut references): (Vec<Pair>, Vec<Pair>) =
+        pairs.into_iter().partition(|pair| pair.declared);
+    references.sort_by(|left, right| {
+        (right.weight.total_cmp(&left.weight))
+            .then_with(|| (left.from, left.to).cmp(&(right.from, right.to)))
+    });
+    let room = max_edges.saturating_sub(drawn.len()).min(references.len());
+    let not_drawn = references.len() - room;
+    drawn.extend(references.into_iter().take(room));
+    drawn.sort_unstable_by_key(|pair| (pair.from, pair.to));
+    let edges = (drawn.into_iter())
+        .map(|pair| ChartEdge {
+            from: format!("n{}", pair.from),
+            to: format!("n{}", pair.to),
+            solid: pair.declared,
         })
         .collect();
-    (edges, if fits { 0 } else { references })
+    (edges, not_drawn)
 }
 
 // Each run of characters outside the allowlist becomes one underscore, runs of spaces collapse,
