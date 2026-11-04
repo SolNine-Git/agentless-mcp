@@ -123,13 +123,14 @@ struct Found {
 
 impl Git {
     /// Lists each file under `root` that git does not ignore, within the walk bounds, or refuses
-    /// the root when it is not a directory, git cannot list it, or the files pass a bound.
+    /// the root when it is not a directory, git cannot list it, or the files pass a bound. The
+    /// byte bound counts only the files that `reads` accepts.
     #[must_use]
-    pub fn walk(&self, root: &Path) -> Walk {
-        self.walk_within(root, BOUNDS)
+    pub fn walk(&self, root: &Path, reads: io::ScanReads) -> Walk {
+        self.walk_within(root, BOUNDS, reads)
     }
 
-    fn walk_within(&self, root: &Path, bounds: Bounds) -> Walk {
+    fn walk_within(&self, root: &Path, bounds: Bounds, reads: io::ScanReads) -> Walk {
         let root = match resolved_directory(root) {
             Ok(root) => root,
             Err(error) => return refused(error, Vec::new()),
@@ -137,13 +138,13 @@ impl Git {
         let Found {
             names,
             mut warnings,
-        } = self.names(&root, bounds.files);
+        } = self.names(&root, bounds.files, reads);
         let names = match names {
             Ok(names) => names,
             Err(error) => return refused(error, warnings),
         };
         let probe = |candidate: &Path| io::contained_file_size(candidate, &root);
-        let admitted = admit(&root, names, bounds, probe);
+        let admitted = admit(&root, names, bounds, reads, probe);
         warnings.extend(admitted.warnings);
         Walk {
             files: admitted.files,
@@ -151,7 +152,7 @@ impl Git {
         }
     }
 
-    fn names(&self, root: &Path, max_files: usize) -> Found {
+    fn names(&self, root: &Path, max_files: usize, reads: io::ScanReads) -> Found {
         let (listed, unchecked) = self.listing_speaks_for(root);
         let found = if listed {
             match self.listed(root, max_files) {
@@ -162,7 +163,7 @@ impl Git {
                 Err(error) => refused_names(error, Vec::new()),
             }
         } else {
-            walked(root)
+            walked(root, reads)
         };
         let warnings = unchecked.into_iter().chain(found.warnings).collect();
         Found {
@@ -338,8 +339,8 @@ fn decoded_names(
 }
 
 // The skips of a bounded walk come with either outcome, as the walk raised them.
-fn walked(root: &Path) -> Found {
-    let walk = io::walk(root);
+fn walked(root: &Path, reads: io::ScanReads) -> Found {
+    let walk = io::walk(root, reads);
     let mut warnings: Vec<WalkWarning> =
         walk.skipped.into_iter().map(WalkWarning::Skipped).collect();
     let files = match walk.files {
@@ -374,6 +375,7 @@ fn admit(
     root: &Path,
     mut names: Vec<String>,
     bounds: Bounds,
+    reads: io::ScanReads,
     probe: impl Fn(&Path) -> Option<std::io::Result<u64>>,
 ) -> Walk {
     names.sort_unstable();
@@ -404,7 +406,7 @@ fn admit(
                 continue;
             }
         };
-        total = total.saturating_add(size);
+        total = total.saturating_add(io::counted_bytes(reads, &name, size));
         if files.len() >= bounds.files {
             return refused(too_many_files(bounds.files, root), warnings);
         }

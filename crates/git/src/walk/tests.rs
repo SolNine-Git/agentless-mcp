@@ -12,6 +12,10 @@ use crate::run::classify;
 use crate::testing::{Scratch, cases, latin, path_before};
 use crate::{Failure, Git, GitOutcome, Unfinished};
 
+// Stand-ins for the caller's rule: a scan that reads every file, and one that reads Python.
+const EVERY: io::ScanReads = |_, _| true;
+const PYTHON: io::ScanReads = |path, _| Path::new(path).extension() == Some(OsStr::new("py"));
+
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
 enum Decoded {
@@ -54,7 +58,7 @@ fn disowning_repo(scratch: &Scratch) -> PathBuf {
 }
 
 fn paths(scratch: &Scratch, root: &Path) -> Vec<String> {
-    let walk = scratch.git().walk(root);
+    let walk = scratch.git().walk(root, EVERY);
     let files = walk.files.unwrap_or_else(|error| panic!("{error}"));
     files.into_iter().map(|file| file.path).collect()
 }
@@ -124,7 +128,7 @@ fn sizes_are_reported() {
     let root = git_repo(&scratch);
     let files = scratch
         .git()
-        .walk(&root)
+        .walk(&root, EVERY)
         .files
         .expect("a listed repository");
     let app = files.iter().find(|file| file.path == "app.py");
@@ -136,7 +140,7 @@ fn the_file_bound_is_enforced_inside_a_repository() {
     let scratch = Scratch::new();
     let root = git_repo(&scratch);
     let bounds = Bounds { files: 2, ..BOUNDS };
-    let walked = scratch.git().walk_within(&root, bounds);
+    let walked = scratch.git().walk_within(&root, bounds, EVERY);
     let error = walked.files.expect_err("three files pass a bound of two");
     let expected = format!(
         "walk refused: more than 2 files under {}; point the call at a subdirectory or raise the \
@@ -173,7 +177,9 @@ fn a_file_that_is_gone_before_the_stat_is_skipped_and_named() {
     // The probe admits the file and then its stat fails, as when the file goes between two calls.
     let names = vec!["gone.py".to_owned(), "pkg/mod.py".to_owned()];
 
-    let walk = admit(&root, names, BOUNDS, |path| Some(io::file_size(path)));
+    let walk = admit(&root, names, BOUNDS, EVERY, |path| {
+        Some(io::file_size(path))
+    });
     let files = walk.files.expect("within the bounds");
     let listed: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
     assert_eq!(listed, ["pkg/mod.py"]);
@@ -195,7 +201,7 @@ fn a_bound_refusal_keeps_the_skips_raised_before_it() {
         })
     };
 
-    let walk = admit(Path::new("/repo"), names, bounds, probe);
+    let walk = admit(Path::new("/repo"), names, bounds, EVERY, probe);
 
     let error = walk.files.expect_err("depth 2 passes a bound of 1");
     assert!(
@@ -212,7 +218,7 @@ fn a_path_deeper_than_the_bound_is_refused() {
     let bounds = Bounds { depth: 1, ..BOUNDS };
     // The depth refusal comes before the stat failure of the same path.
     let unstatable = |_: &Path| Some(Err(std::io::ErrorKind::NotFound.into()));
-    let error = admit(Path::new("/repo"), names, bounds, unstatable)
+    let error = admit(Path::new("/repo"), names, bounds, EVERY, unstatable)
         .files
         .expect_err("depth 2 passes a bound of 1");
     let expected = "walk refused: path depth 2 exceeds the limit of 1 under /repo; point the \
@@ -228,12 +234,27 @@ fn a_path_deeper_than_the_bound_is_refused() {
 fn the_byte_bound_is_enforced() {
     let names = vec!["a.py".to_owned(), "b.py".to_owned()];
     let bounds = Bounds { bytes: 5, ..BOUNDS };
-    let error = admit(Path::new("/repo"), names, bounds, |_| Some(Ok(3)))
+    let error = admit(Path::new("/repo"), names, bounds, PYTHON, |_| Some(Ok(3)))
         .files
         .expect_err("6 bytes pass a bound of 5");
     let expected = "walk refused: more than 5 bytes under /repo; point the call at a \
                     subdirectory or raise the byte bound";
     assert_eq!(error.to_string(), expected);
+}
+
+#[test]
+fn a_file_no_scan_reads_does_not_count_against_the_byte_bound() {
+    let names = vec!["a.py".to_owned(), "docs/shot.png".to_owned()];
+    let bounds = Bounds { bytes: 5, ..BOUNDS };
+    let sizes = |path: &Path| Some(Ok(if path.ends_with("a.py") { 3 } else { 100 }));
+    let files = admit(Path::new("/repo"), names, bounds, PYTHON, sizes)
+        .files
+        .expect("3 bytes of Python are within a bound of 5");
+    let listed: Vec<(&str, u64)> = files
+        .iter()
+        .map(|file| (file.path.as_str(), file.size))
+        .collect();
+    assert_eq!(listed, [("a.py", 3), ("docs/shot.png", 100)]);
 }
 
 #[test]
@@ -314,7 +335,7 @@ fn a_name_that_is_not_utf8_reaches_the_decoder_as_raw_bytes() {
     let scratch = Scratch::new();
     let root = git_repo(&scratch);
     scratch.write_bytes(OsStr::from_bytes(b"repo/bad\xff.py"), b"x = 1\n");
-    let walk = scratch.git().walk(&root);
+    let walk = scratch.git().walk(&root, EVERY);
 
     let files = walk.files.expect("a listed repository");
     let listed: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
@@ -335,7 +356,7 @@ fn a_refused_walk_keeps_the_listing_warning_raised_before_it() {
     let deep: Vec<String> = (1..=21).map(|level| format!("d{level}")).collect();
     scratch.write(&format!("repo/{}/x.py", deep.join("/")), "x = 1\n");
 
-    let walk = scratch.git().walk(&root);
+    let walk = scratch.git().walk(&root, EVERY);
 
     let error = walk.files.expect_err("depth 21 passes the bound");
     assert!(
@@ -356,7 +377,7 @@ fn the_bounded_walk_drops_a_name_that_is_not_utf8_with_a_warning() {
     scratch.write("plain/a.py", "a = 1\n");
     scratch.write_bytes(OsStr::from_bytes(b"plain/bad\xff.py"), b"x = 1\n");
     let root = scratch.root.join("plain");
-    let walk = scratch.git().walk(&root);
+    let walk = scratch.git().walk(&root, EVERY);
 
     let files = walk.files.expect("a walked tree");
     let listed: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
@@ -380,7 +401,7 @@ fn a_refused_bounded_walk_keeps_the_skips_raised_before_it() {
     scratch.set_mode("plain/a", 0o000);
     let root = scratch.root.join("plain");
 
-    let walk = scratch.git().walk(&root);
+    let walk = scratch.git().walk(&root, EVERY);
     scratch.set_mode("plain/a", 0o755);
 
     let error = walk.files.expect_err("depth 22 passes the bound");
@@ -492,7 +513,7 @@ fn a_root_that_is_not_a_directory_is_refused() {
     let file = scratch.write("file.py", "x = 1\n");
     let error = scratch
         .git()
-        .walk(&file)
+        .walk(&file, EVERY)
         .files
         .expect_err("a file is no root");
 

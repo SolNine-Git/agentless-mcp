@@ -1271,6 +1271,18 @@ when:
 - a file was skipped and you want to know whether its grammar is warmed
 - root selection did not do what you expected
 
+**The walk of the repository has three bounds.** A call that walks the
+repository refuses a tree with more than 20,000 files, a directory more than
+20 levels below the root, or more than 200,000,000 bytes in the files that a
+scan reads. A scan reads a file whose suffix names a language (the
+`extensions` lines list each suffix) and that holds at most 1,000,000 bytes.
+So images, archives and a source file over that cap do not count toward the
+byte bound. No flag, argument or config key changes a bound. On the CLI,
+`--repo` set to a subdirectory walks only that subtree. Over MCP, `read`
+operation `dir` with a `path` walks only that directory, and `symbols`
+operations `overview`, `expand` and `locate`, `read` operation `slice` and
+`history` do not walk the root.
+
 ### `index` -- build the tag cache, CLI only
 
 ```

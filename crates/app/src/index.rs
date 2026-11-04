@@ -13,6 +13,7 @@ use syntax::{Language, Unparsable};
 
 use crate::parallel::{map_in_order, threads};
 use crate::repo::root_text;
+use crate::scan;
 use crate::tags::repo_generation;
 use crate::{Error, Noted, Repo, Services, in_metric_scope};
 
@@ -124,7 +125,7 @@ fn written(
     let value = opened
         .map_err(|error| refused(place, error))
         .and_then(|writer| {
-            let walk = services.git.walk(&place.root);
+            let walk = services.git.walk(&place.root, scan::reads);
             diagnostics.extend(walk.warnings.iter().map(ToString::to_string));
             let files = walk
                 .files
@@ -174,16 +175,15 @@ fn observed(root: &Path, files: Vec<git::RepoFile>) -> Vec<Observed> {
 // A file over the cap is decided from the walk's size, so its bytes are never read.
 fn observe(root: &Path, file: git::RepoFile, language: Language) -> Observed {
     let measure = in_metric_scope(&file.path) && metrics::stamp(language).is_some();
-    let cap = u64::try_from(io::MAX_FILE_BYTES).unwrap_or(u64::MAX);
-    let read = if file.size > cap {
-        Read::Oversize { size: file.size }
-    } else {
+    let read = if io::within_file_cap(file.size) {
         match io::read_bounded(&root.join(&file.path)) {
             Ok(bytes) => Read::Text(FileText::decode(file.path.clone(), language, &bytes)),
             Err(skipped) => Read::Unreadable {
                 reason: skipped.to_string(),
             },
         }
+    } else {
+        Read::Oversize { size: file.size }
     };
     Observed {
         path: file.path,

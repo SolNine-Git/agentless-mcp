@@ -45,6 +45,12 @@ impl Sandbox {
         written.unwrap_or_else(|error| panic!("{relative}: {error}"))
     }
 
+    // Gives `relative` a length of `size` bytes, most of them a hole that takes no space.
+    pub(crate) fn sparse(&self, relative: &str, size: u64) {
+        let sized = self.tree.set_len(relative, size);
+        sized.unwrap_or_else(|error| panic!("{relative}: {error}"));
+    }
+
     pub(crate) fn copy(&self, from: &Path, relative: &str) -> PathBuf {
         if let Some((parent, _)) = relative.rsplit_once('/') {
             self.mkdir(parent);

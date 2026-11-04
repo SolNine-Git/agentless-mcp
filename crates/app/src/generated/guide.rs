@@ -1104,7 +1104,20 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         builds it. Check the report\nwhen:\n\n- a view stops short and \
         you want to know which bound did it\n- a file was skipped and \
         you want to know whether its grammar is warmed\n- root \
-        selection did not do what you expected\n\n### `index` -- build \
+        selection did not do what you expected\n\n**The walk of the \
+        repository has three bounds.** A call that walks \
+        the\nrepository refuses a tree with more than 20,000 files, a \
+        directory more than\n20 levels below the root, or more than \
+        200,000,000 bytes in the files that a\nscan reads. A scan reads \
+        a file whose suffix names a language (the\n`extensions` lines \
+        list each suffix) and that holds at most 1,000,000 bytes.\nSo \
+        images, archives and a source file over that cap do not count \
+        toward the\nbyte bound. No flag, argument or config key changes \
+        a bound. On the CLI,\n`--repo` set to a subdirectory walks only \
+        that subtree. Over MCP, `read`\noperation `dir` with a `path` \
+        walks only that directory, and `symbols`\noperations \
+        `overview`, `expand` and `locate`, `read` operation `slice` \
+        and\n`history` do not walk the root.\n\n### `index` -- build \
         the tag cache, CLI only\n\n```\nagentless-mcp \
         index                       # the repository enclosing the \
         cwd\nagentless-mcp index --repo /srv/app       # a named \
@@ -1777,7 +1790,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3_599, 4_432),
     ("stable-ids", 4_434, 5_923),
     ("the-two-surfaces", 5_925, 11_608),
-    ("per-tool-usage", 11_610, 97_718),
+    ("per-tool-usage", 11_610, 98_488),
     ("claude-code-specifics", 13_226, 15_038),
     ("map", 15_040, 25_069),
     ("tree", 25_071, 25_392),
@@ -1795,12 +1808,12 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("health", 54_863, 61_098),
     ("html", 61_100, 62_051),
     ("resolve-locs", 62_053, 62_868),
-    ("capabilities", 62_870, 63_765),
-    ("index", 63_767, 66_508),
-    ("lint", 66_510, 86_518),
-    ("validate-vote", 86_520, 96_117),
-    ("warmup", 96_119, 97_718),
-    ("project-defaults-agentless-mcp-json", 97_720, 101_673),
-    ("token-counting", 101_675, 102_089),
-    ("exit-codes", 102_091, 102_549),
+    ("capabilities", 62_870, 64_535),
+    ("index", 64_537, 67_278),
+    ("lint", 67_280, 87_288),
+    ("validate-vote", 87_290, 96_887),
+    ("warmup", 96_889, 98_488),
+    ("project-defaults-agentless-mcp-json", 98_490, 102_443),
+    ("token-counting", 102_445, 102_859),
+    ("exit-codes", 102_861, 103_319),
 ];

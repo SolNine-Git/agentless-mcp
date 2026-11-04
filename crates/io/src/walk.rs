@@ -17,8 +17,17 @@ use crate::{contained_file_size, resolve, strerror};
 pub const MAX_WALK_DEPTH: usize = 20;
 /// The most files that [`walk`] returns.
 pub const MAX_WALK_FILES: usize = 20_000;
-/// The most bytes, summed over the files, that [`walk`] returns.
+/// The most bytes, summed over the files that a scan reads, that [`walk`] returns.
 pub const MAX_WALK_BYTES: u64 = 200_000_000;
+
+/// Whether a scan reads a file, from its path below the walked root and its size in bytes.
+pub type ScanReads = fn(&str, u64) -> bool;
+
+/// Returns the bytes that a file adds to a walk's byte count: its size when a scan reads it, else 0.
+#[must_use]
+pub fn counted_bytes(reads: ScanReads, path: &str, size: u64) -> u64 {
+    if reads(path, size) { size } else { 0 }
+}
 
 /// The files a walk found, or the refusal that stopped it, and what it passed over first.
 #[derive(Debug)]
@@ -146,15 +155,15 @@ impl From<WalkRefusal> for kernel::Error {
 /// Lists each file under `root`, depth first and sorted by name within each directory. It enters
 /// no symlinked directory and each directory once, and it lists a symlinked file only when its
 /// target stays inside the root. The files are a [`WalkRefusal`] when the root is not a directory
-/// or the tree passes a bound.
+/// or the tree passes a bound. The byte bound counts only the files that `reads` accepts.
 #[must_use]
-pub fn walk(root: &Path) -> Walk {
+pub fn walk(root: &Path, reads: ScanReads) -> Walk {
     let bounds = Bounds {
         depth: MAX_WALK_DEPTH,
         files: MAX_WALK_FILES,
         bytes: MAX_WALK_BYTES,
     };
-    walk_within(root, bounds)
+    walk_within(root, bounds, reads)
 }
 
 #[derive(Clone, Copy)]
@@ -164,7 +173,7 @@ struct Bounds {
     bytes: u64,
 }
 
-fn walk_within(root: &Path, bounds: Bounds) -> Walk {
+fn walk_within(root: &Path, bounds: Bounds, reads: ScanReads) -> Walk {
     let root = match walkable(root) {
         Ok(root) => root,
         Err(refusal) => {
@@ -176,6 +185,7 @@ fn walk_within(root: &Path, bounds: Bounds) -> Walk {
     };
     let mut walker = Walker {
         bounds,
+        reads,
         seen: HashSet::new(),
         bytes: 0,
         files: Vec::new(),
@@ -203,6 +213,7 @@ fn walkable(root: &Path) -> Result<PathBuf, WalkRefusal> {
 struct Walker {
     root: PathBuf,
     bounds: Bounds,
+    reads: ScanReads,
     seen: HashSet<(u64, u64)>,
     bytes: u64,
     files: Vec<PathBuf>,
@@ -299,13 +310,22 @@ impl Walker {
             let limit = self.bounds.files;
             return Err(WalkRefusal::TooManyFiles { limit, root });
         }
-        self.bytes = self.bytes.saturating_add(size);
+        self.bytes = self.bytes.saturating_add(self.counted(&candidate, size));
         if self.bytes > self.bounds.bytes {
             let limit = self.bounds.bytes;
             return Err(WalkRefusal::TooManyBytes { limit, root });
         }
         self.files.push(candidate);
         Ok(())
+    }
+
+    // A name that is not UTF-8 is never scanned, so it adds no bytes.
+    fn counted(&self, candidate: &Path, size: u64) -> u64 {
+        let relative = candidate
+            .strip_prefix(&self.root)
+            .ok()
+            .and_then(Path::to_str);
+        relative.map_or(0, |path| counted_bytes(self.reads, path, size))
     }
 }
 
@@ -340,6 +360,8 @@ fn sorted(mut names: Vec<OsString>) -> Vec<OsString> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
+
     use crate::fixtures::{Placed, build, fixture};
     use crate::testing::Tree;
     use serde_json::{Value, json};
@@ -350,8 +372,12 @@ mod tests {
         bytes: MAX_WALK_BYTES,
     };
 
+    // Stand-ins for the caller's rule: a scan that reads every file, and one that reads Python.
+    const EVERY: ScanReads = |_, _| true;
+    const PYTHON: ScanReads = |path, _| Path::new(path).extension() == Some(OsStr::new("py"));
+
     fn walked(tree: &Tree, root: &Path, bounds: Bounds) -> Value {
-        match walk_within(root, bounds).files {
+        match walk_within(root, bounds, EVERY).files {
             Ok(files) => {
                 let files: Vec<String> = files
                     .iter()
@@ -374,7 +400,7 @@ mod tests {
         ]);
         let binds = tree.modes_bind();
         tree.chmod("root/closed", 0o000);
-        let walked = walk_within(&tree.join("root"), bounds);
+        let walked = walk_within(&tree.join("root"), bounds, EVERY);
         tree.chmod("root/closed", 0o700);
         (tree, walked, binds)
     }
@@ -426,6 +452,7 @@ mod tests {
                 files: 1,
                 bytes: 1,
             },
+            reads: EVERY,
             seen: HashSet::new(),
             bytes: 0,
             files: Vec::new(),
@@ -478,10 +505,35 @@ mod tests {
     #[test]
     fn the_default_walk_lists_the_tree() {
         let tree = build(&[json!(["dir", "d"]), json!(["file", "d/f", "x"])]);
-        let files = walk(tree.path())
+        let files = walk(tree.path(), EVERY)
             .files
             .expect("the tree is within every bound");
         assert_eq!(files, [tree.join("d/f")]);
+    }
+
+    #[test]
+    fn a_file_no_scan_reads_does_not_count_against_the_byte_bound() {
+        let tree = build(&[
+            json!(["dir", "root/docs"]),
+            json!(["file", "root/a.py", "abc"]),
+            json!(["file", "root/docs/shot.png", "x".repeat(100)]),
+        ]);
+        let bounds = Bounds {
+            bytes: 5,
+            ..DEFAULT
+        };
+        let root = tree.join("root");
+        let files = walk_within(&root, bounds, PYTHON)
+            .files
+            .expect("3 bytes of Python are within a bound of 5");
+        assert_eq!(files, [root.join("a.py"), root.join("docs/shot.png")]);
+        let refusal = walk_within(&root, bounds, EVERY)
+            .files
+            .expect_err("103 bytes pass a bound of 5");
+        assert!(
+            matches!(refusal, WalkRefusal::TooManyBytes { limit: 5, .. }),
+            "{refusal:?}"
+        );
     }
 
     #[test]

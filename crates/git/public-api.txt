@@ -442,7 +442,7 @@ pub fn git::Git::snapshot(&self, &std::path::Path, core::option::Option<&std::pa
 impl git::Git
 pub fn git::Git::toplevel(&self, &std::path::Path, core::time::Duration) -> git::Toplevel
 impl git::Git
-pub fn git::Git::walk(&self, &std::path::Path) -> git::Walk
+pub fn git::Git::walk(&self, &std::path::Path, io::walk::ScanReads) -> git::Walk
 impl core::clone::Clone for git::Git
 pub fn git::Git::clone(&self) -> Self
 impl core::marker::Freeze for git::Git

@@ -11,6 +11,7 @@ use syntax::Language;
 
 use crate::pairs::Stored;
 use crate::repo::root_text;
+use crate::scan;
 use crate::{Error, Noted, Repo, Services};
 
 const NO_ROWS: RowCounts = RowCounts {
@@ -352,7 +353,7 @@ pub fn repo_generation(
 
 // The walk warnings come with either outcome, as the walk raised them.
 fn manifest(services: &Services, root: &Path) -> Noted<Result<Vec<ManifestEntry>, Error>> {
-    let walk = services.git.walk(root);
+    let walk = services.git.walk(root, scan::reads);
     let entries = walk
         .files
         .map_err(|refusal| kernel::Error::from(refusal).into());

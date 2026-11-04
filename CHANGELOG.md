@@ -473,6 +473,24 @@ Each byte count is of the served bytes.
 
 ### Fixed
 
+- **The walk's byte bound counts only the files that a scan reads.** The
+  walk refused a tree whose files held more than 200,000,000 bytes, and it
+  counted every listed file: images, archives and files over the per-file
+  cap too. Each walk, of a git listing and of a tree outside git, now counts
+  a file only when a scan reads it: its suffix names a language, and it holds
+  at most 1,000,000 bytes. The count can only fall, so a tree that passed
+  before still passes. 4 of the 300 bench snapshots held 221.6 to 571.3 MB
+  and refused every call that walks the root: orient map, symbols find and
+  explain, find_referencing_symbols, the 5 graph operations and read dir at
+  the root, over MCP and the CLI. They count 20.1 to 46.0 MB now, and the
+  largest count of the 300 is 61.8 MB. With the release binaries of f7b0d89
+  and of this change, the recorded orient call of each of the 4 refused in
+  0.01 to 0.03 s, and now answers in 0.82 to 2.62 s with 3 of 11, 4 of 14, 2
+  of 8 and 4 of 5 gold files, over MCP stdio and the CLI map. On
+  teleport-96019, the 17 calls of every tool and operation all answer, where
+  10 refused. The guide's capabilities section says what each walk bound
+  counts and which calls do not walk the root.
+
 - **A diagram past its edge bound draws its heaviest reference edges, not
   none.** The diagram counted declared and reference edges together, and past
   the edge bound it drew no reference edge. So a diagram whose modules had no
