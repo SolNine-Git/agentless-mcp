@@ -114,6 +114,33 @@ fn a_declaring_line_that_spells_the_name_again_stays_a_reference_row() {
     assert_eq!(listed(&answer), [("Holder.java", 2)]);
 }
 
+// A Rust function `record` with one caller, and a parameter of its name, as in
+// crates/app/src/verdicts.rs.
+const SHADOWED: [(&str, &str); 1] = [(
+    "verdicts.rs",
+    "fn record(line: &str) -> u8 {\n    0\n}\n\nfn records(lines: &[&str]) -> u8 {\n    \
+     record(lines[0])\n}\n\nfn integer(record: &u8) -> u8 {\n    *record\n}\n",
+)];
+
+#[test]
+fn a_rust_parameter_of_the_target_name_is_no_caller() {
+    let answer = referenced(&SHADOWED, "record");
+    assert_eq!(answer.groups.bound, 1);
+    let groups: Vec<(&str, bool, Vec<u32>)> = (answer.groups.rows.iter())
+        .map(|group| {
+            let lines = group.sites.iter().map(|site| site.line);
+            (group.tier, group.scope_checked, lines.collect())
+        })
+        .collect();
+    assert_eq!(
+        groups,
+        [
+            ("same_file", true, vec![6]),
+            ("ambiguous", true, vec![9, 10])
+        ]
+    );
+}
+
 #[test]
 fn a_data_key_id_has_no_fan_in() {
     let files = [

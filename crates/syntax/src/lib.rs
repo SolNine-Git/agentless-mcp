@@ -27,7 +27,9 @@ mod generated {
 }
 
 pub use cursor::FieldCursor;
-pub use extraction::{Declarations, Extraction, ImportBinding, ImportRule, RoleRule, SymbolRule};
+pub use extraction::{
+    Declarations, Extraction, ImportBinding, ImportRule, RoleRule, ScopeKinds, SymbolRule,
+};
 pub use generated::digest::TABLES_DIGEST;
 pub use generated::languages::EXTENSIONS;
 pub use language::{FieldId, KindId, KindSet, Language};

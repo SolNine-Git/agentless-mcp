@@ -99,7 +99,16 @@ fn every_language_has_extraction_tables_under_a_distinct_prefix() {
     assert_eq!(prefixes.len(), Language::ALL.len());
     for language in Language::ALL {
         let table = language.table().extraction;
-        for name in [table.bodies, table.skeleton_functions].concat() {
+        let kinds = [
+            table.bodies,
+            table.skeleton_functions,
+            table.scope_owners,
+            table.opaque_scopes,
+            table.nested_patterns,
+            table.typed_patterns,
+            table.path_parents,
+        ];
+        for name in kinds.concat() {
             assert!(
                 !language.kinds(&[name]).is_empty(),
                 "{language:?} has no kind {name}"

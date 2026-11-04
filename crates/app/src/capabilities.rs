@@ -196,8 +196,8 @@ pub struct Capabilities<'a> {
     /// Each file suffix and its language, in suffix order.
     #[serde(serialize_with = "suffix_map")]
     pub extensions: &'static [(&'static str, Language)],
-    /// The languages whose locals refs tells from callers.
-    pub scope_analysed_languages: [&'static str; 1],
+    /// The languages whose locals refs tells from callers, in name order.
+    pub scope_analysed_languages: Vec<&'static str>,
     /// Each lint check and its input, in registry order.
     pub lint_checks: Vec<LintCheckRow>,
     /// The project config.
@@ -228,7 +228,7 @@ pub fn capabilities(session: &Session) -> Result<Capabilities<'_>, Error> {
         cache: cache_view(session)?,
         languages: Language::ALL.into_iter().map(language).collect(),
         extensions: &syntax::EXTENSIONS,
-        scope_analysed_languages: ["python"],
+        scope_analysed_languages: scope_analysed_languages(),
         lint_checks: CHECKS
             .iter()
             .map(|check| LintCheckRow {
@@ -290,6 +290,13 @@ fn cache_hint(session: &Session) -> String {
         }
         _ => String::new(),
     }
+}
+
+fn scope_analysed_languages() -> Vec<&'static str> {
+    let analysed = Language::ALL
+        .into_iter()
+        .filter(|language| language.extraction().roles.analyses_scopes());
+    analysed.map(Language::name).collect()
 }
 
 pub(crate) fn language(language: Language) -> LanguageCapability {

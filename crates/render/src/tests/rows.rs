@@ -296,7 +296,7 @@ pub(crate) struct CapabilityRow {
     cache_hint: String,
     languages: Vec<Value>,
     extensions: Vec<(String, String)>,
-    scope_analysed_languages: [String; 1],
+    scope_analysed_languages: Vec<String>,
     lint_checks: Vec<(String, String)>,
     config: ConfigRow,
     effective_config: Vec<(String, Value)>,
@@ -317,7 +317,11 @@ impl CapabilityRow {
             cache: cache_view(&self.cache),
             languages: self.languages.iter().map(language).collect(),
             extensions: self.extensions().leak(),
-            scope_analysed_languages: [leak(&self.scope_analysed_languages[0])],
+            scope_analysed_languages: self
+                .scope_analysed_languages
+                .iter()
+                .map(|name| leak(name))
+                .collect(),
             lint_checks: self.lint_checks.iter().map(lint_check).collect(),
             config: ConfigView {
                 config,

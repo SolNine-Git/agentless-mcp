@@ -956,7 +956,7 @@ pub app::Capabilities::languages: alloc::vec::Vec<app::LanguageCapability>
 pub app::Capabilities::lint_checks: alloc::vec::Vec<app::LintCheckRow>
 pub app::Capabilities::pack_version: &'static str
 pub app::Capabilities::roots: app::Roots
-pub app::Capabilities::scope_analysed_languages: [&'static str; 1]
+pub app::Capabilities::scope_analysed_languages: alloc::vec::Vec<&'static str>
 pub app::Capabilities::version: &'static str
 impl<'a> core::clone::Clone for app::Capabilities<'a>
 pub fn app::Capabilities<'a>::clone(&self) -> Self

@@ -52,3 +52,40 @@ roles = "rust"
 identifiers = ["field_identifier", "identifier", "type_identifier"]
 bodies = ["block"]
 skeleton_functions = ["function_item"]
+scope_owners = [
+    "const_item",
+    "enum_item",
+    "foreign_mod_item",
+    "function_item",
+    "function_signature_item",
+    "impl_item",
+    "macro_definition",
+    "mod_item",
+    "static_item",
+    "struct_item",
+    "trait_item",
+    "type_item",
+    "union_item",
+]
+opaque_scopes = ["attribute_item", "inner_attribute_item", "macro_definition"]
+nested_patterns = [
+    "captured_pattern",
+    "mut_pattern",
+    "or_pattern",
+    "parameter",
+    "ref_pattern",
+    "reference_pattern",
+    "slice_pattern",
+    "tuple_pattern",
+    "variadic_parameter",
+]
+typed_patterns = ["struct_pattern", "tuple_struct_pattern"]
+path_parents = [
+    "scoped_identifier",
+    "scoped_type_identifier",
+    "scoped_use_list",
+    "use_as_clause",
+    "use_declaration",
+    "use_list",
+    "use_wildcard",
+]

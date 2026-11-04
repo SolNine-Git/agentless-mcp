@@ -1059,6 +1059,11 @@ static BASH_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["compound_statement"],
     skeleton_functions: &[],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&BASH_DECLARATIONS),
 };
 
@@ -1095,6 +1100,11 @@ static C_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["compound_statement"],
     skeleton_functions: &["function_definition"],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: None,
 };
 
@@ -1112,6 +1122,11 @@ static CPP_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["compound_statement"],
     skeleton_functions: &["function_definition"],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: None,
 };
 
@@ -1124,6 +1139,11 @@ static CSHARP_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["block"],
     skeleton_functions: &[],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&CSHARP_DECLARATIONS),
 };
 
@@ -1175,6 +1195,11 @@ static GO_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["block"],
     skeleton_functions: &["func_literal"],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&GO_DECLARATIONS),
 };
 
@@ -1211,6 +1236,11 @@ static HCL_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["block"],
     skeleton_functions: &[],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&HCL_DECLARATIONS),
 };
 
@@ -1247,6 +1277,11 @@ static JAVA_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["block"],
     skeleton_functions: &["constructor_declaration", "method_declaration"],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&JAVA_DECLARATIONS),
 };
 
@@ -1298,6 +1333,11 @@ static JAVASCRIPT_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["statement_block"],
     skeleton_functions: &["arrow_function", "function_expression", "method_definition"],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&JAVASCRIPT_DECLARATIONS),
 };
 
@@ -1343,6 +1383,11 @@ static JSON_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &[],
     skeleton_functions: &[],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&JSON_DECLARATIONS),
 };
 
@@ -1379,6 +1424,11 @@ static KOTLIN_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["function_body"],
     skeleton_functions: &[],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&KOTLIN_DECLARATIONS),
 };
 
@@ -1410,6 +1460,11 @@ static LUA_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["block"],
     skeleton_functions: &["function_declaration", "function_definition"],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&LUA_DECLARATIONS),
 };
 
@@ -1446,6 +1501,11 @@ static PHP_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["compound_statement"],
     skeleton_functions: &[],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&PHP_DECLARATIONS),
 };
 
@@ -1679,6 +1739,11 @@ static PYTHON_EXTRACTION: ExtractionTable = ExtractionTable {
         "yield",
         "zip",
     ],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: None,
 };
 
@@ -1691,6 +1756,11 @@ static RUBY_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["block", "body_statement", "do_block"],
     skeleton_functions: &["method", "singleton_method"],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&RUBY_DECLARATIONS),
 };
 
@@ -1727,6 +1797,43 @@ static RUST_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["block"],
     skeleton_functions: &["function_item"],
     builtins: &[],
+    scope_owners: &[
+        "const_item",
+        "enum_item",
+        "foreign_mod_item",
+        "function_item",
+        "function_signature_item",
+        "impl_item",
+        "macro_definition",
+        "mod_item",
+        "static_item",
+        "struct_item",
+        "trait_item",
+        "type_item",
+        "union_item",
+    ],
+    opaque_scopes: &["attribute_item", "inner_attribute_item", "macro_definition"],
+    nested_patterns: &[
+        "captured_pattern",
+        "mut_pattern",
+        "or_pattern",
+        "parameter",
+        "ref_pattern",
+        "reference_pattern",
+        "slice_pattern",
+        "tuple_pattern",
+        "variadic_parameter",
+    ],
+    typed_patterns: &["struct_pattern", "tuple_struct_pattern"],
+    path_parents: &[
+        "scoped_identifier",
+        "scoped_type_identifier",
+        "scoped_use_list",
+        "use_as_clause",
+        "use_declaration",
+        "use_list",
+        "use_wildcard",
+    ],
     declarations: None,
 };
 
@@ -1739,6 +1846,11 @@ static SCALA_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["block"],
     skeleton_functions: &[],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&SCALA_DECLARATIONS),
 };
 
@@ -1780,6 +1892,11 @@ static SQL_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["block", "function_body"],
     skeleton_functions: &[],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&SQL_DECLARATIONS),
 };
 
@@ -1816,6 +1933,11 @@ static SWIFT_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["function_body"],
     skeleton_functions: &[],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&SWIFT_DECLARATIONS),
 };
 
@@ -1856,6 +1978,11 @@ static TOML_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &[],
     skeleton_functions: &[],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&TOML_DECLARATIONS),
 };
 
@@ -1898,6 +2025,11 @@ static TSX_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["statement_block"],
     skeleton_functions: &["arrow_function", "function_expression", "method_definition"],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&TSX_DECLARATIONS),
 };
 
@@ -1949,6 +2081,11 @@ static TYPESCRIPT_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &["statement_block"],
     skeleton_functions: &["arrow_function", "function_expression", "method_definition"],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&TYPESCRIPT_DECLARATIONS),
 };
 
@@ -1998,6 +2135,11 @@ static YAML_EXTRACTION: ExtractionTable = ExtractionTable {
     bodies: &[],
     skeleton_functions: &[],
     builtins: &[],
+    scope_owners: &[],
+    opaque_scopes: &[],
+    nested_patterns: &[],
+    typed_patterns: &[],
+    path_parents: &[],
     declarations: Some(&YAML_DECLARATIONS),
 };
 

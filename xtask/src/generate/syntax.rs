@@ -45,7 +45,30 @@ struct ExtractionTable {
     skeleton_functions: Vec<String>,
     #[serde(default)]
     builtins: Vec<String>,
+    #[serde(default)]
+    scope_owners: Vec<String>,
+    #[serde(default)]
+    opaque_scopes: Vec<String>,
+    #[serde(default)]
+    nested_patterns: Vec<String>,
+    #[serde(default)]
+    typed_patterns: Vec<String>,
+    #[serde(default)]
+    path_parents: Vec<String>,
     declarations: Option<DeclarationTable>,
+}
+
+impl ExtractionTable {
+    // The kind lists that only the rust role rule reads, in the order the tables hold them.
+    fn scope_kinds(&self) -> [&[String]; 5] {
+        [
+            &self.scope_owners,
+            &self.opaque_scopes,
+            &self.nested_patterns,
+            &self.typed_patterns,
+            &self.path_parents,
+        ]
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -280,8 +303,12 @@ fn extraction_problem(table: &ExtractionTable) -> Option<String> {
     if generic && table.declarations.is_none() {
         return Some("a generic symbol or import rule needs [extraction.declarations]".to_owned());
     }
-    (!table.builtins.is_empty() && table.roles != RoleRule::Python)
-        .then(|| "only the python role rule reads builtins".to_owned())
+    if !table.builtins.is_empty() && table.roles != RoleRule::Python {
+        return Some("only the python role rule reads builtins".to_owned());
+    }
+    let scoped = table.scope_kinds().iter().any(|kinds| !kinds.is_empty());
+    (scoped && table.roles != RoleRule::Rust)
+        .then(|| "only the rust role rule reads the scope kinds".to_owned())
 }
 
 // The check that reads the stoplist looks a name up by binary search.
@@ -380,10 +407,13 @@ fn extraction(file: &File) -> String {
                 declaration_table(declarations)
             )
         });
+    let [owners, opaque, nested, typed, paths] = table.scope_kinds().map(names);
     format!(
         "\nstatic {upper}_EXTRACTION: ExtractionTable = ExtractionTable {{ prefix: {}, \
          symbols: SymbolRule::{:?}, imports: ImportRule::{:?}, roles: RoleRule::{:?}, \
-         identifiers: {}, bodies: {}, skeleton_functions: {}, builtins: {}, declarations: {} }};\n\
+         identifiers: {}, bodies: {}, skeleton_functions: {}, builtins: {}, \
+         scope_owners: {owners}, opaque_scopes: {opaque}, nested_patterns: {nested}, \
+         typed_patterns: {typed}, path_parents: {paths}, declarations: {} }};\n\
          {declarations}",
         literal(&table.prefix),
         table.symbols,
@@ -634,6 +664,23 @@ mod tests {
         assert!(problem.contains("builtins"), "{problem}");
         let python = builtins.replace("\"plain\"", "\"python\"");
         assert!(parse("go.toml", &python).is_ok());
+    }
+
+    #[test]
+    fn only_the_rust_role_rule_reads_the_scope_kinds() {
+        for key in [
+            "scope_owners",
+            "opaque_scopes",
+            "nested_patterns",
+            "typed_patterns",
+            "path_parents",
+        ] {
+            let plain = format!("{}{key} = [\"block\"]\n", file("tier = 2\n"));
+            let problem = parse("go.toml", &plain).unwrap_err();
+            assert!(problem.contains("scope kinds"), "{key}: {problem}");
+            let rust = plain.replace("\"plain\"", "\"rust\"");
+            assert!(parse("go.toml", &rust).is_ok(), "{key}");
+        }
     }
 
     #[test]

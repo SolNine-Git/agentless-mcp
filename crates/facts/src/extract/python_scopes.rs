@@ -271,7 +271,7 @@ impl Scopes {
         let mut scopes = Scopes::empty();
         scopes.add(root, root, ScopeKind::Module);
         for node in tree.preorder(root) {
-            let Some(kind) = scope_kind(tree, node) else {
+            let Some(kind) = tree.keyed(node, &SCOPE_KINDS) else {
                 continue;
             };
             let body = matches!(kind, ScopeKind::Function | ScopeKind::Class)
@@ -363,14 +363,6 @@ impl Scopes {
     }
 }
 
-fn scope_kind(tree: &Tree, node: NodeId) -> Option<ScopeKind> {
-    let kind = tree.kind(node);
-    SCOPE_KINDS
-        .iter()
-        .find(|(name, _)| *name == kind)
-        .map(|(_, scope)| *scope)
-}
-
 fn in_first_iterable(tree: &Tree, node: NodeId, comprehension: NodeId) -> bool {
     let clause = tree
         .named_children(comprehension)
@@ -434,9 +426,8 @@ fn parameter_name(tree: &Tree, parameter: NodeId) -> Option<NodeId> {
 }
 
 fn binding_target(tree: &Tree, node: NodeId) -> Option<NodeId> {
-    let kind = tree.kind(node);
-    let (_, field) = BINDING_TARGETS.iter().find(|(name, _)| *name == kind)?;
-    tree.field(node, *field)
+    let field = tree.keyed(node, &BINDING_TARGETS)?;
+    tree.field(node, field)
 }
 
 // The identifiers a target binds, in document order, without the parts of an attribute or a

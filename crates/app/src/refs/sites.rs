@@ -6,7 +6,6 @@ use std::ptr;
 
 use facts::{Ref, Role, StableId, Symbol};
 use graph::{FileFacts, Resolution, Resolver, Site, Tier, enclosing_symbol};
-use syntax::Language;
 
 use super::{RefGroup, RefSite};
 use crate::MODULE_LEVEL;
@@ -88,12 +87,8 @@ fn file_group(file: &FileFacts, tier: Tier, sites: Vec<RefSite>) -> RefGroup {
         sites,
         tier: tier.as_str(),
         tier_label: tier.label(),
-        scope_checked: !binding || scope_analysed(file.language),
+        scope_checked: !binding || file.language.extraction().roles.analyses_scopes(),
     }
-}
-
-fn scope_analysed(language: Language) -> bool {
-    language == Language::Python
 }
 
 // A row is a line, so it takes the best tier of the target's spellings on it: `helper(x).helper`

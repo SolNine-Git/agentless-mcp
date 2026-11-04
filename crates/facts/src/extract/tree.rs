@@ -12,17 +12,21 @@ pub(super) enum Field {
     Argument,
     Attribute,
     Body,
+    Condition,
+    Consequence,
     DeclarationKind,
     Declarator,
     Function,
     Key,
     Left,
     List,
+    Macro,
     ModuleName,
     Name,
     Object,
     Parameters,
     Path,
+    Pattern,
     Result,
     ReturnType,
     Right,
@@ -34,23 +38,27 @@ pub(super) enum Field {
     Variables,
 }
 
-const FIELD_NAMES: [&str; 25] = [
+const FIELD_NAMES: [&str; 29] = [
     "alias",
     "arguments",
     "argument",
     "attribute",
     "body",
+    "condition",
+    "consequence",
     "declaration_kind",
     "declarator",
     "function",
     "key",
     "left",
     "list",
+    "macro",
     "module_name",
     "name",
     "object",
     "parameters",
     "path",
+    "pattern",
     "result",
     "return_type",
     "right",
@@ -121,6 +129,13 @@ impl<'a> Tree<'a> {
 
     pub(super) fn is_any(&self, node: NodeId, kinds: &[&str]) -> bool {
         kinds.contains(&self.parsed.kind_name(node))
+    }
+
+    // The value that a table keyed by kind name holds for the node's kind.
+    pub(super) fn keyed<T: Copy>(&self, node: NodeId, table: &[(&str, T)]) -> Option<T> {
+        let kind = self.kind(node);
+        let row = table.iter().find(|(name, _)| *name == kind);
+        row.map(|(_, value)| *value)
     }
 
     // The 1-based line that the node starts on.

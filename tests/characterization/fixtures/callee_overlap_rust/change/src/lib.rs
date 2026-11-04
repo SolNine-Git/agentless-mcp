@@ -1,6 +1,7 @@
 pub mod bill;
 pub mod builders;
 pub mod cache;
+pub mod channel;
 pub mod config;
 pub mod copies;
 pub mod dump;
@@ -22,3 +23,4 @@ pub mod scoring;
 pub mod screen;
 pub mod stats;
 pub mod twins;
+pub mod verdicts;

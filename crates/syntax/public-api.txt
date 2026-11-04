@@ -156,6 +156,8 @@ pub enum syntax::RoleRule
 pub syntax::RoleRule::Plain
 pub syntax::RoleRule::Python
 pub syntax::RoleRule::Rust
+impl syntax::RoleRule
+pub fn syntax::RoleRule::analyses_scopes(self) -> bool
 impl core::clone::Clone for syntax::RoleRule
 pub fn syntax::RoleRule::clone(&self) -> Self
 impl core::cmp::Eq for syntax::RoleRule
@@ -353,6 +355,7 @@ pub syntax::Extraction::identifiers: syntax::KindSet
 pub syntax::Extraction::imports: syntax::ImportRule
 pub syntax::Extraction::prefix: &'static str
 pub syntax::Extraction::roles: syntax::RoleRule
+pub syntax::Extraction::scopes: syntax::ScopeKinds
 pub syntax::Extraction::skeleton_functions: syntax::KindSet
 pub syntax::Extraction::symbols: syntax::SymbolRule
 impl syntax::Extraction
@@ -579,6 +582,19 @@ impl core::marker::Unpin for syntax::QueryError
 impl core::marker::UnsafeUnpin for syntax::QueryError
 impl core::panic::unwind_safe::RefUnwindSafe for syntax::QueryError
 impl core::panic::unwind_safe::UnwindSafe for syntax::QueryError
+pub struct syntax::ScopeKinds
+pub syntax::ScopeKinds::nested_patterns: syntax::KindSet
+pub syntax::ScopeKinds::opaque: syntax::KindSet
+pub syntax::ScopeKinds::owners: syntax::KindSet
+pub syntax::ScopeKinds::path_parents: syntax::KindSet
+pub syntax::ScopeKinds::typed_patterns: syntax::KindSet
+impl core::marker::Freeze for syntax::ScopeKinds
+impl core::marker::Send for syntax::ScopeKinds
+impl core::marker::Sync for syntax::ScopeKinds
+impl core::marker::Unpin for syntax::ScopeKinds
+impl core::marker::UnsafeUnpin for syntax::ScopeKinds
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::ScopeKinds
+impl core::panic::unwind_safe::UnwindSafe for syntax::ScopeKinds
 pub struct syntax::Spec
 pub syntax::Spec::clones: syntax::CloneRules
 pub syntax::Spec::comments: syntax::KindSet
