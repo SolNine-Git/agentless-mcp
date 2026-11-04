@@ -1,5 +1,5 @@
 //! The Rust items: functions, structs, enums, traits, the methods of impl blocks, constants and
-//! type aliases, in modules at any depth.
+//! type aliases, in modules at any depth, and the names of the `mod` items.
 
 use syntax::NodeId;
 
@@ -28,6 +28,13 @@ const UNKNOWN: &str = "<unknown>";
 
 pub(super) fn symbols(tree: &Tree) -> Vec<Symbol> {
     tree.each_declaration(&ITEMS, |node| item(tree, node))
+}
+
+pub(super) fn modules(tree: &Tree) -> Vec<String> {
+    tree.each_of_kind("mod_item", |node| {
+        tree.field(node, Field::Name)
+            .map(|name| tree.text(name).to_owned())
+    })
 }
 
 fn item(tree: &Tree, node: NodeId) -> Vec<Symbol> {

@@ -165,6 +165,7 @@ pub struct facts::Facts
 pub facts::Facts::errors: alloc::vec::Vec<kernel::span::Span>
 pub facts::Facts::imports: alloc::vec::Vec<facts::Import>
 pub facts::Facts::manifest: core::option::Option<facts::Manifest>
+pub facts::Facts::modules: alloc::vec::Vec<alloc::string::String>
 pub facts::Facts::refs: alloc::vec::Vec<facts::Ref>
 pub facts::Facts::symbols: alloc::vec::Vec<facts::Symbol>
 impl core::clone::Clone for facts::Facts

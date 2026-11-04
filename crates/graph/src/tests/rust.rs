@@ -274,6 +274,107 @@ fn a_module_path_binds_its_name_through_the_module_and_a_foreign_path_binds_noth
 }
 
 #[test]
+fn a_path_through_an_inline_or_a_path_attribute_module_falls_back_to_the_name() {
+    let files = scanned(&[
+        ("Cargo.toml", "[package]\nname = \"p\"\n"),
+        (
+            "src/lib.rs",
+            "#[path = \"platform_impl.rs\"]\nmod platform;\n\nmod m {\n    pub fn f() {}\n}\n\n\
+             fn g() {\n    m::f();\n    platform::tick();\n}\n",
+        ),
+        ("src/platform_impl.rs", "pub fn tick() {}\n"),
+    ]);
+    assert_eq!(
+        sites(&files, "f", "src/lib.rs"),
+        [(Tier::SameFile, vec!["src/lib.rs".to_owned()])]
+    );
+    assert_eq!(
+        sites(&files, "tick", "src/lib.rs"),
+        [(Tier::Unique, vec!["src/platform_impl.rs".to_owned()])]
+    );
+}
+
+#[test]
+fn a_super_path_inside_an_inline_module_binds_the_item_of_its_own_file() {
+    let files = scanned(&[
+        ("Cargo.toml", "[package]\nname = \"p\"\n"),
+        ("src/lib.rs", "pub mod a;\npub fn helper() {}\n"),
+        (
+            "src/a.rs",
+            "pub fn helper() {}\n\nmod tests {\n    fn t() {\n        super::helper();\n    }\n}\n",
+        ),
+    ]);
+    assert_eq!(
+        sites(&files, "helper", "src/a.rs"),
+        [(Tier::SameFile, vec!["src/a.rs".to_owned()])]
+    );
+}
+
+#[test]
+fn a_leading_double_colon_names_a_workspace_crate() {
+    let mut files = WORKSPACE;
+    files[6].1 = "use ::graph_core::rank::pagerank;\n\nfn draw() {\n    pagerank();\n}\n";
+    assert_eq!(
+        resolved(&scanned(&files), "pagerank", "crates/app/src/map.rs"),
+        Some(imported(&["crates/graph-core/src/rank.rs"]))
+    );
+}
+
+#[test]
+fn a_module_that_defines_no_such_name_falls_back_to_the_name() {
+    let files = scanned(&[
+        ("Cargo.toml", "[package]\nname = \"p\"\n"),
+        ("src/lib.rs", "pub mod util;\n"),
+        ("src/util.rs", "pub fn helper() {}\n"),
+        ("src/other.rs", "pub fn gone() {}\n"),
+        ("src/x.rs", "fn f() {\n    crate::util::gone();\n}\n"),
+    ]);
+    assert_eq!(
+        sites(&files, "gone", "src/x.rs"),
+        [(Tier::Unique, vec!["src/other.rs".to_owned()])]
+    );
+}
+
+const UNRESOLVED_USE: [(&str, &str); 4] = [
+    ("Cargo.toml", "[package]\nname = \"p\"\n"),
+    ("src/lib.rs", "pub mod a;\n"),
+    ("src/a.rs", "pub fn f() {}\n"),
+    ("src/other.rs", "pub fn helper() {}\n"),
+];
+
+#[test]
+fn a_qualifier_that_an_unresolved_use_of_this_repository_binds_falls_back_to_the_name() {
+    let mut files = UNRESOLVED_USE.to_vec();
+    files.push((
+        "src/x.rs",
+        "use crate::gone::deep::util;\n\nfn g() {\n    util::helper();\n}\n",
+    ));
+    assert_eq!(
+        sites(&scanned(&files), "helper", "src/x.rs"),
+        [(Tier::Unique, vec!["src/other.rs".to_owned()])]
+    );
+}
+
+// A macro body is a token tree, so only a top-level `use $crate::...`, which rustc rejects, parses.
+#[test]
+fn dollar_crate_names_the_crate_root() {
+    let mut files = UNRESOLVED_USE.to_vec();
+    files.push((
+        "src/y.rs",
+        "use $crate::a::f;\nuse $crate::gone::kit;\n\nfn h() {\n    f();\n    kit::helper();\n}\n",
+    ));
+    let files = scanned(&files);
+    assert_eq!(
+        resolved(&files, "f", "src/y.rs"),
+        Some(imported(&["src/a.rs"]))
+    );
+    assert_eq!(
+        sites(&files, "helper", "src/y.rs"),
+        [(Tier::Unique, vec!["src/other.rs".to_owned()])]
+    );
+}
+
+#[test]
 fn a_segment_may_name_a_module_that_a_file_re_exports_or_an_inline_module_directory() {
     let files = scanned(&[
         ("Cargo.toml", "[package]\nname = \"p\"\n"),

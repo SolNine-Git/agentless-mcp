@@ -186,6 +186,15 @@ impl<'a> Resolver<'a> {
         })
     }
 
+    /// Return true when the module path that qualifies `reference` in the file at `path` names a
+    /// module outside the repository, so the reference binds nothing.
+    #[must_use]
+    pub fn names_outside(&self, reference: &Ref, path: &str) -> bool {
+        reference.role != Role::ModuleAttribute
+            && !reference.qualifier.is_empty()
+            && self.qualified(&reference.qualifier, path) == Some(Qualified::Foreign)
+    }
+
     fn resolve_site(&self, reference: &Ref, path: &str) -> Option<Resolution<'a>> {
         if reference.role == Role::ModuleAttribute {
             self.resolve_module_attribute(&reference.name, path, &reference.qualifier)
@@ -196,15 +205,16 @@ impl<'a> Resolver<'a> {
         }
     }
 
+    fn qualified(&self, qualifier: &str, path: &str) -> Option<Qualified<'a>> {
+        let scope = self.scopes.get(path)?;
+        scope.qualified.get(qualifier).copied()
+    }
+
     // `module::name` binds through the module's file and its re-exports; a module outside the
     // repository binds nothing; a path whose walk stopped inside it falls back to the name.
     fn resolve_qualified(&self, name: &str, path: &str, qualifier: &str) -> Option<Resolution<'a>> {
-        let found = self
-            .scopes
-            .get(path)
-            .and_then(|scope| scope.qualified.get(qualifier));
-        let module = match found {
-            Some(Qualified::Module(module)) => *module,
+        let module = match self.qualified(qualifier, path) {
+            Some(Qualified::Module(module)) => module,
             Some(Qualified::Foreign) => return None,
             None => return self.resolve(name, path),
         };

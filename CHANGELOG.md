@@ -109,13 +109,13 @@ Each byte count is of the served bytes.
   - Measured with the release binaries of edea4a4 and of the build that
     keeps the hint on `find_referencing_symbols`, one `--root`. The bytes are
     the compact tools/list entries. The always-loaded set goes from 5
-    tools, 9,565 bytes and 1,851 tokens to 4 tools, 6,906 bytes and 1,342
+    tools, 9,565 bytes and 1,851 tokens to 4 tools, 6,953 bytes and 1,350
     tokens. The deferred set goes from 1 tool, 926 bytes and 165 tokens to 3
     tools, 3,574 bytes and 654 tokens. The tools/list answer line goes from
-    10,534 to 10,523 bytes. The later figures include the growth that the
-    `refs` exit-code entry below adds. With two roots, the line is 11,740
-    bytes, the always-loaded set is 7,602 bytes and 1,494 tokens, and the
-    deferred set is 4,095 bytes and 767 tokens.
+    10,534 to 10,570 bytes. The later figures include the growth that the
+    `refs` exit-code entry and the language-family entry below add. With two
+    roots, the line is 11,787 bytes, the always-loaded set is 7,649 bytes and
+    1,502 tokens, and the deferred set is 4,095 bytes and 767 tokens.
   - The release binaries of edea4a4 and of the first build of this change
     answered the same 56 calls over this repository at 8d0dbba
     and the snapshot psf__requests-2931: 30 answers are the same, 12 moved
@@ -337,20 +337,25 @@ Each byte count is of the served bytes.
   holds them in `m/`. A path starts at `crate`, `self`, `super`, a child
   module or a workspace crate, and walks down the module files. The first
   segment that names no module is the item. Inside an inline `mod` body, the
-  first `super` names the file's own module. Use trees, aliases and `pub use`
-  re-exports bind, and a glob binds every name of its module and what that
-  module re-exports. A segment can also name a module that a file re-exports,
-  or the directory of an inline module. Two more binding passes read these,
-  over the Rust files only, and only when the scan holds a Cargo manifest. A
-  module path `a::b::name`, with each segment in lower case, binds `name`
-  through that module. A path whose first segment names nothing in the
+  first `super` of a `use` names the file's own module, and a `self` or
+  `super` path in an expression falls back to the name. Use trees, aliases
+  and `pub use` re-exports bind, and a glob binds every name of its module and
+  what that module re-exports. A segment can also name a module that a file
+  re-exports, or the directory of an inline module. Two more binding passes
+  read these, over the Rust files only, and only when the scan holds a Cargo
+  manifest. A module path `a::b::name`, with each segment in lower case, binds
+  `name` through that module. A path whose first segment names nothing in the
   repository binds nothing: `std::path::PathBuf` is no longer a candidate for
-  a repository function `path`. `#[path]`, `include!` and macro-made modules
-  are not read, and a path inside macro arguments falls back to the name. The
-  TOML extraction stores the manifest values as a typed fact. A value that is
-  not a plain one-line string is absent, and a manifest without a package name
-  declares no crate. An `Import` gains `inline_depth`, the count of inline
-  `mod` bodies around it. `FACTS_VERSION` is 8, so every index rebuilds once.
+  a repository function `path`, in `refs` and in `explain`. A path whose
+  first segment names a `mod` item of the file that no module file holds, such
+  as an inline module or a `#[path]` module, falls back to the name.
+  `#[path]`, `include!` and macro-made modules are not read, and a path inside
+  macro arguments falls back to the name. The TOML extraction stores the
+  manifest values as a typed fact. A value that is not a plain one-line string
+  is absent, and a manifest without a package name declares no crate. An
+  `Import` gains `inline_depth`, the count of inline `mod` bodies around it,
+  and the facts of a Rust file list the names of its `mod` items.
+  `FACTS_VERSION` is 9, so every index rebuilds once.
   - Measured with a dump of every resolved site, a measurement patch on the
     release build of this change that does not ship, against the same dump of
     the base, on this repository at c2daf41 and four snapshots. Rust sites at
@@ -403,16 +408,28 @@ Each byte count is of the served bytes.
   `unique` in each. The guide's tier table now says that `unique` and
   `name-only-ambiguous` count the definitions in the family of the referencing
   file. Its `refs` example on django uses `--limit 500` and other groups,
-  because the `jquery.min.js` row it showed leaves.
+  because the `jquery.min.js` row it showed leaves. The
+  `find_referencing_symbols` description says the same of `unique`: its
+  tools/list entry grows from 1,366 to 1,413 bytes and from 248 to 256 cl100k
+  tokens, measured with the release binaries of f7b0d89 and of this change,
+  one `--root`.
   - Measured with the same dumps. The candidate rows with a candidate in
     another language go from 12,483 to 4 here, 58,445 to 3 in ruff, 259 to 0
     in ripgrep, 1,563 to 0 in nushell, 39,926 to 24,028 in tutanota, 33,135 to
     10,868 in matplotlib and 74,445 to 3,003 in teleport. Every row left is
     inside a family. The file-graph name edges between two languages go from
     3,866 to 1, 83,487 to 1, 25 to 0, 273 to 0, 16,698 to 5,578, 6,411 to
-    2,947 and 31,467 to 38. One real edge leaves: in teleport, Go calls a Rust
-    `extern "C"` function through cgo (`C.write_rdp_pointer` in
-    lib/srv/desktop/rdp/rdpclient/client.go, 4 sites).
+    2,947 and 31,467 to 38. Real edges leave too. In teleport, Go calls a
+    Rust `extern "C"` function through cgo (`C.write_rdp_pointer` in
+    lib/srv/desktop/rdp/rdpclient/client.go, 4 sites). In tutanota, 75 Swift
+    sites had only C candidates, and they now bind nothing: 73 are calls of C
+    functions that the bridging headers declare (`TUTSLog` 53, `sqlite3_*`
+    20), and 2 are Apple protocol names that an Objective-C header spells.
+    Swift stays a family of its own. A measurement build of 0fb8b20 with Swift
+    in the C family keeps the 75 sites, but gives 152 C and C++ sites a Swift
+    candidate and adds 697 name edges from a header to a Swift file; 15 of 15
+    sampled C rows are spelling only, such as the parameter names `from` and
+    `init` in the openssl headers.
   - The ranking of the three entries, measured with the release build of
     this change against the build of 5d4f81b. The Loc-Bench retrieval tier
     ranks other files in 45 of 150 instances seeded and in 72 of 150
@@ -427,7 +444,9 @@ Each byte count is of the served bytes.
   - The changed reference outcomes of the three entries:
     `crates/facts/fixtures/extract_rust.json` (10 cases: 7 for the use trees,
     3 for the lifetimes of `unicode.rs`), the blob pin in
-    `crates/store/src/tests/blobs.rs`, the corpora `ext_python`,
+    `crates/store/src/tests/blobs.rs` (version 9, the same digest), the
+    `find_referencing_symbols` entry of
+    `crates/app/fixtures/surface/surface.json`, the corpora `ext_python`,
     `ext_scripts`, `fixtures_tree`, `shapes`, `tier1` and `tier2` in
     `crates/graph/fixtures/corpora/` (every removed file-graph pair and
     resolver candidate crosses a family, no pair is added, and `fixtures_tree`

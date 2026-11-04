@@ -32,6 +32,8 @@ struct Rest<'a> {
     errors: &'a [Span],
     #[serde(skip_serializing_if = "Option::is_none")]
     manifest: Option<&'a Manifest>,
+    #[serde(skip_serializing_if = "<[String]>::is_empty")]
+    modules: &'a [String],
 }
 
 #[derive(Deserialize)]
@@ -41,6 +43,8 @@ struct OwnedRest {
     errors: Vec<Span>,
     #[serde(default)]
     manifest: Option<Manifest>,
+    #[serde(default)]
+    modules: Vec<String>,
 }
 
 /// Encodes `analysis` for its row. A blob that does not encode fails the write of the row.
@@ -74,6 +78,7 @@ fn encode_rest(facts: &Facts) -> Result<Vec<u8>, SqlError> {
         refs: &facts.refs,
         errors: &facts.errors,
         manifest: facts.manifest.as_ref(),
+        modules: &facts.modules,
     })
 }
 
@@ -91,6 +96,7 @@ pub(crate) fn decode_facts(symbols: &[u8], rest: &[u8]) -> Result<Facts, SqlErro
         refs,
         errors,
         manifest,
+        modules,
     } = decoded(rest)?;
     Ok(Facts {
         symbols: decode_symbols(symbols)?,
@@ -98,6 +104,7 @@ pub(crate) fn decode_facts(symbols: &[u8], rest: &[u8]) -> Result<Facts, SqlErro
         refs,
         errors,
         manifest,
+        modules,
     })
 }
 

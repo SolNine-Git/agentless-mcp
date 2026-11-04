@@ -50,6 +50,11 @@ pub fn extract(parsed: &Parsed) -> Facts {
         manifest: (parsed.language() == Language::Toml)
             .then(|| data_languages::manifest(&tree))
             .flatten(),
+        modules: if parsed.language() == Language::Rust {
+            rust_items::modules(&tree)
+        } else {
+            Vec::new()
+        },
     }
 }
 

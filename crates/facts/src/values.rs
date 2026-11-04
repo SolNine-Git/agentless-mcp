@@ -14,6 +14,9 @@ pub struct Facts {
     /// The Cargo package that a TOML document declares, or `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manifest: Option<Manifest>,
+    /// The names of the `mod` items of a Rust file, inline or not, in document order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modules: Vec<String>,
 }
 
 /// The `[package] name` of a Cargo manifest and the `name` and `path` of its `[lib]` table.

@@ -25,7 +25,7 @@ const TEXTS: [(&str, &str); 4] = [
 
 // A stored row is served while FACTS_VERSION holds, so these blobs change only with a bump.
 const PINNED: (u32, &str) = (
-    8,
+    9,
     "b075c424ddf4c5c8109841e8daaaeae0d67d597f962d89ee4fde694b7e06a6fe",
 );
 
@@ -75,5 +75,26 @@ fn a_manifest_fact_reads_back_from_the_rest_blob_and_a_file_without_one_stores_n
             path == "Cargo.toml",
             "{stored}"
         );
+    }
+}
+
+#[test]
+fn the_mod_items_read_back_from_the_rest_blob_and_a_file_without_one_stores_none() {
+    let texts = [
+        (
+            "m.rs",
+            "mod inner {}\n#[path = \"x.rs\"]\nmod moved;\n",
+            true,
+        ),
+        ("d.rs", TEXTS[3].1, false),
+    ];
+    for (path, text, held) in texts {
+        let analysis = analyze(&file(path, text), false).expect("the text parses");
+        let blobs = encode(&analysis).blobs.expect("the blobs encode");
+        let read = decode_facts(&blobs.symbols, &blobs.rest).expect("the blobs decode");
+        assert_eq!(read, analysis.facts, "{path}");
+        assert_eq!(read.modules.len(), if held { 2 } else { 0 }, "{path}");
+        let stored = String::from_utf8(blobs.rest).expect("a JSON blob");
+        assert_eq!(stored.contains("\"modules\""), held, "{stored}");
     }
 }

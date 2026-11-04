@@ -116,8 +116,8 @@ fn wildcard_path(tree: &Tree, wildcard: NodeId) -> String {
     path.map_or(String::new(), |path| spaceless(tree.text(path)))
 }
 
-// How many inline `mod name { ... }` bodies enclose the declaration.
-fn inline_depth(tree: &Tree, node: NodeId) -> u32 {
+// How many inline `mod name { ... }` bodies enclose the node.
+pub(super) fn inline_depth(tree: &Tree, node: NodeId) -> u32 {
     let ancestors = std::iter::successors(tree.parsed.parent(node), |up| tree.parsed.parent(*up));
     let modules = ancestors.filter(|up| tree.is(*up, "mod_item")).count();
     u32::try_from(modules).expect("a file nests fewer than 2^32 modules")

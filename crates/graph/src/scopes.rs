@@ -64,7 +64,7 @@ impl<'a> ImportScope<'a> {
         })
     }
 
-    // Only C's #include and Python's `from x import *` bring every name in unqualified.
+    // Only C's #include, Python's `from x import *` and Rust's `use m::*` bring every name in.
     pub(crate) fn binds(&self, name: &str, path: &str) -> bool {
         self.wholesale.contains(path)
             || self
@@ -417,20 +417,21 @@ impl<'a> ImportScope<'a> {
             if internal.contains(first) && !self.module_bindings.contains_key(first) {
                 continue;
             }
-            if let Some(found) = self.qualified_module(&file.path, qualifier, rust) {
+            if let Some(found) = self.qualified_module(file, qualifier, rust) {
                 self.qualified.insert(qualifier, found);
             }
         }
     }
 
-    // What a qualifier names: `None` when its walk stops inside this repository, or when a lone
-    // local name binds several modules.
+    // What a qualifier names: `None` when its walk stops inside this repository, when a lone local
+    // name binds several modules, or when it starts at a `mod` item of the file, inline or not.
     fn qualified_module(
         &self,
-        path: &'a str,
+        file: &'a FileFacts,
         qualifier: &'a str,
         rust: &RustTree<'_, 'a>,
     ) -> Option<Qualified<'a>> {
+        let path = file.path.as_str();
         let segments: Vec<&str> = qualifier.split("::").collect();
         let first = segments[0];
         if segments.len() == 1
@@ -444,6 +445,7 @@ impl<'a> ImportScope<'a> {
         }
         let known = self.module_bindings.contains_key(first)
             || self.named.contains_key(first)
+            || file.facts.modules.iter().any(|module| module == first)
             || rust.names_repository_module(path, first);
         (!known).then_some(Qualified::Foreign)
     }

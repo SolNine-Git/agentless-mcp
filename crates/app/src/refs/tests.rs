@@ -241,6 +241,25 @@ fn the_bound_count_covers_every_site_before_the_limit_cuts_them() {
 }
 
 #[test]
+fn a_path_through_a_module_outside_the_repository_is_no_candidate() {
+    let files = [
+        ("Cargo.toml", "[package]\nname = \"p\"\n"),
+        (
+            "src/lib.rs",
+            "pub mod paths;\n\npub fn path() -> u32 {\n    4\n}\n",
+        ),
+        (
+            "src/paths.rs",
+            "fn home() -> std::path::PathBuf {\n    std::path::PathBuf::new()\n}\n\n\
+             fn local() -> u32 {\n    crate::path()\n}\n",
+        ),
+    ];
+    let answer = referenced(&files, "rs:src/lib.rs::path");
+    assert_eq!(listed(&answer), [("src/paths.rs", 6)]);
+    assert_eq!((answer.groups.total, answer.groups.bound), (1, 1));
+}
+
+#[test]
 fn a_skipped_code_file_makes_the_check_partial_and_a_skipped_data_file_does_not() {
     let helper = "def helper(value):\n    return value + 1\n";
     let code = format!("{}helper(2)\n", "x = 1\n".repeat(200_000));

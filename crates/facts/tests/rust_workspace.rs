@@ -1,6 +1,6 @@
 //! The facts that the Rust workspace binding reads: the use trees, the inline-module depth of a
-//! `use`, the module path that qualifies a name, the lifetimes and labels that name nothing, and
-//! the Cargo manifest of a TOML document.
+//! `use`, the module path that qualifies a name, the `mod` items of a file, the lifetimes and
+//! labels that name nothing, and the Cargo manifest of a TOML document.
 
 use std::sync::Arc;
 
@@ -111,6 +111,34 @@ fn a_module_path_qualifies_the_segment_after_it_and_a_type_path_qualifies_nothin
         .map(|(name, qualifier)| ((*name).to_owned(), (*qualifier).to_owned()))
         .collect();
     assert_eq!(qualified(source), expected);
+}
+
+#[test]
+fn a_self_or_super_path_inside_an_inline_module_qualifies_nothing_and_the_mod_items_are_listed() {
+    let source = "fn f() { m::g(); self::h(); }\nmod m {\n    pub fn g() { super::h(); self::g(); \
+                  crate::k(); }\n    mod inner {}\n}\n#[path = \"x.rs\"]\nmod n;\n";
+    let expected = [
+        ("f", ""),
+        ("m", ""),
+        ("g", "m"),
+        ("h", "self"),
+        ("m", ""),
+        ("g", ""),
+        ("h", ""),
+        ("g", ""),
+        ("k", "crate"),
+        ("inner", ""),
+        ("path", ""),
+        ("n", ""),
+    ];
+    let expected: Vec<(String, String)> = expected
+        .iter()
+        .map(|(name, qualifier)| ((*name).to_owned(), (*qualifier).to_owned()))
+        .collect();
+    assert_eq!(qualified(source), expected);
+    let modules = facts_of(Language::Rust, source).modules;
+    assert_eq!(modules, ["m", "inner", "n"]);
+    assert!(facts_of(Language::Python, "import m\n").modules.is_empty());
 }
 
 #[test]

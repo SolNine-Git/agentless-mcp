@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use syntax::{Extraction, KindSet, NodeId, RoleRule};
 
 use super::python_scopes::{self, Roles};
+use super::rust_uses::inline_depth;
 use super::tree::{Field, Tree};
 use crate::values::{Ref, Role};
 
@@ -67,10 +68,17 @@ impl RustPaths {
             .chars()
             .filter(|c| !c.is_whitespace())
             .collect();
-        if module_like(&text) {
+        if module_like(&text) && !relative_inside_inline_module(tree, node, &text) {
             self.qualifiers.insert(name, text);
         }
     }
+}
+
+// The resolver walks a qualifier from the file, so a `self` or `super` path inside an inline
+// module qualifies nothing and its name falls back.
+fn relative_inside_inline_module(tree: &Tree, node: NodeId, path: &str) -> bool {
+    let first = path.split("::").next().unwrap_or_default();
+    matches!(first, "self" | "super") && inline_depth(tree, node) > 0
 }
 
 // A module path: each segment starts lower case, as `crate`, `self`, `super` and module names do.

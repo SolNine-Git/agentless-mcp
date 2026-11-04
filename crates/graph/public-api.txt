@@ -518,6 +518,7 @@ impl<'a> core::panic::unwind_safe::UnwindSafe for graph::Resolution<'a>
 pub struct graph::Resolver<'a>
 impl<'a> graph::Resolver<'a>
 pub fn graph::Resolver<'a>::index(&self) -> &'a graph::NameIndex<'a>
+pub fn graph::Resolver<'a>::names_outside(&self, &facts::values::Ref, &str) -> bool
 pub fn graph::Resolver<'a>::new(&'a graph::NameIndex<'a>, &'a graph::Scopes<'a>) -> graph::Resolver<'a>
 pub fn graph::Resolver<'a>::resolve(&self, &str, &str) -> core::option::Option<graph::Resolution<'a>>
 pub fn graph::Resolver<'a>::resolved_sites<'r>(&'r self, &'a graph::FileFacts, core::option::Option<&'r alloc::collections::btree::set::BTreeSet<&str>>) -> impl core::iter::traits::iterator::Iterator<Item = (&'a facts::values::Ref, graph::Resolution<'a>)> + 'r
