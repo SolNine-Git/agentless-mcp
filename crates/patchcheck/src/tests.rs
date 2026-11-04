@@ -266,10 +266,11 @@ fn a_suffix_and_its_language_are_the_references() {
 const APP: &str = "UNPARSABLE = 1\nCONSTANT = 1\n";
 
 fn scanned(path: &str, text: &str) -> FileFacts {
-    let parsed = syntax::parse(Language::Python, Arc::from(text)).expect("the fixture parses");
+    let language = Language::from_path(path).expect("a known language");
+    let parsed = syntax::parse(language, Arc::from(text)).expect("the fixture parses");
     FileFacts {
         path: path.to_owned(),
-        language: Language::Python,
+        language,
         line_count: 2,
         facts: facts::extract(&parsed),
     }
@@ -341,6 +342,42 @@ fn a_check_the_parser_refuses_is_a_gap_naming_the_class() {
             .collect();
         assert_eq!(cycles, [expected], "{error:?}");
     }
+}
+
+// The rebuilt import graph keeps the Cargo manifest, so `crate::` paths resolve after the patch.
+#[test]
+fn a_patch_that_closes_a_rust_module_cycle_through_crate_paths_is_a_new_cycle() {
+    let texts: BTreeMap<String, String> = [
+        ("Cargo.toml", "[package]\nname = \"w\"\n"),
+        ("src/lib.rs", "mod a;\nmod b;\n"),
+        ("src/a.rs", "use crate::b::B;\npub struct A;\n"),
+        ("src/b.rs", "pub struct B;\n"),
+    ]
+    .into_iter()
+    .map(|(path, text)| (path.to_owned(), text.to_owned()))
+    .collect();
+    let files: Vec<FileFacts> = texts
+        .iter()
+        .map(|(path, text)| scanned(path, text))
+        .collect();
+    let index = NameIndex::build(&files);
+    let scopes = Scopes::build(&files);
+    let resolver = Resolver::new(&index, &scopes);
+    let facts = PatchBaseline::new(&resolver, &texts, DeclaredDependencies::default());
+    let edit = Edit {
+        index: 0,
+        path: "src/b.rs".to_owned(),
+        search: "pub struct B;".to_owned(),
+        replace: "use crate::a::A;\npub struct B;".to_owned(),
+    };
+    let report = lint_with(&[edit], &facts, &|language, source| {
+        syntax::parse(language, source)
+    });
+    let cycles: Vec<&str> = (report.findings.iter())
+        .filter(|finding| finding.check == CHECK_CYCLE_DELTA)
+        .map(|finding| finding.evidence.as_str())
+        .collect();
+    assert_eq!(cycles, ["src/a.rs -> src/b.rs -> src/a.rs"]);
 }
 
 #[test]

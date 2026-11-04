@@ -283,8 +283,8 @@ fn single_definition(bound: &Bound<'_>) -> Option<String> {
     }
 }
 
-// Every spelling of each definition outside its own span, then the alias spellings, less the
-// lines that only declare: a declaration is no reference, and a row is a line.
+// Each definition's spellings outside its span in its family, then the alias spellings, less the
+// paths through a module outside the repository and the lines that only declare (a row is a line).
 fn spellings<'a>(
     resolver: &Resolver<'a>,
     definitions: &[Definition<'a>],
@@ -293,12 +293,17 @@ fn spellings<'a>(
     let spelled: BTreeSet<&str> = (definitions.iter())
         .map(|definition| definition.symbol().name.as_str())
         .collect();
-    let direct =
-        (definitions.iter()).flat_map(|definition| references_to(resolver.index(), definition));
+    let direct = (definitions.iter()).flat_map(|definition| {
+        let family = definition.file().language.family();
+        let sites = references_to(resolver.index(), definition).into_iter();
+        sites.filter(move |site| site.file.language.family() == family)
+    });
     let mut declared: HashMap<&'a str, Declared<'a>> = HashMap::new();
     let all = direct.chain(alias_sites(resolver, target_ids, &spelled));
-    all.filter(|site| !only_declares(&mut declared, site))
-        .collect()
+    all.filter(|site| {
+        !resolver.names_outside(site.reference, site.path()) && !only_declares(&mut declared, site)
+    })
+    .collect()
 }
 
 // Each file's declared names are collected once, on its first site.

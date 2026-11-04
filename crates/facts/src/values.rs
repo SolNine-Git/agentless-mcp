@@ -11,6 +11,20 @@ pub struct Facts {
     pub refs: Vec<Ref>,
     /// The byte ranges of the outermost ERROR nodes in document order; MISSING nodes are not here.
     pub errors: Vec<Span>,
+    /// The Cargo package that a TOML document declares, or `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<Manifest>,
+    /// The names of the `mod` items of a Rust file, inline or not, in document order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modules: Vec<String>,
+}
+
+/// The `[package] name` of a Cargo manifest and the `name` and `path` of its `[lib]` table.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Manifest {
+    pub package: String,
+    pub lib_name: Option<String>,
+    pub lib_path: Option<String>,
 }
 
 /// One declaration of a file: a function, a class, a constant or a key.
@@ -92,6 +106,9 @@ pub struct Import {
     pub binds_all: bool,
     /// The local name that a module-object import binds, or empty when the language chose it.
     pub alias: String,
+    /// How many inline module bodies, such as Rust's `mod name { ... }`, enclose the statement.
+    #[serde(default)]
+    pub inline_depth: u32,
 }
 
 /// One identifier occurrence: the name, its line, and what it does there.
@@ -101,7 +118,8 @@ pub struct Ref {
     /// The 1-based line of the occurrence.
     pub line: u32,
     pub role: Role,
-    /// The imported module name that qualifies a module attribute, or empty.
+    /// The imported module name that qualifies a module attribute, or the module path that
+    /// qualifies a Rust path's last segment, or empty.
     pub qualifier: String,
 }
 
@@ -293,6 +311,7 @@ mod tests {
             line: 1,
             binds_all: false,
             alias: String::new(),
+            inline_depth: 0,
         };
         let pairs: Vec<(&str, &str)> = import.bound_names().collect();
         assert_eq!(pairs, [("a", "a"), ("b", "b")]);

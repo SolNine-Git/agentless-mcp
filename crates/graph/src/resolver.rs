@@ -3,10 +3,11 @@
 use std::collections::{BTreeSet, VecDeque};
 
 use facts::{Declared, Ref, Role};
+use syntax::Language;
 
 use crate::names::{Definition, NameIndex};
 use crate::scan::FileFacts;
-use crate::scopes::{ImportScope, Scopes};
+use crate::scopes::{ImportScope, Qualified, Scopes};
 
 // How many re-export hops one alias chain may follow; the visited set already ends a cycle.
 const MAX_IMPORT_HOPS: u32 = 32;
@@ -110,7 +111,8 @@ impl<'a> Resolver<'a> {
         self.scopes
     }
 
-    /// Resolve `name` as spelled in the file at `path`, or `None` when nothing defines it.
+    /// Resolve `name` as spelled in the file at `path`, or `None` when nothing defines it; a
+    /// name-only match keeps the definitions in the language family of the file at `path`.
     #[must_use]
     pub fn resolve(&self, name: &str, path: &str) -> Option<Resolution<'a>> {
         let known = self
@@ -124,7 +126,10 @@ impl<'a> Resolver<'a> {
         if !followed.is_empty() {
             return Some(imported(followed));
         }
-        let ordered = known.map(|known| known.ordered.clone()).unwrap_or_default();
+        let mut ordered = known.map(|known| known.ordered.clone()).unwrap_or_default();
+        if let Some(spelled) = self.scopes.language_of(path) {
+            ordered.retain(|entry| entry.file().language.family() == spelled.family());
+        }
         match ordered.len() {
             0 => None,
             1 => Some(Resolution {
@@ -145,8 +150,22 @@ impl<'a> Resolver<'a> {
         let Some(scope) = self.scopes.get(path) else {
             return Vec::new();
         };
-        let first = scope.members.get(name).into_iter().flatten().copied();
-        self.follow(first.collect())
+        let mut first: Vec<(&'a str, &str)> = scope
+            .members
+            .get(name)
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+        // A Rust glob import also brings in what the globbed module re-exports.
+        if first.is_empty() && self.scopes.language_of(path) == Some(Language::Rust) {
+            first = scope
+                .wholesale
+                .iter()
+                .map(|&module| (module, name))
+                .collect();
+        }
+        self.follow(first)
     }
 
     /// Return each identifier occurrence in `file` that binds a definition, with its resolution;
@@ -167,11 +186,46 @@ impl<'a> Resolver<'a> {
         })
     }
 
+    /// Return true when the module path that qualifies `reference` in the file at `path` names a
+    /// module outside the repository, so the reference binds nothing.
+    #[must_use]
+    pub fn names_outside(&self, reference: &Ref, path: &str) -> bool {
+        reference.role != Role::ModuleAttribute
+            && !reference.qualifier.is_empty()
+            && self.qualified(&reference.qualifier, path) == Some(Qualified::Foreign)
+    }
+
     fn resolve_site(&self, reference: &Ref, path: &str) -> Option<Resolution<'a>> {
         if reference.role == Role::ModuleAttribute {
             self.resolve_module_attribute(&reference.name, path, &reference.qualifier)
+        } else if !reference.qualifier.is_empty() {
+            self.resolve_qualified(&reference.name, path, &reference.qualifier)
         } else {
             self.resolve(&reference.name, path)
+        }
+    }
+
+    fn qualified(&self, qualifier: &str, path: &str) -> Option<Qualified<'a>> {
+        let scope = self.scopes.get(path)?;
+        scope.qualified.get(qualifier).copied()
+    }
+
+    // `module::name` binds through the module's file and its re-exports; a module outside the
+    // repository binds nothing; a path whose walk stopped inside it falls back to the name.
+    fn resolve_qualified(&self, name: &str, path: &str, qualifier: &str) -> Option<Resolution<'a>> {
+        let module = match self.qualified(qualifier, path) {
+            Some(Qualified::Module(module)) => module,
+            Some(Qualified::Foreign) => return None,
+            None => return self.resolve(name, path),
+        };
+        let mut reached = self.defined_at(name, module);
+        if reached.is_empty() {
+            reached = self.follow(vec![(module, name)]);
+        }
+        if reached.is_empty() {
+            self.resolve(name, path)
+        } else {
+            Some(imported(reached))
         }
     }
 

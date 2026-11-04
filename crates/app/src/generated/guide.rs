@@ -410,22 +410,24 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         is\nits line range, and an import gives nothing to point \
         at.\n\nOne row per test file. A broad suite that touches six \
         ranked files says so on\nits own row instead of taking six of \
-        them. Rows are ranked by flood depth\nfirst, then by how many \
-        ranked files the test covers, then by aggregated edge\nweight, \
-        then by path. The walk reaches two hops, so a test that \
-        exercises its\nsubject through a helper is still listed. The \
-        section is capped at five rows\nand is omitted entirely when it \
-        is empty, so a repository with no tests pays\nnothing for \
-        it.\n\nThe JSON form carries the same section under \
-        `test_companions`, shaped\n`{total, limit, omitted, rows}`. \
-        `total` is how many test files were found\nbefore the cap and \
-        `omitted` how many the cap left out. Each row is\n`{path, \
-        start, end, covers, depth, weight}`: `start` and `end` are the \
-        span of\nthe referencing symbol inside the test, never the \
-        whole file; `covers` names\nthe files of the text row, without \
-        the `(not listed)` mark; `depth` is the\ntest's distance from \
-        the seeded and ranked files; `weight` is the aggregated\nedge \
-        weight behind it.\n\nTwo things the section cannot see, both \
+        them. A test whose file name points at a\nseeded or listed file \
+        comes first (`test_pricing.py` for `pricing.py`,\n`os_test.go` \
+        for `os.go`). The other keys follow in order: flood depth, \
+        how\nmany ranked files the test covers, aggregated edge weight, \
+        and path. The walk\nreaches two hops, so a test that exercises \
+        its subject through a helper is\nstill listed. The section is \
+        capped at five rows and is omitted entirely when\nit is empty, \
+        so a repository with no tests pays nothing for it.\n\nThe JSON \
+        form carries the same section under `test_companions`, \
+        shaped\n`{total, limit, omitted, rows}`. `total` is how many \
+        test files were found\nbefore the cap and `omitted` how many \
+        the cap left out. Each row is\n`{path, start, end, covers, \
+        depth, weight}`: `start` and `end` are the span of\nthe \
+        referencing symbol inside the test, never the whole file; \
+        `covers` names\nthe files of the text row, without the `(not \
+        listed)` mark; `depth` is the\ntest's distance from the seeded \
+        and ranked files; `weight` is the aggregated\nedge weight \
+        behind it.\n\nTwo things the section cannot see, both \
         properties of the graph rather than of\nthe section. A fixture \
         with no grammar is never parsed, so it appears in no\nedge. And \
         a test whose only use of its subject is a method on a value \
@@ -623,29 +625,38 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         gives. Use\n`grep` to find where a key is spelled.\n\nThe tool \
         now **labels every group with the evidence tier behind it**, so \
         the\nover-reporting costs you nothing. These group headers come \
-        from\n`refs py:django/db/models/expressions.py::F --limit 10` \
-        on Django:\n\n```\ndjango/contrib/admin/checks.py  (1 \
-        reference, \
-        resolved-via-import)\ndjango/contrib/admin/static/admin/js/vendor/jquery/jquery.min.js  \
-        (1 reference, \
-        name-only-ambiguous)\ndjango/db/models/expressions.py  (1 \
-        reference, same-file)\n```\n\n| Tier | What it means \
-        |\n|---|---|\n| `same-file` | the referencing file defines the \
-        target itself |\n| `resolved-via-import` | the referencing file \
-        imports the file the target is defined in, by name or as a \
-        whole module |\n| `unique` | nothing connects the two files, \
-        but the repository defines that name exactly once |\n| \
-        `name-only-ambiguous` | the name matched and nothing else did \
-        \u{2014} including the shadowing case, where the file has its \
-        own definition of the name and its references bind to that one, \
-        not to your target |\n\nRead the top two tiers as callers and \
-        the bottom two as candidates. The tool\nnever drops a row for a \
-        weak tier. The label is there so you can weigh \
-        the\nrows.\n\nThe groups come in path order, and the groups of \
-        one file come in tier order,\nstrongest first. The tier does \
-        not order the groups across files, so a weak\ngroup can come \
-        before a strong one: above, the name-only \
-        `jquery.min.js`\ngroup is second. The limit takes one site from \
+        from\n`refs py:django/db/models/expressions.py::F --limit 500` \
+        on Django:\n\n```\ntests/lookup/test_decimalfield.py  (2 \
+        references, \
+        resolved-via-import)\ntests/migrations/test_state.py  (9 \
+        references, \
+        name-only-ambiguous)\ntests/model_fields/test_integerfield.py  \
+        (1 reference, resolved-via-import)\n```\n\n| Tier | What it \
+        means |\n|---|---|\n| `same-file` | the referencing file \
+        defines the target itself |\n| `resolved-via-import` | the \
+        referencing file imports the file the target is defined in, by \
+        name or as a whole module. A Rust `use` binds through the Cargo \
+        manifests and the module files of the workspace, and a module \
+        path such as `crate::m::name` binds through that module |\n| \
+        `unique` | nothing connects the two files, but the repository \
+        defines that name exactly once in the language family of the \
+        referencing file |\n| `name-only-ambiguous` | the name matched \
+        definitions in the language family of the referencing file and \
+        nothing else did \u{2014} including the shadowing case, where \
+        the file has its own definition of the name and its references \
+        bind to that one, not to your target |\n\nRead the top two \
+        tiers as callers and the bottom two as candidates. The \
+        tool\nnever drops a row for a weak tier. The label is there so \
+        you can weigh the\nrows.\n\nA language family is a set of \
+        languages whose code can name the symbols of\nthe others: \
+        JavaScript, TypeScript and TSX; C and C++; Java, Kotlin \
+        and\nScala. Each other language is a family of its own. A \
+        spelling in another\nfamily is no candidate, so a Python target \
+        lists no JavaScript row.\n\nThe groups come in path order, and \
+        the groups of one file come in tier order,\nstrongest first. \
+        The tier does not order the groups across files, so a \
+        weak\ngroup can come before a strong one: above, the name-only \
+        `test_state.py`\ngroup is second. The limit takes one site from \
         each file in turn, in path\norder, so a cut never drops a whole \
         file while another file keeps a \
         second\nsite.\n\n`--shared-callers` answers the DRY question: \
@@ -787,13 +798,13 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         origin references the arrival\".\n`<-` is \"the arrival \
         references the origin\".\n\n**Read the tiers on the hops.** A \
         chain is only as good as its weakest link.\nA `unique` hop is a \
-        name that matched the repository's only definition,\nwithout \
-        any import connecting the two files. Sometimes that is a real \
-        edge.\nSometimes it is a local variable that happens to share a \
-        name with a function\nelsewhere. Only `same-file` and \
-        `resolved-via-import` edges participate by\ndefault. \
-        Repository-wide `unique` edges require \
-        `--include-unique`\n(`include_unique: true`). \
+        name that matched the repository's only definition in\nits \
+        language family, without any import connecting the two \
+        files.\nSometimes that is a real edge.\nSometimes it is a local \
+        variable that happens to share a name with a \
+        function\nelsewhere. Only `same-file` and `resolved-via-import` \
+        edges participate by\ndefault. Repository-wide `unique` edges \
+        require `--include-unique`\n(`include_unique: true`). \
         `name-only-ambiguous` edges require\n`--include-ambiguous` \
         (`include_ambiguous: true`). A path built out of\nname-only \
         evidence otherwise reads like an architecture finding when it \
@@ -910,17 +921,19 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         are declared imports. Dashed\n  arrows are name references. A \
         fixed `%% solid: imports, dashed: references`\n  comment names \
         the encoding, so the picture cannot imply an import cycle \
-        the\n  `cycles` operation denies. Reference edges past the edge \
-        bound (default 40)\n  are elided wholesale, never sampled, and \
-        a comment counts them. That bound\n  never drops import \
-        edges.\n- **Bounded.** `--max-nodes` (default 40) keeps the \
-        highest-PageRank modules\n  and adds an explicit `... N more \
-        modules` node. The tool always keeps a\n  focus seed.\n- \
-        **Deterministic.** Node ids are synthetic (`n0`, `n1`) in \
-        sorted path\n  order. The renderer emits edges in id order and \
-        prints no float. The same\n  tree renders to the same bytes, \
-        which is what makes `--check` meaningful.\n- **Labels are \
-        untrusted content.** A path is a filename, and a filename \
+        the\n  `cycles` operation denies. The diagram draws every \
+        import edge between the\n  drawn modules, and the edge bound \
+        (default 40) never drops one. Then it\n  draws the heaviest \
+        reference edges while the bound has room, with equal\n  weights \
+        in node id order, and a comment counts the lighter reference \
+        edges\n  that it does not draw.\n- **Bounded.** `--max-nodes` \
+        (default 40) keeps the highest-PageRank modules\n  and adds an \
+        explicit `... N more modules` node. The tool always keeps a\n  \
+        focus seed.\n- **Deterministic.** Node ids are synthetic (`n0`, \
+        `n1`) in sorted path\n  order. The renderer emits edges in id \
+        order and prints no float. The same\n  tree renders to the same \
+        bytes, which is what makes `--check` meaningful.\n- **Labels \
+        are untrusted content.** A path is a filename, and a filename \
         can\n  say anything. Ids never come from repository content. \
         Every label is quoted\n  and reduced to an allowlist of \
         characters. The renderer emits no `click`,\n  `style` or \
@@ -1764,30 +1777,30 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3_599, 4_432),
     ("stable-ids", 4_434, 5_923),
     ("the-two-surfaces", 5_925, 11_608),
-    ("per-tool-usage", 11_610, 96_890),
+    ("per-tool-usage", 11_610, 97_718),
     ("claude-code-specifics", 13_226, 15_038),
-    ("map", 15_040, 24_949),
-    ("tree", 24_951, 25_272),
-    ("skeleton", 25_274, 26_639),
-    ("expand", 26_641, 28_614),
-    ("slice", 28_616, 29_453),
-    ("find-symbol", 29_455, 32_140),
-    ("refs", 32_142, 39_338),
-    ("history", 39_340, 42_173),
-    ("explain", 42_175, 44_150),
-    ("path", 44_152, 47_229),
-    ("cycles", 47_231, 48_736),
-    ("communities", 48_738, 51_261),
-    ("diagram", 51_263, 54_033),
-    ("health", 54_035, 60_270),
-    ("html", 60_272, 61_223),
-    ("resolve-locs", 61_225, 62_040),
-    ("capabilities", 62_042, 62_937),
-    ("index", 62_939, 65_680),
-    ("lint", 65_682, 85_690),
-    ("validate-vote", 85_692, 95_289),
-    ("warmup", 95_291, 96_890),
-    ("project-defaults-agentless-mcp-json", 96_892, 100_845),
-    ("token-counting", 100_847, 101_261),
-    ("exit-codes", 101_263, 101_721),
+    ("map", 15_040, 25_069),
+    ("tree", 25_071, 25_392),
+    ("skeleton", 25_394, 26_759),
+    ("expand", 26_761, 28_734),
+    ("slice", 28_736, 29_573),
+    ("find-symbol", 29_575, 32_260),
+    ("refs", 32_262, 39_999),
+    ("history", 40_001, 42_834),
+    ("explain", 42_836, 44_811),
+    ("path", 44_813, 47_913),
+    ("cycles", 47_915, 49_420),
+    ("communities", 49_422, 51_945),
+    ("diagram", 51_947, 54_861),
+    ("health", 54_863, 61_098),
+    ("html", 61_100, 62_051),
+    ("resolve-locs", 62_053, 62_868),
+    ("capabilities", 62_870, 63_765),
+    ("index", 63_767, 66_508),
+    ("lint", 66_510, 86_518),
+    ("validate-vote", 86_520, 96_117),
+    ("warmup", 96_119, 97_718),
+    ("project-defaults-agentless-mcp-json", 97_720, 101_673),
+    ("token-counting", 101_675, 102_089),
+    ("exit-codes", 102_091, 102_549),
 ];

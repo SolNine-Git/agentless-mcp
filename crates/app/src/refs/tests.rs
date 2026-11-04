@@ -237,7 +237,26 @@ fn a_bare_path_names_a_file_and_binds_to_nothing() {
 fn the_bound_count_covers_every_site_before_the_limit_cuts_them() {
     let answer = referenced_at(&ALIASED, "py:a.py::helper", 1);
     let groups = &answer.groups;
-    assert_eq!((groups.total, groups.bound, groups.shown()), (8, 6, 1));
+    assert_eq!((groups.total, groups.bound, groups.shown()), (6, 6, 1));
+}
+
+#[test]
+fn a_path_through_a_module_outside_the_repository_is_no_candidate() {
+    let files = [
+        ("Cargo.toml", "[package]\nname = \"p\"\n"),
+        (
+            "src/lib.rs",
+            "pub mod paths;\n\npub fn path() -> u32 {\n    4\n}\n",
+        ),
+        (
+            "src/paths.rs",
+            "fn home() -> std::path::PathBuf {\n    std::path::PathBuf::new()\n}\n\n\
+             fn local() -> u32 {\n    crate::path()\n}\n",
+        ),
+    ];
+    let answer = referenced(&files, "rs:src/lib.rs::path");
+    assert_eq!(listed(&answer), [("src/paths.rs", 6)]);
+    assert_eq!((answer.groups.total, answer.groups.bound), (1, 1));
 }
 
 #[test]

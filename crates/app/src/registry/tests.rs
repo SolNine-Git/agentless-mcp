@@ -85,3 +85,31 @@ fn a_selection_holds_each_check_once() {
         PairSelection::of(&[PairCheck::CloneDelta, PairCheck::CloneDelta]).expect("a selection");
     assert_eq!(names(selection), ["clone_delta"]);
 }
+
+#[test]
+fn each_pair_check_reads_the_table_row_at_its_own_place() {
+    for (place, check) in PairCheck::ALL.into_iter().enumerate() {
+        assert_eq!(check as usize, place, "{check:?}");
+        let variant = format!("{check:?}").to_lowercase();
+        assert_eq!(check.name().replace('_', ""), variant, "{check:?}");
+    }
+}
+
+#[test]
+fn each_pair_check_keeps_the_paths_of_its_rule() {
+    let paths = [
+        "src/app.py",
+        "tests/test_app.py",
+        "src/fixtures/sample.py",
+        "README.md",
+    ];
+    let found: Vec<(&str, [bool; 4])> = PairCheck::ALL
+        .map(|check| (check.name(), paths.map(|path| check.keeps(path))))
+        .to_vec();
+    let expected = [
+        ("complexity_delta", [true, true, false, true]),
+        ("contract_drift", [true, false, false, true]),
+        ("clone_delta", [true, false, false, false]),
+    ];
+    assert_eq!(found, expected);
+}

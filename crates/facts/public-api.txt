@@ -164,6 +164,8 @@ impl<'a> core::panic::unwind_safe::UnwindSafe for facts::Declared<'a>
 pub struct facts::Facts
 pub facts::Facts::errors: alloc::vec::Vec<kernel::span::Span>
 pub facts::Facts::imports: alloc::vec::Vec<facts::Import>
+pub facts::Facts::manifest: core::option::Option<facts::Manifest>
+pub facts::Facts::modules: alloc::vec::Vec<alloc::string::String>
 pub facts::Facts::refs: alloc::vec::Vec<facts::Ref>
 pub facts::Facts::symbols: alloc::vec::Vec<facts::Symbol>
 impl core::clone::Clone for facts::Facts
@@ -205,6 +207,7 @@ impl<'a> core::panic::unwind_safe::UnwindSafe for facts::FileSymbols<'a>
 pub struct facts::Import
 pub facts::Import::alias: alloc::string::String
 pub facts::Import::binds_all: bool
+pub facts::Import::inline_depth: u32
 pub facts::Import::is_relative: bool
 pub facts::Import::line: u32
 pub facts::Import::local_names: alloc::vec::Vec<alloc::string::String>
@@ -268,6 +271,29 @@ impl<'a> core::marker::Unpin for facts::LocTarget<'a>
 impl<'a> core::marker::UnsafeUnpin for facts::LocTarget<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for facts::LocTarget<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for facts::LocTarget<'a>
+pub struct facts::Manifest
+pub facts::Manifest::lib_name: core::option::Option<alloc::string::String>
+pub facts::Manifest::lib_path: core::option::Option<alloc::string::String>
+pub facts::Manifest::package: alloc::string::String
+impl core::clone::Clone for facts::Manifest
+pub fn facts::Manifest::clone(&self) -> Self
+impl core::cmp::Eq for facts::Manifest
+impl core::cmp::PartialEq for facts::Manifest
+pub fn facts::Manifest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for facts::Manifest
+pub fn facts::Manifest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for facts::Manifest
+impl serde_core::ser::Serialize for facts::Manifest
+pub fn facts::Manifest::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for facts::Manifest
+pub fn facts::Manifest::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for facts::Manifest
+impl core::marker::Send for facts::Manifest
+impl core::marker::Sync for facts::Manifest
+impl core::marker::Unpin for facts::Manifest
+impl core::marker::UnsafeUnpin for facts::Manifest
+impl core::panic::unwind_safe::RefUnwindSafe for facts::Manifest
+impl core::panic::unwind_safe::UnwindSafe for facts::Manifest
 pub struct facts::OutlineRow
 pub facts::OutlineRow::depth: u8
 pub facts::OutlineRow::symbol: facts::Symbol

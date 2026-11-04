@@ -5,7 +5,7 @@ use io::Granularity;
 use serde::Deserialize;
 use text::testing::cases;
 
-use super::{Companions, Evidence, nearer_by_depth};
+use super::{Companion, Companions, Evidence, nearer_by_depth, ranked};
 use crate::IntArg;
 use crate::map::tests::{fixture_map, request};
 
@@ -54,6 +54,40 @@ fn the_companions_are_the_reference_companions_under_either_hash_seed() {
         let agrees = found == first || second.as_ref().is_some_and(|other| found == *other);
         assert!(agrees, "{repo} {focus:?} {max_files}: {found:?}");
     }
+}
+
+fn row(path: &str, covers: &[&str], depth: u32, weight: f64) -> Companion {
+    Companion {
+        path: path.to_owned(),
+        start: 1,
+        end: 2,
+        covers: covers.iter().map(|&cover| cover.to_owned()).collect(),
+        depth,
+        weight,
+    }
+}
+
+#[test]
+fn a_test_named_for_a_target_comes_first_and_the_cap_keeps_it() {
+    let targets: BTreeSet<&str> = ["src/pricing.py", "src/cli.py"].into();
+    let mut rows: Vec<Companion> = ["a", "b", "c", "d", "e"]
+        .iter()
+        .map(|name| row(&format!("tests/test_{name}.py"), &["src/cli.py"], 1, 2.0))
+        .collect();
+    rows.push(row("tests/test_pricing.py", &["src/helpers.py"], 2, 0.5));
+    let kept = ranked(rows, &targets);
+    let paths: Vec<&str> = kept.rows().iter().map(|row| row.path.as_str()).collect();
+    assert_eq!(kept.total(), 6);
+    assert_eq!(
+        paths,
+        [
+            "tests/test_pricing.py",
+            "tests/test_a.py",
+            "tests/test_b.py",
+            "tests/test_c.py",
+            "tests/test_d.py",
+        ]
+    );
 }
 
 #[test]

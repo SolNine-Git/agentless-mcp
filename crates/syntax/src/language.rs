@@ -109,6 +109,18 @@ impl Language {
         self.table().extensions
     }
 
+    /// Return the first language, by name, of the family whose code can name this language's
+    /// symbols: {javascript, tsx, typescript}, {c, cpp}, {java, kotlin, scala}, else itself.
+    #[must_use]
+    pub fn family(self) -> Language {
+        match self {
+            Language::Tsx | Language::Typescript => Language::Javascript,
+            Language::Cpp => Language::C,
+            Language::Kotlin | Language::Scala => Language::Java,
+            other => other,
+        }
+    }
+
     /// Return the language's support tier.
     #[must_use]
     pub fn tier(self) -> Tier {
@@ -241,6 +253,25 @@ mod tests {
                 .kinds(&["arguments"])
                 .contains(parsed.kind(found))
         );
+    }
+
+    #[test]
+    fn a_family_is_named_by_its_first_member_and_every_other_language_is_its_own() {
+        let families: [&[Language]; 3] = [
+            &[Language::Javascript, Language::Tsx, Language::Typescript],
+            &[Language::C, Language::Cpp],
+            &[Language::Java, Language::Kotlin, Language::Scala],
+        ];
+        for language in Language::ALL {
+            let family = families
+                .iter()
+                .find(|members| members.contains(&language))
+                .map_or(language, |members| members[0]);
+            assert_eq!(language.family(), family, "{language:?}");
+            assert_eq!(family.family(), family, "{family:?} names its own family");
+        }
+        assert_ne!(Language::Rust.family(), Language::Python.family());
+        assert_ne!(Language::Go.family(), Language::Rust.family());
     }
 
     #[test]

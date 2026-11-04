@@ -28,6 +28,7 @@ mod lint;
 mod map;
 mod noted;
 pub mod ops;
+mod pair_runs;
 mod pairs;
 mod parallel;
 mod patches;

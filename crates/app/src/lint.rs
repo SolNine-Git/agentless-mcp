@@ -8,7 +8,8 @@ use std::rc::Rc;
 use checks::{CloneIndex, Observed, PairFinding};
 use serde::Serialize;
 
-use crate::pairs::{IndexOf, Judged, Lookup, Reported, built_index, run_pairs};
+use crate::pair_runs::{IndexOf, Reported};
+use crate::pairs::{Judged, Lookup, built_index, run_pairs};
 use crate::proposed::{After, Proposed, proposed};
 use crate::revision::compared;
 use crate::{Error, Noted, PairSelection, Repo, Services, Tags};

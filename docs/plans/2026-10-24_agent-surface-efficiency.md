@@ -1,8 +1,8 @@
 # Plan: a cheaper, sharper agent surface
 
-**Date**: 2026-10-24 | **Status**: revision 4. C1 to C5, TR, R3R and RF landed; see Status (2026-11-02) | **Evidence**: [benchmark-methodology.md](../analysis/benchmark-methodology.md), the 2026-10-24 entries
+**Date**: 2026-10-24 | **Status**: revision 4. C1 to C5, C7, TR, R3R, RF, DG and GF landed; see Status (2026-11-03) | **Evidence**: [benchmark-methodology.md](../analysis/benchmark-methodology.md), the 2026-10-24 entries
 
-## Status (2026-11-02)
+## Status (2026-11-03)
 
 The owner paused the plan on 2026-10-25, after C3 and TR, to save cost. The owner resumed it on 2026-10-29 with the second confirmation.
 
@@ -18,7 +18,10 @@ The owner paused the plan on 2026-10-25, after C3 and TR, to save cost. The owne
 | C3, progressive disclosure | 542f481 | tools/list with one root 10,534 to 10,403 bytes. The always-loaded set goes from 5 tools, 9,565 bytes and 1,851 cl100k tokens to 3 tools, 5,516 bytes and 1,088 tokens (name, description and input schema per tool). Confirmation 2 below |
 | TR, target resolution and honest absence | ef6a1a2 | Replay of 523 recorded calls: at the base, 65 of 251 refs answers were false zeros (18 unprefixed `path::name`, 47 undeclared names). After: 20 bind, 53 say that no symbol matches (exit 1, isError), 149 gain a line that splits binding rows from candidates; 0 unclassified changes |
 | R3R, refs loads on every turn again | 811b348 | C3's kill rule triggered in confirmation 2 (refs sessions 31 to 0, below). refs entry 1,338 to 1,366 bytes; the always-loaded set is 4 tools, 6,906 bytes and 1,342 cl100k tokens with one root |
-| RF, fixes from the branch review | d70c916, 18ffbb9 | Replay of the 523 recorded calls over MCP stdio: 14 refs refusals gain the skipped-file warning, 1 explain becomes a refusal (isError true), 0 unclassified changes; over the CLI, 523 of 523 answers are the same. tools/list is byte-equal (10,523 bytes with one root, 11,740 with two). Loc-Bench retrieval tier: 0 of 150 ranked lists changed, seeded and no-seed. The surface figures in CHANGELOG.md are recounted with one cl100k method |
+| RF, fixes from the branch review | d70c916, 18ffbb9, 2c2c4fa | Replay of the 523 recorded calls over MCP stdio: 14 refs refusals gain the skipped-file warning, 1 explain becomes a refusal (isError true), 0 unclassified changes; over the CLI, 523 of 523 answers are the same. tools/list is byte-equal (10,523 bytes with one root, 11,740 with two). Loc-Bench retrieval tier: 0 of 150 ranked lists changed, seeded and no-seed. The surface figures in CHANGELOG.md are recounted with one cl100k method |
+| C7, a test companion named for a listed file comes first | 83eff52 | Replay of the 363 conf2 `orient(map)` calls: the gold tests that the map shows go from 92 to 130 (54 gained, 16 lost); the paired gain per call is +0.090 [+0.042, +0.142] hooked and +0.188 [+0.058, +0.319] forced. 0 of 150 tier ranked lists change. The hub penalty itself is not built: no rule passed the pre-registered tier test on both halves |
+| DG, the diagram draws its heaviest reference edges | 5d4f81b | The build of 5d4f81b: 40 synthetic diagram calls, diagrams with no edge 7 to 0; the captured call on this repository 0 to 40 edges. The build of b64d502 (with GF): the captured call draws 28 edges (5 imports, 23 references), inside the bound. 0 of 150 tier ranked lists change |
+| GF, Rust workspace binding, lifetimes, language families | f7b0d89, b64d502 | Resolved Rust sites at resolved-via-import: this repository 679 to 25,348, ruff 190 to 71,519, ripgrep 0 to 3,638, nushell 220 to 55,951, tokio 97 to 7,344 (the measure build of b64d502; /var/tmp/claude-rust-port/gf2/tables/rust_tiers_final.md); refs of `pagerank` bind 13 of 13 rows (was 1). Cross-language candidate rows here 12,483 to 4. Tier (f7b0d89 against 5d4f81b; b64d502 ranks the same lists): 45 of 150 seeded lists change, MAP -0.0009 [-0.0027, +0.0007]; conf2 map gold rows 649 to 654 of 2,209. b64d502 fixes the branch review RV3: a path through an inline or `#[path]` module falls back to the name, `refs` lists no path through a module outside the repository |
 
 Not kept: U-b (several names per `find` call). Its screen showed 0 of 110 `find` calls with a list.
 
@@ -36,14 +39,16 @@ bench300.jsonl, 300 instances, four arms in one window: native Claude Code, unga
 
 - The hooked arm against the ungated arm: 14 of 21 metrics better, 0 worse, WCC +0.0146 [+0.0054, +0.0242]. The ungated agents made 27 agentless calls in 300 sessions. This answers the review's question about the gate: without it, the surface costs context and finds fewer gold files, so the gate stays.
 - The forced arm against ea6ed16 (confirmation 1, another window): 7 of 21 metrics better, 0 worse, WCC +0.0135; context -14.1%, turns -8.3%; first-turn context 7,716 to 7,076 tokens. The native arm moved 6 of 21 metrics between the same two windows, so these gains are not credited to the build. The run shows no quality loss.
+- The hooked arm ran the harness's gate, not the shipped one (benchmark-methodology.md, "The arms"): it denies Grep and Glob, and any agentless call unlocks it. The shipped gate unlocks only on a localizing call and also checks shell searches. The gate result above holds for the harness gate.
 - C3's kill rule triggered: refs sessions in the forced arm went from 31 (38 calls) to 0. Four sessions fetched the refs schema with ToolSearch and did not call it. R3R restored the hint.
 
 ### Left
 
-1. **The merge.** The pull request of feat/agent-surface-efficiency into main, with a merge commit. Release steps only on the owner's word.
-2. **C6 to C10.** C7 phase 1 measured the hub penalty: no rule passed the pre-registered tier test on both halves, so it stops. The name-matched test-companion rule from the same phase is in build: over the 363 conf2 map calls, the gold tests that the map shows go from 92 to 130, and 0 of 150 tier ranked lists change. It lands after this merge. C6, C8a, C8b, C9 and C10 are not started.
-3. **The owner's review** (`docs/analysis/2026-10-25_tool-surface-usefulness-review.md`). Done: defect 1 and the headline of defect 3 (TR), the stated direction of `path` (C3), the gated, ungated and native comparison (confirmation 2), and the branch review findings (RF). In build, after this merge: defect 2 (a Rust `use` binds through the workspace manifests; in the prototype, refs of `pagerank` bind 13 of 13 rows, against 1), defect 5 (a candidate binds only inside one language family, and a Rust lifetime is not a reference), and a diagram that drew no edges. Not started: defect 6 (a schema per operation), the enriched arm, and the gate log fields.
-4. **Owner actions after the merge:** redeploy the uv tool build and restart mcp-agentless.service.
+1. **The merge of this branch** (feat/graph-fidelity: C7, DG, GF, and phase 0 of the callee-overlap check). Pull request #64 merged the earlier work as 35eb14d on 2026-11-03. Release steps only on the owner's word.
+2. **C6 to C10.** C7 is done. C8a (a `symbols find` hint after an identifier Grep) is in build, with a flat60 screen through the shipped gate that the owner approved. C8b waits: its rule would ask in 3 of 300 hooked sessions. C9 is not built: 0 unbounded Reads above 16 KB in 900 conf2 sessions. The cost of the gate's denials before the first agentless call (about 14.8% of the hooked arm's context, derived) is in design. C6 and C10 are not started.
+3. **The owner's review** (`docs/analysis/2026-10-25_tool-surface-usefulness-review.md`). Done: defects 1, 2 and 5, the headline of defect 3, the stated direction of `path`, the diagram that drew no edges, and the gated, ungated and native comparison. Not started: defect 6 (a schema per operation), the enriched arm, and the gate log fields.
+4. **The callee-overlap check** (`docs/plans/2026-11-02_callee-overlap-duplicate-check.md`): phase 0 is on this branch; phase 1 builds the advisory check and its measurement.
+5. **Owner actions after the merge:** redeploy the uv tool build and restart mcp-agentless.service.
 
 ## Problem
 

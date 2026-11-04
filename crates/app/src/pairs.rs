@@ -1,23 +1,17 @@
-//! The pair run: the path filter of each check, one measure per pair, and the clone index.
+//! The pair run: one measure per kept pair, the run of each selected check, and the clone index.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
-use std::rc::Rc;
 use std::time::Instant;
 
-use checks::{
-    CloneIndex, IndexedFiles, Observed, Outcome, Pair, PairFinding, Side, SideError, SideText,
-    TextPair,
-};
+use checks::{IndexedFiles, Observed, Pair, PairFinding, SideError, SideText, TextPair};
 use metrics::Block;
 use syntax::Language;
 
+use crate::pair_runs::{IndexOf, Reported, RunInputs};
 use crate::parallel;
 use crate::rows::{bounded_read, decoded};
-use crate::{
-    Error, Noted, PairCheck, PairSelection, Services, in_metric_scope, is_fixture_path,
-    is_test_path,
-};
+use crate::{Error, Noted, PairSelection, Services, in_metric_scope};
 
 // The rows of one run in check order, and what the checks measured.
 pub(crate) struct Judged {
@@ -40,13 +34,6 @@ pub(crate) enum Stored {
 // The lookup of one file's stored blocks by path, text and language.
 pub(crate) type Lookup<'a> = dyn FnMut(&str, &str, Language) -> Stored + 'a;
 
-// The clone index of a run, given the measured pairs that clone_delta keeps. Every candidate of
-// a run shares one index.
-pub(crate) type IndexOf<'a> = dyn FnMut(&[&Pair]) -> Result<Rc<CloneIndex>, Error> + 'a;
-
-// The path and line of each function that near_duplicates reported in the same run.
-pub(crate) type Reported = BTreeSet<(String, u32)>;
-
 // Each selected check runs on the pairs its path rule keeps, in registry order. The index is
 // built on the first clone_delta call that keeps a pair.
 pub(crate) fn run_pairs(
@@ -58,64 +45,29 @@ pub(crate) fn run_pairs(
 ) -> Result<Judged, Error> {
     let kept: Vec<TextPair> = pairs
         .into_iter()
-        .filter(|pair| selection.checks().any(|check| keeps(check, &pair.path)))
+        .filter(|pair| selection.checks().any(|check| check.keeps(&pair.path)))
         .collect();
     let measured = Pair::measure_all(kept, |texts| {
         parallel::map_in_order(texts, parallel::threads(), SideText::measure)
     });
+    let mut inputs = RunInputs {
+        config,
+        index,
+        reported,
+    };
     let mut rows = Vec::new();
     let mut observed = Observed::default();
     for check in selection.checks() {
         let kept: Vec<&Pair> = measured
             .iter()
-            .filter(|pair| keeps(check, pair.path()))
+            .filter(|pair| check.keeps(pair.path()))
             .collect();
-        if let Some(outcome) = run_check(check, &kept, config, index, reported)? {
+        if let Some(outcome) = check.run(&kept, &mut inputs)? {
             rows.extend(outcome.findings);
             observed = observed.merged(outcome.observed);
         }
     }
     Ok(Judged { rows, observed })
-}
-
-// Fixtures are skipped by every check, and tests by all but complexity_delta.
-fn keeps(check: PairCheck, path: &str) -> bool {
-    match check {
-        PairCheck::ComplexityDelta => !is_fixture_path(path),
-        PairCheck::ContractDrift => !is_test_path(path) && !is_fixture_path(path),
-        PairCheck::CloneDelta => in_metric_scope(path),
-    }
-}
-
-fn run_check(
-    check: PairCheck,
-    pairs: &[&Pair],
-    config: &io::ProjectConfig,
-    index: &mut IndexOf<'_>,
-    reported: &Reported,
-) -> Result<Option<Outcome>, Error> {
-    let outcome = match check {
-        PairCheck::ComplexityDelta => {
-            let threshold = config
-                .complexity_threshold
-                .unwrap_or(metrics::DEFAULT_THRESHOLD);
-            checks::complexity_delta(pairs, threshold)
-        }
-        PairCheck::ContractDrift => checks::contract_drift(pairs, &config.boundary_globs),
-        PairCheck::CloneDelta if pairs.is_empty() => return Ok(None),
-        PairCheck::CloneDelta => {
-            find_blocks(pairs);
-            let index: Rc<CloneIndex> = index(pairs)?;
-            checks::clone_delta(pairs, &index, reported)
-        }
-    };
-    Ok(Some(outcome?))
-}
-
-// Only clone_delta reads blocks, so the pool finds them before the index and the check read them.
-fn find_blocks(pairs: &[&Pair]) {
-    let sides: Vec<&Side> = pairs.iter().flat_map(|pair| pair.sides()).collect();
-    parallel::map_in_order(&sides, parallel::threads(), |side| side.find_blocks());
 }
 
 // The budget starts before the walk, so the walk and the reads count against it. The walk

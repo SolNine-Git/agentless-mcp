@@ -542,7 +542,7 @@
         "count": 7,
         "limit": 40
       },
-      "text": "%% 7 reference edges not drawn (edge bound 40)"
+      "text": "%% 7 lighter reference edges not drawn (edge bound 40)"
     },
     "diagram_elided": {
       "arguments": {

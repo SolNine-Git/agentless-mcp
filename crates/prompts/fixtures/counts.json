@@ -238,8 +238,8 @@
       "arguments": {
         "limit": 40
       },
-      "one": "%% 1 reference edge not drawn (edge bound 40)",
-      "many": "%% 2 reference edges not drawn (edge bound 40)"
+      "one": "%% 1 lighter reference edge not drawn (edge bound 40)",
+      "many": "%% 2 lighter reference edges not drawn (edge bound 40)"
     },
     "diagram_elided": {
       "arguments": {},

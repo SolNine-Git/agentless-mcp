@@ -452,12 +452,13 @@ An import alone does not list it. What the row is worth over a bare path is
 its line range, and an import gives nothing to point at.
 
 One row per test file. A broad suite that touches six ranked files says so on
-its own row instead of taking six of them. Rows are ranked by flood depth
-first, then by how many ranked files the test covers, then by aggregated edge
-weight, then by path. The walk reaches two hops, so a test that exercises its
-subject through a helper is still listed. The section is capped at five rows
-and is omitted entirely when it is empty, so a repository with no tests pays
-nothing for it.
+its own row instead of taking six of them. A test whose file name points at a
+seeded or listed file comes first (`test_pricing.py` for `pricing.py`,
+`os_test.go` for `os.go`). The other keys follow in order: flood depth, how
+many ranked files the test covers, aggregated edge weight, and path. The walk
+reaches two hops, so a test that exercises its subject through a helper is
+still listed. The section is capped at five rows and is omitted entirely when
+it is empty, so a repository with no tests pays nothing for it.
 
 The JSON form carries the same section under `test_companions`, shaped
 `{total, limit, omitted, rows}`. `total` is how many test files were found
@@ -708,28 +709,33 @@ hold, `explain`, `refs` and `path` give the reason that `expand` gives. Use
 
 The tool now **labels every group with the evidence tier behind it**, so the
 over-reporting costs you nothing. These group headers come from
-`refs py:django/db/models/expressions.py::F --limit 10` on Django:
+`refs py:django/db/models/expressions.py::F --limit 500` on Django:
 
 ```
-django/contrib/admin/checks.py  (1 reference, resolved-via-import)
-django/contrib/admin/static/admin/js/vendor/jquery/jquery.min.js  (1 reference, name-only-ambiguous)
-django/db/models/expressions.py  (1 reference, same-file)
+tests/lookup/test_decimalfield.py  (2 references, resolved-via-import)
+tests/migrations/test_state.py  (9 references, name-only-ambiguous)
+tests/model_fields/test_integerfield.py  (1 reference, resolved-via-import)
 ```
 
 | Tier | What it means |
 |---|---|
 | `same-file` | the referencing file defines the target itself |
-| `resolved-via-import` | the referencing file imports the file the target is defined in, by name or as a whole module |
-| `unique` | nothing connects the two files, but the repository defines that name exactly once |
-| `name-only-ambiguous` | the name matched and nothing else did — including the shadowing case, where the file has its own definition of the name and its references bind to that one, not to your target |
+| `resolved-via-import` | the referencing file imports the file the target is defined in, by name or as a whole module. A Rust `use` binds through the Cargo manifests and the module files of the workspace, and a module path such as `crate::m::name` binds through that module |
+| `unique` | nothing connects the two files, but the repository defines that name exactly once in the language family of the referencing file |
+| `name-only-ambiguous` | the name matched definitions in the language family of the referencing file and nothing else did — including the shadowing case, where the file has its own definition of the name and its references bind to that one, not to your target |
 
 Read the top two tiers as callers and the bottom two as candidates. The tool
 never drops a row for a weak tier. The label is there so you can weigh the
 rows.
 
+A language family is a set of languages whose code can name the symbols of
+the others: JavaScript, TypeScript and TSX; C and C++; Java, Kotlin and
+Scala. Each other language is a family of its own. A spelling in another
+family is no candidate, so a Python target lists no JavaScript row.
+
 The groups come in path order, and the groups of one file come in tier order,
 strongest first. The tier does not order the groups across files, so a weak
-group can come before a strong one: above, the name-only `jquery.min.js`
+group can come before a strong one: above, the name-only `test_state.py`
 group is second. The limit takes one site from each file in turn, in path
 order, so a cut never drops a whole file while another file keeps a second
 site.
@@ -907,8 +913,9 @@ direction it really runs. `->` is "this hop's origin references the arrival".
 `<-` is "the arrival references the origin".
 
 **Read the tiers on the hops.** A chain is only as good as its weakest link.
-A `unique` hop is a name that matched the repository's only definition,
-without any import connecting the two files. Sometimes that is a real edge.
+A `unique` hop is a name that matched the repository's only definition in
+its language family, without any import connecting the two files.
+Sometimes that is a real edge.
 Sometimes it is a local variable that happens to share a name with a function
 elsewhere. Only `same-file` and `resolved-via-import` edges participate by
 default. Repository-wide `unique` edges require `--include-unique`
@@ -1060,9 +1067,11 @@ Five properties worth knowing:
 - **Edge kinds are told apart.** Solid arrows are declared imports. Dashed
   arrows are name references. A fixed `%% solid: imports, dashed: references`
   comment names the encoding, so the picture cannot imply an import cycle the
-  `cycles` operation denies. Reference edges past the edge bound (default 40)
-  are elided wholesale, never sampled, and a comment counts them. That bound
-  never drops import edges.
+  `cycles` operation denies. The diagram draws every import edge between the
+  drawn modules, and the edge bound (default 40) never drops one. Then it
+  draws the heaviest reference edges while the bound has room, with equal
+  weights in node id order, and a comment counts the lighter reference edges
+  that it does not draw.
 - **Bounded.** `--max-nodes` (default 40) keeps the highest-PageRank modules
   and adds an explicit `... N more modules` node. The tool always keeps a
   focus seed.

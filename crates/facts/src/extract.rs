@@ -47,6 +47,14 @@ pub fn extract(parsed: &Parsed) -> Facts {
         imports: imports(&tree, extraction),
         refs: identifier_refs::refs(&tree, extraction),
         errors: tree.error_spans(),
+        manifest: (parsed.language() == Language::Toml)
+            .then(|| data_languages::manifest(&tree))
+            .flatten(),
+        modules: if parsed.language() == Language::Rust {
+            rust_items::modules(&tree)
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -146,6 +154,7 @@ impl Import {
             line: tree.line(node),
             binds_all: false,
             alias: String::new(),
+            inline_depth: 0,
         }
     }
 
