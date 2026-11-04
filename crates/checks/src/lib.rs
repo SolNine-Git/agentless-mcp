@@ -1,5 +1,7 @@
-//! The erosion pair checks: `complexity_delta`, `contract_drift`, and `clone_delta`.
+//! The erosion pair checks: `complexity_delta`, `contract_drift`, `clone_delta`, and
+//! `callee_overlap`.
 
+mod callees;
 mod clone;
 mod complexity;
 mod contract;
@@ -16,13 +18,14 @@ pub mod schema;
 #[cfg(test)]
 mod tests;
 
+pub use callees::{Callee, CalleeTree, TreeFunction, callee_overlap};
 pub use clone::clone_delta;
 pub use complexity::complexity_delta;
 pub use contract::contract_drift;
 pub use error::{Error, SideError};
 pub use finding::{
-    CheckGap, CloneCopy, CloneSite, Detail, DriftKey, Finding, Match, PairFinding, Severity,
-    UnitDelta,
+    CalleeShare, CheckGap, CloneCopy, CloneSite, Detail, DriftKey, Finding, Match, PairFinding,
+    Severity, SharedCallee, TieredCallee, UnitDelta,
 };
 pub use index::{CloneIndex, IndexedFiles, clone_index};
 pub use observed::{CloneState, HitState, Observed, Outcome, UnitChange, UnitState};
@@ -34,3 +37,6 @@ pub const COMPLEXITY_DELTA: &str = "complexity_delta";
 pub const CONTRACT_DRIFT: &str = "contract_drift";
 /// The name of the check that reports blocks a change copies.
 pub const CLONE_DELTA: &str = "clone_delta";
+/// The name of the check that reports functions a change adds that call what an existing one
+/// calls.
+pub const CALLEE_OVERLAP: &str = "callee_overlap";

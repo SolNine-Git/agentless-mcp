@@ -1,5 +1,6 @@
 pub mod checks
 pub mod checks::schema
+pub const checks::schema::CALLEE: &str
 pub const checks::schema::CAPTURE: &str
 pub const checks::schema::CC: &str
 pub const checks::schema::CC_NEW: &str
@@ -7,20 +8,47 @@ pub const checks::schema::CC_OLD: &str
 pub const checks::schema::CLONE_INSTANCES: &str
 pub const checks::schema::CONTRACT_KEYS: &str
 pub const checks::schema::END_LINE: &str
+pub const checks::schema::FAMILY: &str
 pub const checks::schema::KEY: &str
 pub const checks::schema::LINE: &str
 pub const checks::schema::MATCH: &str
+pub const checks::schema::OTHER: &str
+pub const checks::schema::OTHER_CALLEES: &str
+pub const checks::schema::OTHER_LINE: &str
+pub const checks::schema::OTHER_PATH: &str
+pub const checks::schema::OTHER_TIER: &str
 pub const checks::schema::PATH: &str
 pub const checks::schema::RULE: &str
+pub const checks::schema::SHARED: &str
 pub const checks::schema::SITES: &str
 pub const checks::schema::SITES_TOTAL: &str
 pub const checks::schema::SLOC: &str
 pub const checks::schema::SLOC_NEW: &str
 pub const checks::schema::SLOC_OLD: &str
 pub const checks::schema::THRESHOLD: &str
+pub const checks::schema::TIER: &str
 pub const checks::schema::UNIT: &str
 pub const checks::schema::UNITS_CHANGED: &str
 pub const checks::schema::UNITS_OVER_THRESHOLD: &str
+pub enum checks::CalleeTree
+pub checks::CalleeTree::Built(alloc::vec::Vec<checks::TreeFunction>)
+pub checks::CalleeTree::Stopped
+pub checks::CalleeTree::Stopped::seconds: u64
+impl core::clone::Clone for checks::CalleeTree
+pub fn checks::CalleeTree::clone(&self) -> Self
+impl core::cmp::Eq for checks::CalleeTree
+impl core::cmp::PartialEq for checks::CalleeTree
+pub fn checks::CalleeTree::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::CalleeTree
+pub fn checks::CalleeTree::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::CalleeTree
+impl core::marker::Freeze for checks::CalleeTree
+impl core::marker::Send for checks::CalleeTree
+impl core::marker::Sync for checks::CalleeTree
+impl core::marker::Unpin for checks::CalleeTree
+impl core::marker::UnsafeUnpin for checks::CalleeTree
+impl core::panic::unwind_safe::RefUnwindSafe for checks::CalleeTree
+impl core::panic::unwind_safe::UnwindSafe for checks::CalleeTree
 pub enum checks::CheckGap
 pub checks::CheckGap::NoBoundaryGlobs
 pub checks::CheckGap::NoRulesForLanguage(syntax::language::Language)
@@ -67,6 +95,7 @@ pub enum checks::Detail
 pub checks::Detail::Copy(checks::CloneCopy)
 pub checks::Detail::Drift(checks::DriftKey)
 pub checks::Detail::Gap(checks::CheckGap)
+pub checks::Detail::Overlap(alloc::boxed::Box<checks::CalleeShare>)
 pub checks::Detail::Unit(checks::UnitDelta)
 impl core::clone::Clone for checks::Detail
 pub fn checks::Detail::clone(&self) -> Self
@@ -179,6 +208,52 @@ impl core::marker::Unpin for checks::SideError
 impl core::marker::UnsafeUnpin for checks::SideError
 impl core::panic::unwind_safe::RefUnwindSafe for checks::SideError
 impl core::panic::unwind_safe::UnwindSafe for checks::SideError
+pub struct checks::Callee
+pub checks::Callee::id: alloc::string::String
+pub checks::Callee::name: alloc::string::String
+pub checks::Callee::qualname: alloc::string::String
+pub checks::Callee::tier: &'static str
+impl core::clone::Clone for checks::Callee
+pub fn checks::Callee::clone(&self) -> Self
+impl core::cmp::Eq for checks::Callee
+impl core::cmp::PartialEq for checks::Callee
+pub fn checks::Callee::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::Callee
+pub fn checks::Callee::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::Callee
+impl core::marker::Freeze for checks::Callee
+impl core::marker::Send for checks::Callee
+impl core::marker::Sync for checks::Callee
+impl core::marker::Unpin for checks::Callee
+impl core::marker::UnsafeUnpin for checks::Callee
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Callee
+impl core::panic::unwind_safe::UnwindSafe for checks::Callee
+pub struct checks::CalleeShare
+pub checks::CalleeShare::family: usize
+pub checks::CalleeShare::other: alloc::string::String
+pub checks::CalleeShare::other_callees: alloc::vec::Vec<checks::TieredCallee>
+pub checks::CalleeShare::other_line: u32
+pub checks::CalleeShare::other_path: alloc::string::String
+pub checks::CalleeShare::shared: alloc::vec::Vec<checks::SharedCallee>
+pub checks::CalleeShare::unit: alloc::string::String
+pub checks::CalleeShare::via: checks::Match
+impl core::clone::Clone for checks::CalleeShare
+pub fn checks::CalleeShare::clone(&self) -> Self
+impl core::cmp::Eq for checks::CalleeShare
+impl core::cmp::PartialEq for checks::CalleeShare
+pub fn checks::CalleeShare::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::CalleeShare
+pub fn checks::CalleeShare::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::CalleeShare
+impl serde_core::ser::Serialize for checks::CalleeShare
+pub fn checks::CalleeShare::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::CalleeShare
+impl core::marker::Send for checks::CalleeShare
+impl core::marker::Sync for checks::CalleeShare
+impl core::marker::Unpin for checks::CalleeShare
+impl core::marker::UnsafeUnpin for checks::CalleeShare
+impl core::panic::unwind_safe::RefUnwindSafe for checks::CalleeShare
+impl core::panic::unwind_safe::UnwindSafe for checks::CalleeShare
 pub struct checks::CloneCopy
 pub checks::CloneCopy::end_line: u32
 pub checks::CloneCopy::key: kernel::key::Key
@@ -417,6 +492,27 @@ impl core::marker::Unpin for checks::PairFinding
 impl core::marker::UnsafeUnpin for checks::PairFinding
 impl core::panic::unwind_safe::RefUnwindSafe for checks::PairFinding
 impl core::panic::unwind_safe::UnwindSafe for checks::PairFinding
+pub struct checks::SharedCallee
+pub checks::SharedCallee::callee: alloc::string::String
+pub checks::SharedCallee::other_tier: &'static str
+pub checks::SharedCallee::tier: &'static str
+impl core::clone::Clone for checks::SharedCallee
+pub fn checks::SharedCallee::clone(&self) -> Self
+impl core::cmp::Eq for checks::SharedCallee
+impl core::cmp::PartialEq for checks::SharedCallee
+pub fn checks::SharedCallee::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::SharedCallee
+pub fn checks::SharedCallee::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::SharedCallee
+impl serde_core::ser::Serialize for checks::SharedCallee
+pub fn checks::SharedCallee::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::SharedCallee
+impl core::marker::Send for checks::SharedCallee
+impl core::marker::Sync for checks::SharedCallee
+impl core::marker::Unpin for checks::SharedCallee
+impl core::marker::UnsafeUnpin for checks::SharedCallee
+impl core::panic::unwind_safe::RefUnwindSafe for checks::SharedCallee
+impl core::panic::unwind_safe::UnwindSafe for checks::SharedCallee
 pub struct checks::Side
 impl checks::Side
 pub fn checks::Side::find_blocks(&self)
@@ -461,6 +557,49 @@ impl core::marker::Unpin for checks::TextPair
 impl core::marker::UnsafeUnpin for checks::TextPair
 impl core::panic::unwind_safe::RefUnwindSafe for checks::TextPair
 impl core::panic::unwind_safe::UnwindSafe for checks::TextPair
+pub struct checks::TieredCallee
+pub checks::TieredCallee::callee: alloc::string::String
+pub checks::TieredCallee::tier: &'static str
+impl core::clone::Clone for checks::TieredCallee
+pub fn checks::TieredCallee::clone(&self) -> Self
+impl core::cmp::Eq for checks::TieredCallee
+impl core::cmp::PartialEq for checks::TieredCallee
+pub fn checks::TieredCallee::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::TieredCallee
+pub fn checks::TieredCallee::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::TieredCallee
+impl serde_core::ser::Serialize for checks::TieredCallee
+pub fn checks::TieredCallee::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::TieredCallee
+impl core::marker::Send for checks::TieredCallee
+impl core::marker::Sync for checks::TieredCallee
+impl core::marker::Unpin for checks::TieredCallee
+impl core::marker::UnsafeUnpin for checks::TieredCallee
+impl core::panic::unwind_safe::RefUnwindSafe for checks::TieredCallee
+impl core::panic::unwind_safe::UnwindSafe for checks::TieredCallee
+pub struct checks::TreeFunction
+pub checks::TreeFunction::callees: alloc::vec::Vec<checks::Callee>
+pub checks::TreeFunction::line: u32
+pub checks::TreeFunction::name: alloc::string::String
+pub checks::TreeFunction::name_line: u32
+pub checks::TreeFunction::path: alloc::string::String
+pub checks::TreeFunction::qualname: alloc::string::String
+pub checks::TreeFunction::spelled: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for checks::TreeFunction
+pub fn checks::TreeFunction::clone(&self) -> Self
+impl core::cmp::Eq for checks::TreeFunction
+impl core::cmp::PartialEq for checks::TreeFunction
+pub fn checks::TreeFunction::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::TreeFunction
+pub fn checks::TreeFunction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::TreeFunction
+impl core::marker::Freeze for checks::TreeFunction
+impl core::marker::Send for checks::TreeFunction
+impl core::marker::Sync for checks::TreeFunction
+impl core::marker::Unpin for checks::TreeFunction
+impl core::marker::UnsafeUnpin for checks::TreeFunction
+impl core::panic::unwind_safe::RefUnwindSafe for checks::TreeFunction
+impl core::panic::unwind_safe::UnwindSafe for checks::TreeFunction
 pub struct checks::UnitChange
 pub checks::UnitChange::cc_new: u32
 pub checks::UnitChange::cc_old: core::option::Option<u32>
@@ -535,9 +674,11 @@ impl core::marker::Unpin for checks::UnitState
 impl core::marker::UnsafeUnpin for checks::UnitState
 impl core::panic::unwind_safe::RefUnwindSafe for checks::UnitState
 impl core::panic::unwind_safe::UnwindSafe for checks::UnitState
+pub const checks::CALLEE_OVERLAP: &str
 pub const checks::CLONE_DELTA: &str
 pub const checks::COMPLEXITY_DELTA: &str
 pub const checks::CONTRACT_DRIFT: &str
+pub fn checks::callee_overlap(&[&checks::Pair], &checks::CalleeTree) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::clone_delta(&[&checks::Pair], &checks::CloneIndex, &alloc::collections::btree::set::BTreeSet<(alloc::string::String, u32)>) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::clone_index<B, T>(&alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, &alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, B, T) -> core::result::Result<checks::IndexedFiles, checks::Error> where B: core::ops::function::FnMut(&str, &str, syntax::language::Language) -> core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>, T: core::ops::function::FnMut() -> bool
 pub fn checks::complexity_delta(&[&checks::Pair], u32) -> core::result::Result<checks::Outcome, checks::Error>

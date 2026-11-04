@@ -1,6 +1,11 @@
-//! The checks of a candidate run: any of the ten, the patch checks apart from the pair checks.
+//! The checks of a candidate run: the patch checks apart from the pair checks.
 
-use crate::{CHECKS, CheckInput, PairCheck, PairSelection, unknown_check_refusal};
+use crate::registry::form_refusal;
+use crate::{CHECKS, CheckInput, FormKind, PairCheck, PairSelection, unknown_check_refusal};
+
+// A candidate run reads new text from memory against the working tree, as the --path form does,
+// so it runs the pair checks of that form.
+const FORM: FormKind = FormKind::Path;
 
 /// The checks of a candidate run: the patch checks by name and the pair checks, each in registry
 /// order. It holds at least one check.
@@ -21,10 +26,14 @@ impl CheckSelection {
     ///
     /// # Errors
     ///
-    /// Returns the refusal text for an empty selection or a name that is no check.
+    /// Returns the refusal text for an empty selection, a name that is no check, or a pair check
+    /// that a candidate run does not run.
     pub fn from_names(names: &[String]) -> Result<CheckSelection, String> {
         if let Some(refusal) = unknown_check_refusal(names) {
             return Err(refusal);
+        }
+        if let Some(refusal) = form_refusal(names, FORM) {
+            return Err(refusal.to_owned());
         }
         Ok(Self::chosen(|name| names.iter().any(|given| given == name)))
     }
@@ -37,7 +46,7 @@ impl CheckSelection {
             .collect();
         let pairs: Vec<PairCheck> = PairCheck::ALL
             .into_iter()
-            .filter(|check| wanted(check.name()))
+            .filter(|check| check.runs_in(FORM) && wanted(check.name()))
             .collect();
         CheckSelection {
             patch,

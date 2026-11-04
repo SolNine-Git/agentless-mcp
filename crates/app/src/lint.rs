@@ -5,10 +5,11 @@ mod candidates;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use checks::{CloneIndex, Observed, PairFinding};
+use checks::{CalleeTree, CloneIndex, Observed, PairFinding};
 use serde::Serialize;
 
-use crate::pair_runs::{IndexOf, Reported};
+use crate::callees::callee_tree;
+use crate::pair_runs::{CalleesOf, IndexOf, Reported, RunInputs};
 use crate::pairs::{Judged, Lookup, built_index, run_pairs};
 use crate::proposed::{After, Proposed, proposed};
 use crate::revision::compared;
@@ -88,7 +89,8 @@ pub(crate) struct BlockSource<'a> {
     pub(crate) lookup: &'a mut Lookup<'a>,
 }
 
-// The clone index walk raises the warnings, so they reach the caller with either outcome.
+// The clone index walk and the callee scan raise the warnings, so they reach the caller with
+// either outcome.
 pub(crate) fn lint_with(
     services: &Services,
     repo: &Repo,
@@ -102,11 +104,29 @@ pub(crate) fn lint_with(
         warnings.borrow_mut().extend(built.diagnostics);
         built.value.map(|files| Rc::new(CloneIndex::Built(files)))
     };
-    let report = report(services, repo, cached, request, &mut index);
+    let mut callees = || -> Result<CalleeTree, Error> {
+        let built = callee_tree(services, &repo.root);
+        warnings.borrow_mut().extend(built.diagnostics);
+        built.value
+    };
+    let tree = TreeSources {
+        cached,
+        index: &mut index,
+        callees: &mut callees,
+    };
+    let report = report(services, repo, request, tree);
     Noted {
         value: report,
         diagnostics: warnings.into_inner(),
     }
+}
+
+// What the run reads from the tree besides the edited files: whether a tag cache is usable, the
+// clone index, and the callee sets.
+struct TreeSources<'r, 'i> {
+    cached: bool,
+    index: &'r mut IndexOf<'i>,
+    callees: &'r mut CalleesOf<'i>,
 }
 
 // Without a usable tag cache, the proposed form reports the no_tag_cache gap and reads no other
@@ -114,10 +134,14 @@ pub(crate) fn lint_with(
 fn report(
     services: &Services,
     repo: &Repo,
-    cached: bool,
     request: &LintRequest,
-    index: &mut IndexOf<'_>,
+    tree: TreeSources<'_, '_>,
 ) -> Result<LintReport, Error> {
+    let TreeSources {
+        cached,
+        index,
+        callees,
+    } = tree;
     let (id, judged) = match &request.form {
         LintForm::Proposed { path, after } => {
             let compared = proposed(&repo.root, path, after, services.cwd.as_deref());
@@ -130,8 +154,13 @@ fn report(
         }
         LintForm::Revision { revision } => {
             let compared = compared(&services.git, &repo.root, revision)?;
-            let none = Reported::new();
-            let judged = run_pairs(compared.pairs, request.checks, &repo.config, index, &none)?;
+            let inputs = RunInputs {
+                config: &repo.config,
+                index,
+                reported: &Reported::new(),
+                callees: Some(callees),
+            };
+            let judged = run_pairs(compared.pairs, request.checks, inputs)?;
             (revision, with_rows(compared.rows, judged))
         }
     };
@@ -147,7 +176,15 @@ fn judge_proposed(
     index: &mut IndexOf<'_>,
 ) -> Result<Judged, Error> {
     match compared {
-        Proposed::Pair(pair) => run_pairs(vec![pair], checks, config, index, &Reported::new()),
+        Proposed::Pair(pair) => {
+            let inputs = RunInputs {
+                config,
+                index,
+                reported: &Reported::new(),
+                callees: None,
+            };
+            run_pairs(vec![pair], checks, inputs)
+        }
         Proposed::Rows(rows) => Ok(with_rows(rows, empty())),
         Proposed::Skipped => Ok(empty()),
     }

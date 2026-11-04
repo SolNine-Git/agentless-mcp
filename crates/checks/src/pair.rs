@@ -230,6 +230,13 @@ pub(crate) const CONTRACT_GAPS: Gaps = Gaps {
     new: &messages::CONTRACT_NEW_NOT_MEASURED,
 };
 
+pub(crate) const CALLEE_GAPS: Gaps = Gaps {
+    check: crate::CALLEE_OVERLAP,
+    reasons: &COMPLEXITY_REASONS,
+    old: &messages::CALLEE_OVERLAP_OLD_NOT_MEASURED,
+    new: &messages::CALLEE_OVERLAP_NEW_NOT_MEASURED,
+};
+
 pub(crate) const CLONE_GAPS: Gaps = Gaps {
     check: crate::CLONE_DELTA,
     reasons: &CLONE_REASONS,

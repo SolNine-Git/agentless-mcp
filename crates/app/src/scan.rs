@@ -7,7 +7,7 @@ use facts::{Facts, Symbol};
 use git::RepoFile;
 use graph::FileFacts;
 use kernel::{Deadline, Stopped, checkpoint};
-use store::{FileText, Served};
+use store::{FactSource, FileText, Served};
 use syntax::{Language, Unparsable};
 
 use crate::detached::answered_over;
@@ -69,10 +69,24 @@ impl RepoFacts {
         services: &Services,
         reading: &Reading<'_>,
     ) -> Noted<Result<RepoFacts, Error>> {
-        let root = &reading.repo.root;
-        let facts_of = |text: &FileText| reading.facts.facts(text, reading.deadline);
+        RepoFacts::load_at(
+            services,
+            &reading.repo.root,
+            reading.facts,
+            reading.deadline,
+        )
+    }
+
+    // The scan of the tree at `root`, for a caller with no reading.
+    pub(crate) fn load_at(
+        services: &Services,
+        root: &Path,
+        source: &FactSource,
+        deadline: Option<&Deadline>,
+    ) -> Noted<Result<RepoFacts, Error>> {
+        let facts_of = |text: &FileText| source.facts(text, deadline);
         walked(services, root, |files| {
-            scan(root, files, threads(), &facts_of, reading.deadline)
+            scan(root, files, threads(), &facts_of, deadline)
         })
     }
 }

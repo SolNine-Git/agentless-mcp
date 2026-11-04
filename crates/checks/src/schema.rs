@@ -44,6 +44,24 @@ pub const KEY: &str = "key";
 pub const SITES: &str = "sites";
 /// The number of a copied block's other instances.
 pub const SITES_TOTAL: &str = "sites_total";
+/// The existing function that a changed function overlaps.
+pub const OTHER: &str = "other";
+/// The existing function's path.
+pub const OTHER_PATH: &str = "other_path";
+/// The existing function's first line.
+pub const OTHER_LINE: &str = "other_line";
+/// How many other functions meet the overlap rule for the existing function.
+pub const FAMILY: &str = "family";
+/// The callees that two functions share.
+pub const SHARED: &str = "shared";
+/// The callees of the existing function.
+pub const OTHER_CALLEES: &str = "other_callees";
+/// A callee's stable id.
+pub const CALLEE: &str = "callee";
+/// The evidence tier of an edge.
+pub const TIER: &str = "tier";
+/// The evidence tier of the existing function's edge.
+pub const OTHER_TIER: &str = "other_tier";
 
 // Serializes each named struct as one JSON object: each field under its key const, in order.
 macro_rules! keyed {

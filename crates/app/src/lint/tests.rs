@@ -1,11 +1,13 @@
 use std::collections::BTreeMap;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime};
 
 use json::{JsonForm, to_text};
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::{BlockSource, LintForm, LintReport, LintRequest, lint, lint_with};
+use crate::clock::PinnedClock;
 use crate::pairs::Stored;
 use crate::testing::{MANIFEST_DIR, Sandbox, buildable_cases};
 use crate::{After, Error, FormKind, Noted, PairSelection, Repo, Tags};
@@ -222,5 +224,96 @@ fn a_relative_after_file_with_an_unread_cwd_gives_the_new_side_row() {
             "not checked: the proposed text for app.py was not read (unreadable: No such file or \
              directory), so no pair check compared this file."
         ]
+    );
+}
+
+const HELPERS: &str = "def read_text(path):\n    return path\n\n\ndef parse(text):\n    return text\n\n\n\
+                       def check(value):\n    return value\n";
+const LOADER: &str = "from helpers import check, parse, read_text\n\n\ndef load_config(path):\n    \
+                      value = parse(read_text(path))\n    check(value)\n    return value\n";
+const SETTINGS: &str = "from helpers import check, parse, read_text\n\n\ndef load_settings(where):\n    \
+                        raw = read_text(where)\n    if raw:\n        check(parse(raw))\n    return raw\n";
+
+// A monotonic clock that moves one second at each read, so any deadline check sees time pass.
+struct Ticking {
+    now: Mutex<Instant>,
+}
+
+impl kernel::Clock for Ticking {
+    fn wall(&self) -> SystemTime {
+        SystemTime::UNIX_EPOCH
+    }
+
+    fn now(&self) -> Instant {
+        let mut now = self
+            .now
+            .lock()
+            .expect("no test panics while it holds the lock");
+        *now += Duration::from_secs(1);
+        *now
+    }
+}
+
+// The rows of a --since run of callee_overlap over a repository that adds settings.py.
+fn callee_rows(budget: Duration, clock: Arc<dyn kernel::Clock>) -> Vec<(String, String)> {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repo("repo", &[("helpers.py", HELPERS), ("loader.py", LOADER)]);
+    sandbox.put("repo/settings.py", SETTINGS);
+    let mut services = sandbox.services(sandbox.path());
+    services.walk_budget = budget;
+    services.clock = clock;
+    let repo = Repo::load(&services, &root).expect("the repository loads");
+    let names = ["callee_overlap".to_owned()];
+    let request = LintRequest {
+        form: LintForm::Revision {
+            revision: "HEAD".to_owned(),
+        },
+        checks: PairSelection::from_names(&names, FormKind::Since).expect("a selection"),
+    };
+    let mut lookup = |_: &str, _: &str, _| Stored::Miss;
+    let source = BlockSource {
+        cached: true,
+        lookup: &mut lookup,
+    };
+    let found = lint_with(&services, &repo, source, &request);
+    assert_eq!(found.diagnostics, Vec::<String>::new());
+    let report = found.value.expect("a report");
+    report.candidates[0]
+        .findings
+        .iter()
+        .map(|row| (row.finding.location(), row.finding.message.clone()))
+        .collect()
+}
+
+#[test]
+fn a_since_run_of_callee_overlap_names_the_existing_function_that_the_new_one_copies() {
+    let pinned = Arc::new(PinnedClock::at(SystemTime::UNIX_EPOCH));
+    let rows = callee_rows(Duration::from_secs(10), pinned);
+    assert_eq!(
+        rows,
+        [(
+            "settings.py:4".to_owned(),
+            "`load_settings` calls 3 of the 3 functions that `load_config` calls, but it does not \
+             call `load_config`. If the two do one job, call `load_config` and remove the copy. If \
+             they only use the same helpers, ignore this row."
+                .to_owned()
+        )]
+    );
+}
+
+#[test]
+fn a_callee_overlap_run_past_its_budget_gives_one_stopped_row_and_no_finding() {
+    let ticking = Arc::new(Ticking {
+        now: Mutex::new(Instant::now()),
+    });
+    let rows = callee_rows(Duration::ZERO, ticking);
+    assert_eq!(
+        rows,
+        [(
+            "(repository)".to_owned(),
+            "not checked: callee_overlap stopped at its time budget of 0 s before it read the \
+             calls of every function in the repository, so it compared no function."
+                .to_owned()
+        )]
     );
 }

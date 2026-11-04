@@ -390,3 +390,17 @@ fn the_lint_golden_report_comes_from_its_five_candidates() {
     ];
     assert_eq!(checks, expected.into_iter().collect());
 }
+
+// A candidate run has no tree after its patches, so callee_overlap is never in it.
+#[test]
+fn a_candidate_run_leaves_out_callee_overlap_and_refuses_it_by_name() {
+    let every = CheckSelection::all().pairs().expect("pair checks");
+    let names: Vec<&str> = every.checks().map(crate::PairCheck::name).collect();
+    assert_eq!(names, ["complexity_delta", "contract_drift", "clone_delta"]);
+    let refused = CheckSelection::from_names(&["arity".to_owned(), "callee_overlap".to_owned()]);
+    let refusal = refused.expect_err("callee_overlap is refused");
+    assert!(
+        refusal.starts_with("callee_overlap runs only with --since REV."),
+        "{refusal}"
+    );
+}

@@ -8,7 +8,7 @@ use checks::{IndexedFiles, Observed, Pair, PairFinding, SideError, SideText, Tex
 use metrics::Block;
 use syntax::Language;
 
-use crate::pair_runs::{IndexOf, Reported, RunInputs};
+use crate::pair_runs::RunInputs;
 use crate::parallel;
 use crate::rows::{bounded_read, decoded};
 use crate::scan;
@@ -40,9 +40,7 @@ pub(crate) type Lookup<'a> = dyn FnMut(&str, &str, Language) -> Stored + 'a;
 pub(crate) fn run_pairs(
     pairs: Vec<TextPair>,
     selection: PairSelection,
-    config: &io::ProjectConfig,
-    index: &mut IndexOf<'_>,
-    reported: &Reported,
+    mut inputs: RunInputs<'_, '_>,
 ) -> Result<Judged, Error> {
     let kept: Vec<TextPair> = pairs
         .into_iter()
@@ -51,11 +49,6 @@ pub(crate) fn run_pairs(
     let measured = Pair::measure_all(kept, |texts| {
         parallel::map_in_order(texts, parallel::threads(), SideText::measure)
     });
-    let mut inputs = RunInputs {
-        config,
-        index,
-        reported,
-    };
     let mut rows = Vec::new();
     let mut observed = Observed::default();
     for check in selection.checks() {

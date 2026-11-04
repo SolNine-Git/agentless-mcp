@@ -113,6 +113,9 @@ pub enum Detail {
     Gap(CheckGap),
     /// A `clone_delta` finding's block and its other instances.
     Copy(CloneCopy),
+    /// A `callee_overlap` finding's two functions and the callees they share, boxed because it
+    /// is far larger than the other details.
+    Overlap(Box<CalleeShare>),
 }
 
 /// How `complexity_delta` paired a new unit with an old one.
@@ -250,6 +253,48 @@ pub struct CloneSite {
     pub end_line: u32,
 }
 
+/// A `callee_overlap` finding: the changed function, the existing function it overlaps, and the
+/// callees of each with the evidence tier of each edge.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CalleeShare {
+    /// The changed function's qualified name in the new text.
+    pub unit: String,
+    /// How the changed function was paired.
+    pub via: Match,
+    /// The existing function's qualified name.
+    pub other: String,
+    /// The existing function's repo-relative path.
+    pub other_path: String,
+    /// The existing function's first line.
+    pub other_line: u32,
+    /// How many other functions, besides the changed one, meet the rule for the existing one.
+    pub family: usize,
+    /// Each shared callee, in id order.
+    pub shared: Vec<SharedCallee>,
+    /// Each callee of the existing function, in id order.
+    pub other_callees: Vec<TieredCallee>,
+}
+
+/// A callee that both functions call, with the tier of each function's edge to it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SharedCallee {
+    /// The callee's stable id.
+    pub callee: String,
+    /// The tier of the changed function's edge.
+    pub tier: &'static str,
+    /// The tier of the existing function's edge.
+    pub other_tier: &'static str,
+}
+
+/// A callee of the existing function, with the tier of its edge.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TieredCallee {
+    /// The callee's stable id.
+    pub callee: String,
+    /// The tier of the edge.
+    pub tier: &'static str,
+}
+
 keyed! {
     UnitDelta {
         UNIT: unit,
@@ -269,6 +314,18 @@ keyed! {
         SITES_TOTAL: sites_total,
     }
     CloneSite { PATH: path, LINE: line, END_LINE: end_line }
+    CalleeShare {
+        UNIT: unit,
+        MATCH: via,
+        OTHER: other,
+        OTHER_PATH: other_path,
+        OTHER_LINE: other_line,
+        FAMILY: family,
+        SHARED: shared,
+        OTHER_CALLEES: other_callees,
+    }
+    SharedCallee { CALLEE: callee, TIER: tier, OTHER_TIER: other_tier }
+    TieredCallee { CALLEE: callee, TIER: tier }
 }
 
 pub(crate) const UNMEASURABLE_SOURCE: &str = "UnmeasurableSource";

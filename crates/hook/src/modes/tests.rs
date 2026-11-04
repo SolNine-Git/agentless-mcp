@@ -51,9 +51,16 @@ fn the_active_checks_are_the_ones_not_off_in_config_order() {
     );
 }
 
+// callee_overlap is a pair check that the hook does not gate before its false-positive rate is
+// measured.
 #[test]
 fn each_gated_check_is_a_pair_check_of_the_same_name_in_the_same_order() {
     let gated = GatedCheck::ALL.map(GatedCheck::name);
     let pairs = app::PairCheck::ALL.map(app::PairCheck::name);
-    assert_eq!(gated, pairs);
+    let in_pair_order: Vec<&str> = pairs
+        .into_iter()
+        .filter(|name| gated.contains(name))
+        .collect();
+    assert_eq!(in_pair_order, gated);
+    assert_eq!(pairs.len(), gated.len() + 1, "{pairs:?}");
 }

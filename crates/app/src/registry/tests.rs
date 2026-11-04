@@ -33,7 +33,7 @@ fn the_registry_lists_each_check_with_its_input_in_order() {
 }
 
 #[test]
-fn the_three_erosion_checks_are_the_pair_checks() {
+fn the_erosion_checks_and_callee_overlap_are_the_pair_checks() {
     let [expected]: [Vec<String>; 1] = cases("pair_checks");
     let found: Vec<&str> = PairCheck::ALL.map(PairCheck::name).to_vec();
     assert_eq!(found, expected);
@@ -110,6 +110,37 @@ fn each_pair_check_keeps_the_paths_of_its_rule() {
         ("complexity_delta", [true, true, false, true]),
         ("contract_drift", [true, false, false, true]),
         ("clone_delta", [true, false, false, false]),
+        ("callee_overlap", [true, false, false, false]),
     ];
     assert_eq!(found, expected);
+}
+
+// A row that a form does not run names its own refusal, so the refusal never falls back to the text
+// about patch checks.
+#[test]
+fn each_pair_check_that_a_form_does_not_run_has_its_own_refusal() {
+    for check in PairCheck::ALL {
+        for form in [FormKind::Path, FormKind::Since] {
+            let refused = !check.runs_in(form);
+            assert_eq!(
+                check.refused_in(form).is_some(),
+                refused,
+                "{check:?} {form:?}"
+            );
+        }
+    }
+    assert!(PairCheck::CalleeOverlap.runs_in(FormKind::Since));
+}
+
+#[test]
+fn a_rust_or_python_source_file_is_in_callee_scope_and_other_tier_one_languages_are_not() {
+    let paths = [
+        "src/app.rs",
+        "src/app.py",
+        "src/app.go",
+        "src/app.ts",
+        "tests/app.rs",
+    ];
+    let kept = paths.map(|path| PairCheck::CalleeOverlap.keeps(path));
+    assert_eq!(kept, [true, true, false, false, false]);
 }
