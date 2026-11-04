@@ -52,6 +52,26 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **A walk refusal names only what its caller can do.** The refusal texts said
+  "point the call at a subdirectory or raise the byte bound" (or "the file
+  bound"). No flag, argument or config key raises a bound, and orient over MCP
+  takes no path. Each walk refusal now states the bound and the root, and each
+  surface adds the controls that it has. The CLI adds "No flag changes a walk
+  bound. Set `--repo` to a subdirectory, and the walk covers only that
+  subtree." The MCP server adds "No argument changes a walk bound. read dir
+  walks only the directory that its path names. symbols overview, expand and
+  locate, read slice and history do not walk the root." The byte refusal says
+  what it counts: "walk refused: the files that a scan reads under /srv/app
+  hold more than 200000000 bytes". The two walks give one depth text,
+  "directory depth". A lint finding that holds a walk refusal (`clone_delta`'s
+  "could not list the repository files") holds the bound and the root only.
+  The texts move into `crates/prompts/data` as 8 new templates. The expected
+  texts change in `crates/io/fixtures/walk.json` (3 rows),
+  `crates/git/fixtures/walk.json` (3 rows),
+  `crates/app/fixtures/generation.json` (`walk_refused_after_warnings`),
+  `crates/cli/fixtures/scenarios.json` (`since_walk_refused_after_a_warning`)
+  and the git walk tests.
+
 - **A test companion whose name points at a listed file comes first.** The
   map's section "tests exercising the files above" ranked its rows by flood
   depth, then by the targets covered, the weight and the path. Now a test

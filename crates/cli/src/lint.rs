@@ -11,7 +11,7 @@ use render::Receipt;
 
 use crate::Streams;
 use crate::args::Arg;
-use crate::exit::{EXIT_GATE, EXIT_OK, EXIT_USAGE, code_for, fail};
+use crate::exit::{EXIT_GATE, EXIT_OK, EXIT_USAGE, fail, failed};
 use crate::invocation::{Lint, Source};
 use crate::steps::{answer, diagnostics, open};
 
@@ -88,7 +88,7 @@ fn patches(
     let request = loaded.and_then(|candidates| candidates_request(lint, candidates));
     let request = match request {
         Ok(request) => request,
-        Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
+        Err(error) => return failed(streams.err, &error),
     };
     let noted = app::lint_candidates(services, &session, &request);
     answered(lint, &session, services, noted, streams)
@@ -117,7 +117,7 @@ fn answered(
     diagnostics(streams, &noted.diagnostics);
     let report = match noted.value {
         Ok(report) => report,
-        Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
+        Err(error) => return failed(streams.err, &error),
     };
     let receipt = Receipt::of(session).counted_by(&*services.counter);
     let rendered = if lint.flags.json {

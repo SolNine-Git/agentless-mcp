@@ -6,7 +6,7 @@ use render::{index_json, index_text};
 
 use super::ReadArgs;
 use crate::Streams;
-use crate::exit::{EXIT_DOMAIN, EXIT_OK, code_for, fail};
+use crate::exit::{EXIT_DOMAIN, EXIT_OK, failed};
 use crate::steps::{answer, diagnostics, resolved};
 
 pub(super) fn index(args: &ReadArgs<'_>, services: &Services, streams: &mut Streams<'_>) -> u8 {
@@ -23,7 +23,7 @@ pub(super) fn index(args: &ReadArgs<'_>, services: &Services, streams: &mut Stre
     diagnostics(streams, &outcome.diagnostics);
     let indexed = match outcome.value {
         Ok(indexed) => indexed,
-        Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
+        Err(error) => return failed(streams.err, &error),
     };
     let code = if indexed.errors() == 0 {
         EXIT_OK

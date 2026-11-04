@@ -8,7 +8,7 @@ use patch::Tier;
 
 use crate::Streams;
 use crate::caller::{named_file, shown_path};
-use crate::exit::{EXIT_USAGE, code_for, domain_code, fail};
+use crate::exit::{EXIT_USAGE, domain_code, fail, failed};
 use crate::invocation::Vote;
 use crate::steps::answer_with;
 
@@ -24,7 +24,7 @@ pub(crate) fn run(call: &Vote, services: &Services, streams: &mut Streams<'_>) -
     };
     let vote = match app::vote(&text) {
         Ok(vote) => vote,
-        Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
+        Err(error) => return failed(streams.err, &error),
     };
     let out = if call.json {
         render::document_json(&vote.report)

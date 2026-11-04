@@ -9,6 +9,9 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
+use prompts::messages::{
+    WALK_NOT_DIRECTORY, WALK_TOO_DEEP, WALK_TOO_MANY_BYTES, WALK_TOO_MANY_FILES,
+};
 use text::CodePointString;
 
 use crate::{contained_file_size, resolve, strerror};
@@ -115,30 +118,28 @@ pub enum WalkRefusal {
     },
 }
 
+// The text states the bound and the root only: each surface adds the controls that it has.
 impl fmt::Display for WalkRefusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NotDirectory { root } => write!(f, "not a directory: {}", root.display()),
-            Self::TooDeep { depth, limit, root } => write!(
-                f,
-                "walk refused: directory depth {depth} exceeds the limit of {limit} under {}; \
-                 point the call at a subdirectory instead",
-                root.display()
-            ),
-            Self::TooManyFiles { limit, root } => write!(
-                f,
-                "walk refused: more than {limit} files under {}; point the call at a subdirectory \
-                 or raise the file bound",
-                root.display()
-            ),
-            Self::TooManyBytes { limit, root } => write!(
-                f,
-                "walk refused: more than {limit} bytes under {}; point the call at a subdirectory \
-                 or raise the byte bound",
-                root.display()
-            ),
-        }
+        let text = match self {
+            Self::NotDirectory { root } => WALK_NOT_DIRECTORY.render(&shown(root)),
+            Self::TooDeep { depth, limit, root } => {
+                WALK_TOO_DEEP.render((&shown(root), *depth, *limit))
+            }
+            Self::TooManyFiles { limit, root } => {
+                WALK_TOO_MANY_FILES.render((&shown(root), *limit))
+            }
+            Self::TooManyBytes { limit, root } => {
+                let limit = usize::try_from(*limit).unwrap_or(usize::MAX);
+                WALK_TOO_MANY_BYTES.render((&shown(root), limit))
+            }
+        };
+        f.write_str(&text)
     }
+}
+
+fn shown(root: &Path) -> String {
+    root.display().to_string()
 }
 
 impl std::error::Error for WalkRefusal {}

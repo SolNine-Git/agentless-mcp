@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 248] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 256] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1501,5 +1501,53 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 248] = [
         "unknown_tool",
         &["listed"],
         messages::UNKNOWN_TOOL.pieces(),
+    ),
+    (
+        "messages",
+        "walk_listing_capped",
+        &["root", "bytes"],
+        messages::WALK_LISTING_CAPPED.pieces(),
+    ),
+    (
+        "messages",
+        "walk_not_directory",
+        &["root"],
+        messages::WALK_NOT_DIRECTORY.pieces(),
+    ),
+    (
+        "messages",
+        "walk_refused_cli",
+        &["reason"],
+        messages::WALK_REFUSED_CLI.pieces(),
+    ),
+    (
+        "messages",
+        "walk_refused_mcp",
+        &["reason"],
+        messages::WALK_REFUSED_MCP.pieces(),
+    ),
+    (
+        "messages",
+        "walk_too_deep",
+        &["root", "count", "limit"],
+        messages::WALK_TOO_DEEP.pieces(),
+    ),
+    (
+        "messages",
+        "walk_too_many_bytes",
+        &["root", "limit"],
+        messages::WALK_TOO_MANY_BYTES.pieces(),
+    ),
+    (
+        "messages",
+        "walk_too_many_files",
+        &["root", "limit"],
+        messages::WALK_TOO_MANY_FILES.pieces(),
+    ),
+    (
+        "messages",
+        "walk_unlisted",
+        &["root", "note"],
+        messages::WALK_UNLISTED.pieces(),
     ),
 ];

@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use crate::Streams;
 use crate::caller::{named_file, shown_path, stdin_text};
-use crate::exit::{EXIT_USAGE, code_for, domain_code, fail};
+use crate::exit::{EXIT_USAGE, domain_code, fail, failed};
 use crate::invocation::{EditStep, PatchEdit, PatchInput};
 use crate::steps::{Resolved, answer_with, diagnostics_or_stop, resolved};
 
@@ -62,7 +62,7 @@ pub(crate) fn edit(
     };
     let edits = match edits_of(&text) {
         Ok(edits) => edits,
-        Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
+        Err(error) => return failed(streams.err, &error),
     };
     let prepared = Prepared {
         found,
@@ -145,7 +145,7 @@ fn answered<R: StepReport>(
 ) -> u8 {
     let report = match report {
         Ok(report) => report,
-        Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
+        Err(error) => return failed(streams.err, &error),
     };
     let out = if prepared.json {
         render::document_json(&report)

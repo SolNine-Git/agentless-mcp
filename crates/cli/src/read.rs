@@ -22,7 +22,7 @@ use render::{Receipt, View};
 
 use crate::Streams;
 use crate::args::{Arg, Namespace, Value, float_text};
-use crate::exit::{EXIT_DOMAIN, EXIT_OK, EXIT_USAGE, code_for, fail, write_answer};
+use crate::exit::{EXIT_DOMAIN, EXIT_OK, EXIT_USAGE, fail, failed, write_answer};
 use crate::invocation::{ReadCall, RepoFlags, repo_flags};
 use crate::steps::{answer, opened};
 
@@ -141,8 +141,7 @@ pub(crate) fn open_reading(
     streams: &mut Streams<'_>,
 ) -> Result<Session, u8> {
     let repo = flags.repo.as_deref().map(Path::new);
-    let repo = app::resolve_in_git(services, repo)
-        .map_err(|error| fail(streams.err, &error.to_string(), code_for(&error)))?;
+    let repo = app::resolve_in_git(services, repo).map_err(|error| failed(streams.err, &error))?;
     opened(streams, Session::open_facts(services, repo, flags.no_cache))
 }
 
@@ -180,7 +179,7 @@ pub(crate) fn emit_then<V: View>(
     crate::steps::diagnostics(streams, &outcome.diagnostics);
     let view = match outcome.value {
         Ok(view) => view,
-        Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
+        Err(error) => return failed(streams.err, &error),
     };
     let counter = &*answering.services.counter;
     let receipt = Receipt::of(answering.session).counted_by(counter);

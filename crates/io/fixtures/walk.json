@@ -24,11 +24,11 @@
  "bounds": [
   [[20, 20000, 200000000], ["files", ["{base}/root/.h", "{base}/root/Z.txt", "{base}/root/a.txt", "{base}/root/b.txt", "{base}/root/link_file", "{base}/root/sub/c.txt", "{base}/root/sub/link_up", "{base}/root/sub/deep/d.txt", "{base}/root/sub/z/x.txt"]]],
   [[2, 100, 1000], ["files", ["{base}/root/.h", "{base}/root/Z.txt", "{base}/root/a.txt", "{base}/root/b.txt", "{base}/root/link_file", "{base}/root/sub/c.txt", "{base}/root/sub/link_up", "{base}/root/sub/deep/d.txt", "{base}/root/sub/z/x.txt"]]],
-  [[1, 100, 1000], ["refused", "walk refused: directory depth 2 exceeds the limit of 1 under {base}/root; point the call at a subdirectory instead"]],
+  [[1, 100, 1000], ["refused", "walk refused: directory depth 2 exceeds the limit of 1 under {base}/root"]],
   [[20, 9, 1000], ["files", ["{base}/root/.h", "{base}/root/Z.txt", "{base}/root/a.txt", "{base}/root/b.txt", "{base}/root/link_file", "{base}/root/sub/c.txt", "{base}/root/sub/link_up", "{base}/root/sub/deep/d.txt", "{base}/root/sub/z/x.txt"]]],
-  [[20, 8, 1000], ["refused", "walk refused: more than 8 files under {base}/root; point the call at a subdirectory or raise the file bound"]],
+  [[20, 8, 1000], ["refused", "walk refused: more than 8 files under {base}/root"]],
   [[20, 100, 16], ["files", ["{base}/root/.h", "{base}/root/Z.txt", "{base}/root/a.txt", "{base}/root/b.txt", "{base}/root/link_file", "{base}/root/sub/c.txt", "{base}/root/sub/link_up", "{base}/root/sub/deep/d.txt", "{base}/root/sub/z/x.txt"]]],
-  [[20, 100, 15], ["refused", "walk refused: more than 15 bytes under {base}/root; point the call at a subdirectory or raise the byte bound"]]
+  [[20, 100, 15], ["refused", "walk refused: the files that a scan reads under {base}/root hold more than 15 bytes"]]
  ],
  "roots": [
   ["root/link_dir", ["files", ["{base}/root/sub/c.txt", "{base}/root/sub/deep/d.txt", "{base}/root/sub/z/x.txt"]]],

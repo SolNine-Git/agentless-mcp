@@ -5,6 +5,8 @@ use std::ffi::OsStr;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use prompts::messages::{WALK_LISTING_CAPPED, WALK_TOO_DEEP, WALK_UNLISTED};
+
 use crate::{Git, GitOutcome, Limits, Unfinished};
 
 // `--others` lists the whole untracked tree, so this listing is as large as a repository the tool
@@ -223,29 +225,23 @@ impl fmt::Display for WalkWarning {
     }
 }
 
+// The text states the bound and the root only: each surface adds the controls that it has. A
+// path's depth is the depth of its directory, so the two walks share the depth text.
 impl fmt::Display for WalkError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Refused(refusal) => refusal.fmt(f),
-            Self::TooDeep { depth, limit, root } => write!(
-                f,
-                "walk refused: path depth {depth} exceeds the limit of {limit} under {}; point the \
-                 call at a subdirectory instead",
-                root.display()
-            ),
-            Self::ListingCapped { root } => write!(
-                f,
-                "walk refused: git listed more than {} bytes of names under {}; point the call at \
-                 a subdirectory instead",
-                LISTING.cap,
-                root.display()
-            ),
-            Self::Unlisted { root, note } => write!(
-                f,
-                "{} cannot be listed the way its .gitignore asks: {note}",
-                root.display()
-            ),
-        }
+        let text = match self {
+            Self::Refused(refusal) => return refusal.fmt(f),
+            Self::TooDeep { depth, limit, root } => {
+                WALK_TOO_DEEP.render((&root.display().to_string(), *depth, *limit))
+            }
+            Self::ListingCapped { root } => {
+                WALK_LISTING_CAPPED.render((&root.display().to_string(), LISTING.cap))
+            }
+            Self::Unlisted { root, note } => {
+                WALK_UNLISTED.render((&root.display().to_string(), note))
+            }
+        };
+        f.write_str(&text)
     }
 }
 

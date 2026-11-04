@@ -8,7 +8,7 @@ use render::{note_text, receipt_lines};
 
 use crate::Streams;
 use crate::caller::{below_cwd, shown_path};
-use crate::exit::{EXIT_USAGE, code_for, domain_code, fail, report, write_answer};
+use crate::exit::{EXIT_USAGE, domain_code, fail, failed, report, write_answer};
 use crate::invocation::Validate;
 use crate::steps::{Resolved, diagnostics_or_stop, resolved};
 
@@ -40,7 +40,7 @@ pub(crate) fn run(
     diagnostics_or_stop(streams, &noted);
     match noted.value {
         Ok(verdicts) => delivered(call, &found, &verdicts, services, streams),
-        Err(error) => fail(streams.err, &error.to_string(), code_for(&error)),
+        Err(error) => failed(streams.err, &error),
     }
 }
 

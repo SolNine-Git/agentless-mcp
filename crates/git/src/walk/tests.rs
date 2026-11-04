@@ -142,11 +142,7 @@ fn the_file_bound_is_enforced_inside_a_repository() {
     let bounds = Bounds { files: 2, ..BOUNDS };
     let walked = scratch.git().walk_within(&root, bounds, EVERY);
     let error = walked.files.expect_err("three files pass a bound of two");
-    let expected = format!(
-        "walk refused: more than 2 files under {}; point the call at a subdirectory or raise the \
-         file bound",
-        root.display()
-    );
+    let expected = format!("walk refused: more than 2 files under {}", root.display());
     assert_eq!(error.to_string(), expected);
 }
 
@@ -221,8 +217,7 @@ fn a_path_deeper_than_the_bound_is_refused() {
     let error = admit(Path::new("/repo"), names, bounds, EVERY, unstatable)
         .files
         .expect_err("depth 2 passes a bound of 1");
-    let expected = "walk refused: path depth 2 exceeds the limit of 1 under /repo; point the \
-                    call at a subdirectory instead";
+    let expected = "walk refused: directory depth 2 exceeds the limit of 1 under /repo";
     assert_eq!(error.to_string(), expected);
     assert!(matches!(
         kernel::Error::from(error),
@@ -237,8 +232,7 @@ fn the_byte_bound_is_enforced() {
     let error = admit(Path::new("/repo"), names, bounds, PYTHON, |_| Some(Ok(3)))
         .files
         .expect_err("6 bytes pass a bound of 5");
-    let expected = "walk refused: more than 5 bytes under /repo; point the call at a \
-                    subdirectory or raise the byte bound";
+    let expected = "walk refused: the files that a scan reads under /repo hold more than 5 bytes";
     assert_eq!(error.to_string(), expected);
 }
 
@@ -318,8 +312,7 @@ fn a_listing_over_the_output_cap_is_refused_rather_than_cut() {
         .expect_err("the listing passes its cap");
 
     let expected = format!(
-        "walk refused: git listed more than 16000000 bytes of names under {}; point the call at \
-         a subdirectory instead",
+        "walk refused: git listed more than 16000000 bytes of names under {}",
         scratch.root.display()
     );
     assert_eq!(error.to_string(), expected);
