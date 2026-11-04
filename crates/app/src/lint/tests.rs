@@ -307,6 +307,33 @@ fn a_since_run_of_callee_overlap_names_the_existing_function_that_the_new_one_co
     );
 }
 
+// The call to `h1` binds the helper and its namesake in the test module; only the helper counts.
+#[test]
+fn a_test_function_that_a_call_binds_is_not_a_callee() {
+    let helpers = "fn h1() -> i64 {\n    1\n}\n\nfn h2() -> i64 {\n    2\n}\n\nfn h3() -> i64 {\n    3\n}\n\n\
+                   pub fn g() -> i64 {\n    h1() + h2() + h3()\n}\n\n\
+                   #[cfg(test)]\nmod tests {\n    fn h1() -> i64 {\n        4\n    }\n}\n";
+    let sandbox = Sandbox::new();
+    let root = sandbox.repo("repo", &[("src/a.rs", helpers)]);
+    let added = format!("{helpers}\npub fn f() -> i64 {{\n    h3() * h2() - h1()\n}}\n");
+    sandbox.put("repo/src/a.rs", added);
+    let services = sandbox.services(sandbox.path());
+    let report = callee_report(&services, &root);
+    let messages: Vec<&str> = report.candidates[0]
+        .findings
+        .iter()
+        .map(|row| row.finding.message.as_str())
+        .collect();
+    assert_eq!(
+        messages,
+        [
+            "`f` calls 3 of the 3 functions that `g` calls, but it does not call `g`. If the two do \
+          one job, call `g` and remove the copy. If they only use the same helpers, ignore this \
+          row."
+        ]
+    );
+}
+
 #[test]
 fn a_callee_overlap_run_past_its_budget_gives_one_stopped_row_and_no_finding() {
     let ticking = Arc::new(Ticking {

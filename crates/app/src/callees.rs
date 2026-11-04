@@ -84,8 +84,8 @@ fn is_function(symbol: &Symbol) -> bool {
     matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method)
 }
 
-// Each function or method that a reference edge of `node` reaches at a binding tier, once. The
-// edges sort by target id, then strongest tier first, so the first edge of a target is kept.
+// Each function or method that a reference edge of `node` reaches at a binding tier, once, and
+// never test code, which only test code calls. The first edge of a target is its strongest.
 fn callees(graph: &SymbolGraph<'_>, node: &str, stoplist: &[&str]) -> Vec<Callee> {
     let mut callees: Vec<Callee> = Vec::new();
     for edge in graph.outgoing(node) {
@@ -100,7 +100,8 @@ fn callees(graph: &SymbolGraph<'_>, node: &str, stoplist: &[&str]) -> Vec<Callee
             continue;
         };
         let symbol = definition.symbol();
-        if is_function(symbol) && stoplist.binary_search(&symbol.name.as_str()).is_err() {
+        let counted = is_function(symbol) && !symbol.marks.test;
+        if counted && stoplist.binary_search(&symbol.name.as_str()).is_err() {
             callees.push(Callee {
                 id: target.node().to_owned(),
                 name: symbol.name.clone(),
