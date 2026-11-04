@@ -10,6 +10,36 @@ Each byte count is of the served bytes.
 
 ### Added
 
+- **`lint` gains `callee_overlap`, an advisory check for a function that a
+  change writes again.** It reports a function that the change adds, or
+  rewrites, when it calls at least 80% of the three or more callees of an
+  existing function and does not spell that function's name (the RepoReuse
+  rule; design in docs/plans/2026-11-02_callee-overlap-duplicate-check.md). A
+  callee counts only at the same-file or resolved-via-import tier, and never
+  when it is test code or its name is in the language's new `callee_stoplist`
+  (`clone`, `into`, `len`, `new`, `push`, `unwrap`). It reads Rust and Python
+  outside test and fixture paths, and leaves out Rust trait-impl methods,
+  Python dunders and Rust test code. An existing function that five or more
+  other functions also match is skipped, and each function gets at most three
+  rows. Only `lint --since REV --only callee_overlap` runs it: `--path`,
+  `--candidates` and `--diff` refuse it by name, it is not in any default
+  selection, and the hook and `erosion_gate` do not take it. `capabilities`
+  lists it with the input `pairs+graph`. The JSON `detail` names the existing
+  function, the family count, and each callee with the tier of both edges.
+  Measured, planted pairs (`tests/characterization/fixtures/callee_overlap_rust`
+  and `_py`): 10 of 10 found per language (3 renamed copies, 3 edited copies,
+  4 re-implementations; 3 in one file, 7 across files) and no row on the 8
+  negatives of each. Measured with the release build of 66a3107 (this work
+  before its rebase onto 34adcc9; its rebased copy is e021cb8) on a scratch
+  clone of this repository, 3 runs each, no tag cache: `--since HEAD~5` takes
+  0.67-0.70 s and `--since HEAD~50` 0.80 s, against 0.36 s and 0.26 s for
+  `--only clone_delta`, and peaks at 382-464 MB of memory against 104-172 MB.
+  On copies of two Loc-Bench checkouts with one added function, aiohttp (144
+  Python files) takes 0.08 s and checkov (4,495) 0.81 s. Its false-positive
+  rate on real changes is not measured yet, so it stays advisory. The facts
+  version goes from 9 to 10, because each symbol now carries a `protocol` and a
+  `test` mark: every tag cache indexes again once.
+
 - **`find-symbol` lists the code files that use a name and do not declare
   it.** After the cards, the data entries and the notes, a `usage:` block
   lists the code files that spell the query's name as a whole word and
