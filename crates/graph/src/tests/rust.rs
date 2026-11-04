@@ -1,6 +1,7 @@
 //! The Rust workspace binding: crate names from the Cargo manifests, the crate roots, the module
 //! walk, `super` inside an inline module, the glob first hop, the module path that qualifies a
-//! name, a module that a file re-exports, and the language family of a name-only match.
+//! name, a module that a file re-exports, the language family of a name-only match, and a bare
+//! name that reaches no method.
 
 use std::sync::Arc;
 
@@ -402,6 +403,54 @@ fn a_segment_may_name_a_module_that_a_file_re_exports_or_an_inline_module_direct
     assert_eq!(
         resolved(&files, "nested", "src/x.rs"),
         Some(imported(&["src/outer/inner.rs"]))
+    );
+}
+
+// A file whose test module globs the file itself, as tokio's broadcast.rs and ripgrep's
+// searcher/mod.rs do, with a Drop impl, a method of a field's name, and a function.
+const SELF_GLOB: [(&str, &str); 2] = [
+    ("Cargo.toml", "[package]\nname = \"p\"\n"),
+    (
+        "src/lib.rs",
+        "pub struct Tail;\npub struct Slot {\n    heap_limit: u8,\n}\n\nimpl Drop for Tail {\n    \
+         fn drop(&mut self) {}\n}\n\nimpl Slot {\n    fn heap_limit(&self) -> u8 {\n        \
+         self.heap_limit\n    }\n}\n\nfn release(tail: Tail, slot: &Slot) -> u8 {\n    \
+         drop(tail);\n    helper(slot.heap_limit)\n}\n\nfn helper(limit: u8) -> u8 {\n    \
+         limit\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n}\n",
+    ),
+];
+
+#[test]
+fn a_bare_name_in_a_file_that_globs_itself_binds_no_method_at_any_tier() {
+    let files = scanned(&SELF_GLOB);
+    let none: Vec<(Tier, Vec<String>)> = Vec::new();
+    assert_eq!(resolved(&files, "drop", "src/lib.rs"), None);
+    assert_eq!(sites(&files, "drop", "src/lib.rs"), none);
+    assert_eq!(sites(&files, "heap_limit", "src/lib.rs"), none);
+    assert_eq!(
+        sites(&files, "helper", "src/lib.rs"),
+        [(Tier::SameFile, vec!["src/lib.rs".to_owned()])]
+    );
+}
+
+#[test]
+fn a_glob_of_the_parent_module_binds_its_functions_and_not_its_methods() {
+    let files = scanned(&[
+        ("Cargo.toml", "[package]\nname = \"p\"\n"),
+        (
+            "src/lib.rs",
+            "mod child;\n\npub struct Pool;\n\nimpl Pool {\n    pub fn spawn(&self) {}\n}\n\npub fn \
+             spawn_local() {}\n",
+        ),
+        (
+            "src/child.rs",
+            "use super::*;\n\nfn run() {\n    spawn();\n    spawn_local();\n}\n",
+        ),
+    ]);
+    assert_eq!(resolved(&files, "spawn", "src/child.rs"), None);
+    assert_eq!(
+        resolved(&files, "spawn_local", "src/child.rs"),
+        Some(imported(&["src/lib.rs"]))
     );
 }
 

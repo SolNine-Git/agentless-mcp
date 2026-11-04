@@ -297,7 +297,6 @@
   [["rs:pricing.rs::Invoice.price", "pricing.rs", 31, "Invoice.price", true], ["rs:pricing.rs::Money", "pricing.rs", 6, "Money", true], "Money", "references", "same_file"],
   [["rs:pricing.rs::Invoice.price", "pricing.rs", 31, "Invoice.price", true], ["rs:pricing.rs::TAX_RATE", "pricing.rs", 4, "TAX_RATE", true], "TAX_RATE", "references", "same_file"],
   [["rs:pricing.rs::Invoice.price", "pricing.rs", 31, "Invoice.price", true], ["rs:pricing.rs::apply_tax", "pricing.rs", 21, "apply_tax", true], "apply_tax", "references", "same_file"],
-  [["rs:pricing.rs::Priceable", "pricing.rs", 8, "Priceable", true], ["rs:pricing.rs::Invoice.price", "pricing.rs", 31, "Invoice.price", true], "price", "references", "unique"],
   [["rs:pricing.rs::Priceable", "pricing.rs", 8, "Priceable", true], ["rs:pricing.rs::Money", "pricing.rs", 6, "Money", true], "Money", "references", "same_file"],
   [["rs:pricing.rs::apply_tax", "pricing.rs", 21, "apply_tax", true], ["rs:pricing.rs::Money", "pricing.rs", 6, "Money", true], "Money", "references", "same_file"],
   [["rs:pricing.rs::round_half_up", "pricing.rs", 37, "round_half_up", true], ["rs:pricing.rs::Money", "pricing.rs", 6, "Money", true], "Money", "references", "same_file"]
@@ -339,13 +338,13 @@
   {"node": "pricing.rs", "outgoing": [4], "incoming": [], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
   {"node": "rs:pricing.rs::Invoice", "outgoing": [5], "incoming": [4, 6], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
   {"node": "rs:pricing.rs::Invoice.new", "outgoing": [6, 7], "incoming": [], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
-  {"node": "rs:pricing.rs::Invoice.price", "outgoing": [8, 9, 10], "incoming": [11], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
-  {"node": "rs:pricing.rs::Money", "outgoing": [], "incoming": [5, 7, 8, 12, 13, 14], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
-  {"node": "rs:pricing.rs::Priceable", "outgoing": [11, 12], "incoming": [], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
+  {"node": "rs:pricing.rs::Invoice.price", "outgoing": [8, 9, 10], "incoming": [], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
+  {"node": "rs:pricing.rs::Money", "outgoing": [], "incoming": [5, 7, 8, 11, 12, 13], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
+  {"node": "rs:pricing.rs::Priceable", "outgoing": [11], "incoming": [], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
   {"node": "rs:pricing.rs::Status", "outgoing": [], "incoming": [], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
   {"node": "rs:pricing.rs::TAX_RATE", "outgoing": [], "incoming": [9], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
-  {"node": "rs:pricing.rs::apply_tax", "outgoing": [13], "incoming": [10], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
-  {"node": "rs:pricing.rs::round_half_up", "outgoing": [14], "incoming": [], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []}
+  {"node": "rs:pricing.rs::apply_tax", "outgoing": [12], "incoming": [10], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []},
+  {"node": "rs:pricing.rs::round_half_up", "outgoing": [13], "incoming": [], "references_from": [], "candidates_at": [], "ambiguous_from": [], "ambiguous_into": []}
  ],
  "import_edges": [
 
@@ -606,7 +605,7 @@
   {"path": "pricing.c", "sites": [[11, "same_file", ["c:pricing.c::Invoice"]]]},
   {"path": "pricing.cpp", "sites": []},
   {"path": "pricing.h", "sites": []},
-  {"path": "pricing.rs", "sites": [[8, "unique", ["rs:pricing.rs::Invoice.price"]], [9, "same_file", ["rs:pricing.rs::Money"]], [12, "same_file", ["rs:pricing.rs::Money"]], [18, "same_file", ["rs:pricing.rs::Money"]], [20, "same_file", ["rs:pricing.rs::Money"]], [23, "same_file", ["rs:pricing.rs::Invoice"]], [26, "same_file", ["rs:pricing.rs::Money"]], [28, "same_file", ["rs:pricing.rs::Invoice"]], [31, "same_file", ["rs:pricing.rs::Money"]], [32, "same_file", ["rs:pricing.rs::apply_tax"]], [34, "same_file", ["rs:pricing.rs::TAX_RATE"]], [38, "same_file", ["rs:pricing.rs::Money"]], [39, "same_file", ["rs:pricing.rs::Money"]]]}
+  {"path": "pricing.rs", "sites": [[9, "same_file", ["rs:pricing.rs::Money"]], [12, "same_file", ["rs:pricing.rs::Money"]], [18, "same_file", ["rs:pricing.rs::Money"]], [20, "same_file", ["rs:pricing.rs::Money"]], [23, "same_file", ["rs:pricing.rs::Invoice"]], [26, "same_file", ["rs:pricing.rs::Money"]], [28, "same_file", ["rs:pricing.rs::Invoice"]], [31, "same_file", ["rs:pricing.rs::Money"]], [32, "same_file", ["rs:pricing.rs::apply_tax"]], [34, "same_file", ["rs:pricing.rs::TAX_RATE"]], [38, "same_file", ["rs:pricing.rs::Money"]], [39, "same_file", ["rs:pricing.rs::Money"]]]}
  ],
  "resolve": [
   ["Pricing.java", "Invoice", "same_file", ["java:Pricing.java::Invoice"]],
@@ -683,9 +682,9 @@
   ["pricing.rs", "apply_tax", "same_file", ["rs:pricing.rs::apply_tax"]],
   ["pricing.rs", "apply_tax_inline", null, []],
   ["pricing.rs", "invoice_price", null, []],
-  ["pricing.rs", "new", "unique", ["rs:pricing.rs::Invoice.new"]],
+  ["pricing.rs", "new", null, []],
   ["pricing.rs", "nothing_defines_this", null, []],
-  ["pricing.rs", "price", "unique", ["rs:pricing.rs::Invoice.price"]],
+  ["pricing.rs", "price", null, []],
   ["pricing.rs", "record", null, []],
   ["pricing.rs", "round_half_up", "same_file", ["rs:pricing.rs::round_half_up"]],
   ["pricing.rs", "top_level_total", null, []]

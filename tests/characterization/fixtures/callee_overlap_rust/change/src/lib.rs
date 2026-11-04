@@ -1,6 +1,7 @@
 pub mod bill;
 pub mod builders;
 pub mod cache;
+pub mod channel;
 pub mod config;
 pub mod copies;
 pub mod dump;

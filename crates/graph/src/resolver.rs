@@ -129,6 +129,7 @@ impl<'a> Resolver<'a> {
         let mut ordered = known.map(|known| known.ordered.clone()).unwrap_or_default();
         if let Some(spelled) = self.scopes.language_of(path) {
             ordered.retain(|entry| entry.file().language.family() == spelled.family());
+            ordered.retain(|entry| bare_name_reaches(Some(spelled), entry));
         }
         match ordered.len() {
             0 => None,
@@ -243,9 +244,11 @@ impl<'a> Resolver<'a> {
             });
         }
         let scope = self.scopes.get(path)?;
+        let spelled = self.scopes.language_of(path);
         let named: Vec<Definition<'a>> = groups(known)
             .filter(|(defining, _)| scope.binds(name, defining))
             .flat_map(|(_, entries)| entries.iter().copied())
+            .filter(|entry| bare_name_reaches(spelled, entry))
             .collect();
         (!named.is_empty()).then(|| imported(named))
     }
@@ -358,6 +361,12 @@ where
         .iter()
         .map(|&module| (module, member))
         .collect()
+}
+
+// Rust has no implicit receiver: a method is called on a value or through a type path, and neither
+// binds, so a Rust bare name reaches no method at any tier.
+fn bare_name_reaches(spelled: Option<Language>, candidate: &Definition<'_>) -> bool {
+    spelled != Some(Language::Rust) || candidate.symbol().parent.is_empty()
 }
 
 // A bare name cannot reach a class member, so only a top-level definition is in module scope.
