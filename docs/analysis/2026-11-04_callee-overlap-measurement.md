@@ -4,7 +4,8 @@ This record holds the measurements of `lint`'s `callee_overlap` check, in the or
 measurement plan in [the specification](../plans/2026-11-02_callee-overlap-duplicate-check.md)
 (section 5). It holds M1, the cost, M2 (history), M3 (merged pull requests) and M4 (the
 whole-repository sample). The false-positive rate stopped the measurement at its first check (stop
-rule S1): bar A cannot pass, so the check stays opt-in and advisory. Bar B is not reached.
+rule S1): bar A cannot pass, so the check stays opt-in and advisory. Bar B is not reached. The
+readers then labeled the other 40 findings to test a confidence ranking (last section).
 
 ## M1: planted pairs
 
@@ -113,38 +114,63 @@ them filled the reading set: matplotlib 11, this repository 10, tokio 10, ripgre
 The reading set holds 60 findings: the 19 of M3 and 41 of M4, in a seeded order. Each finding is a
 blind packet: the two bodies and the shared callees with their definitions, but not the tier, the
 score, the source, or which function is new. A script checked every packet for those terms. Two
-agent readers labeled the first 20 findings, each without the other's labels.
+agent readers labeled the findings in two rounds, each without the other's labels.
 
-| Reader | duplicate | sibling | false_edge |
-|---|---|---|---|
-| 1 | 5 | 10 | 5 |
-| 2 | 6 | 9 | 5 |
+| Reader | round | duplicate | sibling | false_edge |
+|---|---|---|---|---|
+| 1 | first 20 | 5 | 10 | 5 |
+| 2 | first 20 | 6 | 9 | 5 |
+| 1 | all 60 | 12 | 31 | 17 |
+| 2 | all 60 | 13 | 30 | 17 |
 
-The readers agree on 19 of 20 (Cohen's kappa 0.92). On the other one, one sibling-or-duplicate
-call, both said that their confidence was low. Count that finding as a duplicate, and 14 of 20 are
-false positives: 70%, Wilson 95% interval 48.1% to 85.5%. The lower bound is above 40%, so stop
-rule S1 ended the measurement there, and the other 40 findings were not read. The owner accepted
-the readers' labels, so the owner's sample of 20 findings did not run (2026-11-04).
+After the first 20, the readers agree on 19 (Cohen's kappa 0.92). On the other one, one
+sibling-or-duplicate call, both said that their confidence was low. Count that finding as a
+duplicate, and 14 of 20 are false positives: 70%, Wilson 95% interval 48.1% to 85.5%. The lower
+bound is above 40%, so stop rule S1 ended the measurement of the bars there. The owner accepted the
+readers' labels, so the owner's sample of 20 findings did not run (2026-11-04).
 
-By source: the 6 M3 findings are 2 duplicates and 4 siblings. The 14 M4 findings are 3 duplicates,
-5 siblings, 5 false edges and the 1 disputed finding.
+The owner then asked for the other 40, to test a ranking (next section). Over all 60, the readers
+agree on 59 (kappa 0.97, the same disputed finding), and 47 of 60 are false positives: 78.3%,
+Wilson 95% 66.4% to 86.9%. By source: the 19 M3 findings are 2 duplicates, 16 siblings and 1 false
+edge. The 41 M4 findings are 10 duplicates, 14 siblings, 16 false edges and the disputed one.
 
 ### Causes
 
-- Siblings, 9 or 10 of 20: the two functions use the same helpers for a different job, for example
+- Siblings, 30 or 31 of 60: the two functions use the same helpers for a different job, for example
   two steps of one pipeline or two members of one family of functions. Shared callees alone cannot
   tell these from a duplicate.
-- False edges, 5 of 20: a listed callee is not a call to that definition.
-  - Rust, a parameter (2 findings): six functions in `crates/app/src/verdicts.rs` take a parameter
-    `record: &Pairs` and pass it to `get`. Each use binds to the function `record` in the same file.
-  - Rust, a bare call (1): `drop(tail)` in tokio `sync/broadcast.rs` calls `std::mem::drop`, and it
+- False edges, 17 of 60, 16 of them in Rust: a listed callee is not a call to that definition. Both
+  readers named the same callees in each of the 17.
+  - Rust, a field (7 findings): ripgrep `heap_limit`, `absolute_byte_offset`, `binary_byte_offset`,
+    `after_context`, `before_context` and `passthru`, and `required` in this repository, are struct
+    fields. Each binds to a function or method of the same name. In two of the 7, a second callee
+    is also false: a trait method, and another function of the same name.
+  - Rust, a bare call (6): `drop(guard)` in tokio `sync/broadcast.rs` calls `std::mem::drop`, and it
     binds to the 5 `Drop::drop` methods of the file.
-  - Rust, a field and a trait method (1): ripgrep `heap_limit` is a field, and `line_terminator` is
-    a trait method in one body and a builder method in the other.
+  - Rust, a parameter (3): six functions in `crates/app/src/verdicts.rs` take a parameter
+    `record: &Pairs` and pass it to `get`, and each use binds to the function `record` in the same
+    file (2 findings). `segments` (#64) is the third.
   - Python (1): matplotlib `detrend_none` is a default argument value. Neither body calls it.
 - The Rust false edges come from the reference index, not from the check. `refs
   crates/app/src/verdicts.rs::record` at c2daf41 lists 26 same-file references, and at least 13 of
   them (lines 179-247) are the parameter. The group says "locals not checked": the index has scope
   analysis for Python only (`capabilities`).
-- Without the false edges, the siblings alone are 9 or 10 of 20 (Wilson 95% for 10 of 20: 29.9% to
-  70.1%). A fix of the reference index alone therefore probably does not let bar A pass (derived).
+- Without the 17 false edges, 12 or 13 of 43 findings are duplicates (28% to 30%, derived). A fix of
+  the reference index alone does not let bar A pass.
+
+### A confidence ranking
+
+The question: does a feature of the row pick out the duplicates, so that a report can show only the
+most likely ones as plausible duplicates? The first 20 labels suggested one: every shared callee is
+in the same file as both functions. The other 40 findings, read after that, test it.
+
+| Set | rows with the feature | duplicates among them | rows without | duplicates among them |
+|---|---|---|---|---|
+| first 20 (where it was found) | 6 | 3, and the disputed one | 14 | 2 |
+| other 40 (held out) | 7 | 3 | 33 | 4 |
+| all 60 | 13 | 6, and the disputed one | 47 | 6 |
+
+On the held-out 40 the feature points the right way (43% against 12%), but 7 rows are few: a
+one-sided Fisher test gives p = 0.088. Over all 60, 6 or 7 of the 13 rows are duplicates, and none
+is a false edge. No other feature tested (5 or more shared callees, a rewritten function, the
+language, both functions in one file) separates the labels on the held-out 40.

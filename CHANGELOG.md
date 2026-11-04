@@ -39,7 +39,9 @@ Each byte count is of the served bytes.
   changes (36 merged pull requests and 4 whole-repository snapshots, blind
   labels from two agent readers, 2026-11-04): 14 of the first 20 findings are
   false positives (70%, Wilson 95% 48-86%), so stop rule S1 ended the
-  measurement and the check stays opt-in. Most false positives are sibling
+  measurement and the check stays opt-in. All 60 findings, read for a ranking
+  test: 47 false positives (78%). When every shared callee is in the same
+  file, 6 or 7 of 13 findings are duplicates. Most false positives are sibling
   functions that use the same helpers for another job. The other cause is the
   Rust reference index, which binds a parameter, a field or `std::mem::drop`
   to a function of the same name (record:
