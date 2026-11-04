@@ -17,6 +17,7 @@ fn symbol(name: &str, parent: &str, kind: SymbolKind, lines: (u32, u32)) -> Symb
         is_public: true,
         rationales: Vec::new(),
         duplicate_index: 0,
+        marks: facts::Marks::default(),
     }
 }
 

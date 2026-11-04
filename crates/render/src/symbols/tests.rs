@@ -23,6 +23,7 @@ fn card(path: &str, name: &str) -> app::SymbolCard {
         is_public: true,
         rationales: Vec::new(),
         duplicate_index: 0,
+        marks: facts::Marks::default(),
     };
     symbol_card(Language::Json, path, &symbol, String::new())
 }

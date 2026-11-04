@@ -27,13 +27,14 @@ pub(super) enum Field {
     ReturnType,
     Right,
     Superclasses,
+    Trait,
     Type,
     Value,
     Values,
     Variables,
 }
 
-const FIELD_NAMES: [&str; 24] = [
+const FIELD_NAMES: [&str; 25] = [
     "alias",
     "arguments",
     "argument",
@@ -54,6 +55,7 @@ const FIELD_NAMES: [&str; 24] = [
     "return_type",
     "right",
     "superclasses",
+    "trait",
     "type",
     "value",
     "values",

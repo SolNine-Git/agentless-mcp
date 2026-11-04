@@ -208,6 +208,7 @@ mod tests {
             is_public: true,
             rationales: Vec::new(),
             duplicate_index: 0,
+            marks: crate::values::Marks::default(),
         }
     }
 

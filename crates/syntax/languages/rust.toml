@@ -5,6 +5,7 @@ probe = "fn main() {}\n"
 probe_root = "source_file"
 comments = ["block_comment", "line_comment"]
 sloc = "leaves"
+callee_stoplist = ["clone", "into", "len", "new", "push", "unwrap"]
 
 [units]
 units = ["function_item"]

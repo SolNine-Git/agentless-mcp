@@ -19,7 +19,7 @@ use syntax::{Extraction, ImportRule, Language, NodeId, Parsed, SymbolRule};
 
 use crate::spelling::normalise_signature;
 use crate::stable_id::disambiguate;
-use crate::values::{Facts, Import, Symbol, SymbolKind};
+use crate::values::{Facts, Import, Marks, Symbol, SymbolKind};
 use tree::Tree;
 
 pub use data_languages::{DataOutline, OUTLINE_CAP, OutlineRow};
@@ -100,6 +100,7 @@ impl Symbol {
             is_public: true,
             rationales: Vec::new(),
             duplicate_index: 0,
+            marks: Marks::default(),
         }
     }
 
@@ -138,6 +139,16 @@ impl Symbol {
 
     fn of_kind(mut self, kind: SymbolKind) -> Symbol {
         self.kind = kind;
+        self
+    }
+
+    fn in_protocol(mut self, protocol: bool) -> Symbol {
+        self.marks.protocol = protocol;
+        self
+    }
+
+    fn in_tests(mut self, test: bool) -> Symbol {
+        self.marks.test = test;
         self
     }
 }

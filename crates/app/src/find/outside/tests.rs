@@ -117,6 +117,7 @@ fn the_first_line_outside_skips_the_lines_where_outline_rows_start() {
         is_public: true,
         rationales: Vec::new(),
         duplicate_index: 0,
+        marks: facts::Marks::default(),
     }];
     assert_eq!(first_line_outside("x\nzz\nb ZZ\n", "zz", &rows), Some(3));
     assert_eq!(first_line_outside("x\nzz\n", "zz", &rows), None);

@@ -25,6 +25,8 @@ const ADTS: [(&str, SymbolKind, &str); 3] = [
 const MAX_VALUE_CHARS: usize = 80;
 const MAX_TYPE_ALIAS_CHARS: usize = 120;
 const UNKNOWN: &str = "<unknown>";
+// The items whose `cfg(test)` makes every function inside them test code.
+const TEST_SCOPES: [&str; 2] = ["mod_item", "impl_item"];
 
 pub(super) fn symbols(tree: &Tree) -> Vec<Symbol> {
     tree.each_declaration(&ITEMS, |node| item(tree, node))
@@ -79,6 +81,52 @@ fn function(tree: &Tree, node: NodeId, parent: &str) -> Symbol {
         .signed(&format!("{prefix} {name}{parameters}{returns}"))
         .owned_by(parent)
         .public(is_public(tree, node))
+        .in_tests(is_test(tree, node))
+}
+
+// A test attribute on the function, or `cfg(test)` on it or on a module or impl block around it.
+fn is_test(tree: &Tree, function: NodeId) -> bool {
+    if attributes(tree, function).any(|attribute| is_test_attribute(tree, attribute)) {
+        return true;
+    }
+    let scopes = std::iter::successors(Some(function), |node| tree.parsed.parent(*node))
+        .filter(|node| *node == function || tree.is_any(*node, &TEST_SCOPES));
+    scopes
+        .flat_map(|scope| attributes(tree, scope))
+        .any(|attribute| is_cfg_test(tree, attribute))
+}
+
+// The `attribute` node of each attribute item right before `item`, the nearest first. A comment
+// between them does not end the run.
+fn attributes<'t>(tree: &'t Tree, item: NodeId) -> impl Iterator<Item = NodeId> + 't {
+    let comments = &tree.parsed.language().extraction().comments;
+    std::iter::successors(tree.parsed.prev_sibling(item), |node| {
+        tree.parsed.prev_sibling(*node)
+    })
+    .take_while(|node| {
+        tree.is(*node, "attribute_item") || comments.contains(tree.parsed.kind(*node))
+    })
+    .filter_map(|node| tree.first_child_of(node, &["attribute"]))
+}
+
+// `#[test]`, or a path that ends in `::test`, such as `#[tokio::test]`.
+fn is_test_attribute(tree: &Tree, attribute: NodeId) -> bool {
+    attribute_path(tree, attribute).is_some_and(|path| path == "test" || path.ends_with("::test"))
+}
+
+fn is_cfg_test(tree: &Tree, attribute: NodeId) -> bool {
+    let arguments = tree
+        .field(attribute, Field::Arguments)
+        .map(|arguments| tree.text(arguments));
+    attribute_path(tree, attribute) == Some("cfg")
+        && arguments
+            .is_some_and(|arguments| arguments.split_whitespace().collect::<String>() == "(test)")
+}
+
+fn attribute_path<'a>(tree: &Tree<'a>, attribute: NodeId) -> Option<&'a str> {
+    tree.named_children(attribute)
+        .next()
+        .map(|path| tree.text(path))
 }
 
 fn adt(tree: &Tree, node: NodeId) -> Option<Symbol> {
@@ -94,15 +142,17 @@ fn adt(tree: &Tree, node: NodeId) -> Option<Symbol> {
     )
 }
 
-// The functions of an impl block's body, owned by the type the block implements.
+// The functions of an impl block's body, owned by the type the block implements. The methods of
+// `impl Trait for T` fill the trait's protocol.
 fn methods(tree: &Tree, node: NodeId) -> Vec<Symbol> {
     let owner = tree.impl_owner(node).map_or("", |owner| tree.text(owner));
+    let protocol = tree.field(node, Field::Trait).is_some();
     let Some(body) = tree.field(node, Field::Body) else {
         return Vec::new();
     };
     tree.children(body)
         .filter(|child| tree.is(*child, "function_item"))
-        .map(|child| function(tree, child, owner))
+        .map(|child| function(tree, child, owner).in_protocol(protocol))
         .collect()
 }
 

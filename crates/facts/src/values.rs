@@ -50,6 +50,25 @@ pub struct Symbol {
     pub rationales: Vec<Rationale>,
     /// How many earlier symbols of the file share the qualified name.
     pub duplicate_index: u32,
+    #[serde(default, skip_serializing_if = "Marks::is_unmarked")]
+    pub marks: Marks,
+}
+
+/// What a declaration is for beyond its kind. Most declarations have neither mark, and a stored
+/// symbol leaves the field out then; serde reads it by reference, so the type is not `Copy`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Marks {
+    /// A protocol slot: a Rust method of `impl Trait for T`, or a Python dunder.
+    pub protocol: bool,
+    /// Rust test code: a `#[test]`-like attribute, or a `cfg(test)` on the function or on a
+    /// module or impl block around it.
+    pub test: bool,
+}
+
+impl Marks {
+    fn is_unmarked(&self) -> bool {
+        !self.protocol && !self.test
+    }
 }
 
 /// What a symbol declares.
