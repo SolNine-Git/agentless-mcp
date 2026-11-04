@@ -35,8 +35,15 @@ Each byte count is of the served bytes.
   0.67-0.70 s and `--since HEAD~50` 0.80 s, against 0.36 s and 0.26 s for
   `--only clone_delta`, and peaks at 382-464 MB of memory against 104-172 MB.
   On copies of two Loc-Bench checkouts with one added function, aiohttp (144
-  Python files) takes 0.08 s and checkov (4,495) 0.81 s. Its false-positive
-  rate on real changes is not measured yet, so it stays advisory. The facts
+  Python files) takes 0.08 s and checkov (4,495) 0.81 s. Measured on real
+  changes (36 merged pull requests and 4 whole-repository snapshots, blind
+  labels from two agent readers, 2026-11-04): 14 of the first 20 findings are
+  false positives (70%, Wilson 95% 48-86%), so stop rule S1 ended the
+  measurement and the check stays opt-in. Most false positives are sibling
+  functions that use the same helpers for another job. The other cause is the
+  Rust reference index, which binds a parameter, a field or `std::mem::drop`
+  to a function of the same name (record:
+  docs/analysis/2026-11-04_callee-overlap-measurement.md). The facts
   version goes from 9 to 10, because each symbol now carries a `protocol` and a
   `test` mark: every tag cache indexes again once.
 
