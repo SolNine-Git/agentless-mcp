@@ -123,6 +123,13 @@ impl<'a> Tree<'a> {
         kinds.contains(&self.parsed.kind_name(node))
     }
 
+    // The value that a table keyed by kind name holds for the node's kind.
+    pub(super) fn keyed<T: Copy>(&self, node: NodeId, table: &[(&str, T)]) -> Option<T> {
+        let kind = self.kind(node);
+        let row = table.iter().find(|(name, _)| *name == kind);
+        row.map(|(_, value)| *value)
+    }
+
     // The 1-based line that the node starts on.
     pub(super) fn line(&self, node: NodeId) -> u32 {
         self.parsed.start_point(node).row.saturating_add(1)
