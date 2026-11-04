@@ -1041,6 +1041,13 @@ pub const FIND_USAGE_ROW: Template<(Text, Count, Count)> = Template::new(&[
     Piece::Text(")"),
 ]);
 
+/// A text that takes no values.
+pub const GATE_DENY: &str = "Structural pass first: no agentless call has localized this session \
+        yet.\nCall mcp__agentless__orient with operation=\"map\" and \
+        focus seeds from the task (file paths or symbol names). Broad \
+        Grep, Glob and shell search unlock after that call. A Grep of \
+        one existing file runs now.\n";
+
 /// A template that takes `count`.
 pub const GROUPED_FILES: Template<Count> = Template::new(&[
     Piece::Text("("),

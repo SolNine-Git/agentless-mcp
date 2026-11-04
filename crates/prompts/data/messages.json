@@ -242,5 +242,6 @@
   "config_boundary_globs_too_many": "boundary_globs in {config} holds {count} globs, over the {limit} cap. The key is ignored.",
   "config_boundary_globs_dropped": "boundary_globs in {config}: {count} {count:entry is not a repo-relative glob|entries are not repo-relative globs} of at most {chars} characters. {count:It is|They are} ignored.",
   "config_stoplist_dropped": "stoplist in {config}: {count} {count:entry is not a bare name|entries are not bare names} of at most {chars} characters and {count:was|were} dropped",
-  "config_unknown_keys_suppressed": "{count} further unknown {count:key|keys} in {config}: warnings suppressed"
+  "config_unknown_keys_suppressed": "{count} further unknown {count:key|keys} in {config}: warnings suppressed",
+  "gate_deny": "Structural pass first: no agentless call has localized this session yet.\nCall mcp__agentless__orient with operation=\"map\" and focus seeds from the task (file paths or symbol names). Broad Grep, Glob and shell search unlock after that call. A Grep of one existing file runs now.\n"
 }

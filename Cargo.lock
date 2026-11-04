@@ -499,6 +499,7 @@ dependencies = [
  "io",
  "json",
  "kernel",
+ "prompts",
  "serde",
  "serde_json",
  "sha2",

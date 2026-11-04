@@ -103,7 +103,7 @@ fn the_fixture_and_the_catalog_hold_the_same_templates() {
         .iter()
         .map(|(file, key, _, _)| (*file, *key))
         .collect();
-    assert_eq!(cataloged.len(), 257);
+    assert_eq!(cataloged.len(), 258);
     assert_eq!(fixed, cataloged);
 }
 

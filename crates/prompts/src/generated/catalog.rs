@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 257] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 258] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -739,6 +739,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 257] = [
         "find_usage_row",
         &["path", "line", "count"],
         messages::FIND_USAGE_ROW.pieces(),
+    ),
+    (
+        "messages",
+        "gate_deny",
+        &[],
+        &[Piece::Text(messages::GATE_DENY)],
     ),
     (
         "messages",

@@ -799,6 +799,10 @@
       },
       "text": "  xarray/core/_aggregations.py @754 (12 lines)"
     },
+    "gate_deny": {
+      "arguments": {},
+      "text": "Structural pass first: no agentless call has localized this session yet.\nCall mcp__agentless__orient with operation=\"map\" and focus seeds from the task (file paths or symbol names). Broad Grep, Glob and shell search unlock after that call. A Grep of one existing file runs now.\n"
+    },
     "grouped_files": {
       "arguments": {
         "count": 4

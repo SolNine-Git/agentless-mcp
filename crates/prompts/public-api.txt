@@ -122,6 +122,7 @@ pub const prompts::messages::FIND_USAGE_NEAREST_ALL: &str
 pub const prompts::messages::FIND_USAGE_REST: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::FIND_USAGE_REST_OWNER: prompts::Template<(prompts::Text, prompts::Text, prompts::Count)>
 pub const prompts::messages::FIND_USAGE_ROW: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::GATE_DENY: &str
 pub const prompts::messages::GROUPED_FILES: prompts::Template<prompts::Count>
 pub const prompts::messages::GROUPED_IDS: prompts::Template<prompts::Count>
 pub const prompts::messages::HEALTH_COMPLEXITY: prompts::Template<(prompts::Count, prompts::Count, prompts::Count, prompts::Count, prompts::Text, prompts::Text)>
