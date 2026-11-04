@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -234,6 +235,26 @@ const LOADER: &str = "from helpers import check, parse, read_text\n\n\ndef load_
 const SETTINGS: &str = "from helpers import check, parse, read_text\n\n\ndef load_settings(where):\n    \
                         raw = read_text(where)\n    if raw:\n        check(parse(raw))\n    return raw\n";
 
+// The report of `lint --since HEAD --only callee_overlap` on the repository at `root`.
+fn callee_report(services: &crate::Services, root: &Path) -> LintReport {
+    let repo = Repo::load(services, root).expect("the repository loads");
+    let names = ["callee_overlap".to_owned()];
+    let request = LintRequest {
+        form: LintForm::Revision {
+            revision: "HEAD".to_owned(),
+        },
+        checks: PairSelection::from_names(&names, FormKind::Since).expect("a selection"),
+    };
+    let mut lookup = |_: &str, _: &str, _| Stored::Miss;
+    let source = BlockSource {
+        cached: true,
+        lookup: &mut lookup,
+    };
+    let found = lint_with(services, &repo, source, &request);
+    assert_eq!(found.diagnostics, Vec::<String>::new());
+    found.value.expect("a report")
+}
+
 // A monotonic clock that moves one second at each read, so any deadline check sees time pass.
 struct Ticking {
     now: Mutex<Instant>,
@@ -262,22 +283,7 @@ fn callee_rows(budget: Duration, clock: Arc<dyn kernel::Clock>) -> Vec<(String, 
     let mut services = sandbox.services(sandbox.path());
     services.walk_budget = budget;
     services.clock = clock;
-    let repo = Repo::load(&services, &root).expect("the repository loads");
-    let names = ["callee_overlap".to_owned()];
-    let request = LintRequest {
-        form: LintForm::Revision {
-            revision: "HEAD".to_owned(),
-        },
-        checks: PairSelection::from_names(&names, FormKind::Since).expect("a selection"),
-    };
-    let mut lookup = |_: &str, _: &str, _| Stored::Miss;
-    let source = BlockSource {
-        cached: true,
-        lookup: &mut lookup,
-    };
-    let found = lint_with(&services, &repo, source, &request);
-    assert_eq!(found.diagnostics, Vec::<String>::new());
-    let report = found.value.expect("a report");
+    let report = callee_report(&services, &root);
     report.candidates[0]
         .findings
         .iter()
@@ -316,4 +322,108 @@ fn a_callee_overlap_run_past_its_budget_gives_one_stopped_row_and_no_finding() {
                 .to_owned()
         )]
     );
+}
+
+// The files below `dir`, as paths relative to it, in sorted order.
+fn tree_files(dir: &Path) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(at) = pending.pop() {
+        for entry in std::fs::read_dir(&at).unwrap_or_else(|error| panic!("{at:?}: {error}")) {
+            let path = entry.expect("a directory entry").path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                let relative = path.strip_prefix(dir).expect("below the fixture");
+                found.push(relative.to_str().expect("a UTF-8 path").to_owned());
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+#[derive(Deserialize)]
+struct Planted {
+    positives: Vec<PlantedPair>,
+    negatives: Vec<PlantedPair>,
+}
+
+#[derive(Deserialize)]
+struct PlantedPair {
+    kind: String,
+    path: String,
+    unit: String,
+}
+
+impl PlantedPair {
+    fn place(&self) -> (&str, &str) {
+        (self.path.as_str(), self.unit.as_str())
+    }
+}
+
+const FIXTURES: &str = "../../tests/characterization/fixtures";
+const LINT_GOLDENS: &str = "../../tests/characterization/goldens/lint";
+
+// The M1 planted pairs of one fixture repository: base/ is committed, change/ is laid over it,
+// and the run's report is the golden.
+fn planted_report_equals_its_golden(name: &str) {
+    let fixture: PathBuf = [MANIFEST_DIR, FIXTURES, name].iter().collect();
+    let sandbox = Sandbox::new();
+    sandbox.mkdir("repo");
+    sandbox.apply(&[Value::from("init"), Value::from("repo")]);
+    for side in ["base", "change"] {
+        let from = fixture.join(side);
+        for path in tree_files(&from) {
+            sandbox.copy(&from.join(&path), &format!("repo/{path}"));
+        }
+        if side == "base" {
+            sandbox.apply(&[Value::from("commit"), Value::from("repo")]);
+        }
+    }
+    let services = sandbox.services(sandbox.path());
+    let report = callee_report(&services, &sandbox.path().join("repo"));
+    let text = to_text(&report, JsonForm::Indented).expect("a report serializes") + "\n";
+    let golden: PathBuf = [MANIFEST_DIR, LINT_GOLDENS, &format!("{name}.lint.json")]
+        .iter()
+        .collect();
+    let want = std::fs::read_to_string(&golden).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(text, want, "{name}");
+    let planted = std::fs::read_to_string(fixture.join("pairs.json")).expect("the planted pairs");
+    let planted: Planted = serde_json::from_str(&planted).expect("a planted list");
+    assert_rows_are_planted(name, &report, &planted);
+}
+
+// Each row is a planted positive, and no row names a planted negative.
+fn assert_rows_are_planted(name: &str, report: &LintReport, planted: &Planted) {
+    let rows: Vec<(&str, &str)> = report.candidates[0]
+        .findings
+        .iter()
+        .map(|row| match &row.detail {
+            Some(checks::Detail::Overlap(share)) => {
+                (row.finding.path.as_str(), share.unit.as_str())
+            }
+            other => panic!("{name}: a row that is no overlap: {other:?}"),
+        })
+        .collect();
+    for negative in &planted.negatives {
+        assert!(
+            !rows.contains(&negative.place()),
+            "{name}: a row names the {} negative",
+            negative.kind
+        );
+    }
+    let planted_positive =
+        |row: &(&str, &str)| planted.positives.iter().any(|pair| pair.place() == *row);
+    assert!(rows.iter().all(planted_positive), "{name}: {rows:?}");
+}
+
+#[test]
+fn the_rust_planted_pairs_give_the_golden_rows_and_no_row_on_a_negative() {
+    planted_report_equals_its_golden("callee_overlap_rust");
+}
+
+#[test]
+fn the_python_planted_pairs_give_the_golden_rows_and_no_row_on_a_negative() {
+    planted_report_equals_its_golden("callee_overlap_py");
 }

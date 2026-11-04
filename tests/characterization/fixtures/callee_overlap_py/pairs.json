@@ -1,0 +1,116 @@
+{
+  "positives": [
+    {
+      "kind": "renamed",
+      "files": "same_file",
+      "path": "copies.py",
+      "unit": "total_order",
+      "other": "sum_order"
+    },
+    {
+      "kind": "renamed",
+      "files": "cross_file",
+      "path": "bill.py",
+      "unit": "render_bill",
+      "other": "render_invoice"
+    },
+    {
+      "kind": "renamed",
+      "files": "cross_file",
+      "path": "dump.py",
+      "unit": "dump_rows",
+      "other": "export_rows"
+    },
+    {
+      "kind": "edited",
+      "files": "same_file",
+      "path": "copies.py",
+      "unit": "parse_entry",
+      "other": "parse_line"
+    },
+    {
+      "kind": "edited",
+      "files": "cross_file",
+      "path": "journal.py",
+      "unit": "post_journal",
+      "other": "post_ledger"
+    },
+    {
+      "kind": "edited",
+      "files": "cross_file",
+      "path": "sample.py",
+      "unit": "describe_sample",
+      "other": "summarize"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "same_file",
+      "path": "copies.py",
+      "unit": "bundle_items",
+      "other": "pack_items"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "order.py",
+      "unit": "order_items",
+      "other": "rank_items"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "refresh.py",
+      "unit": "refresh_cache",
+      "other": "sync_cache"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "screen.py",
+      "unit": "screen_form",
+      "other": "validate_form"
+    }
+  ],
+  "negatives": [
+    {
+      "kind": "sibling_pipeline",
+      "path": "config.py",
+      "unit": "load_manifest"
+    },
+    {
+      "kind": "builder_family",
+      "path": "builders.py",
+      "unit": "arg_eta"
+    },
+    {
+      "kind": "protocol_method",
+      "path": "report.py",
+      "unit": "Report.__str__"
+    },
+    {
+      "kind": "test_function",
+      "path": "tests/test_report.py",
+      "unit": "test_renders_a_report"
+    },
+    {
+      "kind": "moved_function",
+      "path": "moved.py",
+      "unit": "merge_a"
+    },
+    {
+      "kind": "renamed_function",
+      "path": "rename.py",
+      "unit": "fold_z"
+    },
+    {
+      "kind": "calls_the_original",
+      "path": "scoring.py",
+      "unit": "score_all"
+    },
+    {
+      "kind": "two_callees",
+      "path": "scoring.py",
+      "unit": "pair_off"
+    }
+  ]
+}

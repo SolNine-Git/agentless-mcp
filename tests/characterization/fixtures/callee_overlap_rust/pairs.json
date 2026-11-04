@@ -1,0 +1,116 @@
+{
+  "positives": [
+    {
+      "kind": "renamed",
+      "files": "same_file",
+      "path": "src/copies.rs",
+      "unit": "total_order",
+      "other": "sum_order"
+    },
+    {
+      "kind": "renamed",
+      "files": "cross_file",
+      "path": "src/bill.rs",
+      "unit": "render_bill",
+      "other": "render_invoice"
+    },
+    {
+      "kind": "renamed",
+      "files": "cross_file",
+      "path": "src/dump.rs",
+      "unit": "dump_rows",
+      "other": "export_rows"
+    },
+    {
+      "kind": "edited",
+      "files": "same_file",
+      "path": "src/copies.rs",
+      "unit": "parse_entry",
+      "other": "parse_line"
+    },
+    {
+      "kind": "edited",
+      "files": "cross_file",
+      "path": "src/journal.rs",
+      "unit": "post_journal",
+      "other": "post_ledger"
+    },
+    {
+      "kind": "edited",
+      "files": "cross_file",
+      "path": "src/sample.rs",
+      "unit": "describe_sample",
+      "other": "summarize"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "same_file",
+      "path": "src/copies.rs",
+      "unit": "bundle_items",
+      "other": "pack_items"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "src/order.rs",
+      "unit": "order_items",
+      "other": "rank_items"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "src/refresh.rs",
+      "unit": "refresh_cache",
+      "other": "sync_cache"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "src/screen.rs",
+      "unit": "screen_form",
+      "other": "validate_form"
+    }
+  ],
+  "negatives": [
+    {
+      "kind": "sibling_pipeline",
+      "path": "src/config.rs",
+      "unit": "load_manifest"
+    },
+    {
+      "kind": "builder_family",
+      "path": "src/builders.rs",
+      "unit": "arg_eta"
+    },
+    {
+      "kind": "protocol_method",
+      "path": "src/report.rs",
+      "unit": "Report.fmt"
+    },
+    {
+      "kind": "test_function",
+      "path": "src/report.rs",
+      "unit": "tests.renders_a_report"
+    },
+    {
+      "kind": "moved_function",
+      "path": "src/moved.rs",
+      "unit": "merge_a"
+    },
+    {
+      "kind": "renamed_function",
+      "path": "src/rename.rs",
+      "unit": "fold_z"
+    },
+    {
+      "kind": "calls_the_original",
+      "path": "src/scoring.rs",
+      "unit": "score_all"
+    },
+    {
+      "kind": "two_callees",
+      "path": "src/scoring.rs",
+      "unit": "pair_off"
+    }
+  ]
+}
