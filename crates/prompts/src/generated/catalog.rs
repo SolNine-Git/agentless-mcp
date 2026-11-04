@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 256] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 257] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -197,6 +197,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 256] = [
         "cache_stale_remediation",
         &["repo_root"],
         messages::CACHE_STALE_REMEDIATION.pieces(),
+    ),
+    (
+        "messages",
+        "caps_walk_bytes",
+        &[],
+        &[Piece::Text(messages::CAPS_WALK_BYTES)],
     ),
     (
         "messages",

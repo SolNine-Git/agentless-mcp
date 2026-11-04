@@ -1259,7 +1259,8 @@ The report holds:
 - the configured roots, and a `client roots` line that always reads
   `none advertised`, because the server does not read the roots of a client
 - the project config in force
-- every bound (walk depth, file count, per-file bytes, output tokens)
+- every bound (walk depth, file count, walk bytes and what they count,
+  per-file bytes, output tokens)
 - the `lint` checks, each with the input it reads (`patch`, `pairs`, or
   `pairs+clones`)
 

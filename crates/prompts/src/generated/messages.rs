@@ -117,6 +117,11 @@ pub const CACHE_STALE_REMEDIATION: Template<Text> = Template::new(&[
     Piece::Text(" for performance"),
 ]);
 
+/// A text that takes no values.
+pub const CAPS_WALK_BYTES: &str = "note: max_walk_bytes counts only the files that a scan reads, \
+        each with a suffix from the extensions list and at most \
+        max_file_bytes bytes";
+
 /// A template that takes (`count`, `listed`).
 pub const CLONE_AND_MORE: Template<(Count, Text)> = Template::new(&[
     Piece::Value(1),

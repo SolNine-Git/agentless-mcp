@@ -191,6 +191,10 @@
       },
       "text": "changed files parse live; run agentless-mcp index --repo /srv/app for performance"
     },
+    "caps_walk_bytes": {
+      "arguments": {},
+      "text": "note: max_walk_bytes counts only the files that a scan reads, each with a suffix from the extensions list and at most max_file_bytes bytes"
+    },
     "clone_and_more": {
       "arguments": {
         "count": 3,

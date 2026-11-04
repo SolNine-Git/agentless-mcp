@@ -52,6 +52,19 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **`capabilities` lists the walk's byte bound and says what it counts.** The
+  caps gain `max_walk_bytes = 200000000` after `max_walk_files`, and the text
+  report, over MCP and the CLI, ends the caps with "note: max_walk_bytes
+  counts only the files that a scan reads, each with a suffix from the
+  extensions list and at most max_file_bytes bytes". The JSON report gains the
+  key `max_walk_bytes` in `caps`. The guide's capabilities bullet names the
+  byte bound, so its "every bound" is true. The expected reports change in
+  `crates/app/fixtures/capabilities.json` (6 rows),
+  `crates/render/fixtures/capabilities.json` (8 text rows),
+  `crates/cli/fixtures/scenarios.json` (`capabilities_text`,
+  `capabilities_json`, `capabilities_outside_git`) and
+  `crates/mcp/fixtures/calls.json` (7 capabilities answers).
+
 - **A walk refusal names only what its caller can do.** The refusal texts said
   "point the call at a subdirectory or raise the byte bound" (or "the file
   bound"). No flag, argument or config key raises a bound, and orient over MCP

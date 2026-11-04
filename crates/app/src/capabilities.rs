@@ -42,9 +42,10 @@ const fn int(value: usize) -> CapValue {
 }
 
 /// Every bound the services apply, in report order.
-pub const CAPS: [(&str, CapValue); 27] = [
+pub const CAPS: [(&str, CapValue); 28] = [
     ("max_walk_depth", int(io::MAX_WALK_DEPTH)),
     ("max_walk_files", int(io::MAX_WALK_FILES)),
+    ("max_walk_bytes", CapValue::Int(io::MAX_WALK_BYTES)),
     ("max_file_bytes", int(io::MAX_FILE_BYTES)),
     ("max_output_tokens", CapValue::Int(MAX_OUTPUT_TOKENS)),
     ("max_config_warnings", CapValue::Int(MAX_CONFIG_WARNINGS)),

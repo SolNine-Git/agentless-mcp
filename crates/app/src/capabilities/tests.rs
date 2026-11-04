@@ -118,5 +118,5 @@ fn the_text_of_a_value_is_the_reference_text() {
     .collect();
     assert_eq!(shown, ["true", "none", "a, b", "10", "auto"]);
     assert_eq!(CapValue::Float(1.0).to_string(), "1.0");
-    assert_eq!(CAPS.len(), 27);
+    assert_eq!(CAPS.len(), 28);
 }
