@@ -5,6 +5,8 @@ use std::ffi::OsStr;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use prompts::messages::{WALK_LISTING_CAPPED, WALK_TOO_DEEP, WALK_UNLISTED};
+
 use crate::{Git, GitOutcome, Limits, Unfinished};
 
 // `--others` lists the whole untracked tree, so this listing is as large as a repository the tool
@@ -123,13 +125,14 @@ struct Found {
 
 impl Git {
     /// Lists each file under `root` that git does not ignore, within the walk bounds, or refuses
-    /// the root when it is not a directory, git cannot list it, or the files pass a bound.
+    /// the root when it is not a directory, git cannot list it, or the files pass a bound. The
+    /// byte bound counts only the files that `reads` accepts.
     #[must_use]
-    pub fn walk(&self, root: &Path) -> Walk {
-        self.walk_within(root, BOUNDS)
+    pub fn walk(&self, root: &Path, reads: io::ScanReads) -> Walk {
+        self.walk_within(root, BOUNDS, reads)
     }
 
-    fn walk_within(&self, root: &Path, bounds: Bounds) -> Walk {
+    fn walk_within(&self, root: &Path, bounds: Bounds, reads: io::ScanReads) -> Walk {
         let root = match resolved_directory(root) {
             Ok(root) => root,
             Err(error) => return refused(error, Vec::new()),
@@ -137,13 +140,13 @@ impl Git {
         let Found {
             names,
             mut warnings,
-        } = self.names(&root, bounds.files);
+        } = self.names(&root, bounds.files, reads);
         let names = match names {
             Ok(names) => names,
             Err(error) => return refused(error, warnings),
         };
         let probe = |candidate: &Path| io::contained_file_size(candidate, &root);
-        let admitted = admit(&root, names, bounds, probe);
+        let admitted = admit(&root, names, bounds, reads, probe);
         warnings.extend(admitted.warnings);
         Walk {
             files: admitted.files,
@@ -151,7 +154,7 @@ impl Git {
         }
     }
 
-    fn names(&self, root: &Path, max_files: usize) -> Found {
+    fn names(&self, root: &Path, max_files: usize, reads: io::ScanReads) -> Found {
         let (listed, unchecked) = self.listing_speaks_for(root);
         let found = if listed {
             match self.listed(root, max_files) {
@@ -162,7 +165,7 @@ impl Git {
                 Err(error) => refused_names(error, Vec::new()),
             }
         } else {
-            walked(root)
+            walked(root, reads)
         };
         let warnings = unchecked.into_iter().chain(found.warnings).collect();
         Found {
@@ -222,29 +225,23 @@ impl fmt::Display for WalkWarning {
     }
 }
 
+// The text states the bound and the root only: each surface adds the controls that it has. A
+// path's depth is the depth of its directory, so the two walks share the depth text.
 impl fmt::Display for WalkError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Refused(refusal) => refusal.fmt(f),
-            Self::TooDeep { depth, limit, root } => write!(
-                f,
-                "walk refused: path depth {depth} exceeds the limit of {limit} under {}; point the \
-                 call at a subdirectory instead",
-                root.display()
-            ),
-            Self::ListingCapped { root } => write!(
-                f,
-                "walk refused: git listed more than {} bytes of names under {}; point the call at \
-                 a subdirectory instead",
-                LISTING.cap,
-                root.display()
-            ),
-            Self::Unlisted { root, note } => write!(
-                f,
-                "{} cannot be listed the way its .gitignore asks: {note}",
-                root.display()
-            ),
-        }
+        let text = match self {
+            Self::Refused(refusal) => return refusal.fmt(f),
+            Self::TooDeep { depth, limit, root } => {
+                WALK_TOO_DEEP.render((&root.display().to_string(), *depth, *limit))
+            }
+            Self::ListingCapped { root } => {
+                WALK_LISTING_CAPPED.render((&root.display().to_string(), LISTING.cap))
+            }
+            Self::Unlisted { root, note } => {
+                WALK_UNLISTED.render((&root.display().to_string(), note))
+            }
+        };
+        f.write_str(&text)
     }
 }
 
@@ -338,8 +335,8 @@ fn decoded_names(
 }
 
 // The skips of a bounded walk come with either outcome, as the walk raised them.
-fn walked(root: &Path) -> Found {
-    let walk = io::walk(root);
+fn walked(root: &Path, reads: io::ScanReads) -> Found {
+    let walk = io::walk(root, reads);
     let mut warnings: Vec<WalkWarning> =
         walk.skipped.into_iter().map(WalkWarning::Skipped).collect();
     let files = match walk.files {
@@ -374,6 +371,7 @@ fn admit(
     root: &Path,
     mut names: Vec<String>,
     bounds: Bounds,
+    reads: io::ScanReads,
     probe: impl Fn(&Path) -> Option<std::io::Result<u64>>,
 ) -> Walk {
     names.sort_unstable();
@@ -404,7 +402,7 @@ fn admit(
                 continue;
             }
         };
-        total = total.saturating_add(size);
+        total = total.saturating_add(io::counted_bytes(reads, &name, size));
         if files.len() >= bounds.files {
             return refused(too_many_files(bounds.files, root), warnings);
         }

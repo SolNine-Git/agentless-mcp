@@ -9,7 +9,7 @@ use render::{Receipt, diagram_caveat, diagram_summary, mermaid, receipt_lines, s
 use super::{ReadArgs, open_reading, utf8_path};
 use crate::Streams;
 use crate::caller::{named_file, shown_path};
-use crate::exit::{EXIT_DOMAIN, EXIT_OK, EXIT_USAGE, code_for, fail, report, write_answer};
+use crate::exit::{EXIT_DOMAIN, EXIT_OK, EXIT_USAGE, fail, failed, report, write_answer};
 use crate::steps::{answer, diagnostics};
 
 pub(super) fn diagram(args: &ReadArgs<'_>, services: &Services, streams: &mut Streams<'_>) -> u8 {
@@ -32,7 +32,7 @@ pub(super) fn diagram(args: &ReadArgs<'_>, services: &Services, streams: &mut St
     diagnostics(streams, &outcome.diagnostics);
     let view = match outcome.value {
         Ok(view) => view,
-        Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
+        Err(error) => return failed(streams.err, &error),
     };
     if !view.message.is_empty() {
         return fail(streams.err, &view.message, EXIT_DOMAIN);

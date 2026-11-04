@@ -117,6 +117,11 @@ pub const CACHE_STALE_REMEDIATION: Template<Text> = Template::new(&[
     Piece::Text(" for performance"),
 ]);
 
+/// A text that takes no values.
+pub const CAPS_WALK_BYTES: &str = "note: max_walk_bytes counts only the files that a scan reads, \
+        each with a suffix from the extensions list and at most \
+        max_file_bytes bytes";
+
 /// A template that takes (`count`, `listed`).
 pub const CLONE_AND_MORE: Template<(Count, Text)> = Template::new(&[
     Piece::Value(1),
@@ -2271,4 +2276,69 @@ pub const UNKNOWN_TOOL: Template<Text> = Template::new(&[
     Piece::Text("No tool has this name. The tools are "),
     Piece::Value(0),
     Piece::Text("."),
+]);
+
+/// A template that takes (`root`, `bytes`).
+pub const WALK_LISTING_CAPPED: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("walk refused: git listed more than "),
+    Piece::Value(1),
+    Piece::Text(" bytes of names under "),
+    Piece::Value(0),
+]);
+
+/// A template that takes `root`.
+pub const WALK_NOT_DIRECTORY: Template<Text> =
+    Template::new(&[Piece::Text("not a directory: "), Piece::Value(0)]);
+
+/// A template that takes `reason`.
+pub const WALK_REFUSED_CLI: Template<Text> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(
+        ". No flag changes a walk bound. Set --repo to a subdirectory, \
+        and the walk covers only that subtree.",
+    ),
+]);
+
+/// A template that takes `reason`.
+pub const WALK_REFUSED_MCP: Template<Text> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(
+        ". No argument changes a walk bound. read dir walks only the \
+        directory that its path names. symbols overview, expand and \
+        locate, read slice and history do not walk the root.",
+    ),
+]);
+
+/// A template that takes (`root`, `count`, `limit`).
+pub const WALK_TOO_DEEP: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Text("walk refused: directory depth "),
+    Piece::Value(1),
+    Piece::Text(" exceeds the limit of "),
+    Piece::Value(2),
+    Piece::Text(" under "),
+    Piece::Value(0),
+]);
+
+/// A template that takes (`root`, `limit`).
+pub const WALK_TOO_MANY_BYTES: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("walk refused: the files that a scan reads under "),
+    Piece::Value(0),
+    Piece::Text(" hold more than "),
+    Piece::Value(1),
+    Piece::Text(" bytes"),
+]);
+
+/// A template that takes (`root`, `limit`).
+pub const WALK_TOO_MANY_FILES: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("walk refused: more than "),
+    Piece::Value(1),
+    Piece::Text(" files under "),
+    Piece::Value(0),
+]);
+
+/// A template that takes (`root`, `note`).
+pub const WALK_UNLISTED: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" cannot be listed the way its .gitignore asks: "),
+    Piece::Value(1),
 ]);

@@ -121,7 +121,7 @@ fn walked<T>(
     root: &Path,
     scan: impl FnOnce(Vec<RepoFile>) -> Noted<Result<T, Stopped>>,
 ) -> Noted<Result<T, Error>> {
-    let walk = services.git.walk(root);
+    let walk = services.git.walk(root, reads);
     let mut diagnostics: Vec<String> = walk.warnings.iter().map(ToString::to_string).collect();
     let files = match walk.files {
         Ok(files) => files,
@@ -222,14 +222,24 @@ fn collected<T>(scanned: Vec<Scanned<T>>) -> Values<T> {
     values.map(Ok)
 }
 
+fn in_language(file: RepoFile) -> Option<(RepoFile, Language)> {
+    let language = scanned_language(&file.path)?;
+    Some((file, language))
+}
+
+// The walks' byte bound guards the scan's reads, so it counts what the scan reads: a file in a
+// language, within the per-file cap of the read.
+pub(crate) fn reads(path: &str, size: u64) -> bool {
+    io::within_file_cap(size) && scanned_language(path).is_some()
+}
+
 // The project config file is never scanned, and a path whose suffix names no language is not
 // scanned.
-fn in_language(file: RepoFile) -> Option<(RepoFile, Language)> {
-    if file.path == io::CONFIG_FILENAME {
+fn scanned_language(path: &str) -> Option<Language> {
+    if path == io::CONFIG_FILENAME {
         return None;
     }
-    let language = Language::from_path(&file.path)?;
-    Some((file, language))
+    Language::from_path(path)
 }
 
 fn scan_one<T>(

@@ -8,6 +8,7 @@ use text::one_line;
 
 use crate::bounds::within;
 use crate::ops::limits::{MAX_TREE_DEPTH, MAX_TREE_ENTRIES};
+use crate::scan;
 use crate::{Error, IntArg, Noted, Repo, Services};
 
 /// A tree request: the levels to render and the names to render before the cut.
@@ -60,7 +61,7 @@ pub fn subtree(
         Ok(found) => found,
         Err(error) => return Noted::new(Err(error)),
     };
-    let walk = services.git.walk(&selected);
+    let walk = services.git.walk(&selected, scan::reads);
     let diagnostics = walk.warnings.iter().map(ToString::to_string).collect();
     let value = walk
         .files

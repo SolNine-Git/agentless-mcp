@@ -37,6 +37,12 @@ impl fmt::Display for Skipped {
 
 impl std::error::Error for Skipped {}
 
+/// Returns true when a file of `size` bytes is within the per-file cap of [`read_bounded`].
+#[must_use]
+pub fn within_file_cap(size: u64) -> bool {
+    size <= MAX_FILE_BYTES as u64
+}
+
 /// Reads all of `path`, following symlinks, or skips it whole when it holds more than
 /// [`MAX_FILE_BYTES`] bytes.
 ///
@@ -46,7 +52,7 @@ impl std::error::Error for Skipped {}
 pub fn read_bounded(path: &Path) -> Result<Vec<u8>, Skipped> {
     let file = File::open(path).map_err(Skipped::Unreadable)?;
     let (data, sizes) = read_capped(file).map_err(Skipped::Unreadable)?;
-    if data.len() <= MAX_FILE_BYTES {
+    if within_file_cap(byte_count(&data)) {
         return Ok(data);
     }
     let size = sizes.0.max(sizes.1).max(byte_count(&data));

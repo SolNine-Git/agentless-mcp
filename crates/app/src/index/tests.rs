@@ -9,6 +9,7 @@ use syntax::Language;
 
 use super::{IndexRequest, Parser, index, index_with};
 use crate::clock::PinnedClock;
+use crate::scan;
 use crate::testing::Sandbox;
 use crate::{Error, IndexReport, Noted, Repo, Services, Session};
 
@@ -344,7 +345,11 @@ fn served(services: &Services, root: &Path) -> Vec<String> {
 }
 
 fn walked(services: &Services, root: &Path) -> Vec<String> {
-    let files = services.git.walk(root).files.expect("the walk succeeds");
+    let files = services
+        .git
+        .walk(root, scan::reads)
+        .files
+        .expect("the walk succeeds");
     files
         .into_iter()
         .map(|file| file.path)

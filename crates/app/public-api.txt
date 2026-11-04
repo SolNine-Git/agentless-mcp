@@ -3085,7 +3085,7 @@ impl core::marker::Unpin for app::WarmupRequest
 impl core::marker::UnsafeUnpin for app::WarmupRequest
 impl core::panic::unwind_safe::RefUnwindSafe for app::WarmupRequest
 impl core::panic::unwind_safe::UnwindSafe for app::WarmupRequest
-pub const app::CAPS: [(&str, app::CapValue); 27]
+pub const app::CAPS: [(&str, app::CapValue); 28]
 pub const app::CHECKS: [app::LintCheck; 10]
 pub const app::COVERAGE: &str
 pub const app::DEFAULT_JOBS: usize

@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use app::{Capabilities, LanguageCapability, LintCheckRow};
+use prompts::messages::CAPS_WALK_BYTES;
 
 use crate::blocks::detail_suffix;
 use crate::envelope::Listing;
@@ -45,6 +46,7 @@ pub(crate) fn render_capabilities(report: &Capabilities<'_>) -> String {
             .iter()
             .map(|(name, value)| format!("  {name} = {value}")),
     );
+    lines.push(format!("  {CAPS_WALK_BYTES}"));
     lines.join("\n") + "\n"
 }
 

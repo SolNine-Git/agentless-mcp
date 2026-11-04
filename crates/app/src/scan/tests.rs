@@ -1,4 +1,5 @@
 use std::panic::{self, AssertUnwindSafe};
+use std::path::Path;
 
 use facts::Facts;
 use git::{RepoFile, Snapshot};
@@ -6,11 +7,11 @@ use kernel::Stopped;
 use store::{FactSource, FileText, Served};
 use syntax::Unparsable;
 
-use super::{RepoFacts, line_count, scan};
+use super::{RepoFacts, line_count, reads, scan};
 use crate::clock::{assert_spent, spent};
 use crate::endpoints::scanned::Scanned;
 use crate::testing::Sandbox;
-use crate::{Reading, Repo};
+use crate::{Error, Noted, Reading, Repo};
 
 fn listed(paths: &[&str]) -> Vec<RepoFile> {
     paths
@@ -123,8 +124,62 @@ fn the_scan_of_a_repository_walks_it_and_reads_through_the_source() {
         "repo",
         &[("b.py", "import a\n"), ("a.py", "def g():\n    pass\n")],
     );
-    let services = sandbox.services(&root);
-    let repo = Repo::load(&services, &root).unwrap_or_else(|error| panic!("{error}"));
+    let loaded = loaded(&sandbox, &root);
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    let facts = loaded.value.unwrap_or_else(|error| panic!("{error}"));
+    let (files, skipped) = summary(&facts);
+    assert_eq!(
+        files,
+        [("a.py".to_owned(), 3, 1), ("b.py".to_owned(), 2, 0)]
+    );
+    assert!(skipped.is_empty());
+    assert_eq!(facts.files[1].facts.imports.len(), 1);
+}
+
+#[test]
+fn the_byte_bound_counts_a_file_in_a_language_within_the_file_cap() {
+    let cap = u64::try_from(io::MAX_FILE_BYTES).expect("the cap fits a u64");
+    assert!(reads("pkg/a.py", 3));
+    assert!(reads("big.go", cap));
+    assert!(reads("sub/.agentless-mcp.json", 3));
+    assert!(!reads("big.go", cap + 1));
+    assert!(!reads("docs/shot.png", 3));
+    assert!(!reads(".agentless-mcp.json", 3));
+}
+
+// Sparse files: each walk only stats them, and the scan reads no more than the cap of big.go.
+#[test]
+fn each_walk_of_the_scan_passes_a_tree_whose_unread_files_pass_the_byte_bound() {
+    let sandbox = Sandbox::new();
+    sandbox.repo("repo", &[("a.py", "def g():\n    pass\n")]);
+    sandbox.put("plain/a.py", "def g():\n    pass\n");
+    let services = sandbox.services(sandbox.path());
+    assert_eq!(services.git.root(&sandbox.path().join("plain")), None);
+    let cap = u64::try_from(io::MAX_FILE_BYTES).expect("the cap fits a u64");
+    for name in ["repo", "plain"] {
+        for (path, size) in [
+            ("docs/shot.png", io::MAX_WALK_BYTES + 1),
+            ("big.go", cap + 1),
+        ] {
+            let path = format!("{name}/{path}");
+            sandbox.put(&path, "");
+            sandbox.sparse(&path, size);
+        }
+        let loaded = loaded(&sandbox, &sandbox.path().join(name));
+        let (files, skipped) = summary(&loaded.value.unwrap_or_else(|error| panic!("{error}")));
+        assert_eq!(files, [("a.py".to_owned(), 3, 1)], "{name}");
+        let reason = format!(
+            "skipped: {} bytes exceeds the per-file cap of {cap} bytes",
+            cap + 1
+        );
+        assert_eq!(skipped, [("big.go".to_owned(), reason)], "{name}");
+    }
+}
+
+// The scan of the repository at `root`, read through the parsing fact source.
+fn loaded(sandbox: &Sandbox, root: &Path) -> Noted<Result<RepoFacts, Error>> {
+    let services = sandbox.services(root);
+    let repo = Repo::load(&services, root).unwrap_or_else(|error| panic!("{error}"));
     let snapshot = Snapshot {
         head_sha: None,
         tree_oid: None,
@@ -138,16 +193,7 @@ fn the_scan_of_a_repository_walks_it_and_reads_through_the_source() {
         facts: &source,
         deadline: None,
     };
-    let loaded = RepoFacts::load(&services, &reading);
-    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
-    let facts = loaded.value.unwrap_or_else(|error| panic!("{error}"));
-    let (files, skipped) = summary(&facts);
-    assert_eq!(
-        files,
-        [("a.py".to_owned(), 3, 1), ("b.py".to_owned(), 2, 0)]
-    );
-    assert!(skipped.is_empty());
-    assert_eq!(facts.files[1].facts.imports.len(), 1);
+    RepoFacts::load(&services, &reading)
 }
 
 #[test]

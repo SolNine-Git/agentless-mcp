@@ -52,7 +52,7 @@ pub use owner::is_private_directory;
 pub use random::random_bytes;
 pub use read::{
     MAX_FILE_BYTES, NotUtf8, Skipped, Utf8Reason, codec_text, decode_strict, decode_text,
-    read_bounded, stat_present,
+    read_bounded, stat_present, within_file_cap,
 };
 pub use replace::replace_file;
 pub use runner::{NotRun, Outcome, Spec, run};
@@ -62,7 +62,10 @@ pub use testrun::{
     TERM_GRACE, TEST_ENV_ALLOWLIST, TestCommand, TestRun, TestRunError, exit_code, run_test,
 };
 pub use txn::{BACKUP_SUFFIX, Leftover, STAGING_SUFFIX, WriteError, WriteFailure, write_all};
-pub use walk::{MAX_WALK_BYTES, MAX_WALK_DEPTH, MAX_WALK_FILES, Walk, WalkRefusal, WalkSkip, walk};
+pub use walk::{
+    MAX_WALK_BYTES, MAX_WALK_DEPTH, MAX_WALK_FILES, ScanReads, Walk, WalkRefusal, WalkSkip,
+    counted_bytes, walk,
+};
 pub use warning::{
     ConfigWarning, FileRefusal, GateWarning, GlobsWarning, StoplistWarning, TestCmdWarning,
     UnknownKeyWarning, ValueWarning,

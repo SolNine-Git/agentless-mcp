@@ -11,6 +11,7 @@ use syntax::Language;
 use crate::pair_runs::{IndexOf, Reported, RunInputs};
 use crate::parallel;
 use crate::rows::{bounded_read, decoded};
+use crate::scan;
 use crate::{Error, Noted, PairSelection, Services, in_metric_scope};
 
 // The rows of one run in check order, and what the checks measured.
@@ -79,7 +80,7 @@ pub(crate) fn built_index(
     measured: &[&Pair],
 ) -> Noted<Result<IndexedFiles, Error>> {
     let started = Instant::now();
-    let walk = services.git.walk(root);
+    let walk = services.git.walk(root, scan::reads);
     let mut warnings: Vec<String> = walk.warnings.iter().map(ToString::to_string).collect();
     let files = match walk.files {
         Ok(files) => files,

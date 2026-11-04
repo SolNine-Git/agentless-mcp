@@ -191,6 +191,10 @@
       },
       "text": "changed files parse live; run agentless-mcp index --repo /srv/app for performance"
     },
+    "caps_walk_bytes": {
+      "arguments": {},
+      "text": "note: max_walk_bytes counts only the files that a scan reads, each with a suffix from the extensions list and at most max_file_bytes bytes"
+    },
     "clone_and_more": {
       "arguments": {
         "count": 3,
@@ -1648,6 +1652,60 @@
         "listed": "orient, symbols and read"
       },
       "text": "No tool has this name. The tools are orient, symbols and read."
+    },
+    "walk_listing_capped": {
+      "arguments": {
+        "bytes": 16000000,
+        "root": "/srv/app"
+      },
+      "text": "walk refused: git listed more than 16000000 bytes of names under /srv/app"
+    },
+    "walk_not_directory": {
+      "arguments": {
+        "root": "/srv/app/README.md"
+      },
+      "text": "not a directory: /srv/app/README.md"
+    },
+    "walk_refused_cli": {
+      "arguments": {
+        "reason": "walk refused: more than 20000 files under /srv/app"
+      },
+      "text": "walk refused: more than 20000 files under /srv/app. No flag changes a walk bound. Set --repo to a subdirectory, and the walk covers only that subtree."
+    },
+    "walk_refused_mcp": {
+      "arguments": {
+        "reason": "walk refused: more than 20000 files under /srv/app"
+      },
+      "text": "walk refused: more than 20000 files under /srv/app. No argument changes a walk bound. read dir walks only the directory that its path names. symbols overview, expand and locate, read slice and history do not walk the root."
+    },
+    "walk_too_deep": {
+      "arguments": {
+        "count": 21,
+        "limit": 20,
+        "root": "/srv/app"
+      },
+      "text": "walk refused: directory depth 21 exceeds the limit of 20 under /srv/app"
+    },
+    "walk_too_many_bytes": {
+      "arguments": {
+        "limit": 200000000,
+        "root": "/srv/app"
+      },
+      "text": "walk refused: the files that a scan reads under /srv/app hold more than 200000000 bytes"
+    },
+    "walk_too_many_files": {
+      "arguments": {
+        "limit": 20000,
+        "root": "/srv/app"
+      },
+      "text": "walk refused: more than 20000 files under /srv/app"
+    },
+    "walk_unlisted": {
+      "arguments": {
+        "note": "git ls-files timed out after 30 s",
+        "root": "/srv/app"
+      },
+      "text": "/srv/app cannot be listed the way its .gitignore asks: git ls-files timed out after 30 s"
     }
   }
 }

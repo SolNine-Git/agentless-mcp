@@ -34,6 +34,7 @@ pub const prompts::messages::CACHE_DISCARDED_OLD_SCHEMA: prompts::Template<(prom
 pub const prompts::messages::CACHE_DISCARDED_OTHER_REPO: prompts::Template<prompts::Text>
 pub const prompts::messages::CACHE_STALE_REFRESHING: &str
 pub const prompts::messages::CACHE_STALE_REMEDIATION: prompts::Template<prompts::Text>
+pub const prompts::messages::CAPS_WALK_BYTES: &str
 pub const prompts::messages::CLONE_AND_MORE: prompts::Template<(prompts::Count, prompts::Text)>
 pub const prompts::messages::CLONE_DOES_NOT_PARSE: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::CLONE_INDEX_GAPS: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
@@ -249,6 +250,14 @@ pub const prompts::messages::TARGET_NO_MATCH: prompts::Template<prompts::Text>
 pub const prompts::messages::TARGET_SPELLED: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::TOOL_TAKES: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::UNKNOWN_TOOL: prompts::Template<prompts::Text>
+pub const prompts::messages::WALK_LISTING_CAPPED: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::WALK_NOT_DIRECTORY: prompts::Template<prompts::Text>
+pub const prompts::messages::WALK_REFUSED_CLI: prompts::Template<prompts::Text>
+pub const prompts::messages::WALK_REFUSED_MCP: prompts::Template<prompts::Text>
+pub const prompts::messages::WALK_TOO_DEEP: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::WALK_TOO_MANY_BYTES: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::WALK_TOO_MANY_FILES: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::WALK_UNLISTED: prompts::Template<(prompts::Text, prompts::Text)>
 pub mod prompts::parameter_descriptions
 pub const prompts::parameter_descriptions::COMMUNITY_RESOLUTION: &str
 pub const prompts::parameter_descriptions::CONTEXT_LINES: &str

@@ -12,7 +12,7 @@ use render::{Receipt, one_line};
 use crate::Streams;
 use crate::args::{self, Arg, Exit};
 use crate::commands;
-use crate::exit::{EXIT_OK, EXIT_USAGE, code_for, fail, report, write_answer};
+use crate::exit::{EXIT_OK, EXIT_USAGE, fail, failed, report, write_answer};
 use crate::invocation::{Command, Invocation, RepoFlags};
 use crate::{lint, patches, read, validate, vote};
 
@@ -59,7 +59,7 @@ fn execute(
 ) -> u8 {
     let counted = match with_counter(services, invocation.tiktoken) {
         Ok(counted) => counted,
-        Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
+        Err(error) => return failed(streams.err, &error),
     };
     let services = counted.as_ref().unwrap_or(services);
     match invocation.command {
@@ -93,7 +93,7 @@ fn capabilities(flags: &RepoFlags, services: &Services, streams: &mut Streams<'_
     };
     let report = match app::capabilities(&session) {
         Ok(report) => report,
-        Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
+        Err(error) => return failed(streams.err, &error),
     };
     let receipt = Receipt::of(&session);
     let rendered = if flags.json {
@@ -122,8 +122,7 @@ pub(crate) fn open_with(
     opener: fn(&Services, app::Repo, bool) -> app::Opening,
 ) -> Result<Session, u8> {
     let repo = flags.repo.as_deref().map(Path::new);
-    let repo = app::resolve(services, repo)
-        .map_err(|error| fail(streams.err, &error.to_string(), code_for(&error)))?;
+    let repo = app::resolve(services, repo).map_err(|error| failed(streams.err, &error))?;
     opened(streams, opener(services, repo, flags.no_cache))
 }
 
@@ -138,7 +137,7 @@ pub(crate) fn opened(streams: &mut Streams<'_>, opening: app::Opening) -> Result
     opening
         .session
         .value
-        .map_err(|error| fail(streams.err, &error.to_string(), code_for(&error)))
+        .map_err(|error| failed(streams.err, &error))
 }
 
 pub(crate) fn diagnostics(streams: &mut Streams<'_>, lines: &[String]) {
@@ -156,7 +155,7 @@ pub(crate) fn diagnostics_or_stop<T>(
     diagnostics(streams, &noted.diagnostics);
     if io::interrupted() {
         if let Err(error) = &noted.value {
-            fail(streams.err, &error.to_string(), code_for(error));
+            failed(streams.err, error);
         }
         io::end_by_interrupt();
     }
@@ -182,8 +181,8 @@ pub(crate) fn resolved(
     services: &Services,
     streams: &mut Streams<'_>,
 ) -> Result<Resolved, u8> {
-    let repo = resolver(services, repo.map(Path::new))
-        .map_err(|error| fail(streams.err, &error.to_string(), code_for(&error)))?;
+    let repo =
+        resolver(services, repo.map(Path::new)).map_err(|error| failed(streams.err, &error))?;
     let enclosing = services.git.root(&repo.root);
     let snapshot = services.git.snapshot(&repo.root, enclosing.as_deref());
     if !snapshot.note.is_empty() {

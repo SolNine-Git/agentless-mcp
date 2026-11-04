@@ -14,6 +14,7 @@ workspace = true
 [dependencies]
 io = { path = "../io" }
 kernel = { path = "../kernel" }
+prompts = { path = "../prompts" }
 text = { path = "../text" }
 
 [dev-dependencies]

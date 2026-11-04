@@ -79,6 +79,17 @@ impl Tree {
         Ok(path)
     }
 
+    /// Sets the length of the file `relative` to `size`. The part past its old end reads as zeros,
+    /// and most file systems store it as a hole, so a large size takes no space.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an absolute `relative`, or the open or the length error.
+    pub fn set_len(&self, relative: impl AsRef<Path>, size: u64) -> io::Result<()> {
+        let path = self.below(relative.as_ref())?;
+        fs::OpenOptions::new().write(true).open(path)?.set_len(size)
+    }
+
     /// Copies the file `from` to the file `relative`, and returns the path of the copy.
     ///
     /// # Errors

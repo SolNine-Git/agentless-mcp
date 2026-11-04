@@ -9,7 +9,7 @@ use render::{Receipt, html_document, html_summary, receipt_lines};
 use super::{ReadArgs, open_reading};
 use crate::Streams;
 use crate::args::Arg;
-use crate::exit::{EXIT_DOMAIN, EXIT_OK, EXIT_USAGE, code_for, fail, write_answer};
+use crate::exit::{EXIT_DOMAIN, EXIT_OK, EXIT_USAGE, fail, failed, write_answer};
 use crate::steps::{answer, diagnostics};
 
 const MAX_CACHE_NAME: usize = 128;
@@ -37,7 +37,7 @@ pub(super) fn html(args: &ReadArgs<'_>, services: &Services, streams: &mut Strea
     diagnostics(streams, &outcome.diagnostics);
     match outcome.value {
         Ok(graph) => exported(&graph, name, &session, services, streams),
-        Err(error) => fail(streams.err, &error.to_string(), code_for(&error)),
+        Err(error) => failed(streams.err, &error),
     }
 }
 
