@@ -156,6 +156,8 @@ pub enum syntax::RoleRule
 pub syntax::RoleRule::Plain
 pub syntax::RoleRule::Python
 pub syntax::RoleRule::Rust
+impl syntax::RoleRule
+pub fn syntax::RoleRule::analyses_scopes(self) -> bool
 impl core::clone::Clone for syntax::RoleRule
 pub fn syntax::RoleRule::clone(&self) -> Self
 impl core::cmp::Eq for syntax::RoleRule

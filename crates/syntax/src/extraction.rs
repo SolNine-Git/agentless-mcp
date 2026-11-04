@@ -36,6 +36,14 @@ pub enum RoleRule {
     Rust,
 }
 
+impl RoleRule {
+    /// Return whether the rule tells a parameter or a local from a reference to a symbol.
+    #[must_use]
+    pub fn analyses_scopes(self) -> bool {
+        self == RoleRule::Python
+    }
+}
+
 /// How one import statement binds names into the importing file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImportBinding {
