@@ -1,6 +1,6 @@
-//! The lint check registry, the pair-check selection, and the refusals of a selection.
+//! The lint check registry, the pair-check table and selection, and the refusals of a selection.
 
-use checks::{CLONE_DELTA, COMPLEXITY_DELTA, CONTRACT_DRIFT};
+use checks::{CLONE_DELTA, COMPLEXITY_DELTA, CONTRACT_DRIFT, Outcome, Pair};
 use patchcheck::{
     CHECK_ARITY, CHECK_CYCLE_DELTA, CHECK_DANGLING_CALLERS, CHECK_DANGLING_REFERENCES,
     CHECK_NEAR_DUPLICATES, CHECK_SHADOWING, CHECK_UNDECLARED_IMPORTS,
@@ -8,6 +8,9 @@ use patchcheck::{
 use prompts::messages::{
     LINT_NO_CHECKS, LINT_PATH_TAKES_PAIR_CHECKS, LINT_SINCE_TAKES_PAIR_CHECKS, LINT_UNKNOWN_CHECK,
 };
+
+use crate::pair_runs::{self, Run, RunInputs};
+use crate::{Error, in_metric_scope, is_fixture_path, is_test_path};
 
 /// The input that a lint check reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,9 +53,9 @@ pub const CHECKS: [LintCheck; 10] = [
     check(CHECK_DANGLING_CALLERS, CheckInput::Patch),
     check(CHECK_ARITY, CheckInput::Patch),
     check(CHECK_CYCLE_DELTA, CheckInput::Patch),
-    check(PairCheck::ComplexityDelta.name(), CheckInput::Pairs),
-    check(PairCheck::ContractDrift.name(), CheckInput::Pairs),
-    check(PairCheck::CloneDelta.name(), CheckInput::PairsClones),
+    PairCheck::ComplexityDelta.lint_check(),
+    PairCheck::ContractDrift.lint_check(),
+    PairCheck::CloneDelta.lint_check(),
 ];
 
 /// A check that compares the old and new text of each edited file.
@@ -66,6 +69,44 @@ pub enum PairCheck {
     CloneDelta,
 }
 
+// One row of the pair table. A check reads only the pairs whose path `keeps` accepts.
+#[derive(Clone, Copy)]
+struct PairRow {
+    name: &'static str,
+    input: CheckInput,
+    keeps: fn(&str) -> bool,
+    forms: &'static [FormKind],
+    run: Run,
+}
+
+const EVERY_FORM: &[FormKind] = &[FormKind::Path, FormKind::Since];
+
+// Row i is the row of the check whose discriminant is i. Fixtures are skipped by every check, and
+// tests by all but complexity_delta.
+const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
+    PairRow {
+        name: COMPLEXITY_DELTA,
+        input: CheckInput::Pairs,
+        keeps: |path| !is_fixture_path(path),
+        forms: EVERY_FORM,
+        run: pair_runs::complexity_delta,
+    },
+    PairRow {
+        name: CONTRACT_DRIFT,
+        input: CheckInput::Pairs,
+        keeps: |path| !is_test_path(path) && !is_fixture_path(path),
+        forms: EVERY_FORM,
+        run: pair_runs::contract_drift,
+    },
+    PairRow {
+        name: CLONE_DELTA,
+        input: CheckInput::PairsClones,
+        keeps: in_metric_scope,
+        forms: EVERY_FORM,
+        run: pair_runs::clone_delta,
+    },
+];
+
 impl PairCheck {
     /// Every pair check, in registry order.
     pub const ALL: [PairCheck; 3] = [Self::ComplexityDelta, Self::ContractDrift, Self::CloneDelta];
@@ -73,17 +114,38 @@ impl PairCheck {
     /// Returns the check's name.
     #[must_use]
     pub const fn name(self) -> &'static str {
-        match self {
-            Self::ComplexityDelta => COMPLEXITY_DELTA,
-            Self::ContractDrift => CONTRACT_DRIFT,
-            Self::CloneDelta => CLONE_DELTA,
-        }
+        self.row().name
     }
 
     /// Returns the pair check named `name`, or `None`.
     #[must_use]
     pub fn from_name(name: &str) -> Option<PairCheck> {
         Self::ALL.into_iter().find(|check| check.name() == name)
+    }
+
+    pub(crate) fn keeps(self, path: &str) -> bool {
+        (self.row().keeps)(path)
+    }
+
+    pub(crate) fn run(
+        self,
+        pairs: &[&Pair],
+        inputs: &mut RunInputs<'_, '_>,
+    ) -> Result<Option<Outcome>, Error> {
+        (self.row().run)(pairs, inputs)
+    }
+
+    fn runs_in(self, form: FormKind) -> bool {
+        self.row().forms.contains(&form)
+    }
+
+    const fn lint_check(self) -> LintCheck {
+        let row = self.row();
+        check(row.name, row.input)
+    }
+
+    const fn row(self) -> PairRow {
+        PAIR_CHECKS[self as usize]
     }
 }
 
@@ -99,7 +161,7 @@ pub enum FormKind {
 /// A non-empty set of pair checks. The checks run in registry order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PairSelection {
-    chosen: [bool; 3],
+    chosen: [bool; PAIR_CHECKS.len()],
 }
 
 impl PairSelection {
@@ -107,7 +169,7 @@ impl PairSelection {
     #[must_use]
     pub fn edited_files() -> PairSelection {
         PairSelection {
-            chosen: [true, true, false],
+            chosen: PAIR_CHECKS.map(|row| row.input == CheckInput::Pairs),
         }
     }
 
@@ -117,7 +179,7 @@ impl PairSelection {
     ///
     /// Returns the refusal text when `checks` is empty.
     pub fn of(checks: &[PairCheck]) -> Result<PairSelection, String> {
-        let mut chosen = [false; 3];
+        let mut chosen = [false; PAIR_CHECKS.len()];
         for check in checks {
             chosen[*check as usize] = true;
         }
@@ -170,20 +232,24 @@ pub fn unknown_check_refusal(names: &[String]) -> Option<String> {
 
 // The names that a pair form cannot run, in input order, as the form's refusal.
 fn pair_only_refusal(names: &[String], form: FormKind) -> Option<String> {
-    let patch: Vec<&str> = names
+    let refused: Vec<&str> = names
         .iter()
         .map(String::as_str)
-        .filter(|name| PairCheck::from_name(name).is_none())
+        .filter(|name| PairCheck::from_name(name).is_none_or(|check| !check.runs_in(form)))
         .collect();
-    if patch.is_empty() {
+    if refused.is_empty() {
         return None;
     }
     let template = match form {
         FormKind::Path => LINT_PATH_TAKES_PAIR_CHECKS,
         FormKind::Since => LINT_SINCE_TAKES_PAIR_CHECKS,
     };
-    let pair_checks = PairCheck::ALL.map(PairCheck::name).join(", ");
-    Some(template.render((&pair_checks, &patch.join(", "))))
+    let runs: Vec<&str> = PairCheck::ALL
+        .into_iter()
+        .filter(|check| check.runs_in(form))
+        .map(PairCheck::name)
+        .collect();
+    Some(template.render((&runs.join(", "), &refused.join(", "))))
 }
 
 fn no_checks() -> String {

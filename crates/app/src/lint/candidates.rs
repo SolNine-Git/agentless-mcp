@@ -22,7 +22,8 @@ use patch::{DiffNote, Edit, ParseResult};
 use patchcheck::{CHECK_NEAR_DUPLICATES, PatchBaseline};
 
 use super::{BlockSource, LintReport, candidate, empty, with_rows};
-use crate::pairs::{IndexOf, Judged, Reported, built_index};
+use crate::pair_runs::{IndexOf, Reported};
+use crate::pairs::{Judged, built_index};
 use crate::scan::RepoFacts;
 use crate::{Error, Noted, Reading, Services, Session};
 use admission::{checkable, oriented, unread_row};

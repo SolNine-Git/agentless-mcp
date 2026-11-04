@@ -8,7 +8,8 @@ use patch::{Edit, EditOutcome, apply_edits};
 use prompts::messages::{PAIR_EDITS_UNAPPLIED, PAIR_OLD_UNREAD};
 use syntax::Language;
 
-use crate::pairs::{IndexOf, Judged, Reported, run_pairs};
+use crate::pair_runs::{IndexOf, Reported};
+use crate::pairs::{Judged, run_pairs};
 use crate::proposed::working_read;
 use crate::rows::{Gap, coverage, side_text};
 use crate::{Error, PairSelection};
