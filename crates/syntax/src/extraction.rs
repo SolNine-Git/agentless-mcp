@@ -67,7 +67,22 @@ pub struct Extraction {
     /// The function kinds that the skeleton elides beyond the declared function kinds.
     pub skeleton_functions: KindSet,
     pub declarations: Declarations,
+    pub scopes: ScopeKinds,
     builtins: Names,
+}
+
+/// The kinds that the Rust scope analysis reads; every set is empty for another role rule.
+pub struct ScopeKinds {
+    /// The items whose body sees no local of the code around them.
+    pub owners: KindSet,
+    /// The kinds whose tokens keep their role: attributes and macro definitions.
+    pub opaque: KindSet,
+    /// The patterns whose every named child is a pattern.
+    pub nested_patterns: KindSet,
+    /// The patterns whose `type` child is a path, and every other child a pattern.
+    pub typed_patterns: KindSet,
+    /// The parents whose identifier children are path or use-tree segments.
+    pub path_parents: KindSet,
 }
 
 /// The declaration kinds and fields of one language; every set is empty for a language with none.
@@ -133,6 +148,13 @@ fn resolve(language: Language) -> Extraction {
         bodies: language.kinds(extraction.bodies),
         skeleton_functions: language.kinds(extraction.skeleton_functions),
         declarations: Declarations::resolve(language, declarations),
+        scopes: ScopeKinds {
+            owners: language.kinds(extraction.scope_owners),
+            opaque: language.kinds(extraction.opaque_scopes),
+            nested_patterns: language.kinds(extraction.nested_patterns),
+            typed_patterns: language.kinds(extraction.typed_patterns),
+            path_parents: language.kinds(extraction.path_parents),
+        },
         builtins: extraction.builtins,
     }
 }

@@ -75,6 +75,11 @@ pub(crate) struct ExtractionTable {
     pub(crate) bodies: Names,
     pub(crate) skeleton_functions: Names,
     pub(crate) builtins: Names,
+    pub(crate) scope_owners: Names,
+    pub(crate) opaque_scopes: Names,
+    pub(crate) nested_patterns: Names,
+    pub(crate) typed_patterns: Names,
+    pub(crate) path_parents: Names,
     pub(crate) declarations: Option<&'static DeclarationTable>,
 }
 
