@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 256] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 256] = [
     (
         "envelope",
         "ceiling_truncation",

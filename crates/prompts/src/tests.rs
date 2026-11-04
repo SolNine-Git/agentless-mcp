@@ -60,7 +60,7 @@ impl<'f> Case<'f> {
 fn every_template_renders_the_text_of_the_fixture() {
     let fixture = fixture("render");
     let mut mismatches = Vec::new();
-    for (file, key, names, pieces) in CATALOG {
+    for &(file, key, names, pieces) in &CATALOG {
         let case = Case::of(&fixture, file, key);
         let given: BTreeSet<&str> = case.arguments.keys().map(String::as_str).collect();
         let wanted: BTreeSet<&str> = names.iter().copied().collect();
@@ -136,7 +136,7 @@ fn each_choice_takes_the_form_of_its_count_at_one_and_at_two() {
     let fixture = fixture("counts");
     let mut covered: BTreeSet<(&str, &str)> = BTreeSet::new();
     let mut mismatches = Vec::new();
-    for (file, key, names, pieces) in CATALOG {
+    for &(file, key, names, pieces) in &CATALOG {
         if chosen(pieces).is_empty() {
             continue;
         }

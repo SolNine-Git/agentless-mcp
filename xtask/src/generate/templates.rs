@@ -295,7 +295,7 @@ pub fn catalog(files: &[(&str, &[Template])]) -> String {
     format!(
         "//! Each template with its value names, for the render tests.\n{WRITTEN_BY}\n\n\
          use super::{{{}}};\nuse crate::template::Piece;\n\n\
-         pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); {}] = [{}];\n",
+         pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); {}] = [{}];\n",
         modules.join(", "),
         entries.len(),
         entries.join(",\n")
