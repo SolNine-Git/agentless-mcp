@@ -7,6 +7,7 @@ use std::panic::{self, AssertUnwindSafe};
 use app::EnvConfig;
 use json::{JsonValue, get};
 use kernel::SystemClock;
+use prompts::messages;
 use text::CodePointString;
 
 use super::log::{self, Entry, key};
@@ -41,20 +42,6 @@ const BASH: &str = "Bash";
 // The unified-exec tool of Codex, which carries the same command string as Bash.
 const EXEC_COMMAND: &str = "exec_command";
 
-const DENY_MESSAGE: &str = "\
-Structural pass first: this session has not localized with agentless yet.
-
-Call mcp__agentless__orient with operation=\"map\" and focus seeds from the task \
-(file paths or symbol names). Escalate with mcp__agentless__symbols \
-operation=\"expand\" on the stable ids it returns.
-
-Broad text search unlocks after that call, whether it runs as Grep, Glob, or \
-grep/rg/find inside Bash. A Grep scoped to one existing file is already \
-allowed, and so is a shell command that filters another command's output. Use \
-broad search afterwards for string literals, error messages, config keys, and \
-test names.
-";
-
 /// Decides the `PreToolUse` payload on `stdin`, writes the deny message to `stderr`, and returns
 /// the exit code: 2 to deny the search, 120 when the deny message cannot be written, else 0.
 pub fn gate_check(env: &EnvConfig, stdin: &mut dyn Read, stderr: &mut dyn Write) -> u8 {
@@ -73,7 +60,7 @@ pub(crate) fn check_with(gate: &Gate<'_>, stdin: &mut dyn Read, stderr: &mut dyn
 // A deny whose message cannot be written does not block the call.
 fn deny(stderr: &mut dyn Write) -> u8 {
     match stderr
-        .write_all(DENY_MESSAGE.as_bytes())
+        .write_all(messages::GATE_DENY.as_bytes())
         .and_then(|()| stderr.flush())
     {
         Ok(()) => DENY,

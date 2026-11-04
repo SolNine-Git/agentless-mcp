@@ -1041,6 +1041,18 @@ pub const FIND_USAGE_ROW: Template<(Text, Count, Count)> = Template::new(&[
     Piece::Text(")"),
 ]);
 
+/// A text that takes no values.
+pub const GATE_DENY: &str = "Structural pass first: this session has not localized with agentless \
+        yet.\n\nCall mcp__agentless__orient with operation=\"map\" and \
+        focus seeds from the task (file paths or symbol names). \
+        Escalate with mcp__agentless__symbols operation=\"expand\" on \
+        the stable ids it returns.\n\nBroad text search unlocks after \
+        that call, whether it runs as Grep, Glob, or grep/rg/find \
+        inside Bash. A Grep scoped to one existing file is already \
+        allowed, and so is a shell command that filters another \
+        command's output. Use broad search afterwards for string \
+        literals, error messages, config keys, and test names.\n";
+
 /// A template that takes `count`.
 pub const GROUPED_FILES: Template<Count> = Template::new(&[
     Piece::Text("("),
