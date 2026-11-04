@@ -3,19 +3,22 @@ use std::collections::{HashMap, HashSet};
 use syntax::{Extraction, KindSet, NodeId, RoleRule};
 
 use super::python_scopes::{self, Roles};
+use super::rust_scopes::{self, RUST_PATHS};
 use super::rust_uses::inline_depth;
 use super::tree::{Field, Tree};
-use crate::values::{Ref, Role};
+use crate::values::{Ref, Role, Symbol};
 
 const KEY_QUOTES: [char; 2] = ['"', '\''];
 const RUST_UNNAMED: [&str; 2] = ["lifetime", "label"];
-const RUST_PATHS: [&str; 2] = ["scoped_identifier", "scoped_type_identifier"];
 
 // Every identifier occurrence in document order, with its role where the language has a role
-// analysis and `reference` where it has none.
-pub(super) fn refs(tree: &Tree, extraction: &Extraction) -> Vec<Ref> {
+// analysis and `reference` where it has none. A Rust item name that no symbol of `symbols`
+// declares gets the declaration role.
+pub(super) fn refs(tree: &Tree, extraction: &Extraction, symbols: &[Symbol]) -> Vec<Ref> {
     let roles = (extraction.roles == RoleRule::Python).then(|| python_scopes::roles(tree));
     let paths = (extraction.roles == RoleRule::Rust).then(|| RustPaths::of(tree));
+    let rust = (extraction.roles == RoleRule::Rust)
+        .then(|| rust_scopes::roles(tree, &extraction.scopes, symbols));
     let wanted = &extraction.identifiers;
     tree.preorder(tree.root())
         .filter(|node| wanted.contains(tree.parsed.kind(*node)))
@@ -30,6 +33,9 @@ pub(super) fn refs(tree: &Tree, extraction: &Extraction) -> Vec<Ref> {
                 (!name.is_empty()).then(|| occurrence(tree, node, name, roles.as_ref()))?;
             if let Some(qualifier) = paths.as_ref().and_then(|paths| paths.qualifiers.get(&node)) {
                 qualifier.clone_into(&mut found.qualifier);
+            }
+            if let Some(role) = rust.as_ref().and_then(|rust| rust.role(node)) {
+                found.role = role;
             }
             Some(found)
         })

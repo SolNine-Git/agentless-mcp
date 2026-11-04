@@ -111,6 +111,11 @@
       "kind": "two_callees",
       "path": "src/scoring.rs",
       "unit": "pair_off"
+    },
+    {
+      "kind": "parameter_shadow",
+      "path": "src/verdicts.rs",
+      "unit": "string"
     }
   ]
 }

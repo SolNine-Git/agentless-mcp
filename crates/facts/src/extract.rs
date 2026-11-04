@@ -12,6 +12,7 @@ mod python_scopes;
 mod rationales;
 mod require_and_source;
 mod rust_items;
+mod rust_scopes;
 mod rust_uses;
 mod tree;
 
@@ -42,10 +43,11 @@ pub fn extract(parsed: &Parsed) -> Facts {
     let tree = Tree::new(parsed);
     let extraction = parsed.language().extraction();
     let symbols = disambiguate(symbols(&tree, extraction));
+    let refs = identifier_refs::refs(&tree, extraction, &symbols);
     Facts {
         symbols: rationales::attached(symbols, rationales::rationales(&tree, extraction)),
         imports: imports(&tree, extraction),
-        refs: identifier_refs::refs(&tree, extraction),
+        refs,
         errors: tree.error_spans(),
         manifest: (parsed.language() == Language::Toml)
             .then(|| data_languages::manifest(&tree))

@@ -14,3 +14,4 @@ pub mod report;
 pub mod scoring;
 pub mod stats;
 pub mod twins;
+pub mod verdicts;

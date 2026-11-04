@@ -22,3 +22,4 @@ pub mod scoring;
 pub mod screen;
 pub mod stats;
 pub mod twins;
+pub mod verdicts;

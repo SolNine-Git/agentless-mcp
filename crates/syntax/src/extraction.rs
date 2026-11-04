@@ -40,7 +40,7 @@ impl RoleRule {
     /// Return whether the rule tells a parameter or a local from a reference to a symbol.
     #[must_use]
     pub fn analyses_scopes(self) -> bool {
-        self == RoleRule::Python
+        matches!(self, RoleRule::Python | RoleRule::Rust)
     }
 }
 

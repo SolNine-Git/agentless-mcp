@@ -2,7 +2,7 @@ use json::{JsonForm, to_text};
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::{CAPS, CapValue, Setting, capabilities};
+use super::{CAPS, CapValue, Setting, capabilities, scope_analysed_languages};
 use crate::testing::{MANIFEST_DIR, Sandbox};
 use crate::{Session, resolve};
 
@@ -119,4 +119,9 @@ fn the_text_of_a_value_is_the_reference_text() {
     assert_eq!(shown, ["true", "none", "a, b", "10", "auto"]);
     assert_eq!(CapValue::Float(1.0).to_string(), "1.0");
     assert_eq!(CAPS.len(), 28);
+}
+
+#[test]
+fn the_scope_analysed_languages_are_those_whose_role_rule_analyses_scopes() {
+    assert_eq!(scope_analysed_languages(), ["python", "rust"]);
 }
