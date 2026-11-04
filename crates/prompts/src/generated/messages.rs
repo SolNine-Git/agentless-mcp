@@ -117,6 +117,67 @@ pub const CACHE_STALE_REMEDIATION: Template<Text> = Template::new(&[
     Piece::Text(" for performance"),
 ]);
 
+/// A template that takes (`target`, `name`, `count`, `total`).
+pub const CALLEE_OVERLAP_FOUND: Template<(Text, Text, Count, Count)> = Template::new(&[
+    Piece::Text("`"),
+    Piece::Value(1),
+    Piece::Text("` calls "),
+    Piece::Value(2),
+    Piece::Text(" of the "),
+    Piece::Value(3),
+    Piece::Text(" functions that `"),
+    Piece::Value(0),
+    Piece::Text("` calls, but it does not call `"),
+    Piece::Value(0),
+    Piece::Text("`. If the two do one job, call `"),
+    Piece::Value(0),
+    Piece::Text(
+        "` and remove the copy. If they only use the same helpers, \
+        ignore this row.",
+    ),
+]);
+
+/// A template that takes (`path`, `target`, `line`, `listed`).
+pub const CALLEE_OVERLAP_FOUND_EVIDENCE: Template<(Text, Text, Count, Text)> = Template::new(&[
+    Piece::Text("`"),
+    Piece::Value(1),
+    Piece::Text("` at "),
+    Piece::Value(0),
+    Piece::Text(":"),
+    Piece::Value(2),
+    Piece::Text("; shared: "),
+    Piece::Value(3),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const CALLEE_OVERLAP_NEW_NOT_MEASURED: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("not checked: callee_overlap did not compare "),
+    Piece::Value(0),
+    Piece::Text(", because its text after the change cannot be measured. "),
+    Piece::Value(1),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const CALLEE_OVERLAP_OLD_NOT_MEASURED: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("not checked: callee_overlap did not compare "),
+    Piece::Value(0),
+    Piece::Text(", because its text before the change cannot be measured. "),
+    Piece::Value(1),
+]);
+
+/// A template that takes `budget`.
+pub const CALLEE_OVERLAP_STOPPED: Template<Count> = Template::new(&[
+    Piece::Text("not checked: callee_overlap stopped at its time budget of "),
+    Piece::Value(0),
+    Piece::Text(
+        " s before it read the calls of every function in the \
+        repository, so it compared no function.",
+    ),
+]);
+
+/// A text that takes no values.
+pub const CALLEE_OVERLAP_STOPPED_EVIDENCE: &str = "time budget spent";
+
 /// A text that takes no values.
 pub const CAPS_WALK_BYTES: &str = "note: max_walk_bytes counts only the files that a scan reads, \
         each with a suffix from the extensions list and at most \
@@ -1438,6 +1499,12 @@ pub const HISTORY_TARGET_UNRESOLVED: Template<(Text, Text)> = Template::new(&[
         refused.",
     ),
 ]);
+
+/// A text that takes no values.
+pub const LINT_CALLEE_OVERLAP_SINCE_ONLY: &str = "callee_overlap runs only with --since REV. It \
+        reads the calls of every function in the working tree after the \
+        change, and only --since compares a change that the working \
+        tree holds. Remove callee_overlap from --only.";
 
 /// A template that takes `checks`.
 pub const LINT_NO_CHECKS: Template<Text> = Template::new(&[

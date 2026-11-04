@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 258] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 265] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -197,6 +197,42 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 258] = [
         "cache_stale_remediation",
         &["repo_root"],
         messages::CACHE_STALE_REMEDIATION.pieces(),
+    ),
+    (
+        "messages",
+        "callee_overlap_found",
+        &["target", "name", "count", "total"],
+        messages::CALLEE_OVERLAP_FOUND.pieces(),
+    ),
+    (
+        "messages",
+        "callee_overlap_found_evidence",
+        &["path", "target", "line", "listed"],
+        messages::CALLEE_OVERLAP_FOUND_EVIDENCE.pieces(),
+    ),
+    (
+        "messages",
+        "callee_overlap_new_not_measured",
+        &["path", "reason"],
+        messages::CALLEE_OVERLAP_NEW_NOT_MEASURED.pieces(),
+    ),
+    (
+        "messages",
+        "callee_overlap_old_not_measured",
+        &["path", "reason"],
+        messages::CALLEE_OVERLAP_OLD_NOT_MEASURED.pieces(),
+    ),
+    (
+        "messages",
+        "callee_overlap_stopped",
+        &["budget"],
+        messages::CALLEE_OVERLAP_STOPPED.pieces(),
+    ),
+    (
+        "messages",
+        "callee_overlap_stopped_evidence",
+        &[],
+        &[Piece::Text(messages::CALLEE_OVERLAP_STOPPED_EVIDENCE)],
     ),
     (
         "messages",
@@ -955,6 +991,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 258] = [
         "history_target_unresolved",
         &["target", "reason"],
         messages::HISTORY_TARGET_UNRESOLVED.pieces(),
+    ),
+    (
+        "messages",
+        "lint_callee_overlap_since_only",
+        &[],
+        &[Piece::Text(messages::LINT_CALLEE_OVERLAP_SINCE_ONLY)],
     ),
     (
         "messages",

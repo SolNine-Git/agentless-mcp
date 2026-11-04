@@ -6,6 +6,7 @@ probe_root = "module"
 comments = ["comment"]
 sloc = "python_tokens"
 statement_parents = ["block", "module"]
+callee_stoplist = ["clone", "into", "len", "new", "push", "unwrap"]
 
 [units]
 units = ["function_definition"]

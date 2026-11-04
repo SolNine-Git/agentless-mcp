@@ -1261,8 +1261,8 @@ The report holds:
 - the project config in force
 - every bound (walk depth, file count, walk bytes and what they count,
   per-file bytes, output tokens)
-- the `lint` checks, each with the input it reads (`patch`, `pairs`, or
-  `pairs+clones`)
+- the `lint` checks, each with the input it reads (`patch`, `pairs`,
+  `pairs+clones`, or `pairs+graph`)
 
 The report names an absent tag cache with the exact
 `agentless-mcp index --repo PATH` command that builds it. Check the report
@@ -1371,13 +1371,17 @@ reason, and the candidate is not half-checked.
 
 **`--only CHECK[,CHECK...]` runs a subset of the checks.** Name checks from the
 table below. An unknown name is a usage error (exit 2). `complexity_delta`,
-`contract_drift`, and `clone_delta` are pair checks: they compare each edited
-file's whole text before and after the change. `complexity_delta` and
-`contract_drift` read only the edited files. `clone_delta` also reads every
-tier-1 source file outside test and fixture paths, to find the copies of a
-block. It reads them only when a change edits a file in that scope, once for
-all the candidates of a run, and it stops after 10 s. When `--only` names pair
-checks alone, `lint` skips the symbol scan that the other checks need. The
+`contract_drift`, `clone_delta`, and `callee_overlap` are pair checks: they
+compare each edited file's whole text before and after the change.
+`complexity_delta` and `contract_drift` read only the edited files.
+`clone_delta` also reads every tier-1 source file outside test and fixture
+paths, to find the copies of a block. It reads them only when a change edits a
+file in that scope, once for all the candidates of a run, and it stops after
+10 s. `callee_overlap` reads the calls of every function in the working tree,
+so only `--since` runs it. `--candidates` and `--diff` leave it out, and an
+`--only` that names it in any other form is a usage error (exit 2). When
+`--only` names pair checks alone, `lint` skips the symbol scan that the patch
+checks need. The
 pair checks pair functions across all the files of one candidate, so a
 function moved to another file without other change is not a finding, and a
 contract hit that moves with its function is not new.
@@ -1406,8 +1410,9 @@ the commit `REV` with its text in the working tree. Committed, staged,
 unstaged, and untracked changes all count. For a branch, pass the merge-base:
 `--since "$(git merge-base HEAD main)"`. This form runs the pair checks only.
 Without `--only` it runs `complexity_delta` and `contract_drift`, which read
-only the changed files. `--only` can add `clone_delta`. An `--only` that names
-another check is a usage error (exit 2). `--since` with `--after` is a usage
+only the changed files. `--only` can add `clone_delta` and `callee_overlap`.
+An `--only` that names another check is a usage error (exit 2). `--since` with
+`--after` is a usage
 error, and so is a `REV` that names no commit. Each file's old text comes
 from git, one `git cat-file blob` per file. A renamed file is compared at its
 new path with its old text. A deleted file has no new text, and an added or
@@ -1423,7 +1428,12 @@ you typed it. On a scratch clone of mcp-local, `--since HEAD~5` with
 changed), and `--since HEAD~50` takes 0.83 s (156 files). With `clone_delta`
 added, they take 0.35 s and 1.35 s with a fresh index, which holds the clone
 blocks of the 228 source files outside test and fixture paths, and 0.96 s and
-1.93 s without one, when `clone_delta` parses all 228.
+1.93 s without one, when `clone_delta` parses all 228. On a scratch clone of
+this repository (1,159 files), `--only callee_overlap` takes 0.7 s
+with `--since HEAD~5` and 0.8 s with `--since HEAD~50`, against 0.36 s and
+0.26 s for `--only clone_delta` with no tag cache. It parses every file on
+each run and holds the whole symbol graph, so it peaks at 380 to 460 MB of
+memory, against 100 to 170 MB.
 
 **`--json` carries one more field for a pair check.** Each finding has
 `check`, `severity`, `message`, `path`, `line`, `location`, and `evidence`. A
@@ -1442,8 +1452,14 @@ rules. A `clone_delta` `not_checked` row in the `--path` form has `detail`
 finding has `detail`: `key` (the block's Type-2 key), `line` and `end_line`
 (its span in the new text), `sites` (up to 20 other
 instances after the change, each `{path, line, end_line}`, in path and line
-order), and `sites_total` (how many other instances there are). A row about
-text that was not read, does not parse, or cannot be measured has no `detail`.
+order), and `sites_total` (how many other instances there are). A
+`callee_overlap` finding has `detail`: `unit` and `match` as for
+`complexity_delta`; `other`, `other_path` and `other_line`, the existing
+function; `family`, how many other functions also meet the rule for it;
+`shared`, each shared callee as `{callee, tier, other_tier}`, with its stable
+id and the tier of each function's edge to it; and `other_callees`, each callee
+of the existing function as `{callee, tier}`. A row about text that was not
+read, does not parse, or cannot be measured has no `detail`.
 No other finding has `detail`, and the text form does not print it.
 
 **`--json` also carries `observed` on a candidate.** It describes the new text,
@@ -1486,9 +1502,9 @@ gate, `--fail-on SEVERITY[,SEVERITY...]` (`warning`, `advisory`,
 is printed.
 
 **One path-scope rule.** Fixture paths, `testdata` directories included, are
-outside every check. Test paths are outside `clone_delta` and
-`contract_drift`, as they are outside `health`. `complexity_delta` checks test
-paths, because test code is maintained code.
+outside every check. Test paths are outside `clone_delta`, `contract_drift`
+and `callee_overlap`, as they are outside `health`. `complexity_delta` checks
+test paths, because test code is maintained code.
 
 | Check | Severity | Fires when |
 |---|---|---|
@@ -1501,6 +1517,7 @@ paths, because test code is maintained code.
 | `cycle_delta` | warning | an import cycle exists after the patch and did not before it, rendered as the chain that closes |
 | `complexity_delta` | warning | a function above the complexity threshold grows, a function crosses the threshold, or a new function arrives above it. In the hook form, a function moved from another file also counts as new. The threshold is 10 unless `complexity_threshold` in `.agentless-mcp.json` sets it. Complexity counts decision points the way scb-check does. Functions are paired by body, then by name, then by rank among functions that share a name, so a rename or a reordering is not a finding |
 | `clone_delta` | advisory | the change adds a block of three or more source lines and 40 or more tokens that has a copy elsewhere in the repository once names, literals, comments, and docstrings are ignored (a Type-2 clone). A block is a function, loop, branch, or try statement. A copy moved to another file, or renamed in place, is not a finding. One finding covers a copied function and the copied blocks inside it |
+| `callee_overlap` | advisory | a function that the change adds or rewrites calls at least 80% of the three or more functions that an existing function calls, and does not call that function. Only `--since` runs it. A function moved to another file or renamed without other change is not a finding |
 | `contract_drift` | warning | the change adds a silent default or a swallowed error to a boundary module, a file that `boundary_globs` in `.agentless-mcp.json` matches. Each hit is keyed by its rule, the function that holds it, and its text. A hit the code already had is not a finding, and a renamed function keeps its hits, as does a function moved to another file of the same candidate. A hit that moves into another function is a finding |
 
 **`contract_drift` matches syntax, not types or data flow.** Each rule is a
@@ -1578,6 +1595,37 @@ report the same function: a function in a file the candidate creates, which
 the same file that changes the line count, which `near_duplicates` reports at
 its line before the edit.
 
+**`callee_overlap` compares what the functions call.** It finds a new copy
+that `clone_delta` cannot see, because the code is written another way: a
+function that calls the same helpers as an existing one. It reads Rust and
+Python only, the languages whose table holds a `callee_stoplist`, and only
+functions and methods outside test and fixture paths. A Rust method of
+`impl Trait for T`, a Python dunder, and Rust test code (a `#[test]`-like
+attribute, or `cfg(test)` on the function or around it) are never compared.
+A callee is a function or method of the repository that a call resolves to at
+the same-file or resolved-via-import tier. A unique or name-only match does not
+count, so a Rust call on a receiver (`x.m()`) and a Python attribute call
+(`self.m()`) never count. A callee named in the stoplist (`clone`, `into`,
+`len`, `new`, `push`, `unwrap`) and a test function never count.
+
+The rule: an existing function g has three or more callees, the changed
+function f calls at least 80% of them, and f does not spell the name of g. f
+is a function the change adds, or one it rewrites whose old text spelled fewer
+than 80% of the names of g's callees. A function moved to another file or
+renamed without other change is not new. g is skipped when five or more other
+functions also meet the rule for it: such a set is a convention, not a copy.
+Each f gets at most three rows: the most shared callees first, then the larger
+set of g, then g's path and line. Two new functions that meet the rule for
+each other give one row. The scan and the graph build stop after 10 s, and
+then the check gives one `not_checked` row and no finding, because a part of
+the graph can make a false row.
+
+The check is advisory, the hook does not run it, and `erosion_gate` does not
+take it, until its false-positive rate is measured on real changes. On planted
+pairs in Rust and in Python it finds 10 of 10 (3 renamed copies, 3 edited
+copies, 4 re-implementations) and gives no row on 8 negatives each
+(`tests/characterization/fixtures/callee_overlap_rust` and `_py`).
+
 Two things the table cannot say.
 
 **`not_checked` is a finding.** Every check reports coverage gaps as findings
@@ -1594,6 +1642,8 @@ at severity `not_checked` and names the reason:
   that the index did not reach before its time budget (one row counts them and
   names the first ten), a repository whose files could not be listed, and in
   the `--path` form a run with no tag cache
+- for `callee_overlap`, a run whose scan or graph build reached its time
+  budget (one row, and no finding)
 - a boundary file in a language with no contract rules (c, bash)
 - in review mode: a binary file, a submodule, an unmerged path, a git call
   that failed or timed out, and a run in which no file changed

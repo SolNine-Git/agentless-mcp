@@ -8,7 +8,7 @@ use patch::{Edit, EditOutcome, apply_edits};
 use prompts::messages::{PAIR_EDITS_UNAPPLIED, PAIR_OLD_UNREAD};
 use syntax::Language;
 
-use crate::pair_runs::{IndexOf, Reported};
+use crate::pair_runs::{IndexOf, Reported, RunInputs};
 use crate::pairs::{Judged, run_pairs};
 use crate::proposed::working_read;
 use crate::rows::{Gap, coverage, side_text};
@@ -75,7 +75,13 @@ pub(super) fn pair_rows(
             Err(row) => rows.push(*row),
         }
     }
-    let judged = run_pairs(pairs, selection, config, index, reported)?;
+    let inputs = RunInputs {
+        config,
+        index,
+        reported,
+        callees: None,
+    };
+    let judged = run_pairs(pairs, selection, inputs)?;
     rows.extend(judged.rows);
     Ok(Judged {
         rows,

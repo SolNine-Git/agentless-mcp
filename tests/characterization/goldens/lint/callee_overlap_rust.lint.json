@@ -1,0 +1,583 @@
+{
+  "candidates": [
+    {
+      "id": "HEAD",
+      "findings": [
+        {
+          "check": "callee_overlap",
+          "severity": "advisory",
+          "message": "`render_bill` calls 4 of the 4 functions that `render_invoice` calls, but it does not call `render_invoice`. If the two do one job, call `render_invoice` and remove the copy. If they only use the same helpers, ignore this row.",
+          "path": "src/bill.rs",
+          "line": 4,
+          "location": "src/bill.rs:4",
+          "evidence": "`render_invoice` at src/invoice.rs:4; shared: inv_footer, inv_header, inv_lines, inv_tax",
+          "detail": {
+            "unit": "render_bill",
+            "match": "new",
+            "other": "render_invoice",
+            "other_path": "src/invoice.rs",
+            "other_line": 4,
+            "family": 0,
+            "shared": [
+              {
+                "callee": "rs:src/helpers.rs::inv_footer",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::inv_header",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::inv_lines",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::inv_tax",
+                "tier": "imported",
+                "other_tier": "imported"
+              }
+            ],
+            "other_callees": [
+              {
+                "callee": "rs:src/helpers.rs::inv_footer",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::inv_header",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::inv_lines",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::inv_tax",
+                "tier": "imported"
+              }
+            ]
+          }
+        },
+        {
+          "check": "callee_overlap",
+          "severity": "advisory",
+          "message": "`total_order` calls 4 of the 4 functions that `sum_order` calls, but it does not call `sum_order`. If the two do one job, call `sum_order` and remove the copy. If they only use the same helpers, ignore this row.",
+          "path": "src/copies.rs",
+          "line": 70,
+          "location": "src/copies.rs:70",
+          "evidence": "`sum_order` at src/copies.rs:49; shared: a_body, a_head, a_mark, a_tail",
+          "detail": {
+            "unit": "total_order",
+            "match": "new",
+            "other": "sum_order",
+            "other_path": "src/copies.rs",
+            "other_line": 49,
+            "family": 0,
+            "shared": [
+              {
+                "callee": "rs:src/copies.rs::a_body",
+                "tier": "same_file",
+                "other_tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::a_head",
+                "tier": "same_file",
+                "other_tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::a_mark",
+                "tier": "same_file",
+                "other_tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::a_tail",
+                "tier": "same_file",
+                "other_tier": "same_file"
+              }
+            ],
+            "other_callees": [
+              {
+                "callee": "rs:src/copies.rs::a_body",
+                "tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::a_head",
+                "tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::a_mark",
+                "tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::a_tail",
+                "tier": "same_file"
+              }
+            ]
+          }
+        },
+        {
+          "check": "callee_overlap",
+          "severity": "advisory",
+          "message": "`parse_entry` calls 4 of the 4 functions that `parse_line` calls, but it does not call `parse_line`. If the two do one job, call `parse_line` and remove the copy. If they only use the same helpers, ignore this row.",
+          "path": "src/copies.rs",
+          "line": 77,
+          "location": "src/copies.rs:77",
+          "evidence": "`parse_line` at src/copies.rs:56; shared: b_key, b_split, b_strip, b_value",
+          "detail": {
+            "unit": "parse_entry",
+            "match": "new",
+            "other": "parse_line",
+            "other_path": "src/copies.rs",
+            "other_line": 56,
+            "family": 0,
+            "shared": [
+              {
+                "callee": "rs:src/copies.rs::b_key",
+                "tier": "same_file",
+                "other_tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::b_split",
+                "tier": "same_file",
+                "other_tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::b_strip",
+                "tier": "same_file",
+                "other_tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::b_value",
+                "tier": "same_file",
+                "other_tier": "same_file"
+              }
+            ],
+            "other_callees": [
+              {
+                "callee": "rs:src/copies.rs::b_key",
+                "tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::b_split",
+                "tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::b_strip",
+                "tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::b_value",
+                "tier": "same_file"
+              }
+            ]
+          }
+        },
+        {
+          "check": "callee_overlap",
+          "severity": "advisory",
+          "message": "`bundle_items` calls 4 of the 4 functions that `pack_items` calls, but it does not call `pack_items`. If the two do one job, call `pack_items` and remove the copy. If they only use the same helpers, ignore this row.",
+          "path": "src/copies.rs",
+          "line": 86,
+          "location": "src/copies.rs:86",
+          "evidence": "`pack_items` at src/copies.rs:62; shared: q_seal, q_ship, q_weigh, q_wrap",
+          "detail": {
+            "unit": "bundle_items",
+            "match": "new",
+            "other": "pack_items",
+            "other_path": "src/copies.rs",
+            "other_line": 62,
+            "family": 0,
+            "shared": [
+              {
+                "callee": "rs:src/copies.rs::q_seal",
+                "tier": "same_file",
+                "other_tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::q_ship",
+                "tier": "same_file",
+                "other_tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::q_weigh",
+                "tier": "same_file",
+                "other_tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::q_wrap",
+                "tier": "same_file",
+                "other_tier": "same_file"
+              }
+            ],
+            "other_callees": [
+              {
+                "callee": "rs:src/copies.rs::q_seal",
+                "tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::q_ship",
+                "tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::q_weigh",
+                "tier": "same_file"
+              },
+              {
+                "callee": "rs:src/copies.rs::q_wrap",
+                "tier": "same_file"
+              }
+            ]
+          }
+        },
+        {
+          "check": "callee_overlap",
+          "severity": "advisory",
+          "message": "`dump_rows` calls 4 of the 4 functions that `export_rows` calls, but it does not call `export_rows`. If the two do one job, call `export_rows` and remove the copy. If they only use the same helpers, ignore this row.",
+          "path": "src/dump.rs",
+          "line": 4,
+          "location": "src/dump.rs:4",
+          "evidence": "`export_rows` at src/export.rs:4; shared: exp_close, exp_escape, exp_open, exp_row",
+          "detail": {
+            "unit": "dump_rows",
+            "match": "new",
+            "other": "export_rows",
+            "other_path": "src/export.rs",
+            "other_line": 4,
+            "family": 0,
+            "shared": [
+              {
+                "callee": "rs:src/helpers.rs::exp_close",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::exp_escape",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::exp_open",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::exp_row",
+                "tier": "imported",
+                "other_tier": "imported"
+              }
+            ],
+            "other_callees": [
+              {
+                "callee": "rs:src/helpers.rs::exp_close",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::exp_escape",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::exp_open",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::exp_row",
+                "tier": "imported"
+              }
+            ]
+          }
+        },
+        {
+          "check": "callee_overlap",
+          "severity": "advisory",
+          "message": "`post_journal` calls 4 of the 4 functions that `post_ledger` calls, but it does not call `post_ledger`. If the two do one job, call `post_ledger` and remove the copy. If they only use the same helpers, ignore this row.",
+          "path": "src/journal.rs",
+          "line": 4,
+          "location": "src/journal.rs:4",
+          "evidence": "`post_ledger` at src/ledger.rs:4; shared: led_balance, led_close, led_open, led_post",
+          "detail": {
+            "unit": "post_journal",
+            "match": "new",
+            "other": "post_ledger",
+            "other_path": "src/ledger.rs",
+            "other_line": 4,
+            "family": 0,
+            "shared": [
+              {
+                "callee": "rs:src/helpers.rs::led_balance",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::led_close",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::led_open",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::led_post",
+                "tier": "imported",
+                "other_tier": "imported"
+              }
+            ],
+            "other_callees": [
+              {
+                "callee": "rs:src/helpers.rs::led_balance",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::led_close",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::led_open",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::led_post",
+                "tier": "imported"
+              }
+            ]
+          }
+        },
+        {
+          "check": "callee_overlap",
+          "severity": "advisory",
+          "message": "`order_items` calls 4 of the 4 functions that `rank_items` calls, but it does not call `rank_items`. If the two do one job, call `rank_items` and remove the copy. If they only use the same helpers, ignore this row.",
+          "path": "src/order.rs",
+          "line": 4,
+          "location": "src/order.rs:4",
+          "evidence": "`rank_items` at src/ranking.rs:4; shared: rk_label, rk_score, rk_sort, rk_trim",
+          "detail": {
+            "unit": "order_items",
+            "match": "new",
+            "other": "rank_items",
+            "other_path": "src/ranking.rs",
+            "other_line": 4,
+            "family": 0,
+            "shared": [
+              {
+                "callee": "rs:src/helpers.rs::rk_label",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::rk_score",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::rk_sort",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::rk_trim",
+                "tier": "imported",
+                "other_tier": "imported"
+              }
+            ],
+            "other_callees": [
+              {
+                "callee": "rs:src/helpers.rs::rk_label",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::rk_score",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::rk_sort",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::rk_trim",
+                "tier": "imported"
+              }
+            ]
+          }
+        },
+        {
+          "check": "callee_overlap",
+          "severity": "advisory",
+          "message": "`refresh_cache` calls 4 of the 5 functions that `sync_cache` calls, but it does not call `sync_cache`. If the two do one job, call `sync_cache` and remove the copy. If they only use the same helpers, ignore this row.",
+          "path": "src/refresh.rs",
+          "line": 4,
+          "location": "src/refresh.rs:4",
+          "evidence": "`sync_cache` at src/cache.rs:4; shared: c_apply, c_diff, c_fetch, c_flush",
+          "detail": {
+            "unit": "refresh_cache",
+            "match": "new",
+            "other": "sync_cache",
+            "other_path": "src/cache.rs",
+            "other_line": 4,
+            "family": 0,
+            "shared": [
+              {
+                "callee": "rs:src/helpers.rs::c_apply",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::c_diff",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::c_fetch",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::c_flush",
+                "tier": "imported",
+                "other_tier": "imported"
+              }
+            ],
+            "other_callees": [
+              {
+                "callee": "rs:src/helpers.rs::c_apply",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::c_diff",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::c_fetch",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::c_flush",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::c_log",
+                "tier": "imported"
+              }
+            ]
+          }
+        },
+        {
+          "check": "callee_overlap",
+          "severity": "advisory",
+          "message": "`describe_sample` calls 4 of the 4 functions that `summarize` calls, but it does not call `summarize`. If the two do one job, call `summarize` and remove the copy. If they only use the same helpers, ignore this row.",
+          "path": "src/sample.rs",
+          "line": 4,
+          "location": "src/sample.rs:4",
+          "evidence": "`summarize` at src/stats.rs:4; shared: stat_high, stat_low, stat_mean, stat_spread",
+          "detail": {
+            "unit": "describe_sample",
+            "match": "new",
+            "other": "summarize",
+            "other_path": "src/stats.rs",
+            "other_line": 4,
+            "family": 0,
+            "shared": [
+              {
+                "callee": "rs:src/helpers.rs::stat_high",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::stat_low",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::stat_mean",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::stat_spread",
+                "tier": "imported",
+                "other_tier": "imported"
+              }
+            ],
+            "other_callees": [
+              {
+                "callee": "rs:src/helpers.rs::stat_high",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::stat_low",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::stat_mean",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::stat_spread",
+                "tier": "imported"
+              }
+            ]
+          }
+        },
+        {
+          "check": "callee_overlap",
+          "severity": "advisory",
+          "message": "`screen_form` calls 4 of the 4 functions that `validate_form` calls, but it does not call `validate_form`. If the two do one job, call `validate_form` and remove the copy. If they only use the same helpers, ignore this row.",
+          "path": "src/screen.rs",
+          "line": 4,
+          "location": "src/screen.rs:4",
+          "evidence": "`validate_form` at src/forms.rs:4; shared: v_check, v_coerce, v_report, v_trim",
+          "detail": {
+            "unit": "screen_form",
+            "match": "new",
+            "other": "validate_form",
+            "other_path": "src/forms.rs",
+            "other_line": 4,
+            "family": 0,
+            "shared": [
+              {
+                "callee": "rs:src/helpers.rs::v_check",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::v_coerce",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::v_report",
+                "tier": "imported",
+                "other_tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::v_trim",
+                "tier": "imported",
+                "other_tier": "imported"
+              }
+            ],
+            "other_callees": [
+              {
+                "callee": "rs:src/helpers.rs::v_check",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::v_coerce",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::v_report",
+                "tier": "imported"
+              },
+              {
+                "callee": "rs:src/helpers.rs::v_trim",
+                "tier": "imported"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

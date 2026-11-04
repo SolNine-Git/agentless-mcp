@@ -69,6 +69,7 @@ pub syntax::Language::Yaml
 impl syntax::Language
 pub const syntax::Language::ALL: [syntax::Language; 22]
 pub fn syntax::Language::abi_version(self) -> usize
+pub fn syntax::Language::callee_stoplist(self) -> core::option::Option<&'static [&'static str]>
 pub fn syntax::Language::extensions(self) -> &'static [&'static str]
 pub fn syntax::Language::extraction(self) -> &'static syntax::Extraction
 pub fn syntax::Language::family(self) -> syntax::Language

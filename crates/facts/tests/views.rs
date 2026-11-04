@@ -86,6 +86,7 @@ fn symbol(name: &str, kind: &str, line: u32, end_line: u32) -> Symbol {
         is_public: true,
         rationales: Vec::new(),
         duplicate_index: 0,
+        marks: facts::Marks::default(),
     }
 }
 

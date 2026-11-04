@@ -36,6 +36,9 @@ struct SymbolRow {
     duplicate_index: u32,
     id: String,
     rationales: Vec<RationaleRow>,
+    // A fixture row names the marks only where a declaration has one.
+    #[serde(default)]
+    marks: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -152,6 +155,14 @@ fn symbol_rows(language: Language, path: &str, facts: &Facts) -> Vec<SymbolRow> 
                     handle: rationale_handle(language, path, symbol, rationale),
                 })
                 .collect(),
+            marks: [
+                ("protocol", symbol.marks.protocol),
+                ("test", symbol.marks.test),
+            ]
+            .into_iter()
+            .filter(|(_, set)| *set)
+            .map(|(mark, _)| mark.to_owned())
+            .collect(),
         })
         .collect()
 }

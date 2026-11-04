@@ -1,14 +1,16 @@
 //! The lint check registry, the pair-check table and selection, and the refusals of a selection.
 
-use checks::{CLONE_DELTA, COMPLEXITY_DELTA, CONTRACT_DRIFT, Outcome, Pair};
+use checks::{CALLEE_OVERLAP, CLONE_DELTA, COMPLEXITY_DELTA, CONTRACT_DRIFT, Outcome, Pair};
 use patchcheck::{
     CHECK_ARITY, CHECK_CYCLE_DELTA, CHECK_DANGLING_CALLERS, CHECK_DANGLING_REFERENCES,
     CHECK_NEAR_DUPLICATES, CHECK_SHADOWING, CHECK_UNDECLARED_IMPORTS,
 };
 use prompts::messages::{
-    LINT_NO_CHECKS, LINT_PATH_TAKES_PAIR_CHECKS, LINT_SINCE_TAKES_PAIR_CHECKS, LINT_UNKNOWN_CHECK,
+    LINT_CALLEE_OVERLAP_SINCE_ONLY, LINT_NO_CHECKS, LINT_PATH_TAKES_PAIR_CHECKS,
+    LINT_SINCE_TAKES_PAIR_CHECKS, LINT_UNKNOWN_CHECK,
 };
 
+use crate::callees::in_callee_scope;
 use crate::pair_runs::{self, Run, RunInputs};
 use crate::{Error, in_metric_scope, is_fixture_path, is_test_path};
 
@@ -21,13 +23,15 @@ pub enum CheckInput {
     Pairs,
     /// The edited file texts and the clone index of the repository.
     PairsClones,
+    /// The edited file texts and the symbol graph of the working tree.
+    PairsGraph,
 }
 
 impl CheckInput {
     /// Returns the input as the capabilities report spells it.
     #[must_use]
     pub fn as_str(self) -> &'static str {
-        ["patch", "pairs", "pairs+clones"][self as usize]
+        ["patch", "pairs", "pairs+clones", "pairs+graph"][self as usize]
     }
 }
 
@@ -45,7 +49,7 @@ const fn check(name: &'static str, input: CheckInput) -> LintCheck {
 }
 
 /// Every lint check in registry order, which is also the order the checks run in.
-pub const CHECKS: [LintCheck; 10] = [
+pub const CHECKS: [LintCheck; 11] = [
     check(CHECK_UNDECLARED_IMPORTS, CheckInput::Patch),
     check(CHECK_SHADOWING, CheckInput::Patch),
     check(CHECK_NEAR_DUPLICATES, CheckInput::Patch),
@@ -56,6 +60,7 @@ pub const CHECKS: [LintCheck; 10] = [
     PairCheck::ComplexityDelta.lint_check(),
     PairCheck::ContractDrift.lint_check(),
     PairCheck::CloneDelta.lint_check(),
+    PairCheck::CalleeOverlap.lint_check(),
 ];
 
 /// A check that compares the old and new text of each edited file.
@@ -67,15 +72,19 @@ pub enum PairCheck {
     ContractDrift,
     /// `clone_delta`.
     CloneDelta,
+    /// `callee_overlap`.
+    CalleeOverlap,
 }
 
-// One row of the pair table. A check reads only the pairs whose path `keeps` accepts.
+// One row of the pair table. A check reads only the pairs whose path `keeps` accepts. `refusal`
+// refuses the check in a form that `forms` does not list, and only such a row has one.
 #[derive(Clone, Copy)]
 struct PairRow {
     name: &'static str,
     input: CheckInput,
     keeps: fn(&str) -> bool,
     forms: &'static [FormKind],
+    refusal: Option<&'static str>,
     run: Run,
 }
 
@@ -89,6 +98,7 @@ const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
         input: CheckInput::Pairs,
         keeps: |path| !is_fixture_path(path),
         forms: EVERY_FORM,
+        refusal: None,
         run: pair_runs::complexity_delta,
     },
     PairRow {
@@ -96,6 +106,7 @@ const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
         input: CheckInput::Pairs,
         keeps: |path| !is_test_path(path) && !is_fixture_path(path),
         forms: EVERY_FORM,
+        refusal: None,
         run: pair_runs::contract_drift,
     },
     PairRow {
@@ -103,13 +114,27 @@ const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
         input: CheckInput::PairsClones,
         keeps: in_metric_scope,
         forms: EVERY_FORM,
+        refusal: None,
         run: pair_runs::clone_delta,
+    },
+    PairRow {
+        name: CALLEE_OVERLAP,
+        input: CheckInput::PairsGraph,
+        keeps: in_callee_scope,
+        forms: &[FormKind::Since],
+        refusal: Some(LINT_CALLEE_OVERLAP_SINCE_ONLY),
+        run: pair_runs::callee_overlap,
     },
 ];
 
 impl PairCheck {
     /// Every pair check, in registry order.
-    pub const ALL: [PairCheck; 3] = [Self::ComplexityDelta, Self::ContractDrift, Self::CloneDelta];
+    pub const ALL: [PairCheck; 4] = [
+        Self::ComplexityDelta,
+        Self::ContractDrift,
+        Self::CloneDelta,
+        Self::CalleeOverlap,
+    ];
 
     /// Returns the check's name.
     #[must_use]
@@ -135,8 +160,14 @@ impl PairCheck {
         (self.row().run)(pairs, inputs)
     }
 
-    fn runs_in(self, form: FormKind) -> bool {
+    pub(crate) fn runs_in(self, form: FormKind) -> bool {
         self.row().forms.contains(&form)
+    }
+
+    // The check's own refusal in a form that does not run it.
+    fn refused_in(self, form: FormKind) -> Option<&'static str> {
+        let row = self.row();
+        (!self.runs_in(form)).then_some(row.refusal).flatten()
     }
 
     const fn lint_check(self) -> LintCheck {
@@ -200,6 +231,9 @@ impl PairSelection {
         if let Some(refusal) = unknown_check_refusal(names) {
             return Err(refusal);
         }
+        if let Some(refusal) = form_refusal(names, form) {
+            return Err(refusal.to_owned());
+        }
         if let Some(refusal) = pair_only_refusal(names, form) {
             return Err(refusal);
         }
@@ -228,6 +262,13 @@ pub fn unknown_check_refusal(names: &[String]) -> Option<String> {
         .iter()
         .find(|name| !CHECKS.iter().any(|check| check.name == name.as_str()))?;
     Some(LINT_UNKNOWN_CHECK.render((unknown, &all_names())))
+}
+
+// The own refusal of the first pair check in `names` that `form` does not run.
+pub(crate) fn form_refusal(names: &[String], form: FormKind) -> Option<&'static str> {
+    names
+        .iter()
+        .find_map(|name| PairCheck::from_name(name)?.refused_in(form))
 }
 
 // The names that a pair form cannot run, in input order, as the form's refusal.

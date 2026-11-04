@@ -127,6 +127,13 @@ impl Language {
         self.table().tier
     }
 
+    /// Return the names that `lint`'s `callee_overlap` never counts as a callee, sorted, or None
+    /// for a language that the check does not run on.
+    #[must_use]
+    pub fn callee_stoplist(self) -> Option<&'static [&'static str]> {
+        self.table().callee_stoplist
+    }
+
     /// Return the one-line source that the capabilities probe parses.
     #[must_use]
     pub fn probe_sample(self) -> &'static str {

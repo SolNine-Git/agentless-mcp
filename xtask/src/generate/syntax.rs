@@ -26,6 +26,7 @@ struct File {
     comments: Vec<String>,
     sloc: Option<SlocRule>,
     statement_parents: Option<Vec<String>>,
+    callee_stoplist: Option<Vec<String>>,
     units: Option<UnitTable>,
     decisions: Option<DecisionTable>,
     clones: Option<CloneTable>,
@@ -265,7 +266,9 @@ fn parse(name: &str, text: &str) -> Result<File, String> {
     if name != format!("{}.toml", file.name) {
         return Err(format!("the file name must be {}.toml", file.name));
     }
-    let problem = tier_problem(&file).or_else(|| extraction_problem(&file.extraction));
+    let problem = tier_problem(&file)
+        .or_else(|| extraction_problem(&file.extraction))
+        .or_else(|| stoplist_problem(file.callee_stoplist.as_deref()));
     match problem {
         Some(problem) => Err(problem),
         None => Ok(file),
@@ -279,6 +282,12 @@ fn extraction_problem(table: &ExtractionTable) -> Option<String> {
     }
     (!table.builtins.is_empty() && table.roles != RoleRule::Python)
         .then(|| "only the python role rule reads builtins".to_owned())
+}
+
+// The check that reads the stoplist looks a name up by binary search.
+fn stoplist_problem(stoplist: Option<&[String]>) -> Option<String> {
+    let sorted = stoplist.is_none_or(|names| names.windows(2).all(|pair| pair[0] < pair[1]));
+    (!sorted).then(|| "callee_stoplist must be sorted, each name once".to_owned())
 }
 
 fn tier_problem(file: &File) -> Option<String> {
@@ -349,11 +358,12 @@ fn table(file: &File) -> String {
     };
     format!(
         "Table {{ name: {}, tier: Tier::{tier}, extensions: {}, probe: {}, comments: {}, \
-         measured: {measured}, extraction: &{}_EXTRACTION }},\n",
+         callee_stoplist: {}, measured: {measured}, extraction: &{}_EXTRACTION }},\n",
         literal(&file.name),
         names(&file.extensions),
         literal(&file.probe),
         names(&file.comments),
+        optional(file.callee_stoplist.as_deref()),
         file.name.to_uppercase(),
     )
 }
@@ -624,6 +634,17 @@ mod tests {
         assert!(problem.contains("builtins"), "{problem}");
         let python = builtins.replace("\"plain\"", "\"python\"");
         assert!(parse("go.toml", &python).is_ok());
+    }
+
+    #[test]
+    fn a_callee_stoplist_is_sorted_with_each_name_once() {
+        let sorted = file("tier = 2\ncallee_stoplist = [\"len\", \"new\"]\n");
+        assert!(parse("go.toml", &sorted).is_ok());
+        for list in ["[\"new\", \"len\"]", "[\"len\", \"len\"]"] {
+            let text = file(&format!("tier = 2\ncallee_stoplist = {list}\n"));
+            let problem = parse("go.toml", &text).unwrap_err();
+            assert!(problem.contains("callee_stoplist"), "{problem}");
+        }
     }
 
     #[test]

@@ -61,6 +61,7 @@ pub(crate) struct Table {
     pub(crate) extensions: Names,
     pub(crate) probe: &'static str,
     pub(crate) comments: Names,
+    pub(crate) callee_stoplist: Option<Names>,
     pub(crate) measured: Option<&'static Measured>,
     pub(crate) extraction: &'static ExtractionTable,
 }

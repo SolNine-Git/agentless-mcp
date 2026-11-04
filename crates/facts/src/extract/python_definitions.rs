@@ -160,6 +160,12 @@ fn function(tree: &Tree, node: NodeId, parent: &str) -> Symbol {
         .owned_by(parent)
         .decorated(!own_decorators(tree, node).is_empty())
         .public(conventionally_public(name))
+        .in_protocol(is_dunder(name))
+}
+
+// A name such as `__init__` or `__eq__`, which the interpreter calls for a protocol.
+fn is_dunder(name: &str) -> bool {
+    name.len() > 4 && name.starts_with("__") && name.ends_with("__")
 }
 
 // Each `def` in a function body, as a function whose parent is the chain of the functions
