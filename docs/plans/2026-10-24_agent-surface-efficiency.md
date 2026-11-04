@@ -1,6 +1,6 @@
 # Plan: a cheaper, sharper agent surface
 
-**Date**: 2026-10-24 | **Status**: revision 4. C1 to C5, C7, TR, R3R, RF and GF landed; see Status (2026-11-03) | **Evidence**: [benchmark-methodology.md](../analysis/benchmark-methodology.md), the 2026-10-24 entries
+**Date**: 2026-10-24 | **Status**: revision 4. C1 to C5, C7, TR, R3R, RF, DG and GF landed; see Status (2026-11-03) | **Evidence**: [benchmark-methodology.md](../analysis/benchmark-methodology.md), the 2026-10-24 entries
 
 ## Status (2026-11-03)
 
@@ -20,8 +20,8 @@ The owner paused the plan on 2026-10-25, after C3 and TR, to save cost. The owne
 | R3R, refs loads on every turn again | 811b348 | C3's kill rule triggered in confirmation 2 (refs sessions 31 to 0, below). refs entry 1,338 to 1,366 bytes; the always-loaded set is 4 tools, 6,906 bytes and 1,342 cl100k tokens with one root |
 | RF, fixes from the branch review | d70c916, 18ffbb9, 2c2c4fa | Replay of the 523 recorded calls over MCP stdio: 14 refs refusals gain the skipped-file warning, 1 explain becomes a refusal (isError true), 0 unclassified changes; over the CLI, 523 of 523 answers are the same. tools/list is byte-equal (10,523 bytes with one root, 11,740 with two). Loc-Bench retrieval tier: 0 of 150 ranked lists changed, seeded and no-seed. The surface figures in CHANGELOG.md are recounted with one cl100k method |
 | C7, a test companion named for a listed file comes first | 83eff52 | Replay of the 363 conf2 `orient(map)` calls: the gold tests that the map shows go from 92 to 130 (54 gained, 16 lost); the paired gain per call is +0.090 [+0.042, +0.142] hooked and +0.188 [+0.058, +0.319] forced. 0 of 150 tier ranked lists change. The hub penalty itself is not built: no rule passed the pre-registered tier test on both halves |
-| DG, the diagram draws its heaviest reference edges | 5d4f81b | 40 synthetic diagram calls: diagrams with no edge 7 to 0; the captured call on this repository 0 to 40 edges. 0 of 150 tier ranked lists change |
-| GF, Rust workspace binding, lifetimes, language families | f7b0d89 | Rust refs rows at resolved-via-import: this repository 679 to 25,354, ruff 190 to 71,538, ripgrep 0 to 3,638, nushell 220 to 55,984, tokio 97 to 7,356 (the final build; /var/tmp/claude-rust-port/gf1/tables/rust_tiers_final.md); refs of `pagerank` bind 13 of 13 rows (was 1). Cross-language candidate rows here 12,483 to 4. Tier: 45 of 150 seeded lists change, MAP -0.0009 [-0.0027, +0.0007]; conf2 map gold rows 649 to 654 of 2,209 |
+| DG, the diagram draws its heaviest reference edges | 5d4f81b | The build of 5d4f81b: 40 synthetic diagram calls, diagrams with no edge 7 to 0; the captured call on this repository 0 to 40 edges. The build of b64d502 (with GF): the captured call draws 28 edges (5 imports, 23 references), inside the bound. 0 of 150 tier ranked lists change |
+| GF, Rust workspace binding, lifetimes, language families | f7b0d89, b64d502 | Resolved Rust sites at resolved-via-import: this repository 679 to 25,348, ruff 190 to 71,519, ripgrep 0 to 3,638, nushell 220 to 55,951, tokio 97 to 7,344 (the measure build of b64d502; /var/tmp/claude-rust-port/gf2/tables/rust_tiers_final.md); refs of `pagerank` bind 13 of 13 rows (was 1). Cross-language candidate rows here 12,483 to 4. Tier (f7b0d89 against 5d4f81b; b64d502 ranks the same lists): 45 of 150 seeded lists change, MAP -0.0009 [-0.0027, +0.0007]; conf2 map gold rows 649 to 654 of 2,209. b64d502 fixes the branch review RV3: a path through an inline or `#[path]` module falls back to the name, `refs` lists no path through a module outside the repository |
 
 Not kept: U-b (several names per `find` call). Its screen showed 0 of 110 `find` calls with a list.
 

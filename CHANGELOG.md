@@ -359,20 +359,26 @@ Each byte count is of the served bytes.
   - Measured with a dump of every resolved site, a measurement patch on the
     release build of this change that does not ship, against the same dump of
     the base, on this repository at c2daf41 and four snapshots. Rust sites at
-    `resolved-via-import` go from 679 to 25,354 here, 190 to 71,538 in ruff, 0
-    to 3,638 in ripgrep, 220 to 55,984 in nushell and 97 to 7,356 in tokio.
+    `resolved-via-import` go from 679 to 25,348 here, 190 to 71,519 in ruff, 0
+    to 3,638 in ripgrep, 220 to 55,951 in nushell and 97 to 7,344 in tokio.
     The cross-crate rows among them go from 0 to 7,429, 37,199, 646, 40,753
-    and 1,013. Here, the Rust sites at `unique` go from 36,135 to 19,205 and
-    at `name-only-ambiguous` from 85,235 to 73,535; these counts include the
+    and 1,013. Here, the Rust sites at `unique` go from 36,135 to 19,207 and
+    at `name-only-ambiguous` from 85,235 to 73,536; these counts include the
     two entries below. 109, 157, 7, 356 and 111 sites bind another definition
     than before: aliases such as `use app::ops::Value as Declared`, and
     qualified calls such as `hook::erosion` in a file that defines its own
     `erosion`. In the GF design, 20 of 20 sampled promoted sites and 8 of 8
-    rebound sites read correct in the source. This build gives the same rows
-    on four of the five trees. On nushell, it differs in one file,
-    crates/nu-command/src/example_test.rs: `use super::super::{Ansi, ...}`
+    rebound sites read correct in the source. Against the design's
+    prototype, the rows differ in three ways. On nushell, in
+    crates/nu-command/src/example_test.rs, `use super::super::{Ansi, ...}`
     inside `mod test_examples` reaches the crate root, so 42 more sites go to
-    `resolved-via-import` and 24 more sites bind.
+    `resolved-via-import` and 24 more sites bind. A path from a `mod` item
+    that no module file holds binds by the name rule again: 3 sites here, 49
+    in ruff, 4 in ripgrep, 25 in nushell and 103 in tokio, 160 of them
+    same-file. A `self` or `super` path inside an inline module goes from
+    `resolved-via-import` to same-file: 6, 19, 0, 33 and 19 sites. The
+    file-graph edges, the imports and the cycles do not change with the last
+    two.
   - The resolved imports show the module cycles inside a crate. `cycles` goes
     from 1 to 20 here, 1 to 33 in ruff, 0 to 6 in ripgrep, 0 to 29 in nushell,
     0 to 21 in tokio and 0 to 1 in teleport. Each is a mutual `use` between
@@ -440,7 +446,9 @@ Each byte count is of the served bytes.
     and -0.011 no-seed (1 enters, 3 leave). Over the 363 `orient(map)` calls
     of the conf2 hooked and forced benchmark arms, replayed through the CLI
     of both builds, the gold files (`read_core_files`) in the ranked rows go
-    from 649 to 654 of 2,209: 8 calls gain one, and 3 calls lose one.
+    from 649 to 654 of 2,209: 8 calls gain one, and 3 calls lose one. The
+    release build of b64d502 ranks the 150 lists of each mode and the 363 map
+    answers as f7b0d89 does.
   - The changed reference outcomes of the three entries:
     `crates/facts/fixtures/extract_rust.json` (10 cases: 7 for the use trees,
     3 for the lifetimes of `unicode.rs`), the blob pin in
@@ -476,14 +484,19 @@ Each byte count is of the served bytes.
   descending weight while the bound has room, with equal weights in node id
   order, so one graph always gives one picture. The template
   `diagram_edges_unlisted` is now "%% {count} lighter reference
-  {count:edge|edges} not drawn (edge bound {limit})". The same call draws 40
-  edges and "%% 51 lighter reference edges not drawn (edge bound 40)". With
-  the release binaries of 18ffbb9 and of this change, over 40 synthetic
-  diagram calls (12 modules, the focus is the first file of a recorded map
-  answer, 39 repositories): diagrams with no edge 7 to 0, solid edges 879 to
-  879, dashed edges 95 to 459. 18 answers change, and none loses a module or
-  an import edge. 80 path calls over the same repositories give the same
-  answers. The guide paragraph "Edge kinds are told apart" says the new rule.
+  {count:edge|edges} not drawn (edge bound {limit})". With the release
+  binary of this change, 5d4f81b, which has none of the Rust entries above,
+  the same call draws 40 edges and "%% 51 lighter reference edges not drawn
+  (edge bound 40)". With the release binary of b64d502, which has them, the
+  same call draws 12 modules, 10 of them not drawn before, and 5 import and
+  23 reference edges. That is inside the bound, so no edge is left out and the
+  comment line is absent. With the release binaries of 18ffbb9 and of
+  5d4f81b, over 40 synthetic diagram calls (12 modules, the focus is the
+  first file of a recorded map answer, 39 repositories): diagrams with no edge
+  7 to 0, solid edges 879 to 879, dashed edges 95 to 459. 18 answers change,
+  and none loses a module or an import edge. 80 path calls over the same
+  repositories give the same answers. The guide paragraph "Edge kinds are told
+  apart" says the new rule.
 
 The bullets from here to the `path::name` bullet are measured with the release
 binaries of 811b348 and of this change, over MCP stdio and the CLI.
