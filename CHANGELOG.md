@@ -82,6 +82,40 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **Rust has scope analysis: a parameter, a local or a member name is no
+  reference.** A Rust pattern binding (a function or closure parameter, `let`,
+  `if let`, `while let`, a match arm, `for`) and each use of it in scope are no
+  longer references, as in Python, so `refs` lists them at the
+  name-only-ambiguous tier and no edge comes from them. A field name, a method
+  name of `x.f()`, and the last segment of a type path (`T::f`, `Self::f`,
+  `Enum::Variant`) bind nothing, as a Python attribute does. The name of an
+  item that is not a symbol (an enum variant, a `mod` name, a nested `fn`, a
+  `const` in a body, a trait method signature, an associated type) is a
+  declaration: it binds nothing, and a line that only declares leaves `refs`.
+  A bare name binds only a definition that is not a method, at every tier.
+  `capabilities` lists rust under scope analysis, and a Rust refs group is no
+  longer marked "locals not checked". FACTS_VERSION 10 to 11: every stored
+  index is rebuilt once. Measured with the release builds of 81d5a7e and of
+  this change (a4207bd) and a dump hook that is not in the build
+  (docs/analysis/2026-11-04_rust-scope-analysis-measurement.md): binding-tier
+  Rust sites 44,282 -> 38,897 on this repository, 8,905 -> 6,708 on
+  ripgrep-2576 and 15,996 -> 13,211 on tokio-6752; none gained, and none moved
+  between the two binding tiers. The removed sites are parameters and locals
+  (3,342, 541, 668), member names and type-path tails (1,927, 1,556, 1,856),
+  declarations (73, 35, 72) and bare names whose candidates were methods (43,
+  65, 189). The Loc-Bench retrieval tier changes 3 of 150 seeded and 7 of 150
+  no-seed lists, all in instances whose checkout holds Rust files; recall@10
+  is equal in 150 of 150 instances of each arm, and the one moved metric is
+  no-seed MAP, -0.000037 (paired bootstrap 95% interval -0.000110 to 0). In
+  the surface diff over the Loc-Bench checkouts, 6 of 1,206 answers change,
+  all in 3 checkouts with Rust files; over 124 targets in the 3 Rust trees, no
+  refs or explain row gains a binding tier, refs `total` falls only by the
+  lines that only declare, and the explain fan-in of 26 of 27 Rust methods
+  falls. The cost: a call through `self` or the owner type that bound only
+  through `mod tests { use super::*; }` loses its edge (18 of 97 such member
+  rows in the Rust-tree refs answers, 2 of 2 in Loc-Bench); binding by owner
+  is a separate change.
+
 - **The search gate's deny text is shorter.** A screen on 2026-11-03 ran it in
   one SWE-Explore-Bench arm, `claude_code_agentless_hooked_c8a_o1`: the hooked
   arm on the 60 instances of flat60 (Sonnet, n = 60 sessions). In 33 requests
@@ -561,6 +595,23 @@ Each byte count is of the served bytes.
     `crates/app/fixtures/read/tokens.json` changes.
 
 ### Fixed
+
+- **`mod tests { use super::*; }` no longer binds every name of its file to
+  the file's methods.** The glob named the file itself, and every bare name,
+  field and method call of the file bound to each method of that name at the
+  resolved-via-import tier. This gave the callee_overlap false edges `drop` ->
+  `Drop::drop` (tokio broadcast.rs) and `heap_limit` ->
+  `SearcherBuilder.heap_limit` (ripgrep). The guide's statements that a Rust
+  call on a receiver never counts for callee_overlap, and that a call through a
+  selector resolves to no edge, now hold for Rust. Measured with `lint --only
+  callee_overlap` and the release builds of 81d5a7e and of this change on the
+  CO1B reading set: the whole-tree copies of this repository (c2daf41),
+  ripgrep-2576 and tokio-6752 go from 32, 11 and 10 rows to 24, 2 and 1, and
+  #64 and #66 from 1 and 2 to 0 and 2; the Python trees give byte-equal JSON.
+  Of the 33 Rust rows that two blind readers labeled, the 16 false_edge rows
+  go (15) or lose the false callee (1); 3 duplicate and 3 sibling rows go too,
+  because their shared callees bound only through the glob. 3 rows are new on
+  this repository, and a blind reader labeled all 3 sibling.
 
 - **The walk's byte bound counts only the files that a scan reads.** The
   walk refused a tree whose files held more than 200,000,000 bytes, and it
