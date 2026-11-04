@@ -3,7 +3,7 @@
 
 mod complexity;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use facts::SymbolKind;
 use graph::{AmbiguousDegrees, Definition, SymbolGraph, Tier};
@@ -42,7 +42,7 @@ pub struct HealthRequest {
 pub struct HealthReport {
     /// Functions with no counted edge in or out.
     pub orphans: Bounded<HealthSymbol>,
-    /// Public functions with no counted edge in.
+    /// Public functions outside a function body with no counted edge in.
     pub unused_exports: Bounded<HealthSymbol>,
     /// Functions, methods and classes with a counted edge, highest counted degree first.
     pub hubs: Bounded<HealthSymbol>,
@@ -137,8 +137,9 @@ fn report(
     let orphans: Vec<&Entry<'_, '_>> = (functions.iter())
         .filter(|entry| entry.degree.counted() == 0)
         .collect();
+    let bodies = function_bodies(&considered);
     let unused: Vec<&Entry<'_, '_>> = (functions.iter())
-        .filter(|entry| entry.definition.symbol().is_public && entry.degree.arriving.counted == 0)
+        .filter(|entry| is_export(entry, &bodies) && entry.degree.arriving.counted == 0)
         .collect();
     let mut hubs: Vec<Entry<'_, '_>> = of_kinds(&considered, &degrees, &HUB_KINDS);
     hubs.retain(|entry| entry.degree.counted() > 0);
@@ -165,6 +166,30 @@ fn report(
 // permanent orphans.
 fn in_health_scope(path: &str) -> bool {
     !is_test_path(path) && !is_fixture_path(path)
+}
+
+// Each file's functions and methods by qualified name: the bodies a nested function can sit in.
+fn function_bodies<'d>(
+    considered: &[(&str, &Definition<'d>)],
+) -> HashMap<&'d str, HashSet<String>> {
+    let mut bodies: HashMap<&str, HashSet<String>> = HashMap::new();
+    for (_, definition) in considered {
+        let symbol = definition.symbol();
+        if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
+            let names = bodies.entry(definition.path()).or_default();
+            names.insert(symbol.qualname());
+        }
+    }
+    bodies
+}
+
+// A function defined in the body of another function or a method is local to that body, so no
+// import can reach it.
+fn is_export(entry: &Entry<'_, '_>, bodies: &HashMap<&str, HashSet<String>>) -> bool {
+    let symbol = entry.definition.symbol();
+    let nested =
+        (bodies.get(entry.definition.path())).is_some_and(|names| names.contains(&symbol.parent));
+    symbol.is_public && !nested
 }
 
 // One symbol's edges at each end.

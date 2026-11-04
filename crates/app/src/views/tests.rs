@@ -1,10 +1,37 @@
-use super::{SliceRequest, load, slice, widen};
+use super::{SkeletonRequest, SliceRequest, load, skeleton, slice, widen};
 use crate::endpoints::scanned::Scanned;
 use crate::testing::{MANIFEST_DIR, Sandbox};
 use crate::{Error, IntArg};
 
-// The requested ranges, the context, and the reference view text.
-type SliceCase = (Vec<(usize, usize)>, usize, String);
+#[test]
+fn the_overview_of_a_data_file_is_its_key_outline_in_line_order() {
+    let toml = "[workspace.package]\nversion = \"0.11.0\"\n[deps]\na = { b = 1 }\n";
+    let files = [
+        ("Cargo.toml", toml),
+        ("rows.json", "[{\"id\": 1}, {\"id\": 2}]\n"),
+    ];
+    let scanned = Scanned::new(&files);
+    let request = SkeletonRequest {
+        paths: vec!["Cargo.toml".to_owned(), "rows.json".to_owned()],
+        docstrings: None,
+        numbered: false,
+    };
+    let views = skeleton(&scanned.reading(), &request);
+    let stops = "not listed: the outline stops at depth 2, at list items and at 500 keys.";
+    let cargo = "table workspace.package, 1 key  @1\n  version = \"0.11.0\"  @2\n\
+        table deps, 1 key  @3\n  a = object, 1 key  @4\n";
+    assert_eq!(
+        views[0].text,
+        format!("{cargo}1 more key is {stops} Grep finds it.\n")
+    );
+    assert_eq!(
+        views[1].text,
+        format!("document = list, 2 items\n2 more keys are {stops} Grep finds them.\n")
+    );
+}
+
+// The requested ranges, the context, and the view's text and error.
+type SliceCase = (Vec<(usize, usize)>, usize, String, String);
 
 #[test]
 fn each_slice_request_reports_or_renders_as_the_reference_does() {
@@ -13,7 +40,7 @@ fn each_slice_request_reports_or_renders_as_the_reference_does() {
     let scanned = Scanned::new(&[(path.as_str(), text.as_str())]);
     let all: Vec<SliceCase> = io::testing::cases(MANIFEST_DIR, "read/views", "slice");
     assert!(!all.is_empty());
-    for (ranges, context, expected) in all {
+    for (ranges, context, text, error) in all {
         let request = SliceRequest {
             path: path.clone(),
             ranges: ranges.clone(),
@@ -21,8 +48,24 @@ fn each_slice_request_reports_or_renders_as_the_reference_does() {
         };
         let view = slice(&scanned.reading(), &request).value;
         let view = view.unwrap_or_else(|error| panic!("{ranges:?}: {error}"));
-        assert_eq!(view.text, expected, "{ranges:?} at context {context}");
+        let shown = (view.text.as_str(), view.error.as_str());
+        assert_eq!(shown, (&*text, &*error), "{ranges:?} at context {context}");
     }
+}
+
+#[test]
+fn ranges_that_all_start_past_the_end_are_the_error_of_a_view_with_no_text() {
+    let scanned = Scanned::new(&[("five.py", "a = 1\nb = 2\nc = 3\nd = 4\ne = 5\n")]);
+    let request = SliceRequest {
+        path: "five.py".to_owned(),
+        ranges: vec![(9, 12), (40, 41)],
+        context: IntArg::from_usize(0),
+    };
+    let view = slice(&scanned.reading(), &request).value;
+    let view = view.unwrap_or_else(|error| panic!("{error}"));
+    let expected = "unsatisfiable: line range 9-12 is beyond five.py (5 lines)\n\
+        unsatisfiable: line range 40-41 is beyond five.py (5 lines)";
+    assert_eq!((view.text.as_str(), view.error.as_str()), ("", expected));
 }
 
 #[test]

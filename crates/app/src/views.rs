@@ -6,13 +6,18 @@ mod locations;
 use std::path::Path;
 use std::sync::Arc;
 
-use facts::{SkeletonOptions, Symbol, line_count, skeletonize, slice_lines};
-use prompts::messages::{SLICE_RANGE_BEYOND_FILE, SLICE_RANGE_NOT_A_RANGE};
+use facts::{
+    DataOutline, OUTLINE_CAP, OutlineRow, SkeletonOptions, Symbol, data_outline, line_count,
+    skeletonize, slice_lines,
+};
+use prompts::messages::{OVERVIEW_DATA_UNLISTED, SLICE_RANGE_BEYOND_FILE, SLICE_RANGE_NOT_A_RANGE};
 use store::{FileText, Served};
-use syntax::Language;
+use syntax::{Language, Parsed};
+use text::one_line;
 
 use crate::bounds::within;
 use crate::ops::limits::MAX_CONTEXT_LINES;
+use crate::rowtext::ROW_INDENT;
 use crate::{Error, IntArg, Noted, Reading};
 
 pub use locations::{LocateRequest, LocationView, LocsRequest, locate_symbol, resolve_locations};
@@ -94,11 +99,45 @@ fn skeleton_view(root: &Path, raw: &str, options: SkeletonOptions) -> FileView {
     };
     match syntax::parse(language, text) {
         Ok(parsed) => FileView {
-            text: skeletonize(&parsed, options),
+            text: overview_text(&parsed, options),
             ..failed(&loaded.path, Some(language), String::new())
         },
         Err(unparsable) => failed(&loaded.path, Some(language), unparsable.to_string()),
     }
+}
+
+// A data file shows its key outline, any other file its skeleton.
+fn overview_text(parsed: &Parsed, options: SkeletonOptions) -> String {
+    data_outline(parsed).map_or_else(
+        || skeletonize(parsed, options),
+        |outline| outline_text(&outline),
+    )
+}
+
+// The shape of a root that is not a mapping, one row per listed key in line order indented by
+// its level, then the count of the keys left out.
+fn outline_text(outline: &DataOutline) -> String {
+    let mut rows: Vec<&OutlineRow> = outline.rows.iter().collect();
+    rows.sort_by_key(|row| row.symbol.line);
+    let root = outline
+        .root
+        .iter()
+        .map(|shape| format!("document = {shape}"));
+    let mut lines: Vec<String> = root.chain(rows.into_iter().map(outline_row)).collect();
+    let unlisted = outline.keys.saturating_sub(outline.rows.len());
+    if unlisted > 0 {
+        lines.push(OVERVIEW_DATA_UNLISTED.render((unlisted, OUTLINE_CAP)));
+    }
+    if lines.is_empty() {
+        return String::new();
+    }
+    lines.join("\n") + "\n"
+}
+
+fn outline_row(row: &OutlineRow) -> String {
+    let indent = ROW_INDENT.repeat(usize::from(row.depth.saturating_sub(1)));
+    let symbol = &row.symbol;
+    format!("{indent}{}  @{}", one_line(&symbol.signature), symbol.line)
 }
 
 fn failed(path: &str, language: Option<Language>, error: String) -> FileView {
@@ -112,8 +151,9 @@ fn failed(path: &str, language: Option<Language>, error: String) -> FileView {
 }
 
 /// Renders the lines of `request` with the headers of the scopes around them. A range that starts
-/// past the end of the file, or that is no range, gets a line that says so. The warning of an
-/// unreadable cache row comes with either outcome.
+/// past the end of the file, or that is no range, gets a line that says so. When no range gives a
+/// line, those lines are the view's error. The warning of an unreadable cache row comes with
+/// either outcome.
 #[must_use]
 pub fn slice(reading: &Reading<'_>, request: &SliceRequest) -> Noted<Result<FileView, Error>> {
     let context = match within(&request.context, 0, MAX_CONTEXT_LINES, "context") {
@@ -149,7 +189,8 @@ struct Sliced<'a> {
 }
 
 impl Sliced<'_> {
-    // The satisfiable ranges widen by the context and render; each other range gets a report.
+    // The satisfiable ranges widen by the context and render; each other range gets a report. The
+    // reports of a request that no range satisfies are why the view has no text.
     fn view(&self, ranges: &[(usize, usize)], context: usize) -> Result<FileView, Error> {
         let total = usize::try_from(line_count(self.text)).unwrap_or(usize::MAX);
         let (fits, unfit): (Vec<_>, Vec<_>) = ranges
@@ -159,11 +200,10 @@ impl Sliced<'_> {
             .iter()
             .map(|&&(start, end)| unsatisfiable(self.path, start, end, total))
             .collect();
-        let mut view = failed(self.path, self.language, String::new());
         if !ranges.is_empty() && fits.is_empty() {
-            view.text = reports.join("\n") + "\n";
-            return Ok(view);
+            return Ok(failed(self.path, self.language, reports.join("\n")));
         }
+        let mut view = failed(self.path, self.language, String::new());
         let widened: Vec<(u32, u32)> = fits
             .iter()
             .map(|&&(start, end)| widen(start, end, context, total))

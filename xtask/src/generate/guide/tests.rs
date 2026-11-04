@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use super::{SOURCE, Section, module, sections};
+use super::{SOURCE, Section, grouped, module, sections};
 use crate::repo;
 
 const FIXTURE: &str = "crates/app/fixtures/guide/guide.json";
@@ -98,4 +98,20 @@ fn the_module_holds_the_text_and_a_table_of_every_section() {
     assert!(made.contains("(\"alpha\", 4, 23),"), "{made}");
     assert!(made.contains("(\"beta\", 15, 23),"), "{made}");
     assert!(module("## A\n## a\n").is_err());
+}
+
+// clippy refuses a long integer literal with no separators, so a guide past 99,999 bytes still
+// gives a module that passes it.
+#[test]
+fn an_offset_groups_its_digits_by_three() {
+    for (offset, want) in [
+        (0, "0"),
+        (999, "999"),
+        (1_000, "1_000"),
+        (99_570, "99_570"),
+        (100_028, "100_028"),
+        (1_234_567, "1_234_567"),
+    ] {
+        assert_eq!(grouped(offset), want);
+    }
 }

@@ -52,24 +52,26 @@ pub const RECEIPT_CONFIG: Template<Text> =
 pub const RECEIPT_CONFIG_WARNING: Template<Text> =
     Template::new(&[Piece::Text("// config warning: "), Piece::Value(0)]);
 
+/// A template that takes (`head`, `dirty`, `cache`).
+pub const RECEIPT_FIELDS: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Text("   head: "),
+    Piece::Value(0),
+    Piece::Text("   dirty: "),
+    Piece::Value(1),
+    Piece::Text(" files   cache: "),
+    Piece::Value(2),
+]);
+
 /// A text that takes no values.
 pub const RECEIPT_HEADER: &str = "// agentless-mcp receipt (repository data below)";
-
-/// A template that takes (`root`, `head`, `dirty`, `cache`).
-pub const RECEIPT_LINE: Template<(Text, Text, Text, Text)> = Template::new(&[
-    Piece::Text("// repo: "),
-    Piece::Value(0),
-    Piece::Text("   head: "),
-    Piece::Value(1),
-    Piece::Text("   dirty: "),
-    Piece::Value(2),
-    Piece::Text(" files   cache: "),
-    Piece::Value(3),
-]);
 
 /// A template that takes `note`.
 pub const RECEIPT_NOTE: Template<Text> =
     Template::new(&[Piece::Text("// note: "), Piece::Value(0)]);
+
+/// A template that takes `root`.
+pub const RECEIPT_REPO: Template<Text> =
+    Template::new(&[Piece::Text("   repo: "), Piece::Value(0)]);
 
 /// A template that takes `summary`.
 pub const RECEIPT_SUMMARY: Template<Text> = Template::new(&[Piece::Text("// "), Piece::Value(0)]);

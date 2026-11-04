@@ -53,10 +53,12 @@ pub(super) fn symbols(tree: &Tree) -> Vec<Symbol> {
 }
 
 fn tagged(tree: &Tree, node: NodeId, owner: &str) -> Option<Symbol> {
-    let name = tree.text(tree.field(node, Field::Name)?);
+    let name_node = tree.field(node, Field::Name)?;
+    let name = tree.text(name_node);
     let keyword = tree.kind(node).split('_').next().unwrap_or_default();
     Some(
         Symbol::at(tree, node, name, SymbolKind::Class)
+            .named_by(tree, Some(name_node))
             .signed(&format!("{keyword} {name}"))
             .owned_by(owner),
     )
@@ -76,6 +78,7 @@ fn function(tree: &Tree, node: NodeId, owner: &str) -> Option<Symbol> {
     };
     Some(
         Symbol::at(tree, node, site.name, kind)
+            .named_by(tree, Some(site.node))
             .signed(&format!("fn {}", site.name))
             .owned_by(parent),
     )
@@ -86,6 +89,7 @@ fn function(tree: &Tree, node: NodeId, owner: &str) -> Option<Symbol> {
 struct Site<'a> {
     owner: String,
     name: &'a str,
+    node: NodeId,
 }
 
 // A name only reached through a parenthesis and a star declares a variable, unless a nested
@@ -134,5 +138,6 @@ fn qualified_name<'a>(tree: &Tree<'a>, node: NodeId) -> Site<'a> {
     Site {
         owner: scopes.join("."),
         name: tree.text(current),
+        node: current,
     }
 }

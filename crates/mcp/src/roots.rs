@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use app::Services;
+use app::surface::RootCount;
 use prompts::messages::{
     REPO_REFUSED_NOT_ALLOWED, ROOTS_FILE_HINT, ROOTS_FILE_UNREADABLE, SERVER_NO_ROOTS,
     SERVER_ROOT_REQUIRED,
@@ -234,6 +235,18 @@ impl Allowlist {
             fresh
         });
         Ok(roots)
+    }
+
+    // Several when a call can select a root: two distinct flags, or a roots file, whose lines can
+    // change after start-up. The tool list reads it once, so it holds for the server's life.
+    pub(crate) fn root_count(&self) -> RootCount {
+        let first = self.flags.first();
+        let distinct = self.flags.iter().any(|flag| Some(flag) != first);
+        if distinct || !self.files.is_empty() {
+            RootCount::Several
+        } else {
+            RootCount::One
+        }
     }
 
     // The roots-file hint that a refusal ends with, or nothing when no roots file is set.

@@ -36,6 +36,8 @@ pub const MAX_TREE_ENTRIES: usize = io::MAX_WALK_FILES;
 pub const DEFAULT_EXPAND_LIMIT: usize = 10;
 /// The default `find-symbol` limit.
 pub const DEFAULT_FIND_LIMIT: usize = 20;
+/// The most usage files that `find-symbol` lists for one name before it counts the rest.
+pub const FIND_USAGE_FILES: usize = 10;
 /// The default `refs` limit.
 pub const DEFAULT_REFS_LIMIT: usize = 50;
 /// The default `history` limit.

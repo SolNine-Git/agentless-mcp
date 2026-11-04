@@ -2,12 +2,16 @@
 //! text, and every group with the shared callers in the JSON.
 
 use app::{
-    ROW_INDENT, RefGroup, RefListing, RefSite, RefsResult, SharedCaller, file_site, locator,
-    omitted_line, stable_ids_line,
+    BindingStatus, Coverage, CoverageStatus, ROW_INDENT, RefGroup, RefListing, RefSite, RefsResult,
+    SharedCaller, Skipped, TargetBinding, file_site, locator,
 };
-use facts::split_ordinal;
 use json::{fixed, round_half_even};
-use prompts::messages::REFS_TARGET_UNRESOLVED;
+use prompts::messages::{
+    DATA_KEY_NO_FAN_IN, REFS_ABSENT, REFS_ABSENT_COMPLETE, REFS_ABSENT_PARTIAL,
+    REFS_CALLERS_UNLISTED, REFS_CANDIDATES_UNLISTED, REFS_GROUP_HEADER, REFS_HEADER,
+    REFS_HEADER_SHARED, REFS_SHARED_CANDIDATE, REFS_SPLIT, REFS_SPLIT_NONE, REFS_UNLISTED,
+    REFS_UNLISTED_FILES,
+};
 use serde::Serialize;
 use text::one_line;
 
@@ -24,79 +28,99 @@ impl View for RefsResult {
     }
 }
 
-// The unresolved-target notice and the skipped-file warning come first: each changes how every
-// row below it reads. Only a scan that skipped nothing licenses the absence claim.
+// The skipped-file warning comes first: it changes how every row below it reads. A target that
+// bound to nothing gets its one line, and no absence claim.
 fn refs_text(result: &RefsResult) -> String {
-    let complete_over = result.scanned.filter(|_| result.skipped.is_empty());
-    let body = if result.shared_callers {
+    if let Some(key) = &result.data_key {
+        return DATA_KEY_NO_FAN_IN.render((&one_line(&result.target), &one_line(key))) + "\n";
+    }
+    if let Some(reason) = &result.unresolved {
+        return format!("{}\n", one_line(reason));
+    }
+    let body = if result.binding.status == BindingStatus::NotFound {
+        format!("{}\n", one_line(&result.binding.message))
+    } else if result.shared_callers {
         shared_text(result)
     } else {
-        groups_text(&result.groups, &result.target, complete_over)
+        groups_text(result)
     };
-    let pieces: Vec<String> = [notice(result), skipped_line(&result.skipped)]
-        .into_iter()
-        .filter(|piece| !piece.is_empty())
-        .collect();
-    if pieces.is_empty() {
+    let skipped = skipped_line(&result.skipped);
+    if skipped.is_empty() {
         body
     } else {
-        format!("{}\n\n{body}", pieces.join("\n\n"))
+        format!("{skipped}\n\n{body}")
     }
 }
 
-// The fan-in of a target that named nothing is about its last name.
-fn notice(result: &RefsResult) -> String {
-    if result.target_resolved {
-        return String::new();
-    }
-    let (base, _) = split_ordinal(&result.target);
-    let after = |text: &'_ str, separator: &str| match text.rsplit_once(separator) {
-        Some((_, tail)) => tail.to_owned(),
-        None => text.to_owned(),
-    };
-    let name = after(&after(base, "::"), ".");
-    let name = if name.is_empty() { base } else { &name };
-    REFS_TARGET_UNRESOLVED.render((&result.target, name))
-}
-
-fn references(count: usize) -> &'static str {
-    if count == 1 {
-        "reference"
+/// Returns the refusal of a target that bound to nothing: its line, then the skipped-file warning
+/// when the scan skipped a code file.
+#[must_use]
+pub fn unbound_refusal(message: &str, skipped: &[Skipped]) -> String {
+    let line = one_line(message).into_owned();
+    let warning = skipped_line(skipped);
+    if warning.is_empty() {
+        line
     } else {
-        "references"
+        format!("{line}\n{warning}")
     }
 }
 
-fn groups_text(groups: &RefListing, target: &str, complete_over: Option<usize>) -> String {
+fn groups_text(result: &RefsResult) -> String {
+    let groups = &result.groups;
+    let named = result.definition.as_deref().unwrap_or(&result.target);
     if groups.rows.is_empty() {
-        return absence_line(target, complete_over);
+        return absence_line(named, result);
     }
-    let total = groups.total;
-    let header = format!("{total} {} to {}", references(total), one_line(target));
-    let mut blocks = vec![header];
+    let mut blocks = vec![header(result, &one_line(named))];
     blocks.extend(groups.rows.iter().map(group_block));
     blocks.extend(footer_note(groups));
     blocks.join("\n\n") + "\n"
 }
 
-fn absence_line(target: &str, complete_over: Option<usize>) -> String {
-    let line = format!(
-        "no references to {} outside its own definition",
-        one_line(target)
-    );
-    let Some(files) = complete_over else {
-        return line + "\n";
+// One definition is named by its stable id. A name that several definitions share is counted,
+// because its rows reference any one of them.
+fn header(result: &RefsResult, named: &str) -> String {
+    let total = result.groups.total;
+    let head = if result.definition.is_none() && result.definitions > 1 {
+        REFS_HEADER_SHARED.render((named, total, result.definitions))
+    } else {
+        REFS_HEADER.render((named, total))
     };
-    let noun = if files == 1 { "file" } else { "files" };
-    format!("{line} (complete scan: {files} {noun}, 0 skipped)\n")
+    match split_line(&result.groups) {
+        Some(split) => format!("{head}\n{split}"),
+        None => head,
+    }
+}
+
+// The header counts every row, so a candidate row would read as a binding one without this line.
+fn split_line(groups: &RefListing) -> Option<String> {
+    let candidates = groups.total.saturating_sub(groups.bound);
+    match (groups.bound, candidates) {
+        (_, 0) => None,
+        (0, _) => Some(REFS_SPLIT_NONE.render(candidates)),
+        (bound, _) => Some(REFS_SPLIT.render((bound, candidates))),
+    }
+}
+
+// Only a scan that skipped nothing licenses the complete claim, and a skipped code file makes the
+// claim partial.
+fn absence_line(target: &str, result: &RefsResult) -> String {
+    let target = one_line(target);
+    let skipped_code = result.coverage.skipped_code_files;
+    let line = match (result.coverage.status, result.scanned) {
+        (CoverageStatus::Partial, Some(files)) => {
+            REFS_ABSENT_PARTIAL.render((&target, files, skipped_code))
+        }
+        (_, Some(files)) if result.skipped.is_empty() => {
+            REFS_ABSENT_COMPLETE.render((&target, files))
+        }
+        _ => REFS_ABSENT.render(&target),
+    };
+    line + "\n"
 }
 
 fn group_block(group: &RefGroup) -> String {
     let mut lines = vec![group_header(group)];
-    let pattern = stable_ids_line(group.id_prefix, &group.path);
-    if !pattern.is_empty() {
-        lines.push(pattern);
-    }
     lines.extend(group.sites.iter().map(site_row));
     lines.join("\n")
 }
@@ -111,23 +135,16 @@ fn group_header(group: &RefGroup) -> String {
     if !group.scope_checked {
         labelled.push_str(", locals not checked");
     }
-    let sites = group.sites.len();
-    let path = one_line(&group.path);
-    format!("{path}  ({sites} {}{labelled})", references(sites))
+    REFS_GROUP_HEADER.render((&one_line(&group.path), group.sites.len(), &labelled))
 }
 
-// The id's qualified name, which the header's pattern turns back into the whole id.
+// The whole id, so a reader copies it to expand with no pattern to join.
 fn site_row(site: &RefSite) -> String {
     let Some(stable_id) = &site.stable_id else {
         return format!("{ROW_INDENT}{} @{}", one_line(&site.enclosing), site.line);
     };
-    let name = if site.name.is_empty() {
-        stable_id
-    } else {
-        &site.name
-    };
     let line = site.line.to_string();
-    format!("{ROW_INDENT}{}", locator(name, "", Some(&line)))
+    format!("{ROW_INDENT}{}", locator(stable_id, "", Some(&line)))
 }
 
 // The sites are cut before they are grouped, so a file can drop out whole.
@@ -136,14 +153,11 @@ fn footer_note(groups: &RefListing) -> Option<String> {
     if omitted == 0 {
         return None;
     }
-    let note = omitted_line(omitted, "references", groups.limit);
     let files_omitted = groups.files_omitted();
     if files_omitted == 0 {
-        return Some(note);
+        return Some(REFS_UNLISTED.render((omitted, groups.limit)));
     }
-    Some(format!(
-        "{note}, including every reference in {files_omitted} more files"
-    ))
+    Some(REFS_UNLISTED_FILES.render((omitted, files_omitted, groups.limit)))
 }
 
 // Production candidates first, then the test-defined ones under their own heading.
@@ -161,29 +175,20 @@ fn shared_text(result: &RefsResult) -> String {
         lines.extend(from_tests.into_iter().flat_map(candidate_rows));
     }
     if listing.omitted() > 0 {
-        lines.push(omitted_line(
-            listing.omitted(),
-            "candidates",
-            listing.limit(),
-        ));
+        lines.push(REFS_CANDIDATES_UNLISTED.render((listing.omitted(), listing.limit())));
     }
     lines.join("\n") + "\n"
 }
 
 fn candidate_rows(row: &SharedCaller) -> Vec<String> {
-    let files = if row.shared_files == 1 {
-        "file"
-    } else {
-        "files"
-    };
     let line = row.line.to_string();
-    let mut rows = vec![format!(
-        "  {}  ({} shared callers in {} {files}, score {})",
-        locator(&row.stable_id, "", Some(&line)),
+    let candidate = REFS_SHARED_CANDIDATE.render((
+        &locator(&row.stable_id, "", Some(&line)),
         row.overlap,
         row.shared_files,
-        fixed(row.score, 3)
-    )];
+        &fixed(row.score, 3),
+    ));
+    let mut rows = vec![format!("  {candidate}")];
     let shown = row.callers.iter().take(SHARED_CALLERS_SHOWN);
     rows.extend(shown.map(|caller| {
         let site = file_site(&caller.path, caller.line);
@@ -191,7 +196,7 @@ fn candidate_rows(row: &SharedCaller) -> Vec<String> {
     }));
     let hidden = row.callers.len().saturating_sub(SHARED_CALLERS_SHOWN);
     if hidden > 0 {
-        rows.push(omitted_line(hidden, "callers", SHARED_CALLERS_SHOWN));
+        rows.push(REFS_CALLERS_UNLISTED.render((hidden, SHARED_CALLERS_SHOWN)));
     }
     rows
 }
@@ -200,8 +205,18 @@ fn candidate_rows(row: &SharedCaller) -> Vec<String> {
 struct RefsJson<'a> {
     target: &'a str,
     target_resolved: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    definition: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data_key: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unresolved: Option<&'a str>,
+    binding: BindingJson<'a>,
+    coverage: CoverageJson,
     scanned: Option<usize>,
     total: usize,
+    bound_total: usize,
+    candidate_total: usize,
     limit: usize,
     omitted: usize,
     files: usize,
@@ -209,6 +224,51 @@ struct RefsJson<'a> {
     groups: Vec<GroupJson<'a>>,
     shared_callers: SharedJson<'a>,
     skipped: Vec<SkippedJson<'a>>,
+}
+
+// The binding of a target, which refs and explain both publish. The reason, the candidates and
+// their cut appear only for a target that bound to nothing.
+#[derive(Clone, Serialize)]
+pub(crate) struct BindingJson<'a> {
+    status: &'a str,
+    form: &'a str,
+    definitions: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    candidates: Option<&'a [String]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    candidates_omitted: Option<usize>,
+}
+
+impl<'a> BindingJson<'a> {
+    pub(crate) fn of(binding: &'a TargetBinding) -> Self {
+        let unbound = binding.status == BindingStatus::NotFound;
+        let candidates = &binding.candidates;
+        BindingJson {
+            status: binding.status.as_str(),
+            form: binding.form,
+            definitions: binding.definitions,
+            reason: Some(binding.reason.as_str()).filter(|reason| !reason.is_empty()),
+            candidates: unbound.then_some(candidates.rows()),
+            candidates_omitted: unbound.then_some(candidates.omitted()),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+pub(crate) struct CoverageJson {
+    status: &'static str,
+    skipped_code_files: usize,
+}
+
+impl CoverageJson {
+    pub(crate) fn of(coverage: Coverage) -> Self {
+        CoverageJson {
+            status: coverage.status.as_str(),
+            skipped_code_files: coverage.skipped_code_files,
+        }
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -261,8 +321,15 @@ impl<'a> RefsJson<'a> {
         RefsJson {
             target: &result.target,
             target_resolved: result.target_resolved,
+            definition: result.definition.as_deref(),
+            data_key: result.data_key.as_deref(),
+            unresolved: result.unresolved.as_deref(),
+            binding: BindingJson::of(&result.binding),
+            coverage: CoverageJson::of(result.coverage),
             scanned: result.scanned,
             total: groups.total,
+            bound_total: groups.bound,
+            candidate_total: groups.total.saturating_sub(groups.bound),
             limit: groups.limit,
             omitted: groups.omitted(),
             files: groups.files,

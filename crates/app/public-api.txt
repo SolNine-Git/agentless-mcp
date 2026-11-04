@@ -47,6 +47,7 @@ pub const app::ops::limits::DEFAULT_REFS_LIMIT: usize
 pub const app::ops::limits::DEFAULT_RESOLUTION: f64
 pub const app::ops::limits::DEFAULT_TREE_DEPTH: usize
 pub const app::ops::limits::DEFAULT_TREE_ENTRIES: usize
+pub const app::ops::limits::FIND_USAGE_FILES: usize
 pub const app::ops::limits::MAX_BUDGET: usize
 pub const app::ops::limits::MAX_CONTEXT_LINES: usize
 pub const app::ops::limits::MAX_DIAGRAM_EDGES: usize
@@ -250,6 +251,25 @@ impl core::marker::Unpin for app::surface::Presence
 impl core::marker::UnsafeUnpin for app::surface::Presence
 impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Presence
 impl core::panic::unwind_safe::UnwindSafe for app::surface::Presence
+pub enum app::surface::RootCount
+pub app::surface::RootCount::One
+pub app::surface::RootCount::Several
+impl core::clone::Clone for app::surface::RootCount
+pub fn app::surface::RootCount::clone(&self) -> Self
+impl core::cmp::Eq for app::surface::RootCount
+impl core::cmp::PartialEq for app::surface::RootCount
+pub fn app::surface::RootCount::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::surface::RootCount
+pub fn app::surface::RootCount::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::surface::RootCount
+impl core::marker::StructuralPartialEq for app::surface::RootCount
+impl core::marker::Freeze for app::surface::RootCount
+impl core::marker::Send for app::surface::RootCount
+impl core::marker::Sync for app::surface::RootCount
+impl core::marker::Unpin for app::surface::RootCount
+impl core::marker::UnsafeUnpin for app::surface::RootCount
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::RootCount
+impl core::panic::unwind_safe::UnwindSafe for app::surface::RootCount
 pub enum app::surface::Shape
 pub app::surface::Shape::AnyOf(&'static [app::surface::Shape])
 pub app::surface::Shape::Array
@@ -331,8 +351,8 @@ impl core::marker::Unpin for app::surface::Tool
 impl core::marker::UnsafeUnpin for app::surface::Tool
 impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Tool
 impl core::panic::unwind_safe::UnwindSafe for app::surface::Tool
-pub static app::surface::TOOLS: [&app::surface::Tool; 6]
-pub fn app::surface::tool_entry(&app::surface::Tool) -> json::parse::JsonValue
+pub static app::surface::TOOLS: [&app::surface::Tool; 7]
+pub fn app::surface::tool_entry(&app::surface::Tool, app::surface::RootCount) -> json::parse::JsonValue
 pub enum app::After
 pub app::After::File(std::path::PathBuf)
 pub app::After::Text(alloc::string::String)
@@ -421,6 +441,28 @@ impl core::marker::Unpin for app::BaselineStatus
 impl core::marker::UnsafeUnpin for app::BaselineStatus
 impl core::panic::unwind_safe::RefUnwindSafe for app::BaselineStatus
 impl core::panic::unwind_safe::UnwindSafe for app::BaselineStatus
+pub enum app::BindingStatus
+pub app::BindingStatus::Ambiguous
+pub app::BindingStatus::Bound
+pub app::BindingStatus::NotFound
+impl app::BindingStatus
+pub fn app::BindingStatus::as_str(self) -> &'static str
+impl core::clone::Clone for app::BindingStatus
+pub fn app::BindingStatus::clone(&self) -> Self
+impl core::cmp::Eq for app::BindingStatus
+impl core::cmp::PartialEq for app::BindingStatus
+pub fn app::BindingStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::BindingStatus
+pub fn app::BindingStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::BindingStatus
+impl core::marker::StructuralPartialEq for app::BindingStatus
+impl core::marker::Freeze for app::BindingStatus
+impl core::marker::Send for app::BindingStatus
+impl core::marker::Sync for app::BindingStatus
+impl core::marker::Unpin for app::BindingStatus
+impl core::marker::UnsafeUnpin for app::BindingStatus
+impl core::panic::unwind_safe::RefUnwindSafe for app::BindingStatus
+impl core::panic::unwind_safe::UnwindSafe for app::BindingStatus
 pub enum app::CapValue
 pub app::CapValue::Float(f64)
 pub app::CapValue::Int(u64)
@@ -465,6 +507,47 @@ impl core::marker::Unpin for app::CheckInput
 impl core::marker::UnsafeUnpin for app::CheckInput
 impl core::panic::unwind_safe::RefUnwindSafe for app::CheckInput
 impl core::panic::unwind_safe::UnwindSafe for app::CheckInput
+pub enum app::CoverageStatus
+pub app::CoverageStatus::Complete
+pub app::CoverageStatus::NotChecked
+pub app::CoverageStatus::Partial
+impl app::CoverageStatus
+pub fn app::CoverageStatus::as_str(self) -> &'static str
+impl core::clone::Clone for app::CoverageStatus
+pub fn app::CoverageStatus::clone(&self) -> Self
+impl core::cmp::Eq for app::CoverageStatus
+impl core::cmp::PartialEq for app::CoverageStatus
+pub fn app::CoverageStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CoverageStatus
+pub fn app::CoverageStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::CoverageStatus
+impl core::marker::StructuralPartialEq for app::CoverageStatus
+impl core::marker::Freeze for app::CoverageStatus
+impl core::marker::Send for app::CoverageStatus
+impl core::marker::Sync for app::CoverageStatus
+impl core::marker::Unpin for app::CoverageStatus
+impl core::marker::UnsafeUnpin for app::CoverageStatus
+impl core::panic::unwind_safe::RefUnwindSafe for app::CoverageStatus
+impl core::panic::unwind_safe::UnwindSafe for app::CoverageStatus
+pub enum app::DataEntry
+pub app::DataEntry::Card(app::SymbolCard)
+pub app::DataEntry::Folded(app::FoldedFile)
+pub app::DataEntry::FoldedRest(app::FoldedFile)
+impl core::clone::Clone for app::DataEntry
+pub fn app::DataEntry::clone(&self) -> Self
+impl core::cmp::Eq for app::DataEntry
+impl core::cmp::PartialEq for app::DataEntry
+pub fn app::DataEntry::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::DataEntry
+pub fn app::DataEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::DataEntry
+impl core::marker::Freeze for app::DataEntry
+impl core::marker::Send for app::DataEntry
+impl core::marker::Sync for app::DataEntry
+impl core::marker::Unpin for app::DataEntry
+impl core::marker::UnsafeUnpin for app::DataEntry
+impl core::panic::unwind_safe::RefUnwindSafe for app::DataEntry
+impl core::panic::unwind_safe::UnwindSafe for app::DataEntry
 pub enum app::Error
 pub app::Error::Check(checks::error::Error)
 pub app::Error::Kind(kernel::error::Error)
@@ -635,6 +718,25 @@ impl core::marker::Unpin for app::Setting
 impl core::marker::UnsafeUnpin for app::Setting
 impl core::panic::unwind_safe::RefUnwindSafe for app::Setting
 impl core::panic::unwind_safe::UnwindSafe for app::Setting
+pub enum app::UsageOrder
+pub app::UsageOrder::MostLines
+pub app::UsageOrder::NearestDeclaration
+impl core::clone::Clone for app::UsageOrder
+pub fn app::UsageOrder::clone(&self) -> Self
+impl core::cmp::Eq for app::UsageOrder
+impl core::cmp::PartialEq for app::UsageOrder
+pub fn app::UsageOrder::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::UsageOrder
+pub fn app::UsageOrder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::UsageOrder
+impl core::marker::StructuralPartialEq for app::UsageOrder
+impl core::marker::Freeze for app::UsageOrder
+impl core::marker::Send for app::UsageOrder
+impl core::marker::Sync for app::UsageOrder
+impl core::marker::Unpin for app::UsageOrder
+impl core::marker::UnsafeUnpin for app::UsageOrder
+impl core::panic::unwind_safe::RefUnwindSafe for app::UsageOrder
+impl core::panic::unwind_safe::UnwindSafe for app::UsageOrder
 pub enum app::Verdict
 pub app::Verdict::Error
 pub app::Verdict::Failed
@@ -1113,6 +1215,25 @@ impl<'a> core::marker::Unpin for app::ConfigView<'a>
 impl<'a> core::marker::UnsafeUnpin for app::ConfigView<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for app::ConfigView<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for app::ConfigView<'a>
+pub struct app::Coverage
+pub app::Coverage::skipped_code_files: usize
+pub app::Coverage::status: app::CoverageStatus
+impl core::clone::Clone for app::Coverage
+pub fn app::Coverage::clone(&self) -> Self
+impl core::cmp::Eq for app::Coverage
+impl core::cmp::PartialEq for app::Coverage
+pub fn app::Coverage::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Coverage
+pub fn app::Coverage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::Coverage
+impl core::marker::StructuralPartialEq for app::Coverage
+impl core::marker::Freeze for app::Coverage
+impl core::marker::Send for app::Coverage
+impl core::marker::Sync for app::Coverage
+impl core::marker::Unpin for app::Coverage
+impl core::marker::UnsafeUnpin for app::Coverage
+impl core::panic::unwind_safe::RefUnwindSafe for app::Coverage
+impl core::panic::unwind_safe::UnwindSafe for app::Coverage
 pub struct app::CycleReport
 pub app::CycleReport::cycles: kernel::bounded::Bounded<app::CycleRow>
 pub app::CycleReport::skipped: alloc::vec::Vec<app::Skipped>
@@ -1168,6 +1289,29 @@ impl core::marker::Unpin for app::CyclesRequest
 impl core::marker::UnsafeUnpin for app::CyclesRequest
 impl core::panic::unwind_safe::RefUnwindSafe for app::CyclesRequest
 impl core::panic::unwind_safe::UnwindSafe for app::CyclesRequest
+pub struct app::DataMatches
+pub app::DataMatches::entries: alloc::vec::Vec<app::DataEntry>
+pub app::DataMatches::room: usize
+pub app::DataMatches::unlisted: alloc::vec::Vec<app::FoldedFile>
+impl app::DataMatches
+pub fn app::DataMatches::total(&self) -> usize
+impl core::clone::Clone for app::DataMatches
+pub fn app::DataMatches::clone(&self) -> Self
+impl core::cmp::Eq for app::DataMatches
+impl core::cmp::PartialEq for app::DataMatches
+pub fn app::DataMatches::eq(&self, &Self) -> bool
+impl core::default::Default for app::DataMatches
+pub fn app::DataMatches::default() -> Self
+impl core::fmt::Debug for app::DataMatches
+pub fn app::DataMatches::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::DataMatches
+impl core::marker::Freeze for app::DataMatches
+impl core::marker::Send for app::DataMatches
+impl core::marker::Sync for app::DataMatches
+impl core::marker::Unpin for app::DataMatches
+impl core::marker::UnsafeUnpin for app::DataMatches
+impl core::panic::unwind_safe::RefUnwindSafe for app::DataMatches
+impl core::panic::unwind_safe::UnwindSafe for app::DataMatches
 pub struct app::DiagramRequest
 pub app::DiagramRequest::focus: core::option::Option<alloc::string::String>
 pub app::DiagramRequest::group_by_communities: bool
@@ -1346,14 +1490,18 @@ impl core::marker::UnsafeUnpin for app::ExplainRequest
 impl core::panic::unwind_safe::RefUnwindSafe for app::ExplainRequest
 impl core::panic::unwind_safe::UnwindSafe for app::ExplainRequest
 pub struct app::Explanation
-pub app::Explanation::alternatives: alloc::vec::Vec<alloc::string::String>
+pub app::Explanation::alternatives: kernel::bounded::Bounded<alloc::string::String>
+pub app::Explanation::binding: app::TargetBinding
 pub app::Explanation::card: core::option::Option<app::SymbolCard>
+pub app::Explanation::coverage: app::Coverage
+pub app::Explanation::data_key: bool
 pub app::Explanation::fan_in: alloc::vec::Vec<app::TierGroup>
 pub app::Explanation::fan_out: alloc::vec::Vec<app::TierGroup>
 pub app::Explanation::imports_in: kernel::bounded::Bounded<app::ImportRow>
 pub app::Explanation::imports_out: kernel::bounded::Bounded<app::ImportRow>
 pub app::Explanation::message: alloc::string::String
 pub app::Explanation::rationales: alloc::vec::Vec<app::RationaleNode>
+pub app::Explanation::skipped: alloc::vec::Vec<app::Skipped>
 pub app::Explanation::target: alloc::string::String
 pub app::Explanation::tied: usize
 impl core::clone::Clone for app::Explanation
@@ -1436,11 +1584,18 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::FindRequest
 impl core::panic::unwind_safe::UnwindSafe for app::FindRequest
 pub struct app::FindResult
 pub app::FindResult::cards: kernel::bounded::Bounded<app::SymbolCard>
+pub app::FindResult::data: app::DataMatches
+pub app::FindResult::data_kind_excluded: usize
 pub app::FindResult::kind: core::option::Option<&'static str>
 pub app::FindResult::other_kinds: alloc::vec::Vec<&'static str>
+pub app::FindResult::outside: app::OutsideOutline
 pub app::FindResult::query: alloc::string::String
 pub app::FindResult::skipped: alloc::vec::Vec<app::Skipped>
 pub app::FindResult::unparsed: alloc::vec::Vec<(alloc::string::String, u32)>
+pub app::FindResult::usage: core::option::Option<app::Usage>
+impl app::FindResult
+pub fn app::FindResult::declares_nothing(&self) -> bool
+pub fn app::FindResult::is_miss(&self) -> bool
 impl core::clone::Clone for app::FindResult
 pub fn app::FindResult::clone(&self) -> Self
 impl core::cmp::Eq for app::FindResult
@@ -1476,6 +1631,24 @@ impl core::marker::Unpin for app::Flowchart
 impl core::marker::UnsafeUnpin for app::Flowchart
 impl core::panic::unwind_safe::RefUnwindSafe for app::Flowchart
 impl core::panic::unwind_safe::UnwindSafe for app::Flowchart
+pub struct app::FoldedFile
+pub app::FoldedFile::keys: usize
+pub app::FoldedFile::path: alloc::string::String
+impl core::clone::Clone for app::FoldedFile
+pub fn app::FoldedFile::clone(&self) -> Self
+impl core::cmp::Eq for app::FoldedFile
+impl core::cmp::PartialEq for app::FoldedFile
+pub fn app::FoldedFile::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::FoldedFile
+pub fn app::FoldedFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::FoldedFile
+impl core::marker::Freeze for app::FoldedFile
+impl core::marker::Send for app::FoldedFile
+impl core::marker::Sync for app::FoldedFile
+impl core::marker::Unpin for app::FoldedFile
+impl core::marker::UnsafeUnpin for app::FoldedFile
+impl core::panic::unwind_safe::RefUnwindSafe for app::FoldedFile
+impl core::panic::unwind_safe::UnwindSafe for app::FoldedFile
 pub struct app::HealthComplexity
 pub app::HealthComplexity::clone_lines: usize
 pub app::HealthComplexity::erosion: f64
@@ -2173,6 +2346,27 @@ impl core::marker::Unpin for app::Opening
 impl core::marker::UnsafeUnpin for app::Opening
 impl !core::panic::unwind_safe::RefUnwindSafe for app::Opening
 impl !core::panic::unwind_safe::UnwindSafe for app::Opening
+pub struct app::OutsideOutline
+pub app::OutsideOutline::budget: usize
+pub app::OutsideOutline::places: alloc::vec::Vec<(alloc::string::String, u32)>
+pub app::OutsideOutline::unread: usize
+impl core::clone::Clone for app::OutsideOutline
+pub fn app::OutsideOutline::clone(&self) -> Self
+impl core::cmp::Eq for app::OutsideOutline
+impl core::cmp::PartialEq for app::OutsideOutline
+pub fn app::OutsideOutline::eq(&self, &Self) -> bool
+impl core::default::Default for app::OutsideOutline
+pub fn app::OutsideOutline::default() -> Self
+impl core::fmt::Debug for app::OutsideOutline
+pub fn app::OutsideOutline::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::OutsideOutline
+impl core::marker::Freeze for app::OutsideOutline
+impl core::marker::Send for app::OutsideOutline
+impl core::marker::Sync for app::OutsideOutline
+impl core::marker::Unpin for app::OutsideOutline
+impl core::marker::UnsafeUnpin for app::OutsideOutline
+impl core::panic::unwind_safe::RefUnwindSafe for app::OutsideOutline
+impl core::panic::unwind_safe::UnwindSafe for app::OutsideOutline
 pub struct app::PairSelection
 impl app::PairSelection
 pub fn app::PairSelection::checks(self) -> impl core::iter::traits::iterator::Iterator<Item = app::PairCheck>
@@ -2309,7 +2503,6 @@ impl<'a> core::marker::UnsafeUnpin for app::Reading<'a>
 impl<'a> !core::panic::unwind_safe::RefUnwindSafe for app::Reading<'a>
 impl<'a> !core::panic::unwind_safe::UnwindSafe for app::Reading<'a>
 pub struct app::RefGroup
-pub app::RefGroup::id_prefix: &'static str
 pub app::RefGroup::path: alloc::string::String
 pub app::RefGroup::scope_checked: bool
 pub app::RefGroup::sites: alloc::vec::Vec<app::RefSite>
@@ -2331,6 +2524,7 @@ impl core::marker::UnsafeUnpin for app::RefGroup
 impl core::panic::unwind_safe::RefUnwindSafe for app::RefGroup
 impl core::panic::unwind_safe::UnwindSafe for app::RefGroup
 pub struct app::RefListing
+pub app::RefListing::bound: usize
 pub app::RefListing::files: usize
 pub app::RefListing::limit: usize
 pub app::RefListing::rows: alloc::vec::Vec<app::RefGroup>
@@ -2357,7 +2551,6 @@ impl core::panic::unwind_safe::UnwindSafe for app::RefListing
 pub struct app::RefSite
 pub app::RefSite::enclosing: alloc::string::String
 pub app::RefSite::line: u32
-pub app::RefSite::name: alloc::string::String
 pub app::RefSite::stable_id: core::option::Option<alloc::string::String>
 impl core::clone::Clone for app::RefSite
 pub fn app::RefSite::clone(&self) -> Self
@@ -2394,6 +2587,11 @@ impl core::marker::UnsafeUnpin for app::RefsRequest
 impl core::panic::unwind_safe::RefUnwindSafe for app::RefsRequest
 impl core::panic::unwind_safe::UnwindSafe for app::RefsRequest
 pub struct app::RefsResult
+pub app::RefsResult::binding: app::TargetBinding
+pub app::RefsResult::coverage: app::Coverage
+pub app::RefsResult::data_key: core::option::Option<alloc::string::String>
+pub app::RefsResult::definition: core::option::Option<alloc::string::String>
+pub app::RefsResult::definitions: usize
 pub app::RefsResult::groups: app::RefListing
 pub app::RefsResult::scanned: core::option::Option<usize>
 pub app::RefsResult::shared: kernel::bounded::Bounded<app::SharedCaller>
@@ -2401,6 +2599,7 @@ pub app::RefsResult::shared_callers: bool
 pub app::RefsResult::skipped: alloc::vec::Vec<app::Skipped>
 pub app::RefsResult::target: alloc::string::String
 pub app::RefsResult::target_resolved: bool
+pub app::RefsResult::unresolved: core::option::Option<alloc::string::String>
 impl core::clone::Clone for app::RefsResult
 pub fn app::RefsResult::clone(&self) -> Self
 impl core::cmp::PartialEq for app::RefsResult
@@ -2639,6 +2838,28 @@ impl core::marker::Unpin for app::Tags
 impl core::marker::UnsafeUnpin for app::Tags
 impl core::panic::unwind_safe::RefUnwindSafe for app::Tags
 impl core::panic::unwind_safe::UnwindSafe for app::Tags
+pub struct app::TargetBinding
+pub app::TargetBinding::candidates: kernel::bounded::Bounded<alloc::string::String>
+pub app::TargetBinding::definitions: usize
+pub app::TargetBinding::form: &'static str
+pub app::TargetBinding::message: alloc::string::String
+pub app::TargetBinding::reason: alloc::string::String
+pub app::TargetBinding::status: app::BindingStatus
+impl core::clone::Clone for app::TargetBinding
+pub fn app::TargetBinding::clone(&self) -> Self
+impl core::cmp::Eq for app::TargetBinding
+impl core::cmp::PartialEq for app::TargetBinding
+pub fn app::TargetBinding::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::TargetBinding
+pub fn app::TargetBinding::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::TargetBinding
+impl core::marker::Freeze for app::TargetBinding
+impl core::marker::Send for app::TargetBinding
+impl core::marker::Sync for app::TargetBinding
+impl core::marker::Unpin for app::TargetBinding
+impl core::marker::UnsafeUnpin for app::TargetBinding
+impl core::panic::unwind_safe::RefUnwindSafe for app::TargetBinding
+impl core::panic::unwind_safe::UnwindSafe for app::TargetBinding
 pub struct app::TierGroup
 pub app::TierGroup::rows: alloc::vec::Vec<app::EdgeRow>
 pub app::TierGroup::tier: &'static str
@@ -2717,6 +2938,45 @@ impl core::marker::Unpin for app::UnreadCwd
 impl core::marker::UnsafeUnpin for app::UnreadCwd
 impl core::panic::unwind_safe::RefUnwindSafe for app::UnreadCwd
 impl core::panic::unwind_safe::UnwindSafe for app::UnreadCwd
+pub struct app::Usage
+pub app::Usage::files: kernel::bounded::Bounded<app::UsageFile>
+pub app::Usage::name: alloc::string::String
+pub app::Usage::order: app::UsageOrder
+pub app::Usage::owner: core::option::Option<alloc::string::String>
+impl core::clone::Clone for app::Usage
+pub fn app::Usage::clone(&self) -> Self
+impl core::cmp::Eq for app::Usage
+impl core::cmp::PartialEq for app::Usage
+pub fn app::Usage::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Usage
+pub fn app::Usage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::Usage
+impl core::marker::Freeze for app::Usage
+impl core::marker::Send for app::Usage
+impl core::marker::Sync for app::Usage
+impl core::marker::Unpin for app::Usage
+impl core::marker::UnsafeUnpin for app::Usage
+impl core::panic::unwind_safe::RefUnwindSafe for app::Usage
+impl core::panic::unwind_safe::UnwindSafe for app::Usage
+pub struct app::UsageFile
+pub app::UsageFile::line: u32
+pub app::UsageFile::lines: u32
+pub app::UsageFile::path: alloc::string::String
+impl core::clone::Clone for app::UsageFile
+pub fn app::UsageFile::clone(&self) -> Self
+impl core::cmp::Eq for app::UsageFile
+impl core::cmp::PartialEq for app::UsageFile
+pub fn app::UsageFile::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::UsageFile
+pub fn app::UsageFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::UsageFile
+impl core::marker::Freeze for app::UsageFile
+impl core::marker::Send for app::UsageFile
+impl core::marker::Sync for app::UsageFile
+impl core::marker::Unpin for app::UsageFile
+impl core::marker::UnsafeUnpin for app::UsageFile
+impl core::panic::unwind_safe::RefUnwindSafe for app::UsageFile
+impl core::panic::unwind_safe::UnwindSafe for app::UsageFile
 pub struct app::ValidateReport
 pub app::ValidateReport::deadline_expired: bool
 pub app::ValidateReport::header: app::RunHeader
@@ -2885,7 +3145,6 @@ pub fn app::locator(&str, &str, core::option::Option<&str>) -> alloc::string::St
 pub fn app::map(&app::Services, &app::Reading<'_>, &app::MapRequest) -> app::Noted<core::result::Result<app::MapResult, app::Error>>
 pub fn app::map_rows_text(&[app::MapFile]) -> alloc::string::String
 pub fn app::normalize_patch(&app::Repo, &[patch::blocks::Edit]) -> core::result::Result<app::NormalizeReport, app::Error>
-pub fn app::omitted_line(usize, &str, usize) -> alloc::string::String
 pub fn app::path(&app::Services, &app::Reading<'_>, &app::PathRequest) -> app::Noted<core::result::Result<app::PathTrace, app::Error>>
 pub fn app::rationale_nodes(syntax::language::Language, &str, &facts::values::Symbol) -> alloc::vec::Vec<app::RationaleNode>
 pub fn app::refs(&app::Services, &app::Reading<'_>, &app::RefsRequest) -> app::Noted<core::result::Result<app::RefsResult, app::Error>>

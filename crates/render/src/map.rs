@@ -1,22 +1,20 @@
 //! The map's two forms: the ranked rows under the notes that change how to read them, with the
 //! test companions at the foot; and the JSON with the counts behind the rows.
 
-use app::{
-    Companion, Companions, MapEntry, MapFile, MapResult, RationaleNode, map_rows_text, omitted_line,
-};
+use std::collections::BTreeSet;
+
+use app::{Companion, Companions, MapEntry, MapFile, MapResult, RationaleNode, map_rows_text};
 use json::round_half_even;
-use prompts::messages::MAP_UNRESOLVED_SEEDS;
+use prompts::messages::{
+    MAP_BUDGET_NONE, MAP_COMPANION_UNLISTED, MAP_MAX_FILES_NONE, MAP_NOT_CONVERGED,
+    MAP_NOTHING_PARSED, MAP_OVER_BUDGET, MAP_TESTS_UNLISTED, MAP_UNRESOLVED_SEEDS, MAP_WALK_CAPPED,
+};
 use serde::Serialize;
 use text::one_line;
 
 use crate::envelope::{Listing, wrap_json};
 use crate::skipped::{SkippedJson, skipped_json, skipped_line};
 use crate::{Rendered, Truncation, View};
-
-const NOT_CONVERGED: &str = "the ranking behind this map did not converge, so the order of the files below is a partial \
-     answer";
-const WALK_CAPPED: &str = "  note: the walk out to these tests hit its node bound before it \
-                           finished, so this section is a floor rather than every test";
 
 impl View for MapResult {
     fn rendered(&self) -> Rendered<'_> {
@@ -37,7 +35,7 @@ impl View for MapResult {
 // The notes go above the rows: each changes how the ranking below it reads.
 pub(crate) fn map_text(result: &MapResult) -> String {
     let mut body = map_rows_text(&result.files);
-    let companions = companions_text(&result.companions);
+    let companions = companions_text(&result.companions, &result.files);
     if !companions.is_empty() {
         body = format!("{body}\n{companions}");
     }
@@ -52,20 +50,14 @@ pub(crate) fn map_text(result: &MapResult) -> String {
 fn notes(result: &MapResult) -> Vec<String> {
     let mut notes = Vec::new();
     if !result.rank_converged {
-        notes.push(NOT_CONVERGED.to_owned());
+        notes.push(MAP_NOT_CONVERGED.to_owned());
     }
     if result.files.is_empty() {
         notes.push(why_nothing_ranked(result));
     }
     if result.budget > 0 && result.rendered > result.budget {
-        notes.push(format!(
-            "this map renders to {} tokens against a {}-token budget: every one of the {} ranked \
-             files is listed whatever the budget allows, and the budget bounds only the symbols \
-             shown under them",
-            result.rendered,
-            result.budget,
-            result.files.len()
-        ));
+        let counts = (result.files.len(), result.rendered, result.budget);
+        notes.push(MAP_OVER_BUDGET.render(counts));
     }
     if !result.unresolved_seeds.is_empty() {
         notes.push(MAP_UNRESOLVED_SEEDS.render(&result.unresolved_seeds.join(", ")));
@@ -80,39 +72,35 @@ fn notes(result: &MapResult) -> Vec<String> {
 // Rows alone cannot tell a repository with no symbols from a budget that kept none of them.
 fn why_nothing_ranked(result: &MapResult) -> String {
     if result.ranked == 0 {
-        "nothing in this repository parsed into symbols".to_owned()
+        MAP_NOTHING_PARSED.to_owned()
     } else if result.candidates == 0 {
-        format!(
-            "--max-files kept none of the {} ranked files",
-            result.ranked
-        )
+        MAP_MAX_FILES_NONE.render(result.ranked)
     } else {
-        format!(
-            "the {}-token budget left room for none of {} symbols; raise --budget",
-            result.budget, result.candidates
-        )
+        MAP_BUDGET_NONE.render((result.candidates, result.budget))
     }
 }
 
 // An empty section prints nothing, unless the walk stopped early: then it says so.
-fn companions_text(companions: &Companions) -> String {
-    let note = companions.exhausted.then(|| WALK_CAPPED.to_owned());
+fn companions_text(companions: &Companions, files: &[MapFile]) -> String {
+    let note = companions.exhausted.then(|| MAP_WALK_CAPPED.to_owned());
     let rows = companions.rows.rows();
     if rows.is_empty() {
         return note.map(|line| line + "\n").unwrap_or_default();
     }
+    let listed: BTreeSet<&str> = files.iter().map(|file| file.path.as_str()).collect();
     let mut lines = vec!["tests exercising the files above:".to_owned()];
-    lines.extend(rows.iter().map(companion_row));
+    lines.extend(rows.iter().map(|row| companion_row(row, &listed)));
     let omitted = companions.rows.omitted();
     if omitted > 0 {
-        lines.push(omitted_line(omitted, "test files", companions.rows.limit()));
+        lines.push(MAP_TESTS_UNLISTED.render((omitted, companions.rows.limit())));
     }
     lines.extend(note);
     lines.join("\n") + "\n"
 }
 
-// The span is one referencing symbol; the coverage clause is about the whole file.
-fn companion_row(row: &Companion) -> String {
+// The span is one referencing symbol; the coverage clause is about the whole file. A covered file
+// can be a seed that the file cap cut or a file between the test and the targets.
+fn companion_row(row: &Companion, listed: &BTreeSet<&str>) -> String {
     let located = format!("{}:{}-{}", one_line(&row.path), row.start, row.end);
     if row.covers.is_empty() {
         return format!("  {located}");
@@ -120,9 +108,18 @@ fn companion_row(row: &Companion) -> String {
     let covers: Vec<String> = row
         .covers
         .iter()
-        .map(|path| one_line(path).into_owned())
+        .map(|path| covered_name(path, listed))
         .collect();
     format!("  {located}  -- file references {}", covers.join(", "))
+}
+
+fn covered_name(path: &str, listed: &BTreeSet<&str>) -> String {
+    let name = one_line(path);
+    if listed.contains(path) {
+        name.into_owned()
+    } else {
+        MAP_COMPANION_UNLISTED.render(&name)
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -278,3 +275,6 @@ impl Listing for MapJson<'_> {
         prefix
     }
 }
+
+#[cfg(test)]
+mod tests;

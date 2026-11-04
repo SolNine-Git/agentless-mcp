@@ -4,11 +4,11 @@ use std::collections::BTreeSet;
 
 use git::CHURN_WINDOW_DAYS;
 use json::fixed;
-use prompts::messages::MAP_FILE_UNREACHED;
+use prompts::messages::{MAP_FILE_UNREACHED, MAP_SYMBOLS_UNLISTED};
 use text::one_line;
 
 use super::{MapEntry, MapFile};
-use crate::rowtext::{ROW_INDENT, locator, omitted_line, stable_ids_line};
+use crate::rowtext::{ROW_INDENT, locator, stable_ids_line};
 
 const NESTING: &str = "    ";
 
@@ -89,7 +89,7 @@ fn omission(file: &MapFile) -> Option<String> {
     if omitted == 0 {
         None
     } else if file.reached {
-        Some(omitted_line(omitted, "symbols in this file", 0))
+        Some(MAP_SYMBOLS_UNLISTED.render(omitted))
     } else {
         Some(MAP_FILE_UNREACHED.render(omitted))
     }

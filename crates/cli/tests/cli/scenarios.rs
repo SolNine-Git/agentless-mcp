@@ -4,6 +4,7 @@
 
 use std::ffi::OsString;
 
+use prompts::envelope::RECEIPT_HEADER;
 use serde_json::Value;
 
 use crate::common::{Outcome, Sandbox, cases, expected, normalised, words};
@@ -84,7 +85,7 @@ fn this_cache_file(text: &str) -> String {
 // cache, so both sides show a placeholder for each.
 #[test]
 fn every_read_scenario_answers_as_the_fixture() {
-    every_scenario_answers_as("read/scenarios", 50, without_cache_field);
+    every_scenario_answers_as("read/scenarios", 51, without_cache_field);
 }
 
 #[test]
@@ -163,7 +164,7 @@ fn masked_lines(text: &str) -> String {
 }
 
 fn masked(line: &str) -> String {
-    if line.starts_with("// repo: ")
+    if line.starts_with(RECEIPT_HEADER)
         && let Some((head, _)) = line.split_once("   cache: ")
     {
         return format!("{head}   cache: <CACHE>");

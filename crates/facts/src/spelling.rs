@@ -2,7 +2,7 @@ use text::is_space;
 
 const ELLIPSIS: &str = "...";
 // A signature is an index row on one line, not a rendering of the declaration.
-const SIGNATURE_MAX_CHARS: usize = 80;
+pub(crate) const SIGNATURE_MAX_CHARS: usize = 80;
 const STRING_QUOTES: [&str; 5] = ["\"\"\"", "'''", "\"", "'", "`"];
 
 /// Return the name that a base-class expression looks up: `Generic[T]` is `Generic`, `enum.Enum`

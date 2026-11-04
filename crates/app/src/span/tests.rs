@@ -1,5 +1,73 @@
-use super::{ParsedFiles, resolve_symbol_span, resolve_symbol_span_in};
+use super::{Missed, ParsedFiles, resolve_symbol_span, resolve_symbol_span_in};
 use crate::endpoints::scanned::{LINKED, Scanned};
+
+#[test]
+fn a_data_key_outside_the_outline_names_the_outline_and_grep() {
+    let scanned = Scanned::new(&[("rows.json", "{\"a\": {\"b\": {\"c\": 1}}}\n")]);
+    let reading = scanned.reading();
+    let Err(Missed::Reason(reason)) = resolve_symbol_span(&reading, "json:rows.json::a.b.c").value
+    else {
+        panic!("a key below depth 2 does not resolve");
+    };
+    assert!(reason.starts_with("rows.json keeps an outline of its keys, and a.b.c is not in it"));
+    assert!(
+        resolve_symbol_span(&reading, "json:rows.json::a.b")
+            .value
+            .is_ok()
+    );
+}
+
+#[test]
+fn an_id_that_names_no_symbol_of_its_file_claims_no_earlier_state() {
+    let scanned = Scanned::new(&LINKED);
+    let missed = resolve_symbol_span(&scanned.reading(), "py:pkg/money.py::gone").value;
+    let Err(missed) = missed else {
+        panic!("a guessed id does not resolve");
+    };
+    assert_eq!(missed.reason(), "pkg/money.py does not define gone");
+}
+
+#[test]
+fn a_path_qualified_name_resolves_as_its_stable_id_does_and_a_name_stays_refused() {
+    let scanned = Scanned::new(&LINKED);
+    let reading = scanned.reading();
+    let Ok(span) = resolve_symbol_span(&reading, "pkg/money.py::format_money").value else {
+        panic!("a path::name resolves");
+    };
+    assert_eq!(
+        span.stable_id().to_string(),
+        "py:pkg/money.py::format_money"
+    );
+    let Err(missed) = resolve_symbol_span(&reading, "format_money").value else {
+        panic!("a bare name does not resolve");
+    };
+    assert!(
+        missed
+            .reason()
+            .starts_with("not a stable id: 'format_money'")
+    );
+}
+
+#[test]
+fn a_path_name_with_a_rust_style_method_resolves_and_a_path_without_a_language_stays_refused() {
+    let scanned = Scanned::new(&[(
+        "jobs.py",
+        "class Job:\n    def run(self):\n        return 2\n",
+    )]);
+    let reading = scanned.reading();
+    let Ok(span) = resolve_symbol_span(&reading, "jobs.py::Job::run").value else {
+        panic!("a path::Type::method resolves");
+    };
+    assert_eq!(span.stable_id().to_string(), "py:jobs.py::Job.run");
+    let Err(missed) = resolve_symbol_span(&reading, "Job::run::x").value else {
+        panic!("a name with no file does not resolve");
+    };
+    assert_eq!(
+        missed.reason(),
+        "not a stable id: 'Job::run::x'; expected <langprefix>:<relpath>::<qualname>, for \
+         example py:src/app/svc.py::Invoice.total"
+    );
+}
 
 #[test]
 fn ids_that_share_parsed_files_resolve_as_each_id_alone_does() {

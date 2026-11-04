@@ -4,16 +4,20 @@
 mod shared;
 mod sites;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use facts::Role;
-use graph::{Definition, NameIndex, Resolver, Scopes, Site, references_to, resolve_definitions};
-use kernel::{Bounded, Deadline};
+use facts::{Declared, Role};
+use graph::{Definition, NameIndex, Resolver, Scopes, Site, TargetForm, references_to};
+use kernel::Bounded;
 
 use crate::bounds::within;
 use crate::detached::answered_over;
+use crate::endpoints::{
+    BindingStatus, Bound, Coverage, Scope, TARGET_WORDING, TargetBinding, bind, data_key_binding,
+};
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::RepoFacts;
+use crate::span::{Missed, SymbolSpan, data_key_span};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
 
 /// A refs request: the target, the most sites, and whether to rank the shared callers.
@@ -38,8 +42,20 @@ pub struct RefsResult {
     pub shared: Bounded<SharedCaller>,
     /// Whether the request asked for the shared callers.
     pub shared_callers: bool,
-    /// Whether the target named what it found. When false, the answer is about a name.
+    /// Whether the target named what it found.
     pub target_resolved: bool,
+    /// The stable id of the one definition a name or a qualified name resolved to.
+    pub definition: Option<String>,
+    /// How many definitions the target resolved to.
+    pub definitions: usize,
+    /// What the target bound to, and why it bound to nothing.
+    pub binding: TargetBinding,
+    /// How much of the repository the answer checked for references.
+    pub coverage: Coverage,
+    /// The key's name when the target is a data key, which has no fan-in.
+    pub data_key: Option<String>,
+    /// Why a data file's id names no key, or `None`.
+    pub unresolved: Option<String>,
     /// The files the scan passed over.
     pub skipped: Vec<Skipped>,
     /// How many files the scan read.
@@ -53,6 +69,8 @@ pub struct RefListing {
     pub rows: Vec<RefGroup>,
     /// How many sites spell the target.
     pub total: usize,
+    /// How many of those sites sit at a binding tier, same-file or resolved-via-import.
+    pub bound: usize,
     /// The most sites the groups keep.
     pub limit: usize,
     /// How many files spell the target.
@@ -91,8 +109,6 @@ pub struct RefGroup {
     pub tier: &'static str,
     /// The tier's phrase, such as `resolved-via-import`.
     pub tier_label: &'static str,
-    /// The language prefix of the file's stable ids, or empty when no site names a symbol.
-    pub id_prefix: &'static str,
     /// False for a binding tier in a language with no scope analysis, where a local that
     /// shadows the name cannot be told from a caller.
     pub scope_checked: bool,
@@ -107,8 +123,6 @@ pub struct RefSite {
     pub enclosing: String,
     /// The stable id of the holding symbol, if any.
     pub stable_id: Option<String>,
-    /// The qualified name the stable id spells, with its ordinal, or empty.
-    pub name: String,
 }
 
 /// A symbol that the target's callers also reference.
@@ -155,59 +169,122 @@ pub fn refs(
         Ok(limit) => limit,
         Err(error) => return Noted::new(Err(error)),
     };
-    let stoplist = &reading.repo.config.stoplist;
+    if let Some(found) = data_key_span(reading, &request.target) {
+        return found.map(|span| Ok(keyed(request, limit, span)));
+    }
     let loaded = RepoFacts::load(services, reading);
-    let deadline = reading.deadline;
     loaded.map(|facts| {
-        facts.and_then(|facts| {
-            answered_over(facts, |facts| {
-                fan_in(facts, stoplist, request, limit, deadline)
-            })
-        })
+        facts.and_then(|facts| answered_over(facts, |facts| fan_in(facts, reading, request, limit)))
     })
 }
 
 fn fan_in(
     facts: &RepoFacts,
-    stoplist: &BTreeSet<String>,
+    reading: &Reading<'_>,
     request: &RefsRequest,
     limit: usize,
-    deadline: Option<&Deadline>,
 ) -> Result<RefsResult, Error> {
     let index = NameIndex::build(&facts.files);
     let scopes = Scopes::build(&facts.files);
     let resolver = Resolver::new(&index, &scopes);
-    let lookup = resolve_definitions(&index, &request.target);
-    let target_ids: BTreeSet<String> = (lookup.definitions.iter())
+    let scope = Scope {
+        index: &index,
+        skipped: &facts.skipped,
+        root: &reading.repo.root,
+    };
+    let bound = bind(&scope, &request.target, limit, &TARGET_WORDING);
+    let scanned = RefsResult {
+        coverage: Coverage::of(&bound.binding, &facts.skipped),
+        skipped: facts.skipped.clone(),
+        scanned: Some(facts.files.len()),
+        ..nothing_listed(request, limit, bound.binding.clone())
+    };
+    if bound.binding.status == BindingStatus::NotFound {
+        return Ok(scanned);
+    }
+    let target_ids: BTreeSet<String> = (bound.definitions.iter())
         .map(|definition| definition.stable_id().to_string())
         .collect();
-    let spellings = spellings(&resolver, &lookup.definitions, &target_ids);
+    let spellings = spellings(&resolver, &bound.definitions, &target_ids);
     let sites = dedupe(&spellings);
     let names = names_by_path(&spellings);
+    let tiers = sites::site_tiers(&sites, &names, &resolver, &target_ids);
     let kept = round_robin(&sites, limit);
     let groups = RefListing {
-        rows: sites::group_sites(&kept, &names, &resolver, &target_ids),
+        rows: sites::group_sites(&kept, &tiers),
         total: sites.len(),
+        bound: sites::bound_count(&sites, &tiers),
         limit,
         files: sites.iter().map(Site::path).collect::<BTreeSet<_>>().len(),
     };
     let ranked = if request.shared_callers {
-        shared::shared_callers(&sites, &target_ids, &index, stoplist, deadline)?
+        let stoplist = &reading.repo.config.stoplist;
+        shared::shared_callers(&sites, &target_ids, &index, stoplist, reading.deadline)?
     } else {
         Vec::new()
     };
     Ok(RefsResult {
-        target: request.target.clone(),
         groups,
         shared: Bounded::cut(ranked, limit),
-        shared_callers: request.shared_callers,
-        target_resolved: lookup.scoped,
-        skipped: facts.skipped.clone(),
-        scanned: Some(facts.files.len()),
+        definition: single_definition(&bound),
+        definitions: bound.definitions.len(),
+        ..scanned
     })
 }
 
-// Every spelling of each definition outside its own span, then the alias spellings.
+// A data key stays out of the name graph, so nothing references it. A key that the file does
+// not hold gets the reason that expand gives.
+fn keyed(request: &RefsRequest, limit: usize, span: Result<SymbolSpan, Missed>) -> RefsResult {
+    match span {
+        Ok(span) => RefsResult {
+            data_key: Some(span.symbol.name),
+            ..nothing_listed(request, limit, data_key_binding(&request.target, None))
+        },
+        Err(missed) => {
+            let reason = missed.reason();
+            let binding = data_key_binding(&request.target, Some(&reason));
+            RefsResult {
+                unresolved: Some(reason),
+                ..nothing_listed(request, limit, binding)
+            }
+        }
+    }
+}
+
+fn nothing_listed(request: &RefsRequest, limit: usize, binding: TargetBinding) -> RefsResult {
+    RefsResult {
+        target: request.target.clone(),
+        groups: RefListing {
+            rows: Vec::new(),
+            total: 0,
+            bound: 0,
+            limit,
+            files: 0,
+        },
+        shared: Bounded::cut(Vec::new(), limit),
+        shared_callers: request.shared_callers,
+        target_resolved: binding.status != BindingStatus::NotFound,
+        definition: None,
+        definitions: 0,
+        binding,
+        coverage: Coverage::not_checked(),
+        data_key: None,
+        unresolved: None,
+        skipped: Vec::new(),
+        scanned: None,
+    }
+}
+
+// The one definition that a target other than a stable id bound to.
+fn single_definition(bound: &Bound<'_>) -> Option<String> {
+    match bound.definitions.as_slice() {
+        [only] if bound.form != TargetForm::StableId => Some(only.stable_id().to_string()),
+        _ => None,
+    }
+}
+
+// Every spelling of each definition outside its own span, then the alias spellings, less the
+// lines that only declare: a declaration is no reference, and a row is a line.
 fn spellings<'a>(
     resolver: &Resolver<'a>,
     definitions: &[Definition<'a>],
@@ -218,9 +295,18 @@ fn spellings<'a>(
         .collect();
     let direct =
         (definitions.iter()).flat_map(|definition| references_to(resolver.index(), definition));
-    direct
-        .chain(alias_sites(resolver, target_ids, &spelled))
+    let mut declared: HashMap<&'a str, Declared<'a>> = HashMap::new();
+    let all = direct.chain(alias_sites(resolver, target_ids, &spelled));
+    all.filter(|site| !only_declares(&mut declared, site))
         .collect()
+}
+
+// Each file's declared names are collected once, on its first site.
+fn only_declares<'a>(declared: &mut HashMap<&'a str, Declared<'a>>, site: &Site<'a>) -> bool {
+    let facts = &site.file.facts;
+    let file =
+        (declared.entry(site.path())).or_insert_with(|| Declared::of(&facts.symbols, &facts.refs));
+    file.only_declares(&site.reference.name, site.reference.line)
 }
 
 // A file that imported the target under another name calls it by that name. Only the import

@@ -1,7 +1,6 @@
-// agentless-mcp receipt (repository data below)
-// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 [ts:reports.ts::reorderReport] @32-49
-  function (typescript)
+  function
   fn reorderReport(inventory: Inventory, prices: PriceBook) -> string
 
 references (fan-out): 6

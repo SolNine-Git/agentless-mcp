@@ -22,7 +22,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = frozenset(
-    {"capabilities", "find_referencing_symbols", "history", "orient", "read", "symbols"}
+    {"capabilities", "find_referencing_symbols", "graph", "history", "orient", "read", "symbols"}
 )
 SOURCE = "def quote(sku):\n    return 1\n\n\ndef total(items):\n    return sum(map(quote, items))\n"
 NOTICES = (

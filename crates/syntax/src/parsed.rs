@@ -183,6 +183,35 @@ impl Parsed {
         (parent != NO_PARENT).then_some(NodeId(parent))
     }
 
+    /// Return the sibling right before the node, or None for a first child or the root.
+    #[must_use]
+    pub fn prev_sibling(&self, node: NodeId) -> Option<NodeId> {
+        let parent = self.parent(node)?;
+        // In preorder the record before a node is its parent or the last node of the subtree of
+        // its previous sibling, so the walk up from there costs the depth, not the sibling count.
+        let mut current = NodeId(node.0.checked_sub(1)?);
+        loop {
+            if current == parent {
+                return None;
+            }
+            let up = self.parent(current)?;
+            if up == parent {
+                return Some(current);
+            }
+            current = up;
+        }
+    }
+
+    /// Return the sibling right after the node, or None for a last child or the root.
+    #[must_use]
+    pub fn next_sibling(&self, node: NodeId) -> Option<NodeId> {
+        let parent = self.parent(node)?;
+        // In preorder the record right after a node's subtree is its next sibling while the
+        // parent's subtree still holds it.
+        let next = self.flat.record(node.0).subtree_end;
+        (next < self.flat.record(parent.0).subtree_end).then_some(NodeId(next))
+    }
+
     /// Return the node's children, named and anonymous, in order.
     pub fn children(&self, node: NodeId) -> impl Iterator<Item = NodeId> + '_ {
         self.flat.children(node.0).map(NodeId)

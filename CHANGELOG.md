@@ -2,6 +2,44 @@
 
 ## Unreleased
 
+Each cl100k count of the tool surface in this section uses one method:
+tiktoken `cl100k_base`, `encode_ordinary`, over the compact JSON array of the
+counted tools/list entries, each entry cut to its `name`, `description` and
+`inputSchema`. The count of one tool is the count of an array of one entry.
+Each byte count is of the served bytes.
+
+### Added
+
+- **`find-symbol` lists the code files that use a name and do not declare
+  it.** After the cards, the data entries and the notes, a `usage:` block
+  lists the code files that spell the query's name as a whole word and
+  declare no symbol with that name in its case. The search reads the text
+  that the scan of `find-symbol` already holds, so a name in a call, an
+  import, a comment or a string counts. It does not read data files. A
+  qualified query `Owner.name` keeps the files that also spell `Owner`. The
+  files nearest to a declaring file come first: the fewest directory steps,
+  then the most lines that spell the name, then the path. With no declaring
+  file, the most lines come first. The block lists 10 files, each with its
+  first line and its count of lines, and counts the rest. It comes with a
+  kind filter too, and when no symbol matches. Then the first line says that
+  no symbol is declared and does not send the reader to grep. A query that
+  is not a name, or names joined by `.` or `::`, gets no block. The JSON
+  answer gains a `usage` member, left out when no file spells the name. The
+  `symbols` description gains "then the files that use the name and do not
+  declare it": its tools/list entry grows from 2,444 to 2,500 bytes and from
+  477 to 490 cl100k tokens. Measured with the release binaries of f6105a2 and
+  of this change over the 676 `find` calls that the forced and hooked
+  benchmark arms recorded: 465 answers gain a block, and the text answers
+  grow by 19.3% in cl100k tokens (median 71, p90 178, max 294 for an answer
+  that grows). At the cap of 10, the blocks list 30 of the 66 gold files that
+  the arms missed at a usage site, 42 of the 161 gold files that a find call
+  missed, and 199 of the 1,504 gold files that the arms did not name. The
+  warm-cache wall time of `find-symbol` on four snapshots of 2,032 to 5,102
+  files stays within 6 ms of the base (10 runs each, median). For a qualified
+  query, the line that counts the files not listed names the owner too, as
+  the head does: "108 more files spell 'get' and 'SdkConfig' and are not
+  listed." Before this fix, the line named only the name.
+
 ### Removed
 
 - **The Python build leaves the repository.** The tag `v0.11.0rc1` holds its
@@ -14,6 +52,143 @@
 
 ### Changed
 
+- **The structure views move to the new tool `graph`, and three tools load
+  on request.** This change breaks MCP callers:
+  - `graph` holds `communities`, `cycles`, `health`, `diagram` and `path`.
+    The `operation` enum of `orient` is `["map"]`, and `orient` keeps the
+    parameters of the map only. A call of a moved operation on `orient` is
+    refused with the name of the new tool: "operation is \"cycles\", but must
+    be map. Call the tool graph with operation cycles." A call that gives
+    `orient` a parameter of `graph` is refused as an unknown name, whatever
+    its value. A choice of one name is written as the name alone.
+  - `no_cache` leaves the MCP surface. No schema lists it, and a call that
+    gives it is refused. The CLI keeps `--no-cache`.
+  - The schemas list `repo_root` only when the server has more than one
+    distinct `--root` or a `--roots-from` file. Every tool still accepts it.
+  - `capabilities` loses the `anthropic/alwaysLoad` hint. A client that
+    defers tool schemas now loads it, `history` and `graph` on request.
+    `orient`, `symbols`, `read` and `find_referencing_symbols` keep the hint.
+  - `find_referencing_symbols` keeps the hint because no agent called it
+    while its schema was deferred. A first build of this change removed the
+    hint. In the forced benchmark arm on 300 tasks, with Claude Code tool
+    search on (build ef6a1a2), no session called the tool. With every schema
+    loaded (build ea6ed16, tool search off), 31 sessions called it 38 times.
+    Four sessions fetched its schema with ToolSearch and did not call it. The
+    two runs also differ in build and in time window. The design set the rule
+    before the run: restore the hint if the sessions that call the tool fall
+    by half.
+  - The `graph` description and the guide's `path` section say that the
+    chain ignores edge direction, so it is not a call path.
+  - Measured with the release binaries of edea4a4 and of the build that
+    keeps the hint on `find_referencing_symbols`, one `--root`. The bytes are
+    the compact tools/list entries. The always-loaded set goes from 5
+    tools, 9,565 bytes and 1,851 tokens to 4 tools, 6,906 bytes and 1,342
+    tokens. The deferred set goes from 1 tool, 926 bytes and 165 tokens to 3
+    tools, 3,574 bytes and 654 tokens. The tools/list answer line goes from
+    10,534 to 10,523 bytes. The later figures include the growth that the
+    `refs` exit-code entry below adds. With two roots, the line is 11,740
+    bytes, the always-loaded set is 7,602 bytes and 1,494 tokens, and the
+    deferred set is 4,095 bytes and 767 tokens.
+  - The release binaries of edea4a4 and of the first build of this change
+    answered the same 56 calls over this repository at 8d0dbba
+    and the snapshot psf__requests-2931: 30 answers are the same, 12 moved
+    operations give the same body on `graph` as on `orient` at the base, 12
+    calls of a moved operation on `orient` get the refusal above, and 2
+    calls that give `no_cache` are refused.
+  - An MCP client that lists the tools one by one must allow
+    `mcp__agentless__graph`. A prompt that calls `orient` with a moved
+    operation must call `graph`.
+
+- **A `refs` target that binds to nothing exits 1.** The CLI exit code of
+  `refs` was 0 for every answer. It is now 1 when the target binds to no
+  definition, as for `explain`. The MCP answer of `find_referencing_symbols`
+  gives that line as a refusal with `isError` set, "Error calling tool
+  'find_referencing_symbols': no symbol matches X". A bound target with no
+  reference still exits 0 with `isError` unset. A script that reads the exit
+  code sees the change. Such a call does not unlock the search gate. Over the
+  251 recorded `refs` calls, 53 exit codes go from 0 to 1, and none goes from
+  1 to 0. The `refs`, `explain` and `path` target parameters list the new
+  forms. Measured on the tools/list answer with one root: the frame grows by
+  92 bytes. `find_referencing_symbols` and `symbols` each grow by 23 bytes
+  and 8 cl100k tokens, and `graph` by 46 bytes and 16 tokens. The
+  always-loaded set holds the first two, so it grows by 46 bytes and 16
+  tokens.
+
+- **The `refs` header splits its count when a row has no binding evidence.**
+  The header counts every row, and a `unique` or `name-only-ambiguous` row read
+  as a caller beside it. A second line now counts the rows that have binding
+  evidence (same-file or resolved-via-import) and the candidates, for example
+  "3 rows have binding evidence (same-file or resolved-via-import). 21 are
+  candidates (unique or name-only-ambiguous)." or "no row has binding evidence:
+  6 are candidates (unique or name-only-ambiguous)." The count covers every
+  site before the limit cuts them. The group order and the cut do not change.
+  The JSON gains `bound_total` and `candidate_total`. Over the 251 recorded
+  `refs` calls, 149 answers gain the line: 115 bytes and 26 cl100k tokens at
+  the median, 116 bytes and 26 tokens at p90, 14,968 bytes and 3,410 tokens in
+  total.
+
+- **`refs` and `explain` answers carry a binding status and a coverage
+  status.** The JSON gains `binding` (`status` bound, ambiguous or not_found,
+  the `form` of the target, the count of `definitions`, and for not_found the
+  `reason`, the `candidates` and `candidates_omitted`) and `coverage` (`status`
+  complete, partial or not_checked, and `skipped_code_files`). Every earlier
+  field stays. `target_resolved` reads false for a target that binds to
+  nothing, where it read true for a name that no file declares. `explain`
+  prints the skipped-file warning that `refs` prints, and its JSON lists the
+  skipped files.
+
+- **`expand` and `history` take a `path::name`.** The text before the first
+  `::` is a file path, and the prefix comes from the file's language, so
+  `crates/json/src/float.rs::float_text` reads as
+  `rs:crates/json/src/float.rs::float_text`. A text that parses as a stable id
+  keeps that parse. A bare name, a dotted name and a `path:line` stay refused.
+  The 523 recorded `refs`, `explain`, `history` and `expand` calls hold no such
+  `expand` or `history` call, and all 267 of those answers stay the same.
+
+- **A `find-symbol` miss with usage files exits 0.** The CLI exit code of a
+  query that matches no symbol was 1. When a code file spells the name, the
+  answer now lists that file, and the command exits 0. The exit code stays 1
+  when no symbol matches and no code file spells the name. A script that
+  tests for a miss by the exit code sees the change. Over the 676 recorded
+  `find` calls above, 69 exit codes go from 1 to 0, 46 stay 1, and none goes
+  from 0 to 1.
+
+- **A JSON, TOML or YAML file gives an outline of its keys, not every key.**
+  The outline holds the keys to depth 2 (a TOML table header is one level), at
+  most 500 per file, all depth-1 keys first. Keys in lists are left out. A
+  scalar shows its value as the file writes it, with a newline as `\n`, cut at
+  40 characters, and a YAML key with no value shows `null`. An object or a
+  list shows its type and item count. A key's card names its kind as `key`. A
+  kind filter leaves every data key out, and one line counts the keys that
+  match. `find-symbol` ranks every code match before the data keys. A key
+  whose name or qualified name equals the query gets a card before any folded
+  line. The other matching keys of a file fold into one line when there are
+  more than three. The answer shows at most five data entries, and one line
+  counts the other files and names that room. When no code symbol is listed
+  and no kind filter is set, `find-symbol` reads up to 32 MiB of the text of
+  the data files, the files that the size cap skipped included. It names the
+  first 5 files that spell the query on a line where no outline row starts,
+  each with that line, and a note says when the budget left files unread. The
+  overview of a data file prints its outline, counts the keys it leaves out,
+  and says that nested keys qualify as parent.child. The id of a key outside
+  the outline gets a refusal that names the outline. The warning for a skipped
+  file no longer names a data file. `FACTS_VERSION` is 6, so every index
+  rebuilds. The patch linter's defined-name and near-miss sets read only the
+  outline keys. Measured with the release binaries of the base and of the
+  outline change, cold index: this repository 158,189 to 12,474 index rows,
+  93.5 to 62.2 MB; ansible 278,899 to 66,759 rows, 222.1 to 174.9 MB, median
+  of 3 runs 1.53 to 1.34 s, peak RSS 384 to 327 MB; NodeBB 163,405 to 147,624
+  rows; element 132,909 to 33,701 rows; the #56 repro (four JSON fixtures of
+  2,000 rows) 96,000 to 0 rows, 26.6 to 7.8 MB. Over the 676 recorded
+  bench300 find calls, the answers list 25,282 matches before and 11,679 after
+  the outline change, and 11,137 after the exact-key, kind and text-search
+  rules. The outline change lost one gold-file match: rubocop's
+  `AllowModifiersOnAttrs`, at position 2,089 of the outline of
+  `config/default.yml`. The text search names that file again: against the
+  release build of ea6ed16, no call loses a gold-file match and that call
+  gains `config/default.yml`. The text search makes a miss slower, median of
+  10 warm runs of `find-symbol --json`: element 0.058 to 0.108 s, and
+  protonmail webclients (33.7 MB of data files) 0.136 to 0.253 s.
 - **The development commands are cargo's.** `uv sync` installs only the dev
   group (pre-commit, ruff and codespell), and mypy, import-linter, deptry and
   pytest no longer run. The tests run with
@@ -39,6 +214,637 @@
   check that the `orient` and `repo_map` descriptions publish that band as
   "10-35% higher". They check that the ratio over the `.txt` goldens runs
   below 1.0 on one golden and above 1.15 on another.
+- **`read` accepts one flat `[start, end]` pair for `lines`.** A call can
+  send `lines: [18, 45]`, and the server reads it as `[[18, 45]]`. The list
+  of pairs stays valid, and every other flat list is still refused. The
+  300-instance benchmark motivates the change: the server refused 232 of 705
+  forced-arm `read` calls that sent one flat pair. The `lines` description
+  now reads "One [start, end] range, or a list of them such as
+  [[10, 40], [90, 120]]. 1-based and inclusive." A refused `lines` value gets
+  one sentence that names both forms: "lines is [[1]], but must be one
+  [start, end] pair of 1-based line numbers, such as [10, 20], or a list of
+  pairs, such as [[10, 20], [40, 50]]."
+- **The tools/list answer is a third smaller, and `operation` is an enum.**
+  The six served tool descriptions and their parameter descriptions are
+  shorter. The `operation` parameter of `orient`, `symbols` and `read` lists
+  its values as a JSON Schema `enum`, made from the operation table in
+  `crates/app/src/surface.rs`. An optional parameter is published as its own
+  type, without the `anyOf [<type>, {"type": "null"}]` wrapper and without
+  `"default": null`. `focus` and `lines` keep their two forms. The server
+  accepts the same inputs: an explicit null still reads as absent, and an
+  unknown `operation` value still gets the refusal that lists the valid
+  values. Every tool, operation and parameter stays, with the same type,
+  bounds, required list and `_meta`, and the agent guide no longer calls
+  `operation` a plain string. The tools/list answer of the debug
+  `agentless-mcp-server` goes from 15,242 to 10,266 bytes, and the cl100k
+  count of its six tool entries from 3,092 to 1,956.
+- **Text answers are shorter: a one-line receipt, a shorter card, and whole ids
+  in the fan-in.** The receipt is one line that starts with the same
+  `// agentless-mcp receipt (repository data below)` marker, so a client that
+  matches the marker still finds it. The fields follow on that line. An MCP
+  answer names the repository only when the server has more than one root,
+  and a CLI answer always names it. The JSON `receipt` object does not change.
+  A symbol card no longer prints `(language)` or `in class X` on its second
+  line: the id prefix names the language, and the qualified name names the
+  owner. A card names the owner only when the symbol's own name holds a dot.
+  A `find_referencing_symbols` row prints the whole stable id, and the
+  `stable ids:` pattern line of each group goes. `RefGroup.id_prefix` and
+  `RefSite.name` leave the public API. A batch that the body budget shortens
+  can show one more body line, because the card head is shorter. Measured by
+  replaying 200 calls from the bench300 transcripts (a sample stratified by
+  tool and operation, one cold run per build, one server per root): 738,575
+  bytes before and 701,316 bytes after (-5.0%). `symbols find` is -21.1%,
+  `find_referencing_symbols` -22.3%, `read dir` -22.7%, `orient map` -1.7% and
+  `read slice` -2.8%. Each of the 200 new answers equals the old answer after
+  these three changes, byte for byte.
+- **A refused call gets one sentence per bad parameter, not the pydantic
+  dump.** Each sentence names the parameter and the value that the call gave,
+  and it gives the accepted form, for example "limit is 0, but must be an
+  integer from 1 to 500." For `lines`, it gives both forms. A name that the
+  tool does not take, a wrong `operation` value, a parameter foreign to the
+  operation, a missing parameter, the map's limit and the three `read slice`
+  refusals use the same form. A wrong `operation` value that another tool has
+  gets "Call the tool symbols with operation find." An unknown tool name gets
+  the list of tools, not the unplanned-failure text, and the log stays empty.
+  Every refusal keeps `isError: true`, and every accepted call keeps its
+  answer. The texts are rows of `crates/prompts/data/messages.json`. Measured
+  from the fixtures: the 349 refusals of `crates/mcp/fixtures/validate.json`
+  go from 96,735 to 23,001 bytes, and the 36 refused calls of
+  `crates/mcp/fixtures/calls.json` from 8,875 to 4,427 bytes.
+- **A call that gives no data for any item that it names is an error.** Four
+  calls now set `isError` true: a `read slice` of a path that does not read, a
+  `read slice` whose every range starts past the end of the file, a `symbols
+  overview` whose every path fails, and a `symbols expand` where no id
+  resolves. The answer has the refusal form and no receipt. It gives the
+  reason of each item, one per line, with the same words as before. For
+  example, `read(operation="slice", path="no/such.rs", lines=[1, 5])` gave
+  "no/such.rs: unreadable: No such file or directory" under the receipt with
+  `isError` false. Now it gives "Error calling tool 'read': no/such.rs:
+  unreadable: No such file or directory" with `isError` true. A call that gives
+  data for some of its items does not change. The CLI `slice` of ranges that
+  all start past the end of the file now exits 1, with one stderr row for each
+  range. Before, it exited 0 and wrote the reports to stdout:
+  `agentless-mcp slice inventory.py --lines 500:600` wrote "unsatisfiable: line
+  range 500-600 is beyond inventory.py (134 lines)" to stdout. Now it writes
+  "agentless-mcp: unsatisfiable: line range 500-600 is beyond inventory.py (134
+  lines)" to stderr. Claude Code runs a `PostToolUse` hook only after a call
+  that succeeds, so these calls no longer unlock the search gate. The README
+  sentence that said an Agentless call that errored still unlocks was false
+  for every answer with `isError` true. The README now says what the client
+  does. The guide says the rule next to the refusal paragraph. The changed
+  reference outcomes: calls 42, 43 and 45 of the `rich` run in
+  `crates/mcp/fixtures/calls.json`, the run `slice_beyond` in
+  `crates/cli/fixtures/read/scenarios.json`, and the 4 rows of
+  `crates/app/fixtures/read/views.json` whose ranges all fail. Each row of that
+  file now records the view's error beside its text.
+
+### Fixed
+
+The bullets from here to the `path::name` bullet are measured with the release
+binaries of 811b348 and of this change, over MCP stdio and the CLI.
+
+- **A refusal of a target that binds to nothing names the skipped code
+  files.** The MCP refusal of `find_referencing_symbols` dropped the
+  skipped-file warning, and a target in a skipped file read "the scan read no
+  file X" for a file that exists. The reason is now "the scan did not read X
+  (<skip reason>)" in `refs`, `explain` and `path`. The `refs` and `explain`
+  refusals add the warning line after the message, with at most 5 paths, as
+  the warning names them. Over a repository whose `pkg/big.py` has 1,717,815
+  bytes, `find_referencing_symbols` of `py:pkg/big.py::x` gave "no symbol
+  matches py:pkg/big.py::x: the scan read no file pkg/big.py" and now gives
+  "no symbol matches py:pkg/big.py::x: the scan did not read pkg/big.py
+  (skipped: 1717815 bytes exceeds the per-file cap of 1000000 bytes)", then
+  the warning line. Over the 523 recorded calls, 14 MCP refusals of `refs`
+  gain the warning line, and no other answer changes.
+- **A `path` source that binds to nothing says to pass a candidate as the
+  source.** `graph(path)` from `crates/json/src/WRONG.rs::float_text` ended
+  "Pass one as the target." It now ends "Pass one as the source."
+- **`explain` and `graph(path)` give no data as an error.** An `explain` that
+  binds to nothing and a `path` endpoint that resolves to no one node (no
+  match, several definitions or a data key) set `isError` false, so a guessed
+  name unlocked the search gate. Each is now a refusal with `isError` true,
+  as for `refs` and as the CLI's exit 1. Two resolved endpoints with no path
+  between them stay an answer. `symbols(explain)` of `HashMap` goes from
+  `isError` false to true. Over the 523 recorded calls, 1 `explain` answer
+  becomes a refusal.
+- **A `path::Type::method` target binds.** `refs
+  crates/app/src/endpoints.rs::BindingStatus::as_str` gave "does not define
+  BindingStatus::as_str" and exit 1, while `refs BindingStatus::as_str` gave
+  529 references. The `::` inside the qualified name now reads as `.`, so
+  both give 529 references. `expand` and `history` of the same text gave
+  ":BindingStatus: unreadable"; `expand` now gives the body at lines 36-39,
+  and `history` gives the 5 commits of that span.
+- **A `path:line` into a data file names the key at that line.** `explain
+  crates/prompts/data/messages.json:95` said "no symbol in
+  crates/prompts/data/messages.json spans line 95", though the key
+  `target_no_match` spans it. It now says "crates/prompts/data/messages.json
+  is a data file, and its keys are not symbols that refs, explain or path
+  bind. The key json:crates/prompts/data/messages.json::target_no_match spans
+  line 95. Expand that id to read the key." `explain Cargo.toml:5` names
+  `toml:Cargo.toml::workspace.package`.
+- **A missed target that names a file lists that file's definitions first.**
+  `refs crates/json/src/float.rs::float_text#2 --limit 1` listed only
+  `rs:crates/cli/src/args/declared.rs::float_text`, and now lists
+  `rs:crates/json/src/float.rs::float_text`. A path written from the root,
+  `./crates/json/src/float.rs::float_text`, or as an absolute path below the
+  root gave "the scan read no file ./crates/json/src/float.rs" and now gives
+  the 24 references. An absolute path outside the root, `/etc/foo.py::x`,
+  gives "path refused: resolved to /etc/foo.py, which is outside the root R".
+- **The HTTP refusal of `--allow-client-roots` no longer says that the flag
+  lets client roots name repositories.** No code reads them. The refusal now
+  says "The flag has no effect: only --root and --roots-from name the
+  repositories this server may serve."
+- **The guide and the skill say what the target binding does.** The `path`
+  section said that a dotted name matches on its last segment, so
+  `Resolver.resolve` also matched `ToolHandlers.resolve`. It now says that a
+  dotted name binds only to an exact qualified name or a module-path match,
+  and otherwise binds to nothing and lists the candidates. Its three answers
+  now give their `isError` value. The skill says to pass `repo_root` when the
+  schema lists it, not on every call.
+
+- **A `path::name` target binds to its definition.** `refs
+  crates/json/src/float.rs::float_text` said "resolves to no symbol; these are
+  the references to the name float_text, wherever it is defined", then "no
+  references", while the stable id gave 24 references. The target fell to the
+  name lookup, which split at the last dot and looked up `rs::float_text`. A
+  text with a file path before its first `::` now reads as the stable id of
+  that file, in `refs`, `explain` and `path`. A `path:line` binds to the
+  innermost symbol that spans the line, and `Type::method` reads as
+  `Type.method`. Over the 251 recorded `refs` calls, all 20 `path::name`
+  calls now bind: 18 go from "no references" to 17 to 34 references, and 2
+  keep their 4 rows under a header that names
+  `py:openlibrary/core/models.py::User.preferences` in place of the notice.
+
+- **A target that binds to nothing says so, and no answer reads as a
+  completed zero.** A name that no file declares got "no references to X
+  outside its own definition (complete scan: N files, 0 skipped)". That line
+  claimed a definition and a complete search. It now gets "no symbol matches
+  X", and the count of the code files that spell the name, or the stable ids
+  of the definitions of the name when the target's file or qualifier matches
+  none of them. A target never falls back to definitions outside its own
+  scope: a stable id, a `path::name` or a qualified name that its file does
+  not define binds to nothing, in `refs`, `explain` and `path`. Before, `refs`
+  listed the rows of every definition of the last name, and `explain` and
+  `path` took another file's symbol, for example `explain
+  rs:crates/json/src/WRONG.rs::float_text` explained
+  `rs:crates/cli/src/args/declared.rs::float_text`. The notice "resolves to no
+  symbol" is gone. Over the 251 recorded `refs` calls, 53 answers change to
+  this line: 48 were "no references" for a name that no file declares
+  (`find-symbol` counts 0 to 59 files that use the name), and 5 were rows of
+  every definition of the last name
+  (`models.Image` 4 times, `config.IsValidImage` once), which now list 1 or 2
+  candidate ids.
+
+- **A `refs` absence over a scan that skipped a code file says that it is
+  partial.** The line read "no references to X outside its own definition"
+  under the skipped-file warning. It now ends "in the N files read (partial
+  scan: M code files skipped)". A skipped data file does not make the check
+  partial, because a data file holds no reference.
+
+- **A Rust `tests.rs` or `testing.rs` is a test path.** The rule read test
+  directories, the stem `conftest`, the suffix `_test` and the infixes `.test.`
+  and `.spec.`, but not the file that `#[cfg(test)] mod tests;` loads. So a map
+  of this repository focused on `crates/git/src/worktree.rs` ranked
+  `crates/git/src/worktree/tests.rs` second, and health counted its test
+  functions as orphans. Now a Rust file, by its language, with the stem `tests`
+  or `testing` is a test: a pure source of the ranking, a test companion,
+  outside health, the complexity summary, `clone_delta` and `contract_drift`,
+  and under "defined in tests" in shared callers. Over the 144 checkouts of
+  the 150 Loc-Bench instances, 51 swe-explore-bench repositories and this
+  repository, the rule moves 1, 16 and 112 files. The parent module of each
+  one declares it under `cfg(test)` or a test-support feature, so the rule
+  moves no product code. A Django `tests.py` stays a source file. Measured
+  with the release binaries of bc86507 and of this change on 8d0dbba: health
+  goes from "8034 symbols; 1246 excluded" and 247 orphan candidates to "6656
+  symbols; 2624 excluded" and 83, and the `worktree.rs` map lists
+  `worktree/tests.rs` as a companion instead of a ranked file. The file maps
+  of the 150 Loc-Bench instances, with their seeds and `--max-files 20`, keep
+  the same ranked files. The guide's test-path sentence names the rule.
+- **A test-companion row marks each file that the map does not list.** A row
+  names the files that the whole test file references among the seeds, the
+  ranked files and, for a test two hops out, the files between. The section
+  header says "tests exercising the files above", but a seed that
+  `--max-files` cut and a file between appear in no file block. On Agentless,
+  `map --focus agentless/fl/localize.py --budget 300 --max-files 3` printed
+  "-- file references agentless/util/postprocess_data.py", a file the map does
+  not list. Now that name reads `agentless/util/postprocess_data.py (not
+  listed)`. The JSON `covers`, the row order and the ranked files do not
+  change. Measured with the release binary of bc86507 over the 100 focused
+  function maps of 72 Loc-Bench repositories that the token ceiling did not
+  trim: 32 of 450 rows in 11 maps named an unlisted file, 14 rows two hops out
+  and 18 rows with a cut seed. No golden or recorded fixture holds such a row.
+  The mark is the new message `map_companion_unlisted`. The guide says what
+  the mark means, and that `covers` names the files of the text row.
+- **A count of one takes the singular form in every cut line and count of the
+  graph, fan-in, find, explain, expand and map answers, and in two config
+  warnings.** The shared `omitted_line` took one plural noun for every count,
+  and the other counts chose their noun in code. So the answers printed
+  "... 1 more communities not listed (limit 2)", "... 1 more unused exports
+  not listed (limit 4)", "including every reference in 1 more files", "the
+  per-call limit is 1 symbols", "1 community over 1 files", "diagram of 1
+  modules", "unresolved: 1 further ids are not listed", "stoplist in
+  .agentless-mcp.json: 1 entries are not bare names ... and were dropped" and
+  "1 further unknown keys". Now each of these lines is a row of
+  `crates/prompts/data/messages.json` with the `{count:one|many}` field: 56
+  new rows. `omitted_line` and the health `plural` helper are gone. At a count
+  of two or more the text does not change. Measured with the release binaries
+  of 87e8c6e and of this change over 103 calls of health, refs, history,
+  communities, cycles, diagram, expand, explain, find and map in this
+  repository at 8d0dbba, django-11099, lucene-12022 and element-web: 36
+  answers change, each in its note or count lines only, with the same ranks,
+  rows and order. The map's rows text is one character shorter for each "1
+  more symbol" line, so its measured tokens can drop by one: lucene `map
+  --budget 200 --max-files 1` "renders to 204 tokens" now reads 203, and the
+  JSON `rendered_tokens` of two recorded maps goes from 175 to 174 and from 54
+  to 53. The `%% 1 reference edge not drawn` comment is inside the diagram
+  document, so a committed diagram with exactly one reference edge over the
+  bound drifts once under `diagram --check`.
+- **Each note of the cycles, communities and diagram answers starts with
+  `// note:`.** The unresolved-import note of cycles, the weak-partition and
+  pass-limit notes of communities, and the two caveats of the diagram printed
+  `note:` with no marker, some indented, and the diagram caveat said "the 10
+  module(s)". Now each note is a messages row at column 0 in its old place,
+  and the diagram caveat counts its modules with the choice field. The CLI
+  prints each diagram caveat line on stderr as it is, under the receipt lines,
+  in place of `agentless-mcp: note: ...`. The diagram JSON `caveat` holds the
+  note sentences without a marker, as the receipt JSON holds its `note`: it
+  loses its `note: ` prefix. The map notes (unsettled ranking, budget, capped
+  walk, the three nothing-ranked notes) move from literals in the renderer to
+  messages rows. The budget note now reads "the 3 ranked files are listed" in
+  place of "every one of the 3 ranked files is listed", and "the 1 ranked file
+  is listed ... under it" for one file.
+- **The empty map and the empty communities answer give one reason.**
+  Communities printed "nothing in this repository parsed into files" and the
+  map "nothing in this repository parsed into symbols". Both fire when no file
+  parsed: a file with no symbol still ranks in the map (measured: one file `x =
+  1` gives a one-file map and one community). Both now say "no file in this
+  repository parsed".
+- **The analyze_structure description states the unused-export rule of the
+  code.** It said "a public function no counted edge reaches", and the health
+  answer counts "a public function outside a function body". The description
+  now says "a public function outside a function body that no counted edge
+  reaches". No v2 tool serves it: tools/list stays 10,534 bytes, byte for
+  byte (measured on the release binaries of 854c90c, 87e8c6e and this change).
+- **An overview with docstrings keeps the doc comments of Go, JavaScript,
+  TypeScript, Java, C# and Lua.** The skeleton found a doc comment only by the
+  marker nodes of the Rust grammar, so in the other languages the
+  `docstrings` option changed nothing: the JSDoc of element
+  `src/SdkConfig.ts:95-97` dropped. Now each language's own doc form counts:
+  `/**` in JavaScript, TypeScript and TSX (JSDoc), `//` lines and `/* */` in
+  Go (go.dev/doc/comment), `/**` and `///` lines in Java (the JDK 25 doc
+  comment specification), `///` lines and `/**` in C# (the C# specification,
+  annex D), and in Lua `---` lines that go on over `--` lines, and `--[[--`
+  (LDoc). `/***` and `////` are not doc comments. A doc comment counts only
+  when a named node starts on the line below it, past other comments, so a
+  comment above a blank line or above a closing `}` stays dropped. It keeps
+  its marker and its first line of text, cut at 200 characters, as a Rust doc
+  comment does. A line that holds only markup tags, such as C# `<summary>`, a
+  Go directive such as `//go:noinline`, and a Lua line of hyphens hold no
+  text. `syntax::Parsed::next_sibling` is new. Without docstrings, nothing
+  changes. Measured with the release binaries of 8d0dbba and of this change,
+  `symbols` overview over 58 files of element, django, three.js, caddy,
+  lucene, ansible, telescope.nvim, flipt and this repository: without
+  docstrings, 57 answers are byte-identical and one is the SQL fix below.
+  With docstrings, 34 answers gain 954 doc lines and lose none, and 23 do
+  not change, among them every Rust and Python file. `SdkConfig.ts` gains
+  `/** Resets the config to be completely empty. */`. On 5 files per
+  language, docstrings adds 65.0% to the Go answers, 7.1% to JavaScript,
+  30.8% to TypeScript, 65.8% to Java, 2.7% to C# and 45.0% to Lua. The
+  recorded skeletons with docstrings change in 25 cases of
+  `crates/facts/fixtures/skeleton_{go,java,csharp,typescript}.json`.
+- **An SQL skeleton drops `/* */` comments as it drops `--` comments.**
+  tree-sitter-sql gives a block comment the kind `marginalia`, which neither
+  the SQL comment kinds nor the skeleton's list of unlisted comment kinds
+  held. The 4-line `/* */` header of flipt
+  `config/migrations/sqlite3/1_variants_unique_per_flag.up.sql` stayed in
+  its overview, and now it goes. A comment that shares a line with code goes,
+  and the code stays. The 3 cases of `crates/facts/fixtures/skeleton_sql.json`
+  that hold `/* */` change in all four option sets.
+- **`refs` lists no declaration line in any language.** Only the Python
+  extractor marks a declaration, so `refs` listed the line that declares
+  another definition of the name in every other language. One rule in
+  `crates/facts/src/declared.rs` now decides it for every language: a line is
+  no reference row when it spells the name no more times than the symbols of
+  that name that have their name on that line. A line such as `class
+  Migration(migrations.Migration):` spells the name twice and stays a row. The
+  resolver keeps its rule: it binds no spelling on a symbol's name line.
+  Python answers change for one reason: a module-level constant that two or
+  more files define is a declaration, and its line is no longer a row.
+  Measured with the release binaries of 8d0dbba and of this change on
+  lucene-12022: `refs JavaLoggingInfoStream --limit 10` went from 5
+  references, with the class line @35 and the constructor lines @47, @59 and
+  @70, to 1 reference. On django-15161, `refs DATE_FORMAT --limit 10` went
+  from 78 references, 77 of them the constant's own lines in the locale files,
+  to 1. Over every bare name that a declaring line spells, the rows that the
+  rule drops are 3,187 in this repository (3,022 Rust, 39 Python), 1,051 in
+  django-15161 (1,005 Python, 46 JavaScript), 3,143 in element-web (2,091 TSX,
+  1,048 TypeScript) and 40,162 in lucene-12022 (40,126 Java). The lines that
+  stay rows because they spell the name again are 85, 266, 5 and 282.
+- **A bare name's `refs` header names its definition, or counts them.** A
+  bare name with one definition now gets the header of its qualified name,
+  `N references to <stable id>`, and the JSON adds `definition`. A name of
+  several definitions says how many share it. Measured on django-15161:
+  `refs deconstructible` went from "32 references to deconstructible" to "32
+  references to py:django/utils/deconstruct.py::deconstructible", and `refs
+  as_sql` from "166 references to as_sql" to "166 references to as_sql, a name
+  that 90 definitions share".
+- **A data file's id that names no key gets the reason that `expand` gives.**
+  `explain`, `refs` and `path` took the code path for such an id: "no symbol
+  matches", a code symbol of the same name, or "no symbol or file matches".
+  Now each gives the reason of `expand`, and the `refs` JSON adds
+  `unresolved`. `path` with a data key's id says in one sentence that a data
+  key has no edges. Measured on this repository at 8d0dbba: `explain
+  json:crates/prompts/data/messages.json::refs` went from the card of
+  `rs:crates/app/src/refs.rs::refs`, the first of 4 code definitions named
+  `refs`, to "crates/prompts/data/messages.json keeps an outline of its keys,
+  and refs is not in it: ...", `refs` of that id from 74 references to the
+  code name `refs` to the same reason, and `path
+  json:crates/prompts/data/envelope.json::receipt_header
+  rs:crates/app/src/refs.rs::refs` from "no symbol or file matches ..." to
+  "json:crates/prompts/data/envelope.json::receipt_header is a data key, and a
+  data key has no edges: Grep finds the spellings of receipt_header." Six texts
+  move to rows of `crates/prompts/data/messages.json`: the two `refs` headers,
+  the `path` sentence for a data key, "no symbol matches", "no symbol or file
+  matches" and the reason below.
+- **The reason for an id that names no symbol claims no earlier state.** The
+  reason said "`<path>` no longer defines `<name>`" also for a guessed id. Now
+  it says "`<path>` does not define `<name>`". Measured on this repository:
+  `expand rs:crates/app/src/refs.rs::never_was` went from
+  "crates/app/src/refs.rs no longer defines never_was" to
+  "crates/app/src/refs.rs does not define never_was".
+- **A path row names a file once, and a step with no line prints no line.** A
+  file node is its own label, so each file row printed its path twice, and a
+  step that reached an imported file printed `@0`. Now a file row prints
+  `[path]` once, and `@N` only when N is above 0. Symbol rows and the JSON do
+  not change. The guide's path example shows the current row form. Measured
+  with the release binaries of 65b7d1a and of this change on django-15161:
+  `path django/db/models/expressions.py django/utils/deconstruct.py` went from
+  "-> imports (resolved-via-import)    django/utils/deconstruct.py
+  [django/utils/deconstruct.py] @0" (354 bytes) to "-> imports
+  (resolved-via-import)    [django/utils/deconstruct.py]" (285 bytes).
+- **The body map prints each source line once, and its count lines count
+  only the symbols with no body.** The body map seated its first ids and did
+  not compare their spans, so a nested function printed inside each body that
+  held it. It also emptied each file's rows, so "... N more symbols in this
+  file not listed" counted the symbols whose bodies followed. Now an id whose
+  lines meet a seated body of its file gives its seat to the next id. A file's
+  count, in the text and in the JSON `omitted`, leaves out each symbol that has
+  a body. Each note line of a map, a body map and an expand answer now starts
+  with `// note: `, the marker of a line the tool writes about itself: the
+  shortened-bodies note, the unsettled-ranking note, the budget note, the
+  companion-walk note and the three nothing-ranked notes. Measured on
+  django-15161, `map --focus django/utils/deconstruct.py --granularity body
+  --budget 1500`, 2 files: 49 distinct lines with 34 of them printed two or
+  three times, to 77 distinct lines with none printed twice, and the count
+  line of deconstruct.py from 4 (all 4 had a body) to 2.
+- **A diagram label keeps the underscores of a path.** The label sanitizer
+  merged every run of underscores, so `django/conf/__init__.py` printed as
+  `django/conf/_init_.py`. Now only a run of replaced characters becomes one
+  underscore. Mermaid prints the text of a quoted label as it is written
+  (mermaid.ai flowchart syntax, "Special characters that break syntax"), so
+  the label needs no escape. On django-15161 the default diagram has 17
+  `__init__.py` labels, and it grows from 4,372 to 4,406 bytes.
+- **Two communities never have the same label.** A label was the directory
+  that a strict majority of the members share, so many communities had the
+  same label, and `repository root` named no member. Now a community of one
+  file has that file as its label. Any other community has `<directory>
+  around <hub>`: the majority directory or `repository root`, and the member
+  with the most edge weight inside the community, the first in path order on
+  a tie. Measured over the whole partition of django-15161, element-web and
+  this repository at ea6ed16 (861, 233 and 312 communities), the label values
+  that two or more communities shared went from 168, 11 and 47 to 0. The default
+  communities answer grows from 13,265 to 14,042 bytes (+5.9%), 13,726 to
+  14,507 (+5.7%) and 10,713 to 11,407 (+6.5%). The grouped diagram grows from
+  5,554 to 6,361 bytes (+14.5%), 5,499 to 6,290 (+14.4%) and 2,903 to 3,508
+  (+20.8%). Its subgraph titles are cut at 60 characters. After the cut, no
+  two shown titles are equal (base: 18, 16 and 7 subgraphs shared a title).
+- **A function nested in a function or a method is not an unused export.**
+  `health` listed a nested closure, such as `action.decorator`, as an unused
+  export and as an orphan candidate. Now a function whose parent is a function
+  or a method of the same file is not an export. It can still be an orphan
+  candidate. The section header reads "public function outside a function
+  body, no counted edge in". Measured on django-15161: unused exports 447 to
+  285, orphan candidates 321 to 321. On element-web (190 and 94) and this
+  repository (309 and 236) the counts do not change: their extractors emit no
+  nested function.
+- **The overview of a Rust or Lua file keeps the lines under a comment.** The
+  default overview and the `--docstrings` overview both had the defect. The
+  skeleton planned a node inside a comment as a comment of its own: the
+  `doc_comment` of a Rust `///`, `//!` or `/** */` comment, and the content of
+  a Lua comment. A `///` line lost its text and took the next source line, so
+  a field printed as `///    pub schema: i64,`, and a Lua comment left `--`.
+  Now the default overview drops Rust doc comments and Lua comments whole, and
+  every declaration line prints whole. With `--docstrings`, a run of `///` or
+  `//!` lines prints its marker and its first line of text, and a `/** */` or
+  `/*! */` comment prints on one line, at most 200 characters. Lua comments
+  stay dropped. The reference skeletons change in 3 Rust cases and 8 Lua
+  cases. Measured with the release binaries of the base and of this change:
+  36 files in 21 languages with no Rust doc comment and no Lua comment give
+  the same output in both modes, byte for byte. In 12 Rust and Lua files,
+  each changed line is a comment line or a source line that a comment covered.
+- **`refs` resolves a qualified name such as `Class.method`.** The name lookup
+  confirmed a dotted name only when a module path came before the qualified
+  name, so `refs Value.as_sql` said "resolves to no symbol" and listed every
+  `as_sql` in the repository. Now `refs` and `explain` share one resolution: a
+  dotted name that no path confirms names the definitions whose qualified name
+  it spells. When it names one definition, the header names that definition's
+  stable id, and the JSON adds `definition`. Measured on django-15161 with the release binaries of the base and
+  of this change: `refs Value.as_sql` went from 260 references under the
+  "resolves to no symbol" notice to "166 references to
+  py:django/db/models/expressions.py::Value.as_sql", and `refs
+  Expression.identity` from 24 to 14, with its own lines 398, 404 and 413 gone.
+- **A declaration is no longer a reference.** `refs` listed the line that
+  declares a same-name definition, such as `def as_sql`, as a name-only
+  reference. Now `refs` drops each site that the extractor marks as a
+  declaration. Only the Python extractor marks declarations. On django-15161,
+  `refs as_sql` went from 260 to 166 references and `refs deconstruct` from
+  353 to 275. The difference is 94 and 78, the number of `def` and `class`
+  lines of each name. The CLI fixture rows `refs_bare_name`, `refs_cut` and
+  `refs_cut_json` change from 10 to 9 references: the declaration `def helper`
+  at a.py:1 is gone.
+- **`explain` lists at most `limit` other definitions, then a count line.** It
+  listed every other definition of the name as `also defined at`, whatever the
+  limit. Now the text ends the list with "... N more definitions not listed
+  (limit L)", and the JSON adds `alternatives_omitted`. A qualified name that
+  names one definition has no alternatives. The guide's `explain` and `path`
+  sections now say so. On django-15161, `explain
+  Value.as_sql --limit 3` went from 89 rows and 7,845 bytes to 0 rows and 1,030
+  bytes, and `explain deconstruct --limit 3` from 76 rows and 7,801 bytes to 3
+  rows, the count line and 1,598 bytes.
+- **`explain` and `refs` resolve a data key's stable id.** Data keys stay out
+  of the name graph, so `explain` said "no symbol matches" and `refs` said
+  "resolves to no symbol" for an id that `expand` and `history` resolve. Now
+  both resolve the id with the resolver that `expand` uses. `explain` prints
+  the key's card and the sentence "ID is a data key, and a data key has no
+  fan-in: Grep finds the spellings of KEY." `refs` prints only that sentence,
+  and its JSON adds `data_key`. Before, `explain toml:Cargo.toml::workspace.package`
+  on this repository explained the Rust function `package` in
+  xtask/src/layers.rs. Now it prints the table's card.
+- **The `find_referencing_symbols` description explains two marks again.**
+  The shorter surface had dropped two sentences. The description says again
+  that the tier 'unique' means only that the repository defines the name one
+  time, not that the two files are connected. It says again that a group
+  marked 'locals not checked' comes from a language that has no scope
+  analysis. Measured from the release `agentless-mcp-server`, one stdio
+  session: `tools/list` goes from 10,266 to 10,479 bytes, and the cl100k count
+  of the tool entry from 221 to 266.
+- **The tools agree on when a call that gives no data is an error.** The same
+  missing file gave `isError` true in `symbols locate`, but false in `read
+  slice`, `symbols overview` and `symbols expand`. A path outside the root gave
+  true in `read slice`, but false in `symbols overview`. A reversed range gave
+  true, but a range past the end of the file gave false. Measured with the
+  release binaries of the base 4ad5177 and of this change, MCP stdio on this
+  repository, `isError` before and after: `read slice` of `no/such.rs` with
+  `lines` or `whole_file`, of the directory `crates`, and of
+  `Cargo.toml` lines 90000-90005: false to true. `symbols expand` of
+  `rs:no/such.rs::nope` or `rs:Cargo.toml::nope`: false to true. `symbols
+  overview` of `no/such.rs`, `../out.py` or `README.md`: false to true. The
+  partial calls `read slice` of `Cargo.toml` lines 1-2 and 90000-90005, and
+  `symbols overview` of `no/such.rs` and `Cargo.toml`, give the same text as
+  before. A surface diff of 70 calls of `read`, `find`, `overview` and
+  `expand` over element-web, django-15161 and tokio-6752: 46 answers are the
+  same, 21 changed by this rule, and 3 by the next fix.
+- **The `find` line for unlisted data files counts the files that it does not
+  name.** The list ended with three dots and then the template's period, so the
+  line showed four dots. Now it ends as the line for data files outside their
+  outline ends. On element-web, `symbols(operation="find", name="Failure to
+  create room")` went from "src/i18n/strings/el.json (1), .... This answer"
+  to "src/i18n/strings/el.json (1), ... 41 more. This answer". No other
+  message ends a list with three dots before its period.
+- **A definition's span starts at its first decorator, attribute or overload
+  signature.** The span left out a Python decorator, a Rust outer attribute
+  such as `#[derive]`, a TypeScript decorator in a class body or before
+  `export`, and the overload signatures of a TypeScript function or method.
+  `find`, `expand`, `locate`, `history`, the map and `health` now give the
+  span from that first line. A Java, C#, Kotlin, PHP, Scala, Swift or C++
+  grammar puts the annotations inside the definition, so those spans do not
+  change. The stable id and the name do not change. A symbol also stores the
+  line of its name. The slice scope header, the declarations that the
+  reference resolver skips, and the patch checks use that line. A reference on
+  a decorator, attribute or overload line now belongs to that definition, and
+  an overload signature is no longer a reference to its own function.
+  `FACTS_VERSION` is 7, so every index rebuilds. Measured with the release
+  binaries of 4ad5177 and of this change: on django-15161, `find F` went from
+  `@582-609` to `@581-609`, and `expand` shows line 581
+  `@deconstructible(path='django.db.models.F')`. `path` from `F` to
+  `deconstructible` went from 3 hops to 1, and `refs deconstructible` names
+  the decorated class where it said "(module level)". On element, `expand
+  SdkConfig.get` went from `@69-77` to `@67-77`, with its two overload
+  signatures, and `refs SdkConfig.get` from 2,019 to 2,017 references. On
+  lucene, a slice in an annotated method gives the scope header
+  `77|   public void message(String component, String message) {` where it
+  gave `76|   @Override`. The index moved 5,118 of 35,064 symbol starts on
+  django-15161, 8 of 33,701 on element and 2,593 of 12,620 on this
+  repository, and each moved start is the first line of the decorator,
+  attribute or overload run above the old start. Of the 266 core
+  gold regions of the flat60 bench instances, 2 start on an attribute or
+  decorator line that the old span left out, and 4 of the 1,065 optional
+  regions do. A forced index took the same time, median of 5 runs: django
+  0.49 to 0.49 s, element 0.37 to 0.38 s, this repository 0.42 to 0.43 s.
+- **A TOML table ends at its last key.** The span of a table ran over the
+  blank lines up to the next header, so `[toml:Cargo.toml::workspace.package]`
+  was `@5-13` and line 13 was `[workspace.dependencies]`. Now it is `@5-11`. A
+  table with no key ends at its header line. On this repository, 408 table
+  ends moved.
+- **An elided body keeps the code after it on its last line.** The overview
+  of `impl Area for i32 { fn area(&self) -> f64 { 0.0 } }` printed
+  `impl Area for i32 { fn area(&self) -> f64 { ... }` and lost the impl's `}`.
+  A JavaScript callback lost its `);` and an arrow function its `;`. Now the
+  overview keeps the text up to the end of the outermost node that ends on
+  that line, and a comment after it still goes. The reference skeletons
+  change for 10 C#, Java, JavaScript, Rust, TSX and TypeScript source files:
+  28 cases with their variants, 112 strings in all.
+- **An SQL overview keeps `COMMENT` clauses and `COMMENT ON` statements.** The
+  overview dropped every node whose kind name holds "comment", so `name TEXT
+  COMMENT 'the display name'` lost `COMMENT`, and `COMMENT ON TABLE users IS
+  '...';` printed as `;`. Now the overview drops the comment kinds of the
+  language, and the block comments of Kotlin and Swift and the HTML comments
+  of JavaScript.
+- **The guide no longer says that a code overview has line numbers.** The
+  skeleton section said "It preserves original line numbers, so a line you see
+  here is a line you can slice", but a code overview prints none. It now says
+  that the CLI option `--numbers` puts `N|` before each line, that the
+  `overview` operation has no such option, and that a data-file overview gives
+  each key's line as `@N`. Measured with `skeleton` and `skeleton --numbers`
+  on 5 files (django expressions.py and deconstruct.py, element SdkConfig.ts
+  and languageHandler.tsx, this repository's values.rs): numbers would add 18
+  to 3,703 bytes per file, 3.7 to 25.0 percent, and 5,385 of 26,463 bytes in
+  all (20.3 percent).
+- **The macOS CI and release jobs pass again.** The modularity of a community
+  partition squared each community's share with the platform `pow`. Apple's
+  `pow(x, 2)` differs from glibc's by one ulp at a near-tie, so the macOS jobs
+  rewrote the graph fixtures with the Python reference of tag `v0.11.0rc1`
+  before the tests. That reference cannot write the fixtures of this tree,
+  which now hold a `name_line` in each symbol row and the new community
+  labels, so the step failed on both macOS targets. Now the share is the
+  product `ratio * ratio`, which IEEE 754 rounds correctly on every platform.
+  The step and `scripts/platform_graph_fixtures.sh` are gone. On Linux,
+  `cargo insta test --check --workspace --test-runner nextest` passes 1407 of
+  1407 tests with no expected value changed, as on the base.
+- **`find-symbol` lists a name in the case of the query first.** The match
+  ignores case, and so did the rank: every name equal to the query in any case
+  shared one tier, and the path broke the tie. Now the tiers are the name as
+  the query writes it, the name in another case, an exact qualified name, a
+  name prefix, and every other match. The data keys that get an exact card
+  stay the same. Measured on django-15161 with the release binaries of 65b7d1a
+  and of this change: `find Value` moved the class `Value` from row 8, after
+  seven `value` methods, to row 1. `find Value` with limit 5 did not list the
+  class, and now lists it first. `find F` with limit 5 went from the minified
+  xregexp `f` first and the class `F` second to `F` and `DateFormat.F` first.
+  Over the 676 recorded bench300 find calls (668 answered by both builds), no
+  call gains or loses a gold-file match, the 3,779 listed rows and the 11,137
+  matches stay the same, and 10 calls list the same rows in another order.
+- **A count of one takes the singular form.** 17 message rows printed a plural
+  noun after a count of 1, such as "1 data keys match", "in 1 data files",
+  "(1 ids)", "1 files were skipped", "1 newest commits shown" and "(1 lines)".
+  A message template can now hold a choice field, `{count:one|many}`, which
+  prints the first form for a count of 1 and the second form for any other
+  count. `cargo xtask generate` refuses a choice on a text value, a choice
+  with a malformed body, and a choice whose count the template does not print.
+  The 17 rows use it for their nouns, verbs and pronouns: "1 data key
+  matches", "1 file was skipped and is absent", "1 entry that names no gated
+  check ... It is ignored". A count other than 1 prints as before. Measured with
+  the release binaries of 65b7d1a and of this change on django-15161, element
+  and this repository: `find eslint` went from "occurs in 1 data files outside
+  their outline" to "occurs in 1 data file outside its outline", `expand` of a
+  repeated id from "(1 ids)" to "(1 id)", `history` with limit 1 from "1 newest
+  commits shown" to "1 newest commit shown", and a slice of the one-line
+  `rustfmt.toml` from "(1 lines)" to "(1 line)".
+- **`cycles` names its order when a limit cuts the list.** The rows run
+  shortest chain first, and no answer said so, so `cycles --limit 2` on element
+  left out a 755-file knot with no word on why. The cut line now ends with the
+  order, and a cut of one cycle says "cycle": element `cycles --limit 2` went
+  from "... 2 more cycles not listed (limit 2)" to "... 2 more cycles not
+  listed (limit 2, shortest chain first)", and django `cycles --limit 15` from
+  "... 1 more cycles not listed (limit 15)" to "... 1 more cycle not listed
+  (limit 15, shortest chain first)". An answer that no limit cuts does not
+  change.
+- **The guide's example answers are answers of this build.** The `explain`
+  example still showed the old card ("reports.py:29-44  function (python)",
+  rows "references SEPARATOR    reports.py:9    [id]", a fan-out of 8). It is
+  now the answer for `reorder_report` on the `repo_py` fixture, and a test
+  holds it equal to the explain golden. The test companion row said "covers",
+  and the answer says "-- file references". The tier headers said "(1
+  references, same-file)". The shared-callers rows showed `id    file:line`,
+  and the answer shows `[id] @line`. The expand cut marker, the resolve-locs
+  reason, the index line (`tags.db`, now `agentless.db`) and the
+  `verdicts.jsonl` candidate record were also out of date. Each one is now a
+  real answer, cut to the lines its paragraph needs, and a second test holds
+  the companion example equal to the map golden of `repo_py_tests`.
+- **The guide says how a test file can still rank in the map, and which files
+  are tests.** It said that a test never enters the ranked map. The rule only
+  stops rank from flowing back along a test's own references: a test still
+  ranks in a map with no focus, and when a ranked file references a name that
+  the test defines. On django, the unfocused map ranks `django/test/__init__.py`.
+  On this repository, a map focused on `crates/render/src/receipt.rs` ranks
+  `crates/render/src/tests/rows.rs`. The map section now states the test-path
+  rule once, with what it reads as a test (`django/test/`) and what it does
+  not (a Django `tests.py`). The shared-callers section refers to it.
+- **The guide states the order of `refs` groups and of `find-symbol` cards.**
+  `refs` groups come in path order and in tier order within a file, so on
+  django `refs F` lists the name-only `jquery.min.js` group second. The limit
+  takes one site per file in turn. The `find-symbol` section names the five
+  tiers above.
 
 ## 0.11.0rc1 -- 2026-10-23
 

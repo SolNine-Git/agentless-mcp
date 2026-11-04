@@ -255,16 +255,39 @@ pub(super) fn hotspots(
     Bounded::with_total(rows, units.len(), limit)
 }
 
-// A symbol carries no start byte, so a unit finds its symbol by start line and name.
-type Sites<'d> = BTreeMap<(&'d str, u32), Vec<(&'d str, &'d str)>>;
+// A symbol carries no start byte, so a unit finds its symbol by name among the callables whose
+// span holds the unit's start line. A unit starts after the decorators in some languages only.
+type Sites<'d> = BTreeMap<&'d str, Vec<Site<'d>>>;
+
+struct Site<'d> {
+    line: u32,
+    end_line: u32,
+    stable_id: &'d str,
+    name: &'d str,
+}
+
+impl Site<'_> {
+    // A Lua name is the whole qualified name, and a Go name only the leaf.
+    fn holds(&self, start_line: u32, qualname: &str) -> bool {
+        let named = qualname == self.name
+            || qualname
+                .strip_suffix(self.name)
+                .is_some_and(|head| head.ends_with('.'));
+        named && self.line <= start_line && start_line <= self.end_line
+    }
+}
 
 fn callable_sites<'d>(definitions: &'d BTreeMap<String, Definition<'_>>) -> Sites<'d> {
     let mut sites: Sites<'d> = BTreeMap::new();
     for (stable_id, definition) in definitions {
         let symbol = definition.symbol();
         if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
-            let site = sites.entry((definition.path(), symbol.line)).or_default();
-            site.push((stable_id.as_str(), symbol.name.as_str()));
+            sites.entry(definition.path()).or_default().push(Site {
+                line: symbol.line,
+                end_line: symbol.end_line,
+                stable_id: stable_id.as_str(),
+                name: symbol.name.as_str(),
+            });
         }
     }
     sites
@@ -283,22 +306,17 @@ fn hotspot_row(placed: &PlacedUnit, sites: &Sites<'_>) -> HealthComplexityRow {
     }
 }
 
-// A symbol's name is the whole qualified name in Lua and only the leaf in Go. Two candidates
-// give no id rather than a guess.
+// The innermost callable of the unit's name that holds its start; two candidates that start on
+// the same line give no id rather than a guess.
 fn unit_stable_id(placed: &PlacedUnit, sites: &Sites<'_>) -> Option<String> {
-    let qualname = placed.unit.qualname.as_str();
-    let candidates = sites.get(&(placed.path.as_str(), placed.unit.start_line))?;
-    let found: Vec<&str> = (candidates.iter())
-        .filter(|(_, name)| {
-            qualname == *name
-                || qualname
-                    .strip_suffix(*name)
-                    .is_some_and(|head| head.ends_with('.'))
-        })
-        .map(|(stable_id, _)| *stable_id)
+    let (start_line, qualname) = (placed.unit.start_line, placed.unit.qualname.as_str());
+    let found: Vec<&Site> = (sites.get(placed.path.as_str())?.iter())
+        .filter(|site| site.holds(start_line, qualname))
         .collect();
-    match found.as_slice() {
-        [only] => Some((*only).to_owned()),
+    let innermost = found.iter().map(|site| site.line).max()?;
+    let mut inner = found.iter().filter(|site| site.line == innermost);
+    match (inner.next(), inner.next()) {
+        (Some(only), None) => Some(only.stable_id.to_owned()),
         _ => None,
     }
 }

@@ -2,6 +2,11 @@
 //! response body, the whole view as JSON, and the receipt summary and caveat of the command line.
 
 use app::{ChartNode, DiagramView, Flowchart};
+use prompts::envelope::RECEIPT_NOTE;
+use prompts::messages::{
+    DIAGRAM_EDGES_UNLISTED, DIAGRAM_ELIDED, DIAGRAM_NOT_CONVERGED, DIAGRAM_SUMMARY,
+    DIAGRAM_SUMMARY_FOCUS, DIAGRAM_SUMMARY_FOCUS_GROUPED, DIAGRAM_SUMMARY_GROUPED, DIAGRAM_TITLES,
+};
 use serde::Serialize;
 use text::one_line;
 
@@ -33,15 +38,8 @@ pub fn mermaid(view: &DiagramView) -> String {
     lines.extend(node_lines(chart));
     lines.extend(edge_lines(view, chart));
     if view.elided > 0 {
-        let modules = if view.elided == 1 {
-            "module"
-        } else {
-            "modules"
-        };
-        let elided = view.elided;
-        lines.push(format!(
-            "{INDENT}{ELISION_ID}[\"... {elided} more {modules}\"]"
-        ));
+        let elided = DIAGRAM_ELIDED.render(view.elided);
+        lines.push(format!("{INDENT}{ELISION_ID}[\"{elided}\"]"));
     }
     lines.join("\n") + "\n"
 }
@@ -49,39 +47,34 @@ pub fn mermaid(view: &DiagramView) -> String {
 /// Returns the one-line summary that the diagram's receipt carries.
 #[must_use]
 pub fn diagram_summary(view: &DiagramView) -> String {
-    let focus = (!view.focus.is_empty()).then(|| format!(" around {}", view.focus));
-    let focus = focus.unwrap_or_default();
-    let grouped = if view.grouped {
-        ", grouped by community"
-    } else {
-        ""
-    };
-    format!(
-        "diagram of {} modules{focus}{grouped}; {} elided",
-        view.nodes, view.elided
-    )
+    let counts = (view.nodes, view.elided);
+    match (view.focus.is_empty(), view.grouped) {
+        (true, false) => DIAGRAM_SUMMARY.render(counts),
+        (true, true) => DIAGRAM_SUMMARY_GROUPED.render(counts),
+        (false, false) => DIAGRAM_SUMMARY_FOCUS.render((&view.focus, counts.0, counts.1)),
+        (false, true) => DIAGRAM_SUMMARY_FOCUS_GROUPED.render((&view.focus, counts.0, counts.1)),
+    }
 }
 
-/// Returns the qualifications that a bounded diagram carries, one per line, or `None`.
+/// Returns the qualifications that a bounded diagram carries, one note line each, or `None`.
 #[must_use]
 pub fn diagram_caveat(view: &DiagramView) -> Option<String> {
+    let notes = caveat_notes(view);
+    let lines: Vec<String> = notes.iter().map(|note| RECEIPT_NOTE.render(note)).collect();
+    (!lines.is_empty()).then(|| lines.join("\n"))
+}
+
+// The text marks each note as the receipt marks its note; the JSON carries the notes unmarked.
+fn caveat_notes(view: &DiagramView) -> Vec<String> {
     let mut notes = Vec::new();
     if !view.rank_converged {
-        notes.push(
-            "note: the ranking that chose these modules did not converge, so which ones the \
-             bound kept is a partial answer"
-                .to_owned(),
-        );
+        notes.push(DIAGRAM_NOT_CONVERGED.to_owned());
     }
     // A subgraph is titled after its whole community, including members the bound left out.
     if view.grouped && view.elided > 0 {
-        notes.push(format!(
-            "note: subgraph titles name whole communities, including the {} module(s) the rank \
-             bound left out of this diagram",
-            view.elided
-        ));
+        notes.push(DIAGRAM_TITLES.render(view.elided));
     }
-    (!notes.is_empty()).then(|| notes.join("\n"))
+    notes
 }
 
 /// Returns the diagram inside a markdown fence that opens and closes `text`, or `text`.
@@ -130,10 +123,8 @@ fn edge_lines(view: &DiagramView, chart: &Flowchart) -> Vec<String> {
         })
         .collect();
     if view.edges_over_bound > 0 {
-        lines.push(format!(
-            "{INDENT}%% {} reference edges not drawn (edge bound {})",
-            view.edges_over_bound, chart.edge_bound
-        ));
+        let unlisted = DIAGRAM_EDGES_UNLISTED.render((view.edges_over_bound, chart.edge_bound));
+        lines.push(format!("{INDENT}{unlisted}"));
     }
     lines
 }
@@ -179,7 +170,7 @@ impl<'a> DiagramJson<'a> {
             grouped: view.grouped,
             focus: &view.focus,
             message: &view.message,
-            caveat: diagram_caveat(view).unwrap_or_default(),
+            caveat: caveat_notes(view).join("\n"),
             rank_converged: view.rank_converged,
         }
     }

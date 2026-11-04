@@ -1,16 +1,21 @@
 //! One symbol's card: where it is defined, what it touches and what touches it, each side
 //! grouped by evidence tier, and the imports of its file.
 
-use graph::{Definition, NameIndex, SymbolEdge, SymbolGraph, Tier, definitions_for};
+use graph::{Definition, SymbolEdge, SymbolGraph, Tier};
 use kernel::Bounded;
+use prompts::messages::DATA_KEY_NO_FAN_IN;
 
 use crate::bounds::within;
-use crate::endpoints::{best_band, rank_candidates};
+use crate::endpoints::{
+    BindingStatus, Coverage, Scope, TARGET_WORDING, TargetBinding, best_band, bind,
+    data_key_binding,
+};
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::over_scan;
+use crate::span::{Missed, SymbolSpan, data_key_span};
 use crate::symbol_graph::{tier_at, verbs, with_resolved};
 use crate::{
-    Error, IntArg, Noted, RationaleNode, Reading, Services, SymbolCard, rationale_nodes,
+    Error, IntArg, Noted, RationaleNode, Reading, Services, Skipped, SymbolCard, rationale_nodes,
     symbol_card,
 };
 
@@ -31,10 +36,10 @@ pub struct Explanation {
     pub target: String,
     /// The card of the symbol explained, or `None` when nothing matched.
     pub card: Option<SymbolCard>,
-    /// Why there is no card, or empty.
+    /// Why there is no card, or why a data key has no fan-in, or empty.
     pub message: String,
-    /// The stable ids of the other definitions that matched, best first.
-    pub alternatives: Vec<String>,
+    /// The stable ids of the other definitions that matched, best first, cut at the limit.
+    pub alternatives: Bounded<String>,
     /// The rationale comments of the symbol.
     pub rationales: Vec<RationaleNode>,
     /// The edges leaving the symbol, strongest tier first.
@@ -47,6 +52,14 @@ pub struct Explanation {
     pub imports_in: Bounded<ImportRow>,
     /// How many definitions matched as well as the one explained.
     pub tied: usize,
+    /// Whether the card is a data key's, which has no fan-out, fan-in or imports.
+    pub data_key: bool,
+    /// What the target bound to, and why it bound to nothing.
+    pub binding: TargetBinding,
+    /// How much of the repository the fan-in checked.
+    pub coverage: Coverage,
+    /// The files the scan passed over.
+    pub skipped: Vec<Skipped>,
 }
 
 /// The edges of one evidence tier, cut at the limit, with the count before the cut.
@@ -103,25 +116,39 @@ pub fn explain(
         Err(error) => return Noted::new(Err(error)),
     };
     let target = request.target.as_str();
+    if let Some(found) = data_key_span(reading, target) {
+        return found.map(|span| Ok(keyed(target, span)));
+    }
     over_scan(services, reading, |facts| {
         with_resolved(&facts.files, reading.deadline, |index, graph| {
-            Ok(explanation(index, graph, target, limit))
+            let scope = Scope {
+                index,
+                skipped: &facts.skipped,
+                root: &reading.repo.root,
+            };
+            let explained = explanation(&scope, graph, target, limit);
+            let coverage = Coverage::of(&explained.binding, &facts.skipped);
+            Ok(Explanation {
+                coverage,
+                skipped: facts.skipped.clone(),
+                ..explained
+            })
         })
     })
 }
 
 fn explanation(
-    index: &NameIndex<'_>,
+    scope: &Scope<'_, '_>,
     graph: &SymbolGraph<'_>,
     target: &str,
     limit: usize,
 ) -> Explanation {
-    let definitions = definitions_for(index, target);
-    if definitions.is_empty() {
-        return missing(target);
+    let bound = bind(scope, target, limit, &TARGET_WORDING);
+    if bound.binding.status == BindingStatus::NotFound {
+        return uncarded(target, bound.binding);
     }
-    let ordered = rank_candidates(definitions, target);
-    let tied = best_band(&ordered, target).len();
+    let ordered = bound.definitions;
+    let tied = best_band(&ordered, &bound.key).len();
     let chosen = &ordered[0];
     let node = chosen.stable_id().to_string();
     let degrees = graph.ambiguous_degrees();
@@ -146,16 +173,44 @@ fn explanation(
         target: target.to_owned(),
         card: Some(card(chosen)),
         message: String::new(),
-        alternatives: ordered[1..]
-            .iter()
-            .map(|entry| entry.stable_id().to_string())
-            .collect(),
+        alternatives: Bounded::cut(
+            (ordered[1..].iter())
+                .map(|entry| entry.stable_id().to_string())
+                .collect(),
+            limit,
+        ),
         rationales: rationale_nodes(chosen.file().language, chosen.path(), chosen.symbol()),
         fan_out,
         fan_in,
         imports_out,
         imports_in,
         tied,
+        data_key: false,
+        binding: bound.binding,
+        coverage: Coverage::not_checked(),
+        skipped: Vec::new(),
+    }
+}
+
+// A data key stays out of the name graph, so its card stands alone. A key that the file does not
+// hold gets the reason that expand gives.
+fn keyed(target: &str, span: Result<SymbolSpan, Missed>) -> Explanation {
+    match span {
+        Ok(span) => data_key(target, &span),
+        Err(missed) => {
+            let reason = missed.reason();
+            uncarded(target, data_key_binding(target, Some(&reason)))
+        }
+    }
+}
+
+fn data_key(target: &str, span: &SymbolSpan) -> Explanation {
+    let card = symbol_card(span.language, &span.path, &span.symbol, String::new());
+    Explanation {
+        card: Some(card),
+        data_key: true,
+        message: DATA_KEY_NO_FAN_IN.render((target, span.symbol.name.as_str())),
+        ..uncarded(target, data_key_binding(target, None))
     }
 }
 
@@ -169,18 +224,22 @@ fn card(definition: &Definition<'_>) -> SymbolCard {
     )
 }
 
-fn missing(target: &str) -> Explanation {
+fn uncarded(target: &str, binding: TargetBinding) -> Explanation {
     Explanation {
         target: target.to_owned(),
         card: None,
-        message: format!("no symbol matches {target}"),
-        alternatives: Vec::new(),
+        message: binding.message.clone(),
+        alternatives: Bounded::cut(Vec::new(), 0),
         rationales: Vec::new(),
         fan_out: Vec::new(),
         fan_in: Vec::new(),
         imports_out: Bounded::cut(Vec::new(), 0),
         imports_in: Bounded::cut(Vec::new(), 0),
         tied: 1,
+        data_key: false,
+        binding,
+        coverage: Coverage::not_checked(),
+        skipped: Vec::new(),
     }
 }
 

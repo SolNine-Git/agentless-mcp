@@ -33,9 +33,9 @@ pub(super) fn find(args: &ReadArgs<'_>, services: &Services, streams: &mut Strea
     emit_then(outcome, &answering, streams, find_trailer)
 }
 
-// A query that matches nothing fails the call.
+// A query that matches no symbol and that no code file spells fails the call.
 fn find_trailer(result: &FindResult) -> (String, u8) {
-    let code = if result.cards.rows().is_empty() {
+    let code = if result.is_miss() {
         EXIT_DOMAIN
     } else {
         EXIT_OK

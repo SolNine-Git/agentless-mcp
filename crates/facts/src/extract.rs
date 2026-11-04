@@ -1,3 +1,4 @@
+mod attached;
 mod c_declarators;
 mod c_includes;
 mod data_languages;
@@ -14,12 +15,26 @@ mod rust_items;
 mod rust_uses;
 mod tree;
 
-use syntax::{Extraction, ImportRule, NodeId, Parsed, SymbolRule};
+use syntax::{Extraction, ImportRule, Language, NodeId, Parsed, SymbolRule};
 
 use crate::spelling::normalise_signature;
 use crate::stable_id::disambiguate;
 use crate::values::{Facts, Import, Symbol, SymbolKind};
 use tree::Tree;
+
+pub use data_languages::{DataOutline, OUTLINE_CAP, OutlineRow};
+
+/// Return whether `language` is a data language, whose keys give an outline.
+#[must_use]
+pub fn is_data_language(language: Language) -> bool {
+    language.extraction().symbols == SymbolRule::DataKeys
+}
+
+/// Return the key outline of a parse in a data language, or `None` for any other.
+#[must_use]
+pub fn data_outline(parsed: &Parsed) -> Option<DataOutline> {
+    is_data_language(parsed.language()).then(|| data_languages::outline(&Tree::new(parsed)))
+}
 
 /// Return the symbols, imports, identifier occurrences and error spans of one parse.
 #[must_use]
@@ -61,13 +76,15 @@ fn imports(tree: &Tree, extraction: &Extraction) -> Vec<Import> {
 }
 
 impl Symbol {
-    // A public symbol that spans `node`, with no signature, owner, decorators or bases yet.
+    // A public symbol that spans `node` and what the grammar attaches before it, with no
+    // signature, owner, decorators or bases yet, and named on the line where `node` starts.
     fn at(tree: &Tree, node: NodeId, name: &str, kind: SymbolKind) -> Symbol {
         Symbol {
             name: name.to_owned(),
             kind,
-            line: tree.line(node),
+            line: attached::first_line(tree, node),
             end_line: tree.end_line(node),
+            name_line: tree.line(node),
             signature: String::new(),
             parent: String::new(),
             decorated: false,
@@ -76,6 +93,14 @@ impl Symbol {
             rationales: Vec::new(),
             duplicate_index: 0,
         }
+    }
+
+    // The line of the `name` node; with none, the symbol keeps the line where its node starts.
+    fn named_by(mut self, tree: &Tree, name: Option<NodeId>) -> Symbol {
+        if let Some(name) = name {
+            self.name_line = tree.line(name);
+        }
+        self
     }
 
     fn signed(mut self, signature: &str) -> Symbol {

@@ -2,11 +2,248 @@ use facts::{Symbol, SymbolKind};
 use syntax::Language;
 use text::lower;
 
-use super::{match_rank, matches, short_ascii_holds, top_cards, unparsed_mentions};
+use super::{
+    DataEntry, FindRequest, FoldedFile, Needle, match_rank, matched, matches, short_ascii_holds,
+    top_cards, unparsed_mentions,
+};
 use crate::clock::{assert_spent, spent};
 use crate::endpoints::scanned::{Scanned, TESTED};
 use crate::scan::{FileSymbols, SymbolFacts};
-use crate::symbol_card;
+use crate::{IntArg, symbol_card};
+
+fn data_file(path: &str, names: &[&str]) -> FileSymbols {
+    let symbols = names
+        .iter()
+        .map(|name| symbol(name, "", SymbolKind::Constant));
+    FileSymbols {
+        path: path.to_owned(),
+        language: Language::Json,
+        symbols: symbols.collect(),
+        spellings: Vec::new(),
+    }
+}
+
+fn found(files: Vec<FileSymbols>, query: &str, limit: usize) -> super::FindResult {
+    let scan = SymbolFacts {
+        files,
+        skipped: Vec::new(),
+    };
+    let request = FindRequest {
+        query: query.to_owned(),
+        kind: None,
+        limit: IntArg::from_usize(limit),
+    };
+    matched(&scan, &request, limit)
+}
+
+fn folded(path: &str, keys: usize) -> FoldedFile {
+    let path = path.to_owned();
+    FoldedFile { path, keys }
+}
+
+#[test]
+fn every_code_match_ranks_before_an_exact_data_key() {
+    let code = file("a.py", vec![symbol("area_total", "", SymbolKind::Function)]);
+    let result = found(vec![data_file("d.json", &["area"]), code], "area", 20);
+    let names: Vec<&str> = result
+        .cards
+        .rows()
+        .iter()
+        .map(|card| card.stable_id.as_str())
+        .collect();
+    assert_eq!(names, ["py:a.py::area_total"]);
+    let [DataEntry::Card(card)] = result.data.entries.as_slice() else {
+        panic!("one data card: {:?}", result.data.entries);
+    };
+    assert_eq!(card.stable_id, "json:d.json::area");
+}
+
+#[test]
+fn a_data_file_with_more_than_three_matches_folds_to_one_entry() {
+    let names = ["area_a", "area_b", "area_c", "area_d"];
+    let result = found(vec![data_file("d.json", &names)], "area", 20);
+    assert_eq!(
+        result.data.entries,
+        [DataEntry::Folded(folded("d.json", 4))]
+    );
+    assert_eq!(result.data.total(), 4);
+}
+
+fn data_keys(path: &str, keys: &[(&str, &str)]) -> FileSymbols {
+    let symbols = keys
+        .iter()
+        .map(|(name, parent)| symbol(name, parent, SymbolKind::Class));
+    FileSymbols {
+        path: path.to_owned(),
+        language: Language::Json,
+        symbols: symbols.collect(),
+        spellings: Vec::new(),
+    }
+}
+
+const PACKAGE: [(&str, &str); 6] = [
+    ("devDependencies", ""),
+    ("eslint", "devDependencies"),
+    ("grunt", "devDependencies"),
+    ("grunt-cli", "devDependencies"),
+    ("grunt-contrib-qunit", "devDependencies"),
+    ("qunit", "devDependencies"),
+];
+
+#[test]
+fn an_exact_key_has_a_card_before_the_fold_of_the_other_matches_of_its_file() {
+    let result = found(
+        vec![data_keys("package.json", &PACKAGE)],
+        "devdependencies",
+        20,
+    );
+    let [DataEntry::Card(card), DataEntry::FoldedRest(rest)] = result.data.entries.as_slice()
+    else {
+        panic!("a card and the fold of the rest: {:?}", result.data.entries);
+    };
+    assert_eq!(
+        (card.stable_id.as_str(), card.kind),
+        ("json:package.json::devDependencies", "key")
+    );
+    assert_eq!(rest, &folded("package.json", 5));
+    assert_eq!((result.data.total(), result.data.room), (6, 5));
+}
+
+#[test]
+fn an_exact_qualified_name_is_an_exact_key() {
+    let result = found(
+        vec![data_keys("package.json", &PACKAGE)],
+        "devDependencies.grunt",
+        20,
+    );
+    let ids: Vec<&str> = (result.data.entries.iter())
+        .filter_map(|entry| match entry {
+            DataEntry::Card(card) => Some(card.stable_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "json:package.json::devDependencies.grunt",
+            "json:package.json::devDependencies.grunt-cli",
+            "json:package.json::devDependencies.grunt-contrib-qunit"
+        ]
+    );
+}
+
+#[test]
+fn the_exact_keys_take_the_room_before_any_folded_line() {
+    let mut files = vec![data_file(
+        "a.json",
+        &["pin", "pin_1", "pin_2", "pin_3", "pin_4"],
+    )];
+    files.extend(
+        (["b", "c", "d", "e", "f"].iter()).map(|name| data_file(&format!("{name}.json"), &["pin"])),
+    );
+    let result = found(files, "pin", 20);
+    let ids: Vec<&str> = (result.data.entries.iter())
+        .map(|entry| match entry {
+            DataEntry::Card(card) => card.stable_id.as_str(),
+            other => panic!("only cards: {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "json:a.json::pin",
+            "json:b.json::pin",
+            "json:c.json::pin",
+            "json:d.json::pin",
+            "json:e.json::pin"
+        ]
+    );
+    assert_eq!(
+        result.data.unlisted,
+        [folded("a.json", 4), folded("f.json", 1)]
+    );
+}
+
+fn kind_found(files: Vec<FileSymbols>, query: &str, kind: SymbolKind) -> super::FindResult {
+    let scan = SymbolFacts {
+        files,
+        skipped: Vec::new(),
+    };
+    let request = FindRequest {
+        query: query.to_owned(),
+        kind: Some(kind),
+        limit: IntArg::from_usize(20),
+    };
+    matched(&scan, &request, 20)
+}
+
+#[test]
+fn a_kind_filter_leaves_every_data_key_out_and_counts_the_matching_ones() {
+    let code = file("a.py", vec![symbol("pin_code", "", SymbolKind::Class)]);
+    let files = vec![code, data_keys("d.json", &[("pin", ""), ("pin_list", "")])];
+    let result = kind_found(files, "pin", SymbolKind::Class);
+    assert_eq!(result.cards.rows().len(), 1);
+    assert_eq!(
+        result.data,
+        super::DataMatches {
+            room: 5,
+            ..super::DataMatches::default()
+        }
+    );
+    assert_eq!(result.data_kind_excluded, 2);
+}
+
+#[test]
+fn the_other_kinds_of_a_kind_miss_name_code_kinds_only() {
+    let code = file("a.py", vec![symbol("pin", "", SymbolKind::Function)]);
+    let files = vec![code, data_keys("d.json", &[("pin", "")])];
+    let result = kind_found(files, "pin", SymbolKind::Class);
+    assert!(result.is_miss());
+    assert_eq!(
+        (result.other_kinds.as_slice(), result.data_kind_excluded),
+        (["function"].as_slice(), 1)
+    );
+}
+
+#[test]
+fn the_data_part_shows_five_entries_and_lists_the_other_files_by_count() {
+    let files: Vec<FileSymbols> = (0..7)
+        .map(|at| data_file(&format!("lang/{at}.json"), &["orphan"]))
+        .collect();
+    let result = found(files, "orphan", 20);
+    assert_eq!(result.data.entries.len(), 5);
+    assert_eq!(
+        result.data.unlisted,
+        [folded("lang/5.json", 1), folded("lang/6.json", 1)]
+    );
+}
+
+#[test]
+fn the_code_cards_leave_the_data_part_what_the_limit_has_left() {
+    let code = file("a.py", vec![symbol("pin", "", SymbolKind::Function)]);
+    let files = vec![
+        code,
+        data_file("a.json", &["pin"]),
+        data_file("b.json", &["pin"]),
+    ];
+    let result = found(files, "pin", 2);
+    assert_eq!(
+        (result.cards.rows().len(), result.data.entries.len()),
+        (1, 1)
+    );
+    assert_eq!(result.data.unlisted, [folded("b.json", 1)]);
+}
+
+#[test]
+fn an_answer_of_one_folded_file_is_not_a_miss() {
+    let names: Vec<String> = (0..11).map(|at| format!("darkmode{at}")).collect();
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    let result = found(vec![data_file("configdata.json", &names)], "darkmode", 20);
+    assert!(result.cards.rows().is_empty());
+    assert!(!result.is_miss(), "{:?}", result.data);
+    let miss = found(vec![data_file("configdata.json", &names)], "nothing", 20);
+    assert!(miss.is_miss());
+}
 
 fn symbol(name: &str, parent: &str, kind: SymbolKind) -> Symbol {
     Symbol {
@@ -14,6 +251,7 @@ fn symbol(name: &str, parent: &str, kind: SymbolKind) -> Symbol {
         kind,
         line: 1,
         end_line: 1,
+        name_line: 1,
         signature: String::new(),
         parent: parent.to_owned(),
         decorated: false,
@@ -95,16 +333,48 @@ fn only_a_short_ascii_name_takes_the_stack_path() {
 }
 
 #[test]
-fn an_exact_name_ranks_above_a_qualified_name_above_a_prefix_above_the_rest() {
+fn a_name_with_its_case_ranks_above_the_name_above_a_qualified_name_above_a_prefix() {
+    let rank = |name: &str, parent: &str, query: &str| {
+        match_rank(
+            &symbol(name, parent, SymbolKind::Function),
+            &Needle::new(query),
+        )
+        .0
+    };
     let ranks = [
-        match_rank(&symbol("Area", "", SymbolKind::Function), "area").0,
-        match_rank(&symbol("area", "Square", SymbolKind::Method), "square.area").0,
-        match_rank(&symbol("Area_of", "", SymbolKind::Function), "area").0,
-        match_rank(&symbol("square_area", "", SymbolKind::Function), "area").0,
+        rank("Area", "", "Area"),
+        rank("Area", "", "area"),
+        rank("area", "Square", "Square.area"),
+        rank("Area_of", "", "area"),
+        rank("square_area", "", "area"),
     ];
-    assert_eq!(ranks, [0, 1, 2, 3]);
-    let (_, lowered) = match_rank(&symbol("MiXed", "", SymbolKind::Function), "x");
+    assert_eq!(ranks, [0, 1, 2, 3, 4]);
+    let (_, lowered) = match_rank(
+        &symbol("MiXed", "", SymbolKind::Function),
+        &Needle::new("x"),
+    );
     assert_eq!(lowered, "mixed");
+}
+
+#[test]
+fn a_name_with_the_case_of_the_query_leads_the_names_that_differ_in_case() {
+    let method = |name: &str, parent: &str| symbol(name, parent, SymbolKind::Method);
+    let files = vec![
+        file(
+            "a/filters.py",
+            vec![method("value", "Filter"), method("value", "Field")],
+        ),
+        file(
+            "b/expressions.py",
+            vec![symbol("Value", "", SymbolKind::Class)],
+        ),
+    ];
+    let result = found(files, "Value", 1);
+    let ids: Vec<&str> = (result.cards.rows().iter())
+        .map(|card| card.stable_id.as_str())
+        .collect();
+    assert_eq!(ids, ["py:b/expressions.py::Value"]);
+    assert_eq!(result.cards.total(), 3);
 }
 
 fn file(path: &str, symbols: Vec<Symbol>) -> FileSymbols {
@@ -112,6 +382,7 @@ fn file(path: &str, symbols: Vec<Symbol>) -> FileSymbols {
         path: path.to_owned(),
         language: Language::Python,
         symbols,
+        spellings: Vec::new(),
     }
 }
 
@@ -133,13 +404,13 @@ fn the_kept_cards_are_the_first_of_the_stable_sort_at_every_limit() {
         ),
         file("a.py", vec![method("area", "Disc"), method("Area", "Ring")]),
     ];
-    let needle = "area";
+    let needle = Needle::new("area");
     let all: Vec<(&FileSymbols, &Symbol)> = (files.iter())
         .flat_map(|file| file.symbols.iter().map(move |symbol| (file, symbol)))
         .collect();
     let mut sorted = all.clone();
     sorted.sort_by_cached_key(|&(file, symbol)| {
-        let (rank, lowered) = match_rank(symbol, needle);
+        let (rank, lowered) = match_rank(symbol, &needle);
         (rank, lowered, file.path.as_str())
     });
     for limit in 1..=all.len() + 1 {
@@ -147,7 +418,7 @@ fn the_kept_cards_are_the_first_of_the_stable_sort_at_every_limit() {
             .map(|(file, symbol)| symbol_card(file.language, &file.path, symbol, String::new()))
             .collect();
         assert_eq!(
-            top_cards(all.clone(), needle, limit),
+            top_cards(all.clone(), &needle, limit),
             expected,
             "limit {limit}"
         );
@@ -158,7 +429,7 @@ fn the_kept_cards_are_the_first_of_the_stable_sort_at_every_limit() {
 #[test]
 fn the_unparsed_mention_pass_stops_under_a_spent_deadline() {
     let scanned = Scanned::new(&TESTED);
-    let loaded = SymbolFacts::load(&scanned.services, &scanned.reading());
+    let loaded = SymbolFacts::load(&scanned.services, &scanned.reading(), &|_| Vec::new());
     let scan = loaded.value.unwrap_or_else(|error| panic!("{error}"));
     let deadline = spent();
     let reading = scanned.reading().with_deadline(&deadline);

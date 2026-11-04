@@ -73,19 +73,6 @@ jobs:
       - name: cargo-insta
         run: cargo install --locked cargo-insta@1.49.0
 
-      - name: Install uv
-        if: runner.os != 'Linux'
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          version: 0.9.28
-          python-version: "3.13"
-
-      # The committed graph fixtures come from Linux. Another platform rewrites them with the Python
-      # reference of tag v0.11.0rc1.
-      - name: Graph fixtures from the reference on this platform
-        if: runner.os != 'Linux'
-        run: scripts/platform_graph_fixtures.sh "$RUNNER_TEMP/reference"
-
       - name: Clippy with the release profile
         run: cargo clippy --workspace --all-targets --release -- -D warnings
 

@@ -181,7 +181,7 @@
           "depth": 0
         },
         {
-          "line": 25,
+          "line": 24,
           "signature": "class Item",
           "stable_id": "py:inventory.py::Item",
           "depth": 0

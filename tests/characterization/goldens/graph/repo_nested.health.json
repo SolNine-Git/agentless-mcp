@@ -87,7 +87,7 @@
       {
         "stable_id": "py:catalog/product.py::Product",
         "path": "catalog/product.py",
-        "line": 10,
+        "line": 9,
         "label": "Product",
         "kind": "dataclass",
         "in_degree": 7,
@@ -98,7 +98,7 @@
       {
         "stable_id": "py:billing/invoice.py::Invoice",
         "path": "billing/invoice.py",
-        "line": 27,
+        "line": 26,
         "label": "Invoice",
         "kind": "dataclass",
         "in_degree": 4,
@@ -186,7 +186,7 @@
       {
         "stable_id": "py:billing/invoice.py::InvoiceLine",
         "path": "billing/invoice.py",
-        "line": 14,
+        "line": 13,
         "label": "InvoiceLine",
         "kind": "dataclass",
         "in_degree": 2,

@@ -5,7 +5,16 @@ use crate::endpoints::scanned::{LINKED, Scanned};
 use crate::{Error, IntArg};
 
 fn traced(source: &str, target: &str, max_visited: &str) -> Result<PathTrace, Error> {
-    let scanned = Scanned::new(&LINKED);
+    traced_over(&LINKED, source, target, max_visited)
+}
+
+fn traced_over(
+    files: &[(&str, &str)],
+    source: &str,
+    target: &str,
+    max_visited: &str,
+) -> Result<PathTrace, Error> {
+    let scanned = Scanned::new(files);
     let request = PathRequest {
         source: source.to_owned(),
         target: target.to_owned(),
@@ -43,6 +52,46 @@ fn an_unresolved_endpoint_keeps_the_texts_and_joins_the_reasons() {
     assert_eq!(
         trace.message,
         "no symbol or file matches nope; no symbol or file matches zilch"
+    );
+}
+
+#[test]
+fn a_data_key_has_no_edges_and_a_key_the_file_does_not_hold_has_the_expand_reason() {
+    let mut files = LINKED.to_vec();
+    files.push(("data.json", "{\n  \"receipt_header\": \"x\"\n}\n"));
+    let keyed = |source: &str, target: &str| {
+        traced_over(&files, source, target, "20000").unwrap_or_else(|error| panic!("{error}"))
+    };
+    let trace = keyed("json:data.json::receipt_header", "main");
+    assert!(!trace.endpoints_resolved && !trace.found);
+    assert_eq!(
+        trace.message,
+        "json:data.json::receipt_header is a data key, and a data key has no edges: Grep finds \
+         the spellings of receipt_header."
+    );
+    let trace = keyed("main", "json:data.json::format_money");
+    assert!(!trace.endpoints_resolved && !trace.found);
+    assert_eq!(
+        trace.message,
+        "data.json keeps an outline of its keys, and format_money is not in it: the outline stops \
+         at depth 2, at list items and at 500 keys. Read the lines with read slice, or Grep for \
+         the key."
+    );
+    assert_eq!(
+        (trace.source_label.as_str(), trace.target_label.as_str()),
+        ("main", "json:data.json::format_money")
+    );
+    let trace = keyed("nope", "json:data.json::receipt_header");
+    assert_eq!(
+        trace.message,
+        "no symbol or file matches nope; json:data.json::receipt_header is a data key, and a data \
+         key has no edges: Grep finds the spellings of receipt_header."
+    );
+    let trace = keyed("json:data.json::receipt_header", "nope");
+    assert_eq!(
+        trace.message,
+        "json:data.json::receipt_header is a data key, and a data key has no edges: Grep finds \
+         the spellings of receipt_header; no symbol or file matches nope"
     );
 }
 

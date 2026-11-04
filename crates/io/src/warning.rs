@@ -6,6 +6,7 @@ use json::JsonError;
 use prompts::messages::{
     CONFIG_BOUNDARY_GLOBS_DROPPED, CONFIG_BOUNDARY_GLOBS_NOT_LIST, CONFIG_BOUNDARY_GLOBS_TOO_MANY,
     CONFIG_EROSION_GATE_MODE, CONFIG_EROSION_GATE_NOT_OBJECT, CONFIG_EROSION_GATE_UNKNOWN,
+    CONFIG_STOPLIST_DROPPED, CONFIG_UNKNOWN_KEYS_SUPPRESSED,
 };
 use text::CodePointString;
 
@@ -167,11 +168,11 @@ impl fmt::Display for StoplistWarning {
                 "stoplist in {name} holds {count} entries, over the {MAX_STOPLIST_ENTRIES} cap; \
                  only the first {MAX_STOPLIST_ENTRIES} are used"
             ),
-            Self::Dropped { count } => write!(
-                f,
-                "stoplist in {name}: {count} entries are not bare names of at most \
-                 {MAX_STOPLIST_ENTRY_CHARS} characters and were dropped"
-            ),
+            Self::Dropped { count } => f.write_str(&CONFIG_STOPLIST_DROPPED.render((
+                name,
+                *count,
+                MAX_STOPLIST_ENTRY_CHARS,
+            ))),
         }
     }
 }
@@ -226,10 +227,7 @@ impl fmt::Display for UnknownKeyWarning {
                 KNOWN_KEYS.join(", ")
             ),
             Self::Suppressed { count } => {
-                write!(
-                    f,
-                    "{count} further unknown keys in {name}: warnings suppressed"
-                )
+                f.write_str(&CONFIG_UNKNOWN_KEYS_SUPPRESSED.render((name, *count)))
             }
         }
     }

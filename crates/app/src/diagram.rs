@@ -277,15 +277,10 @@ fn chart_edges(
     (edges, if fits { 0 } else { references })
 }
 
-// Every character outside the allowlist becomes one underscore, runs of underscores and of
-// spaces collapse, and a long label is cut with three dots.
+// Each run of characters outside the allowlist becomes one underscore, runs of spaces collapse,
+// and a long label is cut with three dots. An underscore of the text stays as it is written.
 pub(crate) fn safe_label(text: &str) -> String {
-    let allowed = |c: char| c.is_ascii_alphanumeric() || " ._-/".contains(c);
-    let replaced: String = text
-        .chars()
-        .map(|c| if allowed(c) { c } else { REPLACEMENT })
-        .collect();
-    let collapsed = collapse(&collapse(&replaced, REPLACEMENT), ' ');
+    let collapsed = collapse(&replace_runs(text), ' ');
     let trimmed = collapsed.trim_matches(' ');
     if trimmed.is_empty() {
         return UNNAMED_LABEL.to_owned();
@@ -294,6 +289,22 @@ pub(crate) fn safe_label(text: &str) -> String {
         return format!("{}...", &trimmed[..LABEL_MAX_CHARS - 3]);
     }
     trimmed.to_owned()
+}
+
+fn replace_runs(text: &str) -> String {
+    let allowed = |c: char| c.is_ascii_alphanumeric() || " ._-/".contains(c);
+    let mut replaced = String::with_capacity(text.len());
+    let mut in_run = false;
+    for c in text.chars() {
+        let kept = allowed(c);
+        if kept {
+            replaced.push(c);
+        } else if !in_run {
+            replaced.push(REPLACEMENT);
+        }
+        in_run = !kept;
+    }
+    replaced
 }
 
 fn collapse(text: &str, repeated: char) -> String {

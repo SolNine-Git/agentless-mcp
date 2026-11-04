@@ -1,5 +1,4 @@
-// agentless-mcp receipt (repository data below)
-// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 reports.go  (rank 0.4865)
   stable ids: go:reports.go::<QualifiedName>
   type ReportError  [ReportError] @16

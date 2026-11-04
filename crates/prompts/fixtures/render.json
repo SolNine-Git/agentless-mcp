@@ -42,24 +42,29 @@
       },
       "text": "// config warning: map_budget is not an integer"
     },
-    "receipt_header": {
-      "arguments": {},
-      "text": "// agentless-mcp receipt (repository data below)"
-    },
-    "receipt_line": {
+    "receipt_fields": {
       "arguments": {
         "cache": "none",
         "dirty": "3",
-        "head": "1a2b3c4d",
-        "root": "/srv/app"
+        "head": "1a2b3c4d"
       },
-      "text": "// repo: /srv/app   head: 1a2b3c4d   dirty: 3 files   cache: none"
+      "text": "   head: 1a2b3c4d   dirty: 3 files   cache: none"
+    },
+    "receipt_header": {
+      "arguments": {},
+      "text": "// agentless-mcp receipt (repository data below)"
     },
     "receipt_note": {
       "arguments": {
         "note": "git status timed out"
       },
       "text": "// note: git status timed out"
+    },
+    "receipt_repo": {
+      "arguments": {
+        "root": "/srv/app"
+      },
+      "text": "   repo: /srv/app"
     },
     "receipt_summary": {
       "arguments": {
@@ -77,6 +82,78 @@
     }
   },
   "messages": {
+    "accepts_bool": {
+      "arguments": {},
+      "text": "true or false"
+    },
+    "accepts_choice": {
+      "arguments": {
+        "listed": "function, file or body"
+      },
+      "text": "one of function, file or body"
+    },
+    "accepts_integer": {
+      "arguments": {
+        "maximum": 500,
+        "minimum": 1
+      },
+      "text": "an integer from 1 to 500"
+    },
+    "accepts_integer_from": {
+      "arguments": {
+        "minimum": 1
+      },
+      "text": "an integer of 1 or more"
+    },
+    "accepts_line_ranges": {
+      "arguments": {},
+      "text": "one [start, end] pair of 1-based line numbers, such as [10, 20], or a list of pairs, such as [[10, 20], [40, 50]]"
+    },
+    "accepts_number": {
+      "arguments": {
+        "ceiling": "100",
+        "minimum": 0
+      },
+      "text": "a number above 0 and at most 100"
+    },
+    "accepts_schema": {
+      "arguments": {},
+      "text": "a value that fits its schema in tools/list"
+    },
+    "accepts_text": {
+      "arguments": {},
+      "text": "a string"
+    },
+    "accepts_text_or_texts": {
+      "arguments": {},
+      "text": "a string or a list of strings"
+    },
+    "accepts_texts": {
+      "arguments": {},
+      "text": "a list of strings"
+    },
+    "argument_invalid": {
+      "arguments": {
+        "accepted": "an integer from 1 to 500",
+        "found": "0",
+        "name": "limit"
+      },
+      "text": "limit is 0, but must be an integer from 1 to 500."
+    },
+    "argument_missing": {
+      "arguments": {
+        "accepted": "a string",
+        "name": "target"
+      },
+      "text": "target is required and must be a string."
+    },
+    "argument_unknown": {
+      "arguments": {
+        "name": "max_files",
+        "tool": "orient"
+      },
+      "text": "orient has no parameter max_files."
+    },
     "cache_absent_refreshing": {
       "arguments": {},
       "text": "a background refresh is in progress"
@@ -204,9 +281,40 @@
       },
       "text": "src/app/svc.py: Python's tokenizer rejects this file (TokenError: EOF). Clone blocks are indexed only in a file the tokenizer accepts, the same as scb-check. Fix the line the error names, then index the file again."
     },
+    "communities_header": {
+      "arguments": {
+        "count": 3,
+        "modularity": "0.408",
+        "resolution": "1",
+        "total": 6
+      },
+      "text": "3 communities over 6 files (modularity 0.408 at resolution 1)"
+    },
     "communities_not_converged": {
       "arguments": {},
-      "text": "note: community detection stopped at its pass limit before the partition settled, so these communities are a partial answer"
+      "text": "// note: community detection stopped at its pass limit before the partition settled, so these communities are a partial answer"
+    },
+    "communities_nothing_parsed": {
+      "arguments": {},
+      "text": "no communities: no file in this repository parsed"
+    },
+    "communities_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 1
+      },
+      "text": "... 2 more communities not listed (limit 1)"
+    },
+    "communities_weak": {
+      "arguments": {},
+      "text": "// note: weak partition; use these communities as a hint, not a boundary"
+    },
+    "community_files_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 2
+      },
+      "text": "... 2 more files in this community not listed (limit 2)"
     },
     "complexity_crossed": {
       "arguments": {
@@ -340,6 +448,21 @@
       },
       "text": "erosion_gate in .agentless-mcp.json holds 2 entries that name no gated check (complexity_delta, contract_drift, clone_delta). They are ignored."
     },
+    "config_stoplist_dropped": {
+      "arguments": {
+        "chars": 64,
+        "config": ".agentless-mcp.json",
+        "count": 2
+      },
+      "text": "stoplist in .agentless-mcp.json: 2 entries are not bare names of at most 64 characters and were dropped"
+    },
+    "config_unknown_keys_suppressed": {
+      "arguments": {
+        "config": ".agentless-mcp.json",
+        "count": 4
+      },
+      "text": "4 further unknown keys in .agentless-mcp.json: warnings suppressed"
+    },
     "contract_evidence": {
       "arguments": {
         "capture": "data.get(\"items\", [])",
@@ -388,13 +511,92 @@
       },
       "text": "not checked: contract_drift did not compare src/adapters/api.py, because its text before the change cannot be measured. src/adapters/api.py does not parse"
     },
+    "cycles_header": {
+      "arguments": {
+        "count": 2
+      },
+      "text": "2 import cycles"
+    },
+    "cycles_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 2
+      },
+      "text": "... 2 more cycles not listed (limit 2, shortest chain first)"
+    },
+    "cycles_unresolved": {
+      "arguments": {
+        "count": 3
+      },
+      "text": "// note: 3 import statements of this repository's own modules did not resolve, so a cycle through them is not listed"
+    },
+    "data_key_no_fan_in": {
+      "arguments": {
+        "name": "receipt_header",
+        "target": "json:crates/prompts/data/envelope.json::receipt_header"
+      },
+      "text": "json:crates/prompts/data/envelope.json::receipt_header is a data key, and a data key has no fan-in: Grep finds the spellings of receipt_header."
+    },
+    "diagram_edges_unlisted": {
+      "arguments": {
+        "count": 7,
+        "limit": 40
+      },
+      "text": "%% 7 reference edges not drawn (edge bound 40)"
+    },
+    "diagram_elided": {
+      "arguments": {
+        "count": 5
+      },
+      "text": "... 5 more modules"
+    },
+    "diagram_not_converged": {
+      "arguments": {},
+      "text": "the ranking that chose these modules did not converge, so which ones the bound kept is a partial answer"
+    },
+    "diagram_summary": {
+      "arguments": {
+        "count": 40,
+        "total": 12
+      },
+      "text": "diagram of 40 modules; 12 elided"
+    },
+    "diagram_summary_focus": {
+      "arguments": {
+        "count": 40,
+        "target": "src/app.py",
+        "total": 12
+      },
+      "text": "diagram of 40 modules around src/app.py; 12 elided"
+    },
+    "diagram_summary_focus_grouped": {
+      "arguments": {
+        "count": 40,
+        "target": "src/app.py",
+        "total": 12
+      },
+      "text": "diagram of 40 modules around src/app.py, grouped by community; 12 elided"
+    },
+    "diagram_summary_grouped": {
+      "arguments": {
+        "count": 40,
+        "total": 12
+      },
+      "text": "diagram of 40 modules, grouped by community; 12 elided"
+    },
+    "diagram_titles": {
+      "arguments": {
+        "count": 10
+      },
+      "text": "subgraph titles name whole communities, including the 10 modules the rank bound left out of this diagram"
+    },
     "expand_batch_shortened": {
       "arguments": {
         "budget": 12000,
         "shortened": 3,
         "total": 10
       },
-      "text": "note: 3 of 10 bodies were shortened to fit the 12000-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies."
+      "text": "// note: 3 of 10 bodies were shortened to fit the 12000-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies."
     },
     "expand_body_truncated": {
       "arguments": {
@@ -410,12 +612,102 @@
       },
       "text": "not expanded: 400 ids exceed the 40 one call can answer; retry with at most that many."
     },
+    "expand_over_limit": {
+      "arguments": {
+        "limit": 10
+      },
+      "text": "not expanded: the per-call limit is 10 symbols"
+    },
+    "expand_unresolved_unlisted": {
+      "arguments": {
+        "count": 5,
+        "total": 25
+      },
+      "text": "unresolved: 5 further ids are not listed; 25 of the ids requested did not resolve"
+    },
+    "explain_definitions_unlisted": {
+      "arguments": {
+        "count": 3,
+        "limit": 20
+      },
+      "text": "... 3 more definitions not listed (limit 20)"
+    },
+    "explain_edges_unlisted": {
+      "arguments": {
+        "count": 6
+      },
+      "text": "... 6 more edges at this tier not listed"
+    },
+    "explain_importers_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 20
+      },
+      "text": "... 2 more importers not listed (limit 20)"
+    },
+    "explain_imports_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 20
+      },
+      "text": "... 2 more declared imports not listed (limit 20)"
+    },
     "explain_tie": {
       "arguments": {
         "count": 2,
         "target": "shared"
       },
       "text": "ambiguous: 2 definitions match shared equally; this explains the first in path order. Pass a stable id to explain another."
+    },
+    "find_data_folded": {
+      "arguments": {
+        "count": 11,
+        "path": "config/default.yml"
+      },
+      "text": "config/default.yml: 11 data keys match. Grep finds the spellings."
+    },
+    "find_data_folded_rest": {
+      "arguments": {
+        "count": 5,
+        "path": "package.json"
+      },
+      "text": "package.json: 5 more data keys match. Grep finds the spellings."
+    },
+    "find_data_kind_excluded": {
+      "arguments": {
+        "count": 3
+      },
+      "text": "3 data keys match, and a kind filter leaves data keys out. Retry with no kind to list them."
+    },
+    "find_data_outside": {
+      "arguments": {
+        "count": 3,
+        "listed": "src/i18n/strings/cs.json @3638, src/i18n/strings/de_DE.json @3633, src/i18n/strings/en_EN.json @647",
+        "query": "Stop live broadcasting?"
+      },
+      "text": "'Stop live broadcasting?' occurs in 3 data files outside their outline: src/i18n/strings/cs.json @3638, src/i18n/strings/de_DE.json @3633, src/i18n/strings/en_EN.json @647. Grep finds every spelling."
+    },
+    "find_data_outside_unread": {
+      "arguments": {
+        "budget": 33554432,
+        "count": 2
+      },
+      "text": "note: the text search of data files stops at 33554432 bytes, so it did not read 2 data files. Grep reads every file."
+    },
+    "find_data_unlisted": {
+      "arguments": {
+        "cap": 5,
+        "count": 62,
+        "listed": "doc/missing-references.json (60), .lgtm.yml (2)",
+        "total": 2
+      },
+      "text": "62 data keys in 2 files match and are not listed: doc/missing-references.json (60), .lgtm.yml (2). This answer has room for 5 data entries after the code matches. Grep finds the spellings."
+    },
+    "find_no_declaration": {
+      "arguments": {
+        "query": "existsBySlug"
+      },
+      "text": "no declared symbol has 'existsBySlug' in its name or qualified name, matched case-insensitively."
     },
     "find_no_matches": {
       "arguments": {
@@ -431,6 +723,13 @@
       },
       "text": "no matching symbols of kind 'class': 'quote' does match symbols of other kinds: function, method. Retry with one of those kinds, or with no kind."
     },
+    "find_unlisted": {
+      "arguments": {
+        "count": 30,
+        "limit": 3
+      },
+      "text": "... 30 more matches not listed (limit 3)"
+    },
     "find_unparsed": {
       "arguments": {
         "listed": "core.py:4",
@@ -438,11 +737,171 @@
       },
       "text": "note: unfinished is spelled where a file did not parse (core.py:4), so a declaration there may be missing from this answer"
     },
+    "find_usage_head": {
+      "arguments": {
+        "count": 47,
+        "name": "where"
+      },
+      "text": "usage: 47 files spell 'where' and do not declare it."
+    },
+    "find_usage_head_owner": {
+      "arguments": {
+        "count": 7,
+        "name": "replace",
+        "owner": "SegmentInfos"
+      },
+      "text": "usage: 7 files spell 'replace' and 'SegmentInfos' and do not declare 'replace'."
+    },
+    "find_usage_lines": {
+      "arguments": {
+        "count": 10
+      },
+      "text": "The 10 with the most lines:"
+    },
+    "find_usage_lines_all": {
+      "arguments": {},
+      "text": "Most lines first:"
+    },
+    "find_usage_nearest": {
+      "arguments": {
+        "count": 10
+      },
+      "text": "The 10 nearest to a declaration:"
+    },
+    "find_usage_nearest_all": {
+      "arguments": {},
+      "text": "Nearest to a declaration first:"
+    },
+    "find_usage_rest": {
+      "arguments": {
+        "count": 37,
+        "name": "where"
+      },
+      "text": "37 more files spell 'where' and are not listed."
+    },
+    "find_usage_rest_owner": {
+      "arguments": {
+        "count": 108,
+        "name": "get",
+        "owner": "SdkConfig"
+      },
+      "text": "108 more files spell 'get' and 'SdkConfig' and are not listed."
+    },
+    "find_usage_row": {
+      "arguments": {
+        "count": 12,
+        "line": 754,
+        "path": "xarray/core/_aggregations.py"
+      },
+      "text": "  xarray/core/_aggregations.py @754 (12 lines)"
+    },
+    "grouped_files": {
+      "arguments": {
+        "count": 4
+      },
+      "text": "(4 files)"
+    },
     "grouped_ids": {
       "arguments": {
         "count": 12
       },
       "text": "(12 ids)"
+    },
+    "health_complexity": {
+      "arguments": {
+        "count": 19,
+        "erosion": "0.000",
+        "over": 0,
+        "share": "0.061",
+        "threshold": 10,
+        "total": 3
+      },
+      "text": "complexity over 19 units in 3 files (threshold cc > 10): 0 over the threshold, erosion 0.000, clone share 0.061"
+    },
+    "health_complexity_walked": {
+      "arguments": {
+        "count": 120,
+        "total": 554
+      },
+      "text": "complexity: 120 of 554 files walked before the time budget"
+    },
+    "health_exports": {
+      "arguments": {
+        "count": 5
+      },
+      "text": "5 unused exports (public function outside a function body, no counted edge in)"
+    },
+    "health_exports_unlisted": {
+      "arguments": {
+        "count": 6,
+        "limit": 1
+      },
+      "text": "... 6 more unused exports not listed (limit 1)"
+    },
+    "health_hotspots": {
+      "arguments": {
+        "count": 19
+      },
+      "text": "19 units ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest first)"
+    },
+    "health_hotspots_unlisted": {
+      "arguments": {
+        "count": 4,
+        "limit": 20
+      },
+      "text": "... 4 more hotspots not listed (limit 20)"
+    },
+    "health_hubs": {
+      "arguments": {
+        "count": 21
+      },
+      "text": "21 symbols carry a counted edge (function, method or class, highest counted degree first)"
+    },
+    "health_hubs_unlisted": {
+      "arguments": {
+        "count": 7,
+        "limit": 20
+      },
+      "text": "... 7 more hubs not listed (limit 20)"
+    },
+    "health_orphans": {
+      "arguments": {
+        "count": 247
+      },
+      "text": "247 orphan candidates (function, no counted edge in or out)"
+    },
+    "health_orphans_unlisted": {
+      "arguments": {
+        "count": 246,
+        "limit": 1
+      },
+      "text": "... 246 more orphan candidates not listed (limit 1)"
+    },
+    "health_over": {
+      "arguments": {
+        "count": 412
+      },
+      "text": "health over 412 symbols"
+    },
+    "health_over_excluded": {
+      "arguments": {
+        "count": 412,
+        "total": 88
+      },
+      "text": "health over 412 symbols; 88 excluded as test or fixture paths"
+    },
+    "health_unmeasured": {
+      "arguments": {
+        "count": 2
+      },
+      "text": "complexity: 2 files not measured"
+    },
+    "health_unmeasured_unlisted": {
+      "arguments": {
+        "count": 3,
+        "limit": 20
+      },
+      "text": "... 3 more unmeasured files not listed (limit 20)"
     },
     "history_body_truncated": {
       "arguments": {
@@ -480,6 +939,16 @@
         "detail": "commit 2 does not open with a full sha"
       },
       "text": "git printed log output history cannot read: commit 2 does not open with a full sha. history refuses a partial read rather than answer from one. Check that this git honours --no-patch together with -L, and that no filter rewrites git log output."
+    },
+    "history_header": {
+      "arguments": {
+        "count": 2,
+        "end": 40,
+        "path": "billing/invoice.py",
+        "start": 31,
+        "target": "py:billing/invoice.py::Invoice.total"
+      },
+      "text": "py:billing/invoice.py::Invoice.total  billing/invoice.py:31-40  (2 commits, newest first)"
     },
     "history_more_commits": {
       "arguments": {
@@ -691,6 +1160,33 @@
       },
       "text": "unknown severity 'error'. The severities are: advisory, warning, not_checked."
     },
+    "listed_and": {
+      "arguments": {
+        "listed": "source, target, include_unique",
+        "name": "include_ambiguous"
+      },
+      "text": "source, target, include_unique and include_ambiguous"
+    },
+    "listed_or": {
+      "arguments": {
+        "listed": "function, file",
+        "name": "body"
+      },
+      "text": "function, file or body"
+    },
+    "map_budget_none": {
+      "arguments": {
+        "budget": 200,
+        "count": 12
+      },
+      "text": "// note: the 200-token budget left room for none of the 12 symbols; raise --budget"
+    },
+    "map_companion_unlisted": {
+      "arguments": {
+        "path": "agentless/util/postprocess_data.py"
+      },
+      "text": "agentless/util/postprocess_data.py (not listed)"
+    },
     "map_file_unreached": {
       "arguments": {
         "count": 9
@@ -703,7 +1199,42 @@
         "maximum": 200,
         "minimum": 1
       },
-      "text": "orient operation 'map' rejects limit=500: the map's file cap runs 1-200, which is the same bound repo_map publishes as max_files. The wider ceiling on this parameter belongs to the communities and cycles listings that share it. Retry with a limit in range."
+      "text": "limit is 500, but operation map takes a limit from 1 to 200."
+    },
+    "map_max_files_none": {
+      "arguments": {
+        "count": 9
+      },
+      "text": "// note: --max-files kept none of the 9 ranked files"
+    },
+    "map_not_converged": {
+      "arguments": {},
+      "text": "// note: the ranking behind this map did not converge, so the order of the files below is a partial answer"
+    },
+    "map_nothing_parsed": {
+      "arguments": {},
+      "text": "// note: no file in this repository parsed"
+    },
+    "map_over_budget": {
+      "arguments": {
+        "budget": 200,
+        "count": 3,
+        "total": 204
+      },
+      "text": "// note: this map renders to 204 tokens against a 200-token budget: the 3 ranked files are listed whatever the budget allows, and the budget bounds only the symbols shown under them"
+    },
+    "map_symbols_unlisted": {
+      "arguments": {
+        "count": 9
+      },
+      "text": "... 9 more symbols in this file not listed"
+    },
+    "map_tests_unlisted": {
+      "arguments": {
+        "count": 846,
+        "limit": 5
+      },
+      "text": "... 846 more test files not listed (limit 5)"
     },
     "map_unresolved_seeds": {
       "arguments": {
@@ -711,31 +1242,65 @@
       },
       "text": "// note: these focus seeds matched no file, no symbol, and no name spelled in five or fewer non-test files of this repository, so the ranking below is not focused on them: rotate_age, shift_age. Check the spelling, or seed with a file path from the tree."
     },
-    "op_rejects_parameters": {
-      "arguments": {
-        "accepted": "focus, budget, limit, granularity",
-        "operation": "map",
-        "required": "none",
-        "stray": "source, target",
-        "tool": "orient"
-      },
-      "text": "orient operation 'map' does not accept: source, target. This operation accepts: focus, budget, limit, granularity; required: none. Drop the stray parameters, or pick the operation that takes them."
+    "map_walk_capped": {
+      "arguments": {},
+      "text": "// note: the walk out to these tests hit its node bound before it finished, so this section is a floor rather than every test"
     },
-    "op_requires_parameters": {
+    "operation_in_tool": {
       "arguments": {
-        "accepted": "source, target, include_unique, include_ambiguous",
-        "missing": "target",
-        "operation": "path",
-        "required": "source, target",
-        "tool": "orient"
+        "operation": "find",
+        "tool": "symbols"
       },
-      "text": "orient operation 'path' is missing: target. This operation accepts: source, target, include_unique, include_ambiguous; required: source, target. Retry naming the missing parameters."
+      "text": "Call the tool symbols with operation find."
+    },
+    "operation_lacks_parameter": {
+      "arguments": {
+        "name": "source",
+        "operation": "map"
+      },
+      "text": "Operation map has no parameter source."
+    },
+    "operation_requires_value": {
+      "arguments": {
+        "accepted": "a string",
+        "name": "source",
+        "operation": "path"
+      },
+      "text": "Operation path requires a value for source, which must be a string."
+    },
+    "operation_takes": {
+      "arguments": {
+        "accepted": "limit",
+        "operation": "cycles"
+      },
+      "text": "Operation cycles takes limit."
+    },
+    "operation_takes_and_requires": {
+      "arguments": {
+        "accepted": "name, kind and limit",
+        "operation": "find",
+        "required": "name"
+      },
+      "text": "Operation find takes name, kind and limit, and requires name."
+    },
+    "overview_data_unlisted": {
+      "arguments": {
+        "cap": 500,
+        "count": 24000
+      },
+      "text": "24000 more keys are not listed: the outline stops at depth 2, at list items and at 500 keys. Grep finds them."
     },
     "overview_stable_ids": {
       "arguments": {
         "pattern": "py:src/app/svc.py::<QualifiedName>"
       },
       "text": "stable ids: py:src/app/svc.py::<QualifiedName> -- nested symbols qualify as Class.method"
+    },
+    "overview_stable_ids_data": {
+      "arguments": {
+        "pattern": "json:package.json::<QualifiedName>"
+      },
+      "text": "stable ids: json:package.json::<QualifiedName> -- nested keys qualify as parent.child"
     },
     "pair_blob_over_cap": {
       "arguments": {
@@ -771,18 +1336,136 @@
       },
       "text": "not checked: the working-tree text of src/app/svc.py was not read (unreadable: No such file), so no pair check compared this file."
     },
+    "path_data_key_no_edges": {
+      "arguments": {
+        "name": "receipt_header",
+        "target": "json:crates/prompts/data/envelope.json::receipt_header"
+      },
+      "text": "json:crates/prompts/data/envelope.json::receipt_header is a data key, and a data key has no edges: Grep finds the spellings of receipt_header."
+    },
+    "path_endpoint_no_match": {
+      "arguments": {
+        "target": "nothing_here"
+      },
+      "text": "no symbol or file matches nothing_here"
+    },
     "path_needs_endpoints": {
       "arguments": {
         "tool": "orient"
       },
       "text": "orient operation 'path' needs both source and target: each is a stable id, a qualified name, or a repository-relative file path. Retry naming both ends."
     },
-    "refs_target_unresolved": {
+    "path_source_candidates": {
       "arguments": {
-        "name": "total",
-        "target": "py:src/app/svc.py::Invoice.total"
+        "count": 1,
+        "listed": "py:a.py::run",
+        "name": "run"
       },
-      "text": "py:src/app/svc.py::Invoice.total resolves to no symbol; these are the references to the name total, wherever it is defined"
+      "text": "1 definition of run: py:a.py::run. Pass it as the source."
+    },
+    "path_source_candidates_cut": {
+      "arguments": {
+        "count": 12,
+        "listed": "py:a.py::run, py:b.py::run",
+        "name": "run",
+        "shown": 2
+      },
+      "text": "12 definitions of run, and 2 are listed: py:a.py::run, py:b.py::run. Pass one as the source."
+    },
+    "refs_absent": {
+      "arguments": {
+        "target": "py:pkg/lib.py::target"
+      },
+      "text": "no references to py:pkg/lib.py::target outside its own definition"
+    },
+    "refs_absent_complete": {
+      "arguments": {
+        "count": 42,
+        "target": "py:pkg/lib.py::target"
+      },
+      "text": "no references to py:pkg/lib.py::target outside its own definition (complete scan: 42 files, 0 skipped)"
+    },
+    "refs_absent_partial": {
+      "arguments": {
+        "count": 230,
+        "target": "py:a.py::helper",
+        "total": 1
+      },
+      "text": "no references to py:a.py::helper outside its own definition in the 230 files read (partial scan: 1 code file skipped)"
+    },
+    "refs_callers_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 5
+      },
+      "text": "... 2 more callers not listed (limit 5)"
+    },
+    "refs_candidates_unlisted": {
+      "arguments": {
+        "count": 2,
+        "limit": 1
+      },
+      "text": "... 2 more candidates not listed (limit 1)"
+    },
+    "refs_group_header": {
+      "arguments": {
+        "count": 4,
+        "note": ", resolved-via-import",
+        "path": "reports.py"
+      },
+      "text": "reports.py  (4 references, resolved-via-import)"
+    },
+    "refs_header": {
+      "arguments": {
+        "count": 3,
+        "target": "py:pricing.py::PriceBook.quote"
+      },
+      "text": "3 references to py:pricing.py::PriceBook.quote"
+    },
+    "refs_header_shared": {
+      "arguments": {
+        "count": 8,
+        "name": "helper",
+        "total": 2
+      },
+      "text": "8 references to helper, a name that 2 definitions share"
+    },
+    "refs_shared_candidate": {
+      "arguments": {
+        "count": 6,
+        "score": "0.281",
+        "target": "[py:pkg/lib.py::other1] @5",
+        "total": 1
+      },
+      "text": "[py:pkg/lib.py::other1] @5  (6 shared callers in 1 file, score 0.281)"
+    },
+    "refs_split": {
+      "arguments": {
+        "count": 3,
+        "total": 21
+      },
+      "text": "3 rows have binding evidence (same-file or resolved-via-import). 21 are candidates (unique or name-only-ambiguous)."
+    },
+    "refs_split_none": {
+      "arguments": {
+        "count": 6
+      },
+      "text": "no row has binding evidence: 6 are candidates (unique or name-only-ambiguous)."
+    },
+    "refs_unlisted": {
+      "arguments": {
+        "count": 6,
+        "limit": 2
+      },
+      "text": "... 6 more references not listed (limit 2)"
+    },
+    "refs_unlisted_files": {
+      "arguments": {
+        "count": 6,
+        "limit": 2,
+        "total": 2
+      },
+      "text": "... 6 more references not listed (limit 2), including every reference in 2 more files"
     },
     "repo_refused_no_roots": {
       "arguments": {},
@@ -824,6 +1507,16 @@
       },
       "text": "repo_root is required: this server holds several repositories and will not guess between them. Retry with repo_root set to one of: /srv/app, /srv/other"
     },
+    "slice_lines_and_whole_file": {
+      "arguments": {},
+      "text": "Operation slice takes lines or whole_file=true, but not both."
+    },
+    "slice_needs_lines": {
+      "arguments": {
+        "accepted": "a list of pairs"
+      },
+      "text": "Operation slice requires lines or whole_file=true, and lines must be a list of pairs."
+    },
     "slice_range_beyond_file": {
       "arguments": {
         "end": 9050,
@@ -841,6 +1534,27 @@
       },
       "text": "unsatisfiable: line range 60-30 is not a range in src/app/svc.py: a start of 1 or more, and an end at or after the start"
     },
+    "slice_range_reversed": {
+      "arguments": {
+        "found": "[3,1]"
+      },
+      "text": "lines holds [3,1], but each pair must have its end at or after its start."
+    },
+    "span_data_key_unlisted": {
+      "arguments": {
+        "cap": 500,
+        "path": "fixtures/generation.json",
+        "qualname": "cases.generation"
+      },
+      "text": "fixtures/generation.json keeps an outline of its keys, and cases.generation is not in it: the outline stops at depth 2, at list items and at 500 keys. Read the lines with read slice, or Grep for the key."
+    },
+    "span_symbol_undefined": {
+      "arguments": {
+        "path": "src/app/svc.py",
+        "qualname": "Invoice.totl"
+      },
+      "text": "src/app/svc.py does not define Invoice.totl"
+    },
     "stable_ids_pattern": {
       "arguments": {
         "pattern": "py:src/app/svc.py::<QualifiedName>"
@@ -853,13 +1567,87 @@
       },
       "text": "--surface v1 publishes the v1 tools. They are deprecated and are removed in 0.11.0. Move to the v2 tools: agentless-mcp guide --section the-two-surfaces has the mapping."
     },
-    "unknown_operation": {
+    "target_candidates": {
       "arguments": {
-        "operation": "graph",
-        "operations": "cycles, diagram, path",
-        "tool": "analyze_structure"
+        "count": 2,
+        "listed": "py:a.py::run, py:b.py::run",
+        "name": "run"
       },
-      "text": "analyze_structure has no operation named 'graph'. Valid operations are: cycles, diagram, path. Retry with one of those."
+      "text": "2 definitions of run: py:a.py::run, py:b.py::run. Pass one as the target."
+    },
+    "target_candidates_cut": {
+      "arguments": {
+        "count": 12,
+        "listed": "py:a.py::run, py:b.py::run",
+        "name": "run",
+        "shown": 2
+      },
+      "text": "12 definitions of run, and 2 are listed: py:a.py::run, py:b.py::run. Pass one as the target."
+    },
+    "target_data_file": {
+      "arguments": {
+        "path": "Cargo.toml"
+      },
+      "text": "Cargo.toml is a data file, and its keys are not symbols that refs, explain or path bind"
+    },
+    "target_data_key": {
+      "arguments": {
+        "line": 5,
+        "target": "toml:Cargo.toml::workspace.package"
+      },
+      "text": "The key toml:Cargo.toml::workspace.package spans line 5. Expand that id to read the key."
+    },
+    "target_file_skipped": {
+      "arguments": {
+        "path": "pkg/big.py",
+        "reason": "skipped: 1717815 bytes exceeds the per-file cap of 1000000 bytes"
+      },
+      "text": "the scan did not read pkg/big.py (skipped: 1717815 bytes exceeds the per-file cap of 1000000 bytes)"
+    },
+    "target_is_file": {
+      "arguments": {
+        "target": "src/app.py"
+      },
+      "text": "src/app.py is a file. Pass the stable id of one of its symbols"
+    },
+    "target_no_file": {
+      "arguments": {
+        "path": "gone.py"
+      },
+      "text": "the scan read no file gone.py"
+    },
+    "target_no_line": {
+      "arguments": {
+        "line": 3,
+        "path": "pricing.py"
+      },
+      "text": "no symbol in pricing.py spans line 3"
+    },
+    "target_no_match": {
+      "arguments": {
+        "target": "Invoice.totl"
+      },
+      "text": "no symbol matches Invoice.totl"
+    },
+    "target_spelled": {
+      "arguments": {
+        "count": 4,
+        "name": "orderPinnedTopics"
+      },
+      "text": "4 files spell orderPinnedTopics in code, and no file declares it. Grep finds every spelling."
+    },
+    "tool_takes": {
+      "arguments": {
+        "accepted": "target, repo_root, limit and budget",
+        "tool": "history"
+      },
+      "text": "history takes target, repo_root, limit and budget."
+    },
+    "unknown_tool": {
+      "arguments": {
+        "listed": "orient, symbols and read"
+      },
+      "text": "No tool has this name. The tools are orient, symbols and read."
     }
   }
 }

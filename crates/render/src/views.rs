@@ -2,8 +2,8 @@
 //! text, and each view's fields in the JSON.
 
 use app::{FileView, LocationView, ROW_INDENT};
-use facts::StableId;
-use prompts::messages::OVERVIEW_STABLE_IDS;
+use facts::{StableId, is_data_language};
+use prompts::messages::{OVERVIEW_STABLE_IDS, OVERVIEW_STABLE_IDS_DATA};
 use serde::Serialize;
 use syntax::Language;
 use text::one_line;
@@ -47,12 +47,17 @@ impl View for LocationView {
     }
 }
 
-// One file's header, the pattern of its stable ids, then its skeleton.
+// One file's header, the pattern of its stable ids, then its skeleton or its key outline.
 pub(crate) fn overview_block(view: &FileView) -> String {
     let header = overview_header(view);
-    let prefix = Language::from_name(&view.language).map_or("", |known| known.extraction().prefix);
+    let language = Language::from_name(&view.language);
+    let prefix = language.map_or("", |known| known.extraction().prefix);
     let pattern = StableId::new(prefix, &view.path, QUALIFIED_NAME).to_string();
-    let ids = OVERVIEW_STABLE_IDS.render(&one_line(&pattern));
+    let ids = if language.is_some_and(is_data_language) {
+        OVERVIEW_STABLE_IDS_DATA.render(&one_line(&pattern))
+    } else {
+        OVERVIEW_STABLE_IDS.render(&one_line(&pattern))
+    };
     format!("{header}\n{ROW_INDENT}{ids}\n{}", view.text)
 }
 
@@ -177,3 +182,6 @@ impl<'a> LocationJson<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

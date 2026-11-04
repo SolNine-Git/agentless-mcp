@@ -104,12 +104,6 @@ jobs:
           cargo fmt --all --check
           cargo clippy --workspace --all-targets -- -D warnings
 
-      # The committed graph fixtures come from Linux. Another platform rewrites them with the Python
-      # reference of tag v0.11.0rc1.
-      - name: Graph fixtures from the reference on this platform
-        if: runner.os != 'Linux'
-        run: scripts/platform_graph_fixtures.sh "$RUNNER_TEMP/reference"
-
       - name: Test
         run: cargo insta test --check --workspace --test-runner nextest
 

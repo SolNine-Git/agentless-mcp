@@ -47,9 +47,8 @@ fn is_public(tree: &Tree, node: NodeId) -> bool {
 }
 
 fn function(tree: &Tree, node: NodeId, parent: &str) -> Symbol {
-    let name = tree
-        .field(node, Field::Name)
-        .map_or(UNKNOWN, |name| tree.text(name));
+    let name_node = tree.field(node, Field::Name);
+    let name = name_node.map_or(UNKNOWN, |name| tree.text(name));
     let parameters = tree
         .field(node, Field::Parameters)
         .map_or("()", |parameters| tree.text(parameters));
@@ -69,17 +68,20 @@ fn function(tree: &Tree, node: NodeId, parent: &str) -> Symbol {
         SymbolKind::Method
     };
     Symbol::at(tree, node, name, kind)
+        .named_by(tree, name_node)
         .signed(&format!("{prefix} {name}{parameters}{returns}"))
         .owned_by(parent)
         .public(is_public(tree, node))
 }
 
 fn adt(tree: &Tree, node: NodeId) -> Option<Symbol> {
-    let name = tree.text(tree.field(node, Field::Name)?);
+    let name_node = tree.field(node, Field::Name)?;
+    let name = tree.text(name_node);
     let kind = tree.kind(node);
     let (_, symbol_kind, keyword) = ADTS.iter().find(|(adt, _, _)| *adt == kind)?;
     Some(
         Symbol::at(tree, node, name, *symbol_kind)
+            .named_by(tree, Some(name_node))
             .signed(&format!("{keyword} {name}"))
             .public(is_public(tree, node)),
     )

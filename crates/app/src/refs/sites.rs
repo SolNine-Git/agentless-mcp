@@ -14,39 +14,53 @@ use crate::MODULE_LEVEL;
 // The sites of one file at one tier, with the file.
 type Grouped<'a> = BTreeMap<(&'a str, Tier), (&'a FileFacts, Vec<RefSite>)>;
 
-pub(super) fn group_sites<'a>(
+// The tier of each line that spells the target, by file.
+pub(super) type LineTiers<'a> = HashMap<&'a str, BTreeMap<u32, Tier>>;
+
+// Every file of `sites` is tiered once, before the limit cuts the sites.
+pub(super) fn site_tiers<'a>(
     sites: &[Site<'a>],
     names: &BTreeMap<&str, BTreeSet<&str>>,
     resolver: &Resolver<'a>,
     target_ids: &BTreeSet<String>,
-) -> Vec<RefGroup> {
-    let mut grouped: Grouped<'a> = BTreeMap::new();
-    let mut tiers: HashMap<&'a str, BTreeMap<u32, Tier>> = HashMap::new();
-    let mut prefixes: HashMap<&'a str, &'static str> = HashMap::new();
+) -> LineTiers<'a> {
+    let mut tiers: LineTiers<'a> = HashMap::new();
     let no_names = BTreeSet::new();
     for site in sites {
-        let (path, line) = (site.path(), site.reference.line);
-        let symbol = enclosing_symbol(&site.file.facts.symbols, line);
-        if symbol.is_some() {
-            prefixes
-                .entry(path)
-                .or_insert(site.file.language.extraction().prefix);
-        }
+        let path = site.path();
         let file_names = names.get(path).unwrap_or(&no_names);
-        let line_tiers = (tiers.entry(path))
-            .or_insert_with(|| self::line_tiers(site.file, file_names, resolver, target_ids));
-        let tier = line_tiers.get(&line).copied().unwrap_or(Tier::Ambiguous);
+        (tiers.entry(path))
+            .or_insert_with(|| line_tiers(site.file, file_names, resolver, target_ids));
+    }
+    tiers
+}
+
+// How many of `sites` sit at a binding tier.
+pub(super) fn bound_count(sites: &[Site<'_>], tiers: &LineTiers<'_>) -> usize {
+    sites
+        .iter()
+        .filter(|site| tier_of(tiers, site).binds())
+        .count()
+}
+
+pub(super) fn group_sites<'a>(sites: &[Site<'a>], tiers: &LineTiers<'a>) -> Vec<RefGroup> {
+    let mut grouped: Grouped<'a> = BTreeMap::new();
+    for site in sites {
+        let symbol = enclosing_symbol(&site.file.facts.symbols, site.reference.line);
         let group = grouped
-            .entry((path, tier))
+            .entry((site.path(), tier_of(tiers, site)))
             .or_insert((site.file, Vec::new()));
         group.1.push(site_row(site, symbol));
     }
     (grouped.into_iter())
-        .map(|((path, tier), (file, rows))| {
-            let prefix = prefixes.get(path).copied().unwrap_or_default();
-            file_group(file, tier, rows, prefix)
-        })
+        .map(|((_, tier), (file, rows))| file_group(file, tier, rows))
         .collect()
+}
+
+fn tier_of(tiers: &LineTiers<'_>, site: &Site<'_>) -> Tier {
+    let lines = tiers.get(site.path());
+    let tier = lines.and_then(|lines| lines.get(&site.reference.line));
+    tier.copied().unwrap_or(Tier::Ambiguous)
 }
 
 fn site_row(site: &Site<'_>, symbol: Option<&Symbol>) -> RefSite {
@@ -56,27 +70,24 @@ fn site_row(site: &Site<'_>, symbol: Option<&Symbol>) -> RefSite {
             line,
             enclosing: symbol.qualname(),
             stable_id: Some(StableId::of(site.file.language, site.path(), symbol).to_string()),
-            name: symbol.id_qualname(),
         },
         None => RefSite {
             line,
             enclosing: MODULE_LEVEL.to_owned(),
             stable_id: None,
-            name: String::new(),
         },
     }
 }
 
 // A binding tier in a language with no scope analysis cannot tell a shadowing local from a
 // caller, so the group says the locals were not checked.
-fn file_group(file: &FileFacts, tier: Tier, sites: Vec<RefSite>, prefix: &'static str) -> RefGroup {
+fn file_group(file: &FileFacts, tier: Tier, sites: Vec<RefSite>) -> RefGroup {
     let binding = tier.binds();
     RefGroup {
         path: file.path.clone(),
         sites,
         tier: tier.as_str(),
         tier_label: tier.label(),
-        id_prefix: prefix,
         scope_checked: !binding || scope_analysed(file.language),
     }
 }

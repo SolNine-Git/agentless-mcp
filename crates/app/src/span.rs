@@ -1,10 +1,13 @@
-//! One stable id resolved to its symbol and the lines that the symbol spans in the working tree.
+//! One stable id, or a `path::name` written as one, resolved to its symbol and the lines that the
+//! symbol spans in the working tree.
 
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use facts::{StableId, Symbol, line_count};
+use facts::{OUTLINE_CAP, StableId, StableIdError, Symbol, is_data_language, line_count};
+use graph::path_name_id;
+use prompts::messages::{SPAN_DATA_KEY_UNLISTED, SPAN_SYMBOL_UNDEFINED};
 use store::{FileText, Served};
 use syntax::Language;
 
@@ -34,6 +37,16 @@ pub(crate) enum Missed {
     Refused(io::Refusal),
 }
 
+impl Missed {
+    // The text that an answer gives for the id, as expand gives it.
+    pub(crate) fn reason(self) -> String {
+        match self {
+            Missed::Reason(reason) => reason,
+            Missed::Refused(refusal) => refusal.to_string(),
+        }
+    }
+}
+
 pub(crate) struct ParsedFile {
     language: Language,
     source: Arc<str>,
@@ -52,6 +65,17 @@ pub(crate) fn resolve_symbol_span(
     resolve_symbol_span_in(reading, raw, &mut ParsedFiles::new())
 }
 
+// The key that a data file's stable id names, or why it names none; `None` when `raw` is no data
+// file's id. Data keys stay out of the name graph, so only the file resolves them.
+pub(crate) fn data_key_span(
+    reading: &Reading<'_>,
+    raw: &str,
+) -> Option<Noted<Result<SymbolSpan, Missed>>> {
+    let parsed = parsed_id(raw).ok()?;
+    let language = Language::from_path(parsed.path())?;
+    is_data_language(language).then(|| resolve_symbol_span(reading, raw))
+}
+
 // As `resolve_symbol_span`, with a path parsed once per `files`. Each id that names the path
 // gets the parse's warnings.
 pub(crate) fn resolve_symbol_span_in(
@@ -59,7 +83,7 @@ pub(crate) fn resolve_symbol_span_in(
     raw: &str,
     files: &mut ParsedFiles,
 ) -> Noted<Result<SymbolSpan, Missed>> {
-    let parsed: StableId = match raw.parse() {
+    let parsed = match parsed_id(raw) {
         Ok(parsed) => parsed,
         Err(error) => return Noted::new(Err(Missed::Reason(error.to_string()))),
     };
@@ -70,6 +94,18 @@ pub(crate) fn resolve_symbol_span_in(
             .map_err(Missed::clone)
             .and_then(|file| span(&parsed, file)),
         diagnostics: file.diagnostics.clone(),
+    }
+}
+
+// Only a text the parser refuses, or splits into a path that starts with `:` as it splits
+// `path::Type::method`, can read as a `path::name`. Any other text keeps the parser's refusal.
+fn parsed_id(raw: &str) -> Result<StableId, StableIdError> {
+    match raw.parse::<StableId>() {
+        Ok(id) if !id.path().starts_with(':') => Ok(id),
+        Ok(_) => path_name_id(raw).ok_or_else(|| StableIdError::Malformed {
+            text: raw.to_owned(),
+        }),
+        Err(refused) => path_name_id(raw).ok_or(refused),
     }
 }
 
@@ -86,9 +122,7 @@ fn span(parsed: &StableId, file: &ParsedFile) -> Result<SymbolSpan, Missed> {
         .find(|symbol| symbol.id_qualname() == qualname)
         .cloned()
     else {
-        return Err(Missed::Reason(format!(
-            "{path} no longer defines {qualname}"
-        )));
+        return Err(Missed::Reason(undefined(language, path, qualname)));
     };
     if language.extraction().prefix != parsed.prefix() {
         let id = StableId::of(language, path, &symbol);
@@ -106,6 +140,15 @@ fn span(parsed: &StableId, file: &ParsedFile) -> Result<SymbolSpan, Missed> {
         symbol,
         source: Arc::clone(source),
     })
+}
+
+// A data file keeps only an outline of its keys, so a key it still holds can miss. An id can be
+// a guess, so the reason claims no earlier state of the file.
+fn undefined(language: Language, path: &str, qualname: &str) -> String {
+    if is_data_language(language) {
+        return SPAN_DATA_KEY_UNLISTED.render((path, qualname, OUTLINE_CAP));
+    }
+    SPAN_SYMBOL_UNDEFINED.render((path, qualname))
 }
 
 // The path came from a caller, so a path that resolves outside the root is refused.

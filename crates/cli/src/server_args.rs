@@ -36,7 +36,7 @@ const NO_AUTO_RESTART_HELP: &str = "do not restart the HTTP server when its inst
      changes; the process then serves the code it loaded at startup until restarted by hand \
      (AGENTLESS_MCP_NO_AUTO_RESTART in the environment does the same)";
 // DV2: the reference help named the removed surfaces and the framework of the Python server.
-const SURFACE_HELP: &str = "which tool surface to publish: v2, the six consolidated \
+const SURFACE_HELP: &str = "which tool surface to publish: v2, the seven consolidated \
      intent-shaped tools, is the only one. v1 and both were removed in 0.11.0 and are refused at \
      startup";
 const TRANSPORT_HELP: &str = "how the server talks to its client: stdio (the default) for a \
@@ -341,12 +341,9 @@ fn transport(namespace: &Namespace) -> Result<ServerTransport, String> {
 }
 
 const CLIENT_ROOTS_OVER_HTTP: &str = "--allow-client-roots cannot be combined with --transport \
-     http. That flag lets the connected client's advertised roots authorise repositories, which \
-     is safe under stdio because the client is the process that spawned this server. Over HTTP \
-     the client is whatever reaches the port, and loopback is not per-user isolated, so any \
-     local process could name its own root and read anything this server's user can read -- \
-     the --root allowlist would stop deciding what is servable. Drop --allow-client-roots and \
-     enrol the repositories with --root or --roots-from.";
+     http. The flag has no effect: only --root and --roots-from name the repositories this \
+     server may serve. Drop --allow-client-roots and enroll the repositories with --root or \
+     --roots-from.";
 
 // --host and --port have no socket to bind under stdio.
 fn stdio_only(host: bool, port: bool) -> Result<ServerTransport, String> {

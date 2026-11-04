@@ -1,27 +1,37 @@
 //! The explanation's two forms: the card with its tiered fan-out, fan-in and imports in the
 //! text, and every group and listing in the JSON, trimmed at the fan-out groups.
 
-use app::{
-    EdgeRow, Explanation, ImportRow, TierGroup, cards_text, file_site, locator, omitted_line,
-};
+use app::{EdgeRow, Explanation, ImportRow, TierGroup, cards_text, file_site, locator};
 use kernel::Bounded;
-use prompts::messages::EXPLAIN_TIE;
+use prompts::messages::{
+    EXPLAIN_DEFINITIONS_UNLISTED, EXPLAIN_EDGES_UNLISTED, EXPLAIN_IMPORTERS_UNLISTED,
+    EXPLAIN_IMPORTS_UNLISTED, EXPLAIN_TIE,
+};
+use prompts::{Count, Template};
 use serde::Serialize;
 use text::one_line;
 
 use crate::envelope::{Listing, wrap_json};
 use crate::map::RationaleJson;
+use crate::refs::{BindingJson, CoverageJson};
+use crate::skipped::{SkippedJson, skipped_json, skipped_line};
 use crate::symbols::CardJson;
 use crate::{Rendered, View};
 
 impl View for Explanation {
     fn rendered(&self) -> Rendered<'_> {
-        Rendered::new(
-            explanation_text(self),
-            ExplainJson::of(self),
-            None,
-            wrap_json,
-        )
+        Rendered::new(warned_text(self), ExplainJson::of(self), None, wrap_json)
+    }
+}
+
+// A skipped code file can hold a caller, so the warning comes before the fan-in reads as whole.
+fn warned_text(explanation: &Explanation) -> String {
+    let text = explanation_text(explanation);
+    let skipped = skipped_line(&explanation.skipped);
+    if skipped.is_empty() {
+        text
+    } else {
+        format!("{skipped}\n\n{text}")
     }
 }
 
@@ -39,8 +49,18 @@ fn explanation_text(explanation: &Explanation) -> String {
     }
     let card_text = cards_text(std::slice::from_ref(card));
     lines.push(card_text.trim_end_matches('\n').to_owned());
-    let alternatives = explanation.alternatives.iter();
-    lines.extend(alternatives.map(|entry| format!("  also defined at {}", one_line(entry))));
+    if explanation.data_key {
+        return format!(
+            "{}\n\n{}\n",
+            lines.join("\n"),
+            one_line(&explanation.message)
+        );
+    }
+    let alternatives = &explanation.alternatives;
+    lines.extend(
+        (alternatives.rows().iter()).map(|entry| format!("  also defined at {}", one_line(entry))),
+    );
+    lines.extend(cut_line(alternatives, &EXPLAIN_DEFINITIONS_UNLISTED));
     if !explanation.rationales.is_empty() {
         lines.push(String::new());
         lines.push("rationale".to_owned());
@@ -74,7 +94,7 @@ fn tiers_text(heading: &str, groups: &[TierGroup]) -> String {
         lines.extend(group.rows.iter().map(edge_line));
         let omitted = group.total.saturating_sub(group.rows.len());
         if omitted > 0 {
-            lines.push(omitted_line(omitted, "edges at this tier", 0));
+            lines.push(EXPLAIN_EDGES_UNLISTED.render(omitted));
         }
     }
     lines.join("\n") + "\n"
@@ -104,11 +124,7 @@ fn imports_text(explanation: &Explanation) -> String {
                 one_line(&row.other)
             )
         }));
-        lines.extend(cut_line(
-            declared.omitted(),
-            declared.limit(),
-            "declared imports",
-        ));
+        lines.extend(cut_line(declared, &EXPLAIN_IMPORTS_UNLISTED));
     }
     let importers = &explanation.imports_in;
     if importers.rows().is_empty() {
@@ -118,17 +134,14 @@ fn imports_text(explanation: &Explanation) -> String {
             let site = file_site(&row.path, row.line);
             format!("    imported by  {site}  as {}", one_line(&row.module))
         }));
-        lines.extend(cut_line(
-            importers.omitted(),
-            importers.limit(),
-            "importers",
-        ));
+        lines.extend(cut_line(importers, &EXPLAIN_IMPORTERS_UNLISTED));
     }
     lines.join("\n") + "\n"
 }
 
-fn cut_line(omitted: usize, limit: usize, noun: &str) -> Option<String> {
-    (omitted > 0).then(|| omitted_line(omitted, noun, limit))
+fn cut_line<R>(listing: &Bounded<R>, unlisted: &Template<(Count, Count)>) -> Option<String> {
+    let omitted = listing.omitted();
+    (omitted > 0).then(|| unlisted.render((omitted, listing.limit())))
 }
 
 #[derive(Clone, Serialize)]
@@ -136,7 +149,13 @@ struct ExplainJson<'a> {
     target: &'a str,
     symbol: Option<CardJson<'a>>,
     message: &'a str,
+    binding: BindingJson<'a>,
+    coverage: CoverageJson,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    skipped: Vec<SkippedJson<'a>>,
     alternatives: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alternatives_omitted: Option<usize>,
     fan_out: Vec<GroupJson<'a>>,
     fan_in: Vec<GroupJson<'a>>,
     imports: ImportsJson<'a>,
@@ -191,7 +210,11 @@ impl<'a> ExplainJson<'a> {
             target: &explanation.target,
             symbol: explanation.card.as_ref().map(CardJson::of),
             message: &explanation.message,
-            alternatives: &explanation.alternatives,
+            binding: BindingJson::of(&explanation.binding),
+            coverage: CoverageJson::of(explanation.coverage),
+            skipped: skipped_json(&explanation.skipped),
+            alternatives: explanation.alternatives.rows(),
+            alternatives_omitted: Some(explanation.alternatives.omitted()).filter(|&left| left > 0),
             fan_out: explanation.fan_out.iter().map(GroupJson::of).collect(),
             fan_in: explanation.fan_in.iter().map(GroupJson::of).collect(),
             imports: ImportsJson {

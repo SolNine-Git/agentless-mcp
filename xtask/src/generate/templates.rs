@@ -23,16 +23,19 @@ pub struct Template {
     pub pieces: Vec<Piece>,
 }
 
-/// One part of a template: literal text, or the position of a value.
+/// One part of a template: literal text, the position of a value, or the position of a count with
+/// its form for a count of one and its form for any other count.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Piece {
     Text(String),
     Value(usize),
+    Choice(usize, String, String),
 }
 
 enum Segment<'t> {
     Literal(&'t str),
     Name(&'t str),
+    Choice(&'t str, &'t str, &'t str),
 }
 
 /// Parses one template file, sorted by key, or returns each problem with the file and the key.
@@ -83,6 +86,7 @@ pub fn entry_text<'v>(key: &str, value: &'v Value) -> Result<&'v str, String> {
 fn template(key: &str, value: &Value) -> Result<Template, String> {
     let text = entry_text(key, value)?;
     let segments = segments(text)?;
+    check_choices(&segments)?;
     let values = value_order(&segments)?;
     let pieces = segments
         .iter()
@@ -108,19 +112,55 @@ fn segments(text: &str) -> Result<Vec<Segment<'_>>, String> {
             .find('}')
             .filter(|_| field.starts_with('{'))
             .ok_or("the text has a brace that is not part of a {name} placeholder")?;
-        let name = &field[1..close];
-        if !is_name(name) {
-            return Err(format!(
-                "the field {{{name}}} is not a plain {{name}} placeholder"
-            ));
-        }
-        segments.push(Segment::Name(name));
+        segments.push(placeholder(&field[1..close])?);
         rest = &field[close + 1..];
     }
     if !rest.is_empty() {
         segments.push(Segment::Literal(rest));
     }
     Ok(segments)
+}
+
+// A `{name}` placeholder, or a `{name:one|many}` choice of two non-empty forms.
+fn placeholder(inside: &str) -> Result<Segment<'_>, String> {
+    if is_name(inside) {
+        return Ok(Segment::Name(inside));
+    }
+    let form = |text: &str| !text.is_empty() && !text.contains(['{', '|']);
+    let choice = inside.split_once(':').and_then(|(name, forms)| {
+        let (one, many) = forms.split_once('|')?;
+        (is_name(name) && form(one) && form(many)).then_some(Segment::Choice(name, one, many))
+    });
+    choice.ok_or_else(|| {
+        format!(
+            "the field {{{inside}}} is not a plain {{name}} placeholder or a {{name:one|many}} \
+             choice"
+        )
+    })
+}
+
+// A choice reads the count it chooses by, so that count must be a count the template prints.
+fn check_choices(segments: &[Segment<'_>]) -> Result<(), String> {
+    for segment in segments {
+        let Segment::Choice(name, one, many) = segment else {
+            continue;
+        };
+        let field = format!("{{{name}:{one}|{many}}}");
+        let position = placeholders::position(name).ok_or_else(|| placeholders::unknown(name))?;
+        if PLACEHOLDERS[position].1 != Kind::Count {
+            return Err(format!(
+                "the choice field {field} needs a count placeholder, and {{{name}}} takes text"
+            ));
+        }
+        let printed = |other: &Segment<'_>| matches!(other, Segment::Name(shown) if shown == name);
+        if !segments.iter().any(printed) {
+            return Err(format!(
+                "the choice field {field} chooses by {{{name}}}, but the template does not \
+                 print {{{name}}}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn is_name(text: &str) -> bool {
@@ -152,14 +192,18 @@ fn value_order(segments: &[Segment<'_>]) -> Result<Vec<(&'static str, Kind)>, St
 }
 
 fn piece(segment: &Segment<'_>, values: &[(&'static str, Kind)]) -> Piece {
+    let position = |name: &str| {
+        values
+            .iter()
+            .position(|(value, _)| *value == name)
+            .expect("value_order lists every placeholder name")
+    };
     match segment {
         Segment::Literal(text) => Piece::Text((*text).to_owned()),
-        Segment::Name(name) => Piece::Value(
-            values
-                .iter()
-                .position(|(value, _)| value == name)
-                .expect("value_order lists every placeholder name"),
-        ),
+        Segment::Name(name) => Piece::Value(position(name)),
+        Segment::Choice(name, one, many) => {
+            Piece::Choice(position(name), (*one).to_owned(), (*many).to_owned())
+        }
     }
 }
 
@@ -231,6 +275,13 @@ fn piece_source(piece: &Piece) -> String {
     match piece {
         Piece::Text(text) => format!("Piece::Text({})", literal(text)),
         Piece::Value(position) => format!("Piece::Value({position})"),
+        Piece::Choice(position, one, many) => {
+            format!(
+                "Piece::Choice({position}, {}, {})",
+                literal(one),
+                literal(many)
+            )
+        }
     }
 }
 
@@ -355,6 +406,74 @@ mod tests {
         for key in ["a", "b", "c"] {
             names_file_and_key(&problems, key, "brace");
         }
+    }
+
+    #[test]
+    fn a_choice_field_on_a_text_placeholder_is_named() {
+        names_file_and_key(
+            &problems_of("{\"a\": \"{path} {path:one|many}\"}"),
+            "a",
+            "the choice field {path:one|many} needs a count placeholder, and {path} takes text",
+        );
+    }
+
+    #[test]
+    fn a_choice_field_with_a_malformed_body_is_named() {
+        let fields = [
+            ("a", "{count:key}", "{count:key}"),
+            ("b", "{count:|keys}", "{count:|keys}"),
+            ("c", "{count:key|}", "{count:key|}"),
+            ("d", "{count:key|keys|more}", "{count:key|keys|more}"),
+            ("e", "{count:key{s|keys}", "{count:key{s|keys}"),
+            ("f", "{Count:key|keys}", "{Count:key|keys}"),
+        ];
+        let text: Vec<String> = fields
+            .iter()
+            .map(|(key, field, _)| format!("\"{key}\": \"{{count}} {field}\""))
+            .collect();
+        let problems = problems_of(&format!("{{{}}}", text.join(", ")));
+        for (key, _, named) in fields {
+            let says = format!(
+                "the field {named} is not a plain {{name}} placeholder or a {{name:one|many}} \
+                 choice"
+            );
+            names_file_and_key(&problems, key, &says);
+        }
+    }
+
+    #[test]
+    fn a_choice_field_whose_count_the_template_does_not_print_is_named() {
+        names_file_and_key(
+            &problems_of("{\"a\": \"{count:key|keys} left\"}"),
+            "a",
+            "the choice field {count:key|keys} chooses by {count}, but the template does not \
+             print {count}",
+        );
+    }
+
+    #[test]
+    fn a_choice_field_is_a_choice_piece_at_the_position_of_its_count() {
+        let templates = parse(FILE, "{\"a\": \"{path}: {count} {count:key|keys}\"}").unwrap();
+        let template = &templates[0];
+        assert_eq!(
+            template.values,
+            [("path", Kind::Text), ("count", Kind::Count)]
+        );
+        assert_eq!(
+            template.pieces,
+            [
+                Piece::Value(0),
+                Piece::Text(": ".to_owned()),
+                Piece::Value(1),
+                Piece::Text(" ".to_owned()),
+                Piece::Choice(1, "key".to_owned(), "keys".to_owned()),
+            ]
+        );
+        let text = module("The message templates.", &templates);
+        assert!(
+            text.contains("Piece::Choice(1, \"key\", \"keys\")"),
+            "{text}"
+        );
     }
 
     #[test]

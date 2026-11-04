@@ -206,6 +206,7 @@ fn symbol(line: u32, end_line: u32) -> Symbol {
         kind: SymbolKind::Function,
         line,
         end_line,
+        name_line: line,
         signature: String::new(),
         parent: String::new(),
         decorated: false,

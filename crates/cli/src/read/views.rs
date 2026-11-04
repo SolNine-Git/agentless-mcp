@@ -107,7 +107,8 @@ pub(super) fn slice(args: &ReadArgs<'_>, services: &Services, streams: &mut Stre
     file_slice(&session, &request, &answering, streams)
 }
 
-// A file that cannot be read fails the run with its reason; any other slice is an answer.
+// A slice that gives no line fails the run with one row per reason: the file cannot be read, or
+// each range starts past its end. Any other slice is an answer.
 fn file_slice(
     session: &Session,
     request: &SliceRequest,
@@ -119,9 +120,12 @@ fn file_slice(
         Ok(view) if !view.error.is_empty() => Some(view.error.clone()),
         _ => None,
     };
-    if let Some(reason) = failure {
+    if let Some(reasons) = failure {
         crate::steps::diagnostics(streams, &outcome.diagnostics);
-        return fail(streams.err, &reason, EXIT_DOMAIN);
+        for reason in reasons.split('\n') {
+            fail(streams.err, reason, EXIT_DOMAIN);
+        }
+        return EXIT_DOMAIN;
     }
     emit_then(outcome, answering, streams, |_| (String::new(), EXIT_OK))
 }

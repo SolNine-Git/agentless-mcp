@@ -1,7 +1,6 @@
-// agentless-mcp receipt (repository data below)
-// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 [py:billing/money.py::format_amount] @14-16
-  function (python)
+  function
   def format_amount(amount: Decimal) -> str
 
 references (fan-out): 2

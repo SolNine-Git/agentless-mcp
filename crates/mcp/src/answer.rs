@@ -1,6 +1,7 @@
 //! One call's answer: the allowlist and the selected repository, its session, the background index,
 //! then the operation and the text of its view under the receipt.
 
+mod graph;
 mod orient;
 mod read;
 mod shared;
@@ -41,12 +42,14 @@ impl Context<'_> {
         }
     }
 
-    // The text that `render` makes under the receipt, whose cache field reads as of now.
+    // The text that `render` makes under the receipt, whose cache field reads as of now. The
+    // allowlist holds each root once, so its length is the count of selectable roots.
     pub(crate) fn rendered(&self, render: impl FnOnce(&Receipt<'_>) -> String) -> String {
         let cache = self.cache_field();
         let session = self.session;
         let receipt = Receipt::new(&session.repo, &session.snapshot, &cache)
-            .counted_by(&*self.inner.services.counter);
+            .counted_by(&*self.inner.services.counter)
+            .among(self.allowed.len());
         render(&receipt)
     }
 
@@ -82,6 +85,7 @@ pub(crate) fn answer(
         "find_referencing_symbols" => shared::refs(&context, &call.arguments),
         "history" => shared::history(&context, &call.arguments),
         "orient" => orient::answer(&context, call),
+        "graph" => graph::answer(&context, call),
         "symbols" => symbols::answer(&context, call),
         "read" => read::answer(&context, call),
         other => Err(Failure::Unplanned(format!(
@@ -90,8 +94,8 @@ pub(crate) fn answer(
     }
 }
 
-// The session of the selected repository, armed for the background index unless the call bypasses
-// the cache. A refresh thread that the system refuses fails the call, as the reference's does.
+// The session of the selected repository, armed for the background index. A refresh thread that
+// the system refuses fails the call, as the reference's does.
 fn opened(inner: &Inner, call: &Call, allowed: &[PathBuf]) -> Result<Session, Failure> {
     let services = &*inner.services;
     let hint = inner.allowlist.hint();
@@ -109,18 +113,15 @@ fn opened(inner: &Inner, call: &Call, allowed: &[PathBuf]) -> Result<Session, Fa
     if repo.root != root {
         return Err(unauthorised(&selection));
     }
-    let no_cache = call.arguments.flag("no_cache");
-    let opening = Session::open_facts(services, repo, no_cache);
+    let opening = Session::open_facts(services, repo, false);
     for line in &opening.session.diagnostics {
         inner.ports.log.line(line);
     }
     let session = opening.session.value?;
-    if !no_cache {
-        inner
-            .ports
-            .arming
-            .arm(&session)
-            .map_err(Failure::Unplanned)?;
-    }
+    inner
+        .ports
+        .arming
+        .arm(&session)
+        .map_err(Failure::Unplanned)?;
     Ok(session)
 }

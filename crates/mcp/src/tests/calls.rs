@@ -1,3 +1,4 @@
+use prompts::envelope::RECEIPT_HEADER;
 use serde_json::Value as Json;
 
 use super::Sandbox;
@@ -33,7 +34,9 @@ pub(super) fn masked(text: &str) -> String {
         .replace("/<KEY>/tags.db", "/<KEY>/agentless.db")
         .split('\n')
         .map(|line| match line.split_once("   cache: ") {
-            Some((head, _)) if line.starts_with("// repo: ") => format!("{head}   cache: <CACHE>"),
+            Some((head, _)) if line.starts_with(RECEIPT_HEADER) => {
+                format!("{head}   cache: <CACHE>")
+            }
             _ => line.to_owned(),
         })
         .collect();

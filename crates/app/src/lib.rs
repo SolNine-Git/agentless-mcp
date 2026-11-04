@@ -75,11 +75,15 @@ pub use cycles::{CycleReport, CycleRow, CyclesRequest, cycles};
 pub use diagram::{
     ChartEdge, ChartGroup, ChartNode, DiagramRequest, DiagramView, Flowchart, diagram,
 };
+pub use endpoints::{BindingStatus, Coverage, CoverageStatus, TargetBinding};
 pub use env::{EnvConfig, Services, UnreadCwd, WALK_BUDGET};
 pub use error::Error;
 pub use expand::{ExpandRequest, ExpandResult, expand};
 pub use explain::{EdgeRow, ExplainRequest, Explanation, ImportRow, TierGroup, explain};
-pub use find::{FindRequest, FindResult, find};
+pub use find::{
+    DataEntry, DataMatches, FindRequest, FindResult, FoldedFile, OutsideOutline, Usage, UsageFile,
+    UsageOrder, find,
+};
 pub use guide::{guide_text, section_names, section_text, unknown_section};
 pub use health::{
     DiscountedTier, HealthComplexity, HealthComplexityRow, HealthReport, HealthRequest,
@@ -119,7 +123,7 @@ pub use registry::{
 };
 pub use repo::{Repo, expand_user, resolve, resolve_in_git};
 pub use rows::COVERAGE;
-pub use rowtext::{MODULE_LEVEL, ROW_INDENT, file_site, locator, omitted_line, stable_ids_line};
+pub use rowtext::{MODULE_LEVEL, ROW_INDENT, file_site, locator, stable_ids_line};
 pub use scan::Skipped;
 pub use scope::{in_metric_scope, is_fixture_path, is_test_path};
 pub use tags::{CacheReport, Opening, Session, Tags, repo_generation};

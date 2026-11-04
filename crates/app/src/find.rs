@@ -1,10 +1,15 @@
 //! Symbols by a substring or a qualified name, ranked exact name first, with the places a missed
-//! name is spelled where a file did not parse.
+//! name is spelled where a file did not parse or where a data file spells it outside its outline,
+//! and the code files that spell the name and do not declare it.
 
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use facts::{Symbol, SymbolKind};
+mod data;
+mod outside;
+mod usage;
+
+use facts::{Symbol, SymbolKind, is_data_language};
 use graph::joins_name_graph;
 use kernel::{Bounded, checkpoint};
 use store::{FileText, Served};
@@ -15,6 +20,13 @@ use crate::detached::answered_over;
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::{FileSymbols, SymbolFacts};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped, SymbolCard, symbol_card};
+use data::{DATA_ENTRIES, data_matches};
+use outside::outside_outline;
+use usage::{UsageQuery, spellings, usage, words};
+
+pub use data::{DataEntry, DataMatches, FoldedFile};
+pub use outside::OutsideOutline;
+pub use usage::{Usage, UsageFile, UsageOrder};
 
 // The longest qualified name, in bytes, that `short_ascii_holds` lowers on the stack.
 const SHORT_QUALNAME: usize = 128;
@@ -35,16 +47,42 @@ pub struct FindRequest {
 pub struct FindResult {
     /// The query as the caller wrote it.
     pub query: String,
-    /// One card per match the limit kept, and how many matched.
+    /// One card per code match the limit kept, and how many code symbols matched.
     pub cards: Bounded<SymbolCard>,
+    /// The matching keys of data files, which rank after every code match.
+    pub data: DataMatches,
+    /// The data keys that match and that the kind filter leaves out.
+    pub data_kind_excluded: usize,
+    /// With no code card and no kind filter, where data files spell the query outside their
+    /// outline.
+    pub outside: OutsideOutline,
     /// The files the scan passed over.
     pub skipped: Vec<Skipped>,
     /// The kind filter's name, if any.
     pub kind: Option<&'static str>,
     /// On a miss that the kind filter caused, the kinds of the symbols the query matches.
     pub other_kinds: Vec<&'static str>,
-    /// On a miss, each place the query is spelled where a file did not parse.
+    /// When no symbol matched, each place the query is spelled where a file did not parse.
     pub unparsed: Vec<(String, u32)>,
+    /// The code files that spell the query's name and do not declare it, or `None` when no file
+    /// does or the query is not a name or a qualified name.
+    pub usage: Option<Usage>,
+}
+
+impl FindResult {
+    /// Returns whether no symbol matched: no code card, no data entry and no unlisted data file.
+    #[must_use]
+    pub fn declares_nothing(&self) -> bool {
+        self.cards.rows().is_empty()
+            && self.data.entries.is_empty()
+            && self.data.unlisted.is_empty()
+    }
+
+    /// Returns whether nothing matched: no symbol, and no code file that spells the name.
+    #[must_use]
+    pub fn is_miss(&self) -> bool {
+        self.declares_nothing() && self.usage.is_none()
+    }
 }
 
 /// Finds the symbols of the repository that `reading` names whose name or qualified name holds
@@ -59,17 +97,24 @@ pub fn find(
         Ok(limit) => limit,
         Err(error) => return Noted::new(Err(error)),
     };
-    let loaded = SymbolFacts::load(services, reading);
+    let queries: Vec<UsageQuery> = UsageQuery::of(&request.query).into_iter().collect();
+    let words = words(&queries);
+    let spell = |text: &FileText| spellings(text, &words);
+    let loaded = SymbolFacts::load(services, reading, &spell);
     let mut diagnostics = loaded.diagnostics;
     let value = loaded.value.and_then(|scan| {
-        let answered = answered_over(scan, |scan| answer(reading, scan, request, limit));
+        let answered = answered_over(scan, |scan| {
+            let usage = queries.first().and_then(|query| usage(scan, &words, query));
+            answer(reading, scan, request, limit).map_ok(|found| FindResult { usage, ..found })
+        });
         diagnostics.extend(answered.diagnostics);
         answered.value
     });
     Noted { value, diagnostics }
 }
 
-// The matches, and on a miss each place where a file that did not parse spells the query.
+// The matches. With no code card and no kind filter, where data files spell the query outside
+// their outline. With no match, each place where a file that did not parse spells the query.
 fn answer(
     reading: &Reading<'_>,
     scan: &SymbolFacts,
@@ -77,41 +122,71 @@ fn answer(
     limit: usize,
 ) -> Noted<Result<FindResult, Error>> {
     let found = matched(scan, request, limit);
-    if found.cards.total() > 0 {
-        return Noted::new(Ok(found));
-    }
-    let unparsed = unparsed_mentions(reading, scan, &request.query);
-    unparsed.map(|value| value.map(|unparsed| FindResult { unparsed, ..found }))
+    let outside = if request.kind.is_none() && found.cards.rows().is_empty() {
+        outside_outline(reading, scan, &lower(&request.query))
+    } else {
+        Noted::new(Ok(OutsideOutline::default()))
+    };
+    outside.then_ok(|outside| {
+        let found = FindResult { outside, ..found };
+        if !found.declares_nothing() {
+            return Noted::new(Ok(found));
+        }
+        let unparsed = unparsed_mentions(reading, scan, &request.query);
+        unparsed.map_ok(|unparsed| FindResult { unparsed, ..found })
+    })
 }
 
-// The result without the unparsed places, which only a miss reads.
+// The result without the places outside the outlines and the unparsed places. A data key has no
+// kind, so a kind filter leaves every data key out and counts the ones that match.
 fn matched(scan: &SymbolFacts, request: &FindRequest, limit: usize) -> FindResult {
-    let needle = lower(&request.query);
+    let needle = Needle::new(&request.query);
     let symbols = scan.files.iter().flat_map(|file| {
         let symbols = file.symbols.iter();
         symbols.map(move |symbol| (file, symbol))
     });
-    let matches: Vec<(&FileSymbols, &Symbol)> = symbols
-        .filter(|(_, symbol)| matches(symbol, &needle, request.kind))
-        .collect();
-    let total = matches.len();
+    let (data, code): (Vec<_>, Vec<_>) = symbols
+        .filter(|(file, symbol)| {
+            let data = is_data_language(file.language);
+            matches(
+                symbol,
+                &needle.lowered,
+                if data { None } else { request.kind },
+            )
+        })
+        .partition(|(file, _)| is_data_language(file.language));
+    let (data, data_kind_excluded) = match request.kind {
+        Some(_) => (Vec::new(), data.len()),
+        None => (data, 0),
+    };
+    let code_total = code.len();
     let other_kinds = match request.kind {
-        Some(_) if total == 0 => other_kinds(scan, &needle),
+        Some(_) if code_total == 0 => other_kinds(scan, &needle.lowered),
         _ => Vec::new(),
     };
+    let cards = top_cards(code, &needle, limit);
+    let room = DATA_ENTRIES.min(limit.saturating_sub(cards.len()));
     FindResult {
         query: request.query.clone(),
-        cards: Bounded::with_total(top_cards(matches, &needle, limit), total, limit),
+        cards: Bounded::with_total(cards, code_total, limit),
+        data: data_matches(data, &needle, room),
+        data_kind_excluded,
+        outside: OutsideOutline::default(),
         skipped: scan.skipped.clone(),
         kind: request.kind.map(SymbolKind::as_str),
         other_kinds,
         unparsed: Vec::new(),
+        usage: None,
     }
 }
 
 // The cards of the first `limit` matches by rank, lowered name and path. The scan index breaks
 // the last ties, as a stable sort of the scan order does, so only the kept matches need a card.
-fn top_cards(matches: Vec<(&FileSymbols, &Symbol)>, needle: &str, limit: usize) -> Vec<SymbolCard> {
+fn top_cards(
+    matches: Vec<(&FileSymbols, &Symbol)>,
+    needle: &Needle<'_>,
+    limit: usize,
+) -> Vec<SymbolCard> {
     let mut keyed: Vec<_> = (matches.into_iter().enumerate())
         .map(|(at, (file, symbol))| {
             let (rank, lowered) = match_rank(symbol, needle);
@@ -128,9 +203,10 @@ fn top_cards(matches: Vec<(&FileSymbols, &Symbol)>, needle: &str, limit: usize) 
         .collect()
 }
 
-// The kinds, sorted, of the symbols that the query matches with no kind filter.
+// The kinds, sorted, of the code symbols that the query matches with no kind filter.
 fn other_kinds(scan: &SymbolFacts, needle: &str) -> Vec<&'static str> {
-    let symbols = scan.files.iter().flat_map(|file| file.symbols.iter());
+    let code = (scan.files.iter()).filter(|file| !is_data_language(file.language));
+    let symbols = code.flat_map(|file| file.symbols.iter());
     let kinds: BTreeSet<&'static str> = symbols
         .filter(|symbol| matches(symbol, needle, None))
         .map(|symbol| symbol.kind.as_str())
@@ -169,17 +245,33 @@ fn short_ascii_holds(symbol: &Symbol, needle: &str) -> Option<bool> {
         .map(|joined| joined.contains(needle))
 }
 
-// An exact name first, then an exact qualified name, then a name that starts with the query.
-fn match_rank(symbol: &Symbol, needle: &str) -> (u8, String) {
+// The query as the caller wrote it, and lowered as every match compares it.
+struct Needle<'q> {
+    written: &'q str,
+    lowered: String,
+}
+
+impl<'q> Needle<'q> {
+    fn new(written: &'q str) -> Self {
+        let lowered = lower(written);
+        Self { written, lowered }
+    }
+}
+
+// The name as the query writes it first, then the name in another case, then an exact qualified
+// name, then a name that starts with the query.
+fn match_rank(symbol: &Symbol, needle: &Needle<'_>) -> (u8, String) {
     let lowered = lower(&symbol.name);
-    let rank = if lowered == needle {
+    let rank = if symbol.name == needle.written {
         0
-    } else if lower(&symbol.qualname()) == needle {
+    } else if lowered == needle.lowered {
         1
-    } else if lowered.starts_with(needle) {
+    } else if lower(&symbol.qualname()) == needle.lowered {
         2
-    } else {
+    } else if lowered.starts_with(&needle.lowered) {
         3
+    } else {
+        4
     };
     (rank, lowered)
 }

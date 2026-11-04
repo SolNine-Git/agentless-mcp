@@ -21,6 +21,15 @@
     "parent_class": ""
   },
   "message": "",
+  "binding": {
+    "status": "bound",
+    "form": "name",
+    "definitions": 1
+  },
+  "coverage": {
+    "status": "complete",
+    "skipped_code_files": 0
+  },
   "alternatives": [],
   "fan_out": [
     {

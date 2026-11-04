@@ -89,12 +89,13 @@ impl Server {
             services,
             ports,
         };
+        let tools = listed_tools(inner.allowlist.root_count());
         Server {
             inner: Arc::new(inner),
             gate: Arc::new(Semaphore::new(config.max_concurrency)),
             permits: config.max_concurrency,
             offload,
-            tools: Arc::new(listed_tools()),
+            tools: Arc::new(tools),
             over_http: false,
         }
     }
