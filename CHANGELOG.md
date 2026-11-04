@@ -52,6 +52,32 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **The search gate's deny text is shorter.** A screen on 2026-11-03 ran it in
+  one SWE-Explore-Bench arm, `claude_code_agentless_hooked_c8a_o1`: the hooked
+  arm on the 60 instances of flat60 (Sonnet, n = 60 sessions). In 33 requests
+  the gate denied every tool call, and 33 of the 33 next requests held a
+  localizing call (32 `orient` map, 1 `symbols` find). The deny result as the
+  agent receives it is 96 cl100k tokens and 376 bytes, against 162 and 689
+  for the text of 5d4f81b in the screen's base arms. That full tool result
+  holds Claude Code's prefix, which names the hook command by its path, so
+  its size differs by install. A screen of 60 instances cannot show a change
+  in context. The text is now
+  "Structural pass first: no agentless call has localized this session yet.
+  Call mcp__agentless__orient with operation="map" and focus seeds from the
+  task (file paths or symbol names). Broad Grep, Glob and shell search unlock
+  after that call. A Grep of one existing file runs now." It is 278 bytes and
+  64 cl100k tokens. The text of 5d4f81b is 589 bytes and 131 cl100k tokens
+  (tiktoken `cl100k_base`, `encode`). The gate denies and allows the same
+  calls, and its log lines do not change: a replay of the 581 Grep and Glob
+  calls and the 623 agentless calls of the 300 conf2 hooked sessions through
+  the gate hooks of 5d4f81b and of this build gives the same exit code for
+  each call, 173 denials with the new text, and the same log lines. The
+  deny-cost design (DENYD, option O1) derives a saving of 0.7% of the hooked
+  arm's context from the shorter text. The 97 deny steps of the recorded
+  reference cases in crates/hook/fixtures/gate/ (failures.json 4, mark.json 7,
+  records.json 6, shapes.json 52, tests.json 28) expect the new text. No other
+  field of those cases changes.
+
 - **`capabilities` lists the walk's byte bound and says what it counts.** The
   caps gain `max_walk_bytes = 200000000` after `max_walk_files`, and the text
   report, over MCP and the CLI, ends the caps with "note: max_walk_bytes
