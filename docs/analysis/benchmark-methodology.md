@@ -338,6 +338,13 @@ answers whether tool availability or prompt wording produces the effect. The
 hooked arm is the shipping configuration, because it defers native search
 instead of removing it.
 
+The hooked arm's gate is the harness's own (swe-explore-bench
+`hooks/agentless_gate_check.py` and `agentless_gate_mark.py`): it denies `Grep`
+and `Glob`, and any agentless call unlocks it. The shipped gate,
+`agentless-mcp hook gate-check`, unlocks only on a localizing call and also
+checks shell searches. No arm up to 2026-11-03 ran the shipped gate, so every
+hooked result above measures the harness gate.
+
 ## Results
 
 Healthy server, `agentless-mcp` 0.6.1, n=60, Sonnet, top 10, measured
