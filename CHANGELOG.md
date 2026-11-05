@@ -627,6 +627,44 @@ Each byte count is of the served bytes.
 
 ### Fixed
 
+- **Three Python import forms no longer give a false import edge.** Each of
+  the 10 false alarms in 60 blind `cycle_dodge` findings (record:
+  docs/analysis/2026-11-05_cycle-dodge-measurement.md) came from one of them.
+  The import resolver is shared, so the Python import edges of map, refs,
+  explain, cycles, path and `cycle_dodge` change with it.
+  - An `if` block under a name that the file's imports bind to
+    TYPE_CHECKING is a TYPE_CHECKING block: `t.TYPE_CHECKING` after `import
+    typing as t`, and `Y` after `from typing import TYPE_CHECKING as Y`. Its
+    imports run only for a type checker (`Import.runs` is `type_only`), and
+    the clone walk skips the block as it skips `if TYPE_CHECKING:`.
+    scb-check 0.1.3 skips only the two fixed spellings.
+  - An absolute import in a Python file whose directory holds `__init__.py`
+    no longer resolves to a file beside the importer: `from math import
+    sqrt` in sphinx/util/parallel.py no longer names sphinx/util/math.py. A
+    Python file in a directory without `__init__.py` still tries the file
+    beside it first.
+  - `from P import N`, where P/N.py or P/N/__init__.py exists, has no edge
+    to P/__init__.py when the importing file is inside package P, because
+    such a file runs after P/__init__.py has started. An importer outside P
+    keeps that edge, and so does a member that is not a module.
+
+  The facts version goes from 12 to 13, so every tag cache indexes again
+  once. The recorded graph corpora `ext_python` and `ext_communities` change:
+  6 and 42 rows to a package's `__init__.py` go, with their file-graph rows,
+  ranks, communities and paths, and the `ext_python` cycle through
+  pkg/__init__.py becomes the cycle of pkg/cycle_a.py, pkg/cycle_b.py and
+  pkg/cycle_c.py. No golden changes. Measured with the release build of
+  d650012 on the 14 U3 snapshot copies (`lint --since <root> --only
+  cycle_dodge --json`): 1,638 rows go to 1,591 (1,567 the same, 24 with
+  another chain, 47 gone, 0 new). The 10 sampled false alarms are gone, and
+  the 50 other sampled rows remain with the same chain. Of the 83 local
+  imports with a comment that names a circular import, 56 are found (59
+  before). The 56 are the same 56 of the pilot class dodge, and the 3 that
+  the pilot classed local-only or type-only are no longer found. Over the 70
+  outside test paths, that is 80.0% (Wilson 95% 69.2% to 87.7%). A
+  false-alarm rate of this build is not measured: the 50 rows are not a new
+  sample.
+
 - **The not_checked row of `callee_overlap` for a file that does not parse
   names its own check.** It gave the complexity text: "Complexity is
   measured only for a file that parses. Fix the syntax error, then measure
