@@ -29,8 +29,19 @@ Each byte count is of the served bytes.
   (`tests/characterization/fixtures/cycle_dodge_py`): 5 of 5 positives found
   (a moved import, a new chain of 3 files, a chain through a package
   `__init__.py`, a relative import in a method, and a new chain back to an
-  old import) and no row on the 6 negatives. Its false-alarm rate on real
-  code is not measured yet.
+  old import) and no row on the 6 negatives. Measured on real code (14
+  Python snapshots of the bench, each taken as new, 1,638 rows; 60 sampled
+  rows with blind labels from two agent readers, 2026-11-05): 6 to 10 of the
+  60 are false alarms (10% to 17%, Wilson 95% upper bound 28%), so it meets
+  the bar for an advisory check and not the bar for a blocking one. Each
+  false alarm comes from one of three resolver faults: a block under an
+  aliased `TYPE_CHECKING` (`if t.TYPE_CHECKING:`) counts as code that runs
+  at load, a standard-library module resolves to a project file of the same
+  name, and `from P import N` resolves to `P/__init__.py` when N is a
+  submodule that it does not bind. Of the 83 local imports that a comment
+  marks as circular, it reports 59 (71%); 13 of the 24 misses are in test
+  paths, which it does not read (record:
+  docs/analysis/2026-11-05_cycle-dodge-measurement.md).
 
 - **`lint` gains `callee_overlap`, an advisory check for a function that a
   change writes again.** It reports a function that the change adds, or
