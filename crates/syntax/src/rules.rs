@@ -30,7 +30,8 @@ const ECMASCRIPT_BINDING_NAMES: [&str; 4] = [
 const LUA_BINDING_NAMES: [&str; 2] = ["identifier", "dot_index_expression"];
 // A named type first, then a primitive one: `impl Trait for i32` owns `i32.f`.
 const RUST_OWNER_KINDS: [&str; 2] = ["type_identifier", "primitive_type"];
-const TYPE_CHECKING: [&str; 2] = ["TYPE_CHECKING", "typing.TYPE_CHECKING"];
+/// The conditions of a Python `if` block that only a type checker runs, as the source spells them.
+pub const TYPE_CHECKING: [&str; 2] = ["TYPE_CHECKING", "typing.TYPE_CHECKING"];
 
 // The rule that finds a unit's or a scope's name node.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

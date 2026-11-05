@@ -1,16 +1,53 @@
-use syntax::NodeId;
+use syntax::{NodeId, TYPE_CHECKING};
 
 use super::tree::{Field, Tree};
-use crate::values::Import;
+use crate::values::{Import, Runs};
+
+// The nodes whose body runs only when they are called.
+const FUNCTIONS: [&str; 2] = ["function_definition", "lambda"];
 
 pub(super) fn imports(tree: &Tree) -> Vec<Import> {
     tree.preorder(tree.root())
-        .flat_map(|node| match tree.kind(node) {
-            "import_statement" => bare(tree, node),
-            "import_from_statement" => vec![from(tree, node)],
-            _ => Vec::new(),
+        .flat_map(|node| {
+            let statements = match tree.kind(node) {
+                "import_statement" => bare(tree, node),
+                "import_from_statement" => vec![from(tree, node)],
+                _ => return Vec::new(),
+            };
+            let runs = runs(tree, node);
+            let running = |import| Import {
+                runs: runs.clone(),
+                ..import
+            };
+            statements.into_iter().map(running).collect()
         })
         .collect()
+}
+
+// A function around the statement wins over a TYPE_CHECKING block around it.
+fn runs(tree: &Tree, node: NodeId) -> Runs {
+    let mut runs = Runs::Load;
+    let mut inner = node;
+    while let Some(outer) = tree.parsed.parent(inner) {
+        if tree.is_any(outer, &FUNCTIONS) {
+            return Runs::Call;
+        }
+        if type_checked(tree, outer, inner) {
+            runs = Runs::TypeOnly;
+        }
+        inner = outer;
+    }
+    runs
+}
+
+// `inner` is the block that runs when `outer`, an if statement, tests TYPE_CHECKING; an else or
+// elif branch of it runs when the module loads.
+fn type_checked(tree: &Tree, outer: NodeId, inner: NodeId) -> bool {
+    tree.is(outer, "if_statement")
+        && tree.field(outer, Field::Consequence) == Some(inner)
+        && tree
+            .field(outer, Field::Condition)
+            .is_some_and(|condition| TYPE_CHECKING.contains(&tree.text(condition)))
 }
 
 // `import a.b` and `import a.b as ab`: one statement per module.

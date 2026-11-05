@@ -4,7 +4,7 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use facts::{Facts, StableId, extract, rationale_handle};
+use facts::{Facts, Runs, StableId, extract, rationale_handle};
 use serde::Deserialize;
 use syntax::{Language, parse};
 use text::testing::cases;
@@ -63,6 +63,9 @@ struct ImportRow {
     line: u32,
     binds_all: bool,
     alias: String,
+    // A fixture row names when the statement runs only where it does not run at load.
+    #[serde(default)]
+    runs: Option<String>,
 }
 
 #[test]
@@ -180,6 +183,7 @@ fn import_rows(facts: &Facts) -> Vec<ImportRow> {
             line: import.line,
             binds_all: import.binds_all,
             alias: import.alias.clone(),
+            runs: (import.runs != Runs::Load).then(|| import.runs.as_str().to_owned()),
         })
         .collect()
 }
