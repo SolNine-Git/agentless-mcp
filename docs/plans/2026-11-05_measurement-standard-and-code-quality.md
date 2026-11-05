@@ -409,8 +409,12 @@ grading minutes, image disk, peak memory per container and PD on the 10 tasks.
 The owner accepted every recommended answer of section 6 and approved the first run of section 2.4 with two
 sessions per task (r = 2, about $44, derived).
 
-1. The patch writer for method (a): claude-sonnet-5-5, one Batches API call per context.
-2. Billing for (a) and (b): an API key with a spend limit.
+1. The patch writer for method (a): claude-sonnet-5-5. Correction (owner, 2026-11-05): the owner has a Max plan
+   and no API key, so method (a) makes one `claude -p` call per context with every tool turned off, not a
+   Batches API call.
+2. Billing: every run uses `claude -p` on the owner's Max plan. The USD figures in this plan are Claude Code's
+   API-equivalent estimates (`total_cost_usd`), not charges; the real limit is the plan's usage limits. A run
+   that hits a usage limit stops, and resumes after the reset with only the failed tasks.
 3. Container isolation: a dedicated Unix user with its own rootless podman and API socket (one sudo step by the
    owner).
 4. The Pro grader: SWE-bench Pro V2. The tasks that are not in V2 leave the analysis.
