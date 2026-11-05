@@ -13,6 +13,7 @@ mod communities;
 mod cycles;
 mod detached;
 mod diagram;
+mod dodges;
 mod endpoints;
 mod env;
 mod error;

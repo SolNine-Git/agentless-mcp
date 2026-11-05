@@ -1,6 +1,7 @@
 //! Findings, their machine-readable details, and the one order every check returns them in.
 
 use kernel::Key;
+use prompts::messages;
 use serde::{Serialize, Serializer};
 use syntax::Language;
 
@@ -116,6 +117,8 @@ pub enum Detail {
     /// A `callee_overlap` finding's two functions and the callees they share, boxed because it
     /// is far larger than the other details.
     Overlap(Box<CalleeShare>),
+    /// A `cycle_dodge` finding's import and the chain that imports its file back.
+    Dodge(ImportDodge),
 }
 
 /// How `complexity_delta` paired a new unit with an old one.
@@ -295,6 +298,62 @@ pub struct TieredCallee {
     pub tier: &'static str,
 }
 
+/// A `cycle_dodge` finding: a function-local import, the file it imports, and the load-time
+/// imports from that file back to the import's own file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportDodge {
+    /// The module as the statement names it, with the dots of its level.
+    pub module: String,
+    /// The repository file that the statement imports.
+    pub target: String,
+    /// The qualified name of the declaration around the statement.
+    pub function: String,
+    /// What the change did to make the import close the cycle.
+    pub via: DodgeVia,
+    /// Each load-time import from the target back to the statement's file, in chain order.
+    pub chain: Vec<ChainHop>,
+}
+
+/// What a change did to make a function-local import close a cycle at module level.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DodgeVia {
+    /// The import moved into the function from module level in the same file.
+    Moved,
+    /// The import is new in the function.
+    New,
+    /// The import did not change; the change made the chain back.
+    ReturnPath,
+}
+
+impl DodgeVia {
+    /// Return the value's JSON name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Moved => "moved",
+            Self::New => "new",
+            Self::ReturnPath => "return_path",
+        }
+    }
+}
+
+impl Serialize for DodgeVia {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+/// One load-time import of a chain: the statement at `path:line`, which imports `target`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChainHop {
+    /// The repo-relative path of the importing file.
+    pub path: String,
+    /// The line of the statement.
+    pub line: u32,
+    /// The repo-relative path of the imported file.
+    pub target: String,
+}
+
 keyed! {
     UnitDelta {
         UNIT: unit,
@@ -326,9 +385,25 @@ keyed! {
     }
     SharedCallee { CALLEE: callee, TIER: tier, OTHER_TIER: other_tier }
     TieredCallee { CALLEE: callee, TIER: tier }
+    ImportDodge {
+        MODULE: module,
+        TARGET: target,
+        FUNCTION: function,
+        VIA: via,
+        CHAIN: chain,
+    }
+    ChainHop { PATH: path, LINE: line, TARGET: target }
 }
 
 pub(crate) const UNMEASURABLE_SOURCE: &str = "UnmeasurableSource";
+
+// The not_checked row of a tree check whose scan or later work reached its time budget.
+pub(crate) fn budget_spent(check: &'static str, reads: &str, seconds: u64) -> PairFinding {
+    let budget = usize::try_from(seconds).unwrap_or(usize::MAX);
+    let message = messages::TREE_CHECK_STOPPED.render((check, reads, budget));
+    let evidence = messages::TREE_CHECK_STOPPED_EVIDENCE;
+    not_checked(check, "", message, evidence, None)
+}
 
 pub(crate) fn not_checked(
     check: &'static str,

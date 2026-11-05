@@ -132,6 +132,13 @@ impl Pair {
         [&self.old, &self.new].into_iter().flatten()
     }
 
+    /// Return the text before the change, or `None` for a file that the change adds or that the
+    /// checks skip.
+    #[must_use]
+    pub fn old_text(&self) -> Option<&str> {
+        self.old.as_ref().map(|side| &*side.text)
+    }
+
     /// Return the clone blocks of the side whose text is `text`, or `None` when no side has it.
     #[must_use]
     pub fn measured_blocks(&self, text: &str) -> Option<Result<Vec<Block>, SideError>> {
@@ -235,6 +242,13 @@ pub(crate) const CALLEE_GAPS: Gaps = Gaps {
     reasons: &COMPLEXITY_REASONS,
     old: &messages::CALLEE_OVERLAP_OLD_NOT_MEASURED,
     new: &messages::CALLEE_OVERLAP_NEW_NOT_MEASURED,
+};
+
+pub(crate) const DODGE_GAPS: Gaps = Gaps {
+    check: crate::CYCLE_DODGE,
+    reasons: &COMPLEXITY_REASONS,
+    old: &messages::CYCLE_DODGE_OLD_NOT_PARSED,
+    new: &messages::CYCLE_DODGE_NEW_NOT_PARSED,
 };
 
 pub(crate) const CLONE_GAPS: Gaps = Gaps {

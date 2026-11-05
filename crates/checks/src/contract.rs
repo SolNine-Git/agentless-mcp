@@ -15,7 +15,7 @@ use crate::observed::{HitState, Observed, Outcome};
 use crate::pair::{CONTRACT_GAPS, Measured, Pair, Sides, each_pair, read_sides};
 use crate::rules::{CompiledRules, Hit, compile, hits, rules_for};
 
-const MODULE_UNIT: &str = "<module>";
+pub(crate) const MODULE_UNIT: &str = "<module>";
 
 type HitKey<'a> = (&'static str, &'a str, &'a str, String);
 

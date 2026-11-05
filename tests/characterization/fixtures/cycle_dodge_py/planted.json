@@ -1,0 +1,17 @@
+{
+  "positives": [
+    {"kind": "moved", "via": "moved", "path": "moved_a.py", "function": "total", "module": "moved_b"},
+    {"kind": "new_chain_of_3", "via": "new", "path": "chain_c.py", "function": "report", "module": "chain_a"},
+    {"kind": "chain_through_init", "via": "new", "path": "shop/models.py", "function": "Item.render", "module": "views"},
+    {"kind": "relative_in_method", "via": "new", "path": "kit/parts.py", "function": "Part.tool", "module": ".tools"},
+    {"kind": "new_return_path", "via": "return_path", "path": "late_a.py", "function": "load", "module": "late_b"}
+  ],
+  "negatives": [
+    {"kind": "no_return_path", "path": "plain_a.py", "function": "use", "module": "plain_b"},
+    {"kind": "type_checking_return", "path": "typed_a.py", "function": "check", "module": "typed_b"},
+    {"kind": "local_only_cycle", "path": "lazy_a.py", "function": "use", "module": "lazy_b"},
+    {"kind": "test_path", "path": "tests/support.py", "function": "make", "module": "harness"},
+    {"kind": "untouched_dodge", "path": "old_a.py", "function": "fetch", "module": "old_b"},
+    {"kind": "third_party", "path": "net.py", "function": "fetch", "module": "requests"}
+  ]
+}

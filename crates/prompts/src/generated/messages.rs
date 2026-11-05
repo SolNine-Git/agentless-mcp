@@ -641,6 +641,57 @@ pub const CONTRACT_OLD_NOT_MEASURED: Template<(Text, Text)> = Template::new(&[
     Piece::Value(1),
 ]);
 
+/// A template that takes (`module`, `function`, `chain`).
+pub const CYCLE_DODGE_FOUND: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Text("The import of `"),
+    Piece::Value(0),
+    Piece::Text("` in `"),
+    Piece::Value(1),
+    Piece::Text(
+        "` runs only when the function runs. At module level it closes \
+        this import cycle: ",
+    ),
+    Piece::Value(2),
+    Piece::Text(
+        ". Break the cycle: move the shared code to a module that both \
+        files import, or invert the dependency.",
+    ),
+]);
+
+/// A template that takes (`path`, `target`, `hops`, `line`).
+pub const CYCLE_DODGE_FOUND_EVIDENCE: Template<(Text, Text, Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(":"),
+    Piece::Value(3),
+    Piece::Text(" imports "),
+    Piece::Value(1),
+    Piece::Text("; "),
+    Piece::Value(1),
+    Piece::Text(" imports "),
+    Piece::Value(0),
+    Piece::Text(" back through "),
+    Piece::Value(2),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const CYCLE_DODGE_NEW_NOT_PARSED: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("not checked: cycle_dodge did not compare "),
+    Piece::Value(0),
+    Piece::Text(", because its text after the change does not parse. "),
+    Piece::Value(1),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const CYCLE_DODGE_OLD_NOT_PARSED: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("not checked: cycle_dodge did not compare "),
+    Piece::Value(0),
+    Piece::Text(", because its text before the change does not parse. "),
+    Piece::Value(1),
+]);
+
+/// A text that takes no values.
+pub const CYCLE_DODGE_READS: &str = "the imports of every file";
+
 /// A template that takes `count`.
 pub const CYCLES_HEADER: Template<Count> = Template::new(&[
     Piece::Value(0),

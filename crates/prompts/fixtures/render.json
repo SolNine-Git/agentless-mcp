@@ -551,6 +551,41 @@
       },
       "text": "not checked: contract_drift did not compare src/adapters/api.py, because its text before the change cannot be measured. src/adapters/api.py does not parse"
     },
+    "cycle_dodge_found": {
+      "arguments": {
+        "chain": "seaborn/axisgrid.py -> seaborn/relational.py -> seaborn/axisgrid.py",
+        "function": "PairGrid.map",
+        "module": ".relational"
+      },
+      "text": "The import of `.relational` in `PairGrid.map` runs only when the function runs. At module level it closes this import cycle: seaborn/axisgrid.py -> seaborn/relational.py -> seaborn/axisgrid.py. Break the cycle: move the shared code to a module that both files import, or invert the dependency."
+    },
+    "cycle_dodge_found_evidence": {
+      "arguments": {
+        "hops": "seaborn/relational.py:12",
+        "line": 2157,
+        "path": "seaborn/axisgrid.py",
+        "target": "seaborn/relational.py"
+      },
+      "text": "seaborn/axisgrid.py:2157 imports seaborn/relational.py; seaborn/relational.py imports seaborn/axisgrid.py back through seaborn/relational.py:12"
+    },
+    "cycle_dodge_new_not_parsed": {
+      "arguments": {
+        "path": "src/app.py",
+        "reason": "src/app.py does not parse: the first syntax error is at line 3."
+      },
+      "text": "not checked: cycle_dodge did not compare src/app.py, because its text after the change does not parse. src/app.py does not parse: the first syntax error is at line 3."
+    },
+    "cycle_dodge_old_not_parsed": {
+      "arguments": {
+        "path": "src/app.py",
+        "reason": "src/app.py does not parse: the first syntax error is at line 3."
+      },
+      "text": "not checked: cycle_dodge did not compare src/app.py, because its text before the change does not parse. src/app.py does not parse: the first syntax error is at line 3."
+    },
+    "cycle_dodge_reads": {
+      "arguments": {},
+      "text": "the imports of every file"
+    },
     "cycles_header": {
       "arguments": {
         "count": 2

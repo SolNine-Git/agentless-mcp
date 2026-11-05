@@ -1,6 +1,6 @@
 [package]
 name = "checks"
-description = "The erosion pair checks: complexity_delta, contract_drift, clone_delta, and callee_overlap."
+description = "The erosion pair checks: complexity_delta, contract_drift, clone_delta, callee_overlap, and cycle_dodge."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

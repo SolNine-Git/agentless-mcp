@@ -7,7 +7,7 @@ use checks::{CloneIndex, Outcome, Pair, Side};
 
 use crate::callees::callee_tree;
 use crate::tree_scan::TreeScan;
-use crate::{Error, parallel};
+use crate::{Error, dodges, parallel};
 
 // The clone index of a run, given the measured pairs that clone_delta keeps. Every candidate of
 // a run shares one index.
@@ -63,7 +63,6 @@ pub(crate) fn clone_delta(
     Ok(Some(checks::clone_delta(pairs, &index, inputs.reported)?))
 }
 
-// The selection refuses callee_overlap in every form that has no tree, so the tree is there.
 pub(crate) fn callee_overlap(
     pairs: &[&Pair],
     inputs: &mut RunInputs<'_, '_>,
@@ -71,10 +70,24 @@ pub(crate) fn callee_overlap(
     if pairs.is_empty() {
         return Ok(None);
     }
-    let tree = inputs.tree.as_mut();
-    let scan = (tree.expect("only the --since form selects callee_overlap"))()?;
-    let callees = callee_tree(scan)?;
+    let callees = callee_tree(scanned(inputs)?)?;
     Ok(Some(checks::callee_overlap(pairs, &callees)?))
+}
+
+pub(crate) fn cycle_dodge(
+    pairs: &[&Pair],
+    inputs: &mut RunInputs<'_, '_>,
+) -> Result<Option<Outcome>, Error> {
+    if pairs.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(dodges::cycle_dodge(scanned(inputs)?, pairs)?))
+}
+
+// The selection refuses a tree check in every form that has no tree, so the tree is there.
+fn scanned<'i>(inputs: &mut RunInputs<'_, 'i>) -> Result<&'i TreeScan, Error> {
+    let tree = inputs.tree.as_mut();
+    (tree.expect("only the --since form selects a tree check"))()
 }
 
 // Only clone_delta reads blocks, so the pool finds them before the index and the check read them.

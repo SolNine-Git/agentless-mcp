@@ -88,6 +88,11 @@ pub const prompts::messages::CONTRACT_OLD_NOT_MEASURED: prompts::Template<(promp
 pub const prompts::messages::CYCLES_HEADER: prompts::Template<prompts::Count>
 pub const prompts::messages::CYCLES_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::CYCLES_UNRESOLVED: prompts::Template<prompts::Count>
+pub const prompts::messages::CYCLE_DODGE_FOUND: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::CYCLE_DODGE_FOUND_EVIDENCE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Count)>
+pub const prompts::messages::CYCLE_DODGE_NEW_NOT_PARSED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::CYCLE_DODGE_OLD_NOT_PARSED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::CYCLE_DODGE_READS: &str
 pub const prompts::messages::DATA_KEY_NO_FAN_IN: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::DIAGRAM_EDGES_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::DIAGRAM_ELIDED: prompts::Template<prompts::Count>

@@ -238,8 +238,9 @@ fn since_help() -> String {
     format!(
         "compare each file changed since the commit REV with its working-tree text (review mode). \
          Runs {}, which read only the changed files. --only can add clone_delta, which also reads \
-         every tier-1 source file, and callee_overlap, which reads the calls of every function in \
-         the working tree. For a branch, pass --since \"$(git merge-base HEAD main)\"",
+         every tier-1 source file, and callee_overlap and cycle_dodge, which read the calls of \
+         every function and the imports of every file in the working tree after the change. For \
+         a branch, pass --since \"$(git merge-base HEAD main)\"",
         edited_checks()
     )
 }
@@ -253,9 +254,9 @@ fn only_help() -> String {
     format!(
         "run only these checks: {}. The pair checks ({}) compare whole file texts. {} read only \
          the edited files. clone_delta also reads every tier-1 source file outside test and \
-         fixture paths. callee_overlap reads the calls of every function in the working tree, and \
-         only --since runs it. A run with only pair checks skips the symbol scan that the patch \
-         checks need",
+         fixture paths. callee_overlap and cycle_dodge read the calls of every function and the \
+         imports of every file in the working tree, and only --since runs them. A run with only \
+         pair checks skips the symbol scan that the patch checks need",
         all.join(", "),
         pairs.join(", "),
         edited_checks()

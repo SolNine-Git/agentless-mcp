@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 266] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 271] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -517,6 +517,36 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 266] = [
         "contract_old_not_measured",
         &["path", "reason"],
         messages::CONTRACT_OLD_NOT_MEASURED.pieces(),
+    ),
+    (
+        "messages",
+        "cycle_dodge_found",
+        &["module", "function", "chain"],
+        messages::CYCLE_DODGE_FOUND.pieces(),
+    ),
+    (
+        "messages",
+        "cycle_dodge_found_evidence",
+        &["path", "target", "hops", "line"],
+        messages::CYCLE_DODGE_FOUND_EVIDENCE.pieces(),
+    ),
+    (
+        "messages",
+        "cycle_dodge_new_not_parsed",
+        &["path", "reason"],
+        messages::CYCLE_DODGE_NEW_NOT_PARSED.pieces(),
+    ),
+    (
+        "messages",
+        "cycle_dodge_old_not_parsed",
+        &["path", "reason"],
+        messages::CYCLE_DODGE_OLD_NOT_PARSED.pieces(),
+    ),
+    (
+        "messages",
+        "cycle_dodge_reads",
+        &[],
+        &[Piece::Text(messages::CYCLE_DODGE_READS)],
     ),
     (
         "messages",
