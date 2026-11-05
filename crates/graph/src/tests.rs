@@ -4,6 +4,7 @@ mod deadline;
 mod files;
 mod lookup;
 mod names;
+mod packages;
 mod properties;
 mod rust;
 mod symbols;

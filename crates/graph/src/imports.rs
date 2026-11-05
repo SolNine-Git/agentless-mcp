@@ -102,6 +102,15 @@ pub(crate) fn resolve_imported_submodule<'a>(
     resolve_import_target(importer, &dotted, relative_level, paths)
 }
 
+// The importer is in the package whose entry point `target` is: the directory of a root
+// `__init__.py` holds every file.
+pub(crate) fn inside_package(importer: &str, target: &str) -> bool {
+    target
+        .strip_suffix(PACKAGE_ENTRY)
+        .filter(|directory| directory.is_empty() || directory.ends_with('/'))
+        .is_some_and(|directory| importer.starts_with(directory))
+}
+
 // Every candidate starts with its base, so a base that no path starts with skips its suffixes.
 fn first_candidate<'a>(bases: &[String], paths: &PathIndex<'a>) -> Option<&'a str> {
     bases.iter().find_map(|base| {

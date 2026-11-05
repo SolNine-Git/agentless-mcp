@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use text::testing::cases;
 
-use crate::imports::{resolve_import_target, resolve_imported_submodule};
+use crate::imports::{inside_package, resolve_import_target, resolve_imported_submodule};
 use crate::paths::{PathIndex, module_stems, module_tail, normalized, normpath, stem};
 use crate::unresolved::{names_this_repository, repository_segments};
 
@@ -168,4 +168,25 @@ fn an_absolute_import_in_a_python_package_never_resolves_beside_the_importer() {
         resolve("sphinx/util/math.c", "util.h", 0),
         Some("sphinx/util/util.h")
     );
+}
+
+#[test]
+fn an_importer_is_inside_the_package_whose_directory_holds_it() {
+    let cases = [
+        ("pkg/a.py", "pkg/__init__.py", true),
+        ("pkg/sub/a.py", "pkg/__init__.py", true),
+        ("pkg/__init__.py", "pkg/__init__.py", true),
+        ("a.py", "__init__.py", true),
+        ("pkgx/a.py", "pkg/__init__.py", false),
+        ("pkg/a.py", "pkg/sub/__init__.py", false),
+        ("pkg/a.py", "pkg/mod.py", false),
+        ("pkg/a.py", "pkg/my__init__.py", false),
+    ];
+    for (importer, target, inside) in cases {
+        assert_eq!(
+            inside_package(importer, target),
+            inside,
+            "{importer} {target}"
+        );
+    }
 }
