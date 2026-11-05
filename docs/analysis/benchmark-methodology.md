@@ -58,7 +58,8 @@ that turned out to be the second.
 
 ## Integrity incidents
 
-Four incidents produced complete, plausible, and entirely invalid results. Each
+Four incidents produced complete, plausible, and entirely invalid results. A
+fifth produced a valid number that was read as the wrong quantity. Each
 is described with the signature that identifies it, because the signature is
 what a future run checks itself against.
 
@@ -134,7 +135,24 @@ contaminated run:* a baseline that has CLI MCP logs at all or envelopes with
 `permission_denials`, or a stream transcript whose `system`/`init` event
 lists a tool, an MCP server or an output style other than the arm's.
 
-**5. Operational rules.** Each one below was learned by losing a run to it.
+**5. The cost measure, found 2026-11-05.** The screens and confirmations
+reported cost as context tokens: input, cache write and cache read, summed over
+every request. Each request sends the whole conversation again, so most of
+those tokens are cache reads, which cost a tenth of fresh input. Output costs
+five times fresh input. Priced by token class, the hooked arm of the
+2026-10-29 confirmation costs 53% more than native, not 116% more, and the arm
+that offered the tools with no gate costs 4% more, not 35% more. A priced cost
+has a flaw of its own when arms run one after another: an arm with the same
+prompt prefix as an earlier arm reads that arm's cache. In the 2026-11-04
+screen, the native placebo ran third and its priced cost was 17% lower than
+native's (record:
+[`2026-11-05_measurement-noise-and-cost.md`](2026-11-05_measurement-noise-and-cost.md)).
+*Rule:* report context and priced cost side by side, and let a priced cost
+decide a question only when the arms alternate task by task. *Signature of the
+order bias:* a placebo arm whose priced cost differs from its control with an
+interval that excludes zero.
+
+**6. Operational rules.** Each one below was learned by losing a run to it.
 
 - Archive the result directories before any re-run. `--resume` silently
   no-ops over an existing row instead of replacing it.
