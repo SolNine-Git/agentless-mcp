@@ -1,6 +1,7 @@
 //! The one owner of "module string plus importing file becomes a repository path".
 
 use facts::Import;
+use syntax::{ImportRule, Language};
 use text::PosixPath;
 
 use crate::paths::{PathIndex, normalized};
@@ -27,6 +28,8 @@ impl<'a> ImportTargets<'a> {
     }
 }
 
+// The file that makes a directory a Python package.
+const PACKAGE_ENTRY: &str = "__init__.py";
 // Ordered so that a package's entry point loses to a module of the same name.
 const MODULE_SUFFIXES: [&str; 25] = [
     ".py",
@@ -69,9 +72,11 @@ pub(crate) fn resolve_import_target<'a>(
         return None;
     }
     let directory = PosixPath::parse(importer).parent();
-    if let Some(found) =
-        first_candidate(&candidate_bases(module, relative_level, &directory), paths)
-    {
+    let beside = reads_own_directory(importer, &directory, paths);
+    if let Some(found) = first_candidate(
+        &candidate_bases(module, relative_level, &directory, beside),
+        paths,
+    ) {
         return Some(found);
     }
     // A relative module is written against its own directory, so no other tail may answer it.
@@ -114,7 +119,12 @@ fn first_candidate<'a>(bases: &[String], paths: &PathIndex<'a>) -> Option<&'a st
     })
 }
 
-fn candidate_bases(module: &str, relative_level: u32, directory: &PosixPath<'_>) -> Vec<String> {
+fn candidate_bases(
+    module: &str,
+    relative_level: u32,
+    directory: &PosixPath<'_>,
+    beside: bool,
+) -> Vec<String> {
     if relative_level > 0 {
         return level_base(module, relative_level, directory)
             .into_iter()
@@ -123,9 +133,25 @@ fn candidate_bases(module: &str, relative_level: u32, directory: &PosixPath<'_>)
     if module.starts_with('.') {
         return vec![normalized(&directory.join(module))];
     }
-    // A module without a leading dot is tried as a path beside the importer and as written; this
-    // step never reads it as a dotted name.
-    vec![normalized(&directory.join(module)), module.to_owned()]
+    // A module without a leading dot is tried as written, after a path beside the importer when
+    // the importer reads its own directory; this step never reads it as a dotted name.
+    let written = module.to_owned();
+    if beside {
+        vec![normalized(&directory.join(module)), written]
+    } else {
+        vec![written]
+    }
+}
+
+// Python 3 reads an absolute import from the import path, and a package's own directory is never
+// on it; a script directory is.
+fn reads_own_directory(importer: &str, directory: &PosixPath<'_>, paths: &PathIndex<'_>) -> bool {
+    let python = Language::from_path(importer)
+        .is_some_and(|language| language.extraction().imports == ImportRule::Python);
+    !python
+        || paths
+            .get(&normalized(&directory.join(PACKAGE_ENTRY)))
+            .is_none()
 }
 
 // A level that walks above the repository root names no file here.

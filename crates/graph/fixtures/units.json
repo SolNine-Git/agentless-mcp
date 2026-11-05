@@ -140,7 +140,11 @@
   {"importer": "main.c", "statement": {"module": "util.h", "names": [], "local_names": [], "is_relative": false, "relative_level": 0, "line": 1, "binds_all": false, "alias": ""}, "target": "util.h", "submodules": []},
   {"importer": "scripts/run.sh", "statement": {"module": "lib/common.sh", "names": [], "local_names": [], "is_relative": false, "relative_level": 0, "line": 1, "binds_all": false, "alias": ""}, "target": "scripts/lib/common.sh", "submodules": []},
   {"importer": "deep/x.py", "statement": {"module": "//a", "names": [], "local_names": [], "is_relative": false, "relative_level": 0, "line": 1, "binds_all": false, "alias": ""}, "target": null, "submodules": []},
-  {"importer": "src/app/main.py", "statement": {"module": "util", "names": [], "local_names": [], "is_relative": true, "relative_level": 0, "line": 1, "binds_all": false, "alias": ""}, "target": "src/app/util.py", "submodules": []}
+  {"importer": "src/app/main.py", "statement": {"module": "util", "names": [], "local_names": [], "is_relative": true, "relative_level": 0, "line": 1, "binds_all": false, "alias": ""}, "target": "src/app/util.py", "submodules": []},
+  {"importer": "pkg/core.py", "statement": {"module": "sub", "names": [], "local_names": [], "is_relative": false, "relative_level": 0, "line": 1, "binds_all": false, "alias": ""}, "target": null, "submodules": []},
+  {"importer": "pkg/core.py", "statement": {"module": "pkg.sub", "names": ["deep"], "local_names": [], "is_relative": false, "relative_level": 0, "line": 1, "binds_all": false, "alias": ""}, "target": "pkg/sub/__init__.py", "submodules": [["deep", "pkg/sub/deep.py"]]},
+  {"importer": "src/app/main.py", "statement": {"module": "util", "names": [], "local_names": [], "is_relative": false, "relative_level": 0, "line": 1, "binds_all": false, "alias": ""}, "target": "src/app/util.py", "submodules": []},
+  {"importer": "pkg/run.sh", "statement": {"module": "core.py", "names": [], "local_names": [], "is_relative": false, "relative_level": 0, "line": 1, "binds_all": false, "alias": ""}, "target": "pkg/core.py", "submodules": []}
  ],
  "name_multiplier": [
   ["", [], "0x3fb999999999999a"],

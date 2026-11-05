@@ -138,3 +138,34 @@ fn a_hit_on_the_last_suffix_alone_is_found() {
         Some("lib/tool")
     );
 }
+
+#[test]
+fn an_absolute_import_in_a_python_package_never_resolves_beside_the_importer() {
+    let paths = PathIndex::build([
+        "sphinx/__init__.py",
+        "sphinx/util/__init__.py",
+        "sphinx/util/math.py",
+        "sphinx/util/parallel.py",
+        "sphinx/util/util.h",
+        "tools/math.py",
+        "tools/run.py",
+    ]);
+    let resolve = |importer, module, level| resolve_import_target(importer, module, level, &paths);
+    // `from math import sqrt` names the standard library, not the package's own math.py.
+    assert_eq!(resolve("sphinx/util/parallel.py", "math", 0), None);
+    assert_eq!(
+        resolve("sphinx/util/parallel.py", "math", 1),
+        Some("sphinx/util/math.py")
+    );
+    assert_eq!(
+        resolve("sphinx/util/parallel.py", "sphinx.util.math", 0),
+        Some("sphinx/util/math.py")
+    );
+    // A script directory holds no __init__.py, and Python puts it first on the import path.
+    assert_eq!(resolve("tools/run.py", "math", 0), Some("tools/math.py"));
+    // A file of another language keeps the path beside it.
+    assert_eq!(
+        resolve("sphinx/util/math.c", "util.h", 0),
+        Some("sphinx/util/util.h")
+    );
+}
