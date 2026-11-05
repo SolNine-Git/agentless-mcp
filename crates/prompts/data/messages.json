@@ -255,6 +255,7 @@
   "cycle_dodge_compared": "no import",
   "cycle_dodge_old_not_parsed": "not checked: cycle_dodge did not compare {path}, because its text before the change does not parse. {reason}",
   "cycle_dodge_new_not_parsed": "not checked: cycle_dodge did not compare {path}, because its text after the change does not parse. {reason}",
+  "cycle_dodge_does_not_parse": "{path} does not parse: the first syntax error is at line {line}. Imports are compared only in a file that parses. Fix the syntax error, then run the check again.",
   "config_boundary_globs_not_list": "boundary_globs in {config} must be a list of at most {limit} repo-relative globs, each at most {chars} characters. The key is ignored.",
   "config_boundary_globs_too_many": "boundary_globs in {config} holds {count} globs, over the {limit} cap. The key is ignored.",
   "config_boundary_globs_dropped": "boundary_globs in {config}: {count} {count:entry is not a repo-relative glob|entries are not repo-relative globs} of at most {chars} characters. {count:It is|They are} ignored.",

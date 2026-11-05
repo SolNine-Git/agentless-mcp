@@ -139,6 +139,13 @@ impl Pair {
         self.old.as_ref().map(|side| &*side.text)
     }
 
+    /// Return the text after the change, or `None` for a file that the change deletes or that the
+    /// checks skip.
+    #[must_use]
+    pub fn new_text(&self) -> Option<&str> {
+        self.new.as_ref().map(|side| &*side.text)
+    }
+
     /// Return the clone blocks of the side whose text is `text`, or `None` when no side has it.
     #[must_use]
     pub fn measured_blocks(&self, text: &str) -> Option<Result<Vec<Block>, SideError>> {
@@ -249,13 +256,6 @@ pub(crate) const CALLEE_GAPS: Gaps = Gaps {
     new: &messages::CALLEE_OVERLAP_NEW_NOT_MEASURED,
 };
 
-pub(crate) const DODGE_GAPS: Gaps = Gaps {
-    check: crate::CYCLE_DODGE,
-    reasons: &COMPLEXITY_REASONS,
-    old: &messages::CYCLE_DODGE_OLD_NOT_PARSED,
-    new: &messages::CYCLE_DODGE_NEW_NOT_PARSED,
-};
-
 pub(crate) const CLONE_GAPS: Gaps = Gaps {
     check: crate::CLONE_DELTA,
     reasons: &CLONE_REASONS,
@@ -279,6 +279,22 @@ pub(crate) fn side_reason(
         path: path.to_owned(),
         source: error.clone(),
     })
+}
+
+// For a check that reads no measurement: a side that the parser gives no tree stops the run, as
+// it stops the checks that read the sides.
+pub(crate) fn refuse_unparsable(pair: &Pair) -> Result<(), Error> {
+    let unparsable = pair.sides().find_map(|side| match &side.outcome {
+        Err(error @ SideError::Unparsable(_)) => Some(error),
+        Ok(_) | Err(SideError::Unmeasurable(_) | SideError::Recorded(_)) => None,
+    });
+    match unparsable {
+        Some(error) => Err(Error::Side {
+            path: pair.path.clone(),
+            source: error.clone(),
+        }),
+        None => Ok(()),
+    }
 }
 
 pub(crate) enum Read<T> {

@@ -8,10 +8,11 @@ use prompts::messages;
 use crate::contract::MODULE_UNIT;
 use crate::error::Error;
 use crate::finding::{
-    ChainHop, Detail, DodgeVia, Finding, ImportDodge, PairFinding, Severity, budget_spent, sorted,
+    ChainHop, Detail, DodgeVia, Finding, ImportDodge, PairFinding, Severity, UNMEASURABLE_SOURCE,
+    budget_spent, not_checked, sorted,
 };
 use crate::observed::{Observed, Outcome};
-use crate::pair::{DODGE_GAPS, Pair, each_pair, read_sides};
+use crate::pair::{Pair, Read, each_pair, refuse_unparsable};
 
 /// What `cycle_dodge` reads of the trees before and after a change, or the stop of its scan.
 pub enum DodgeTree<'c> {
@@ -40,6 +41,20 @@ pub struct LocalImports {
     pub before_loads: BTreeSet<LoadedModule>,
     /// Whether the imports that run at load connect other pairs of files after the change.
     pub loads_changed: bool,
+    /// Each side of a changed file whose facts hold an error span.
+    pub unparsed: Vec<Unparsed>,
+}
+
+/// One side of a changed file whose facts hold an error span, so the check does not compare the
+/// file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unparsed {
+    /// The repo-relative path.
+    pub path: String,
+    /// The tree of the side.
+    pub tree: Tree,
+    /// The line where the first error span starts.
+    pub line: u32,
 }
 
 /// One import statement in a function body, and the repository files it imports.
@@ -118,16 +133,13 @@ pub trait LoadChains {
 ///
 /// # Errors
 ///
-/// Returns an error when two pairs name one path, or when a side fails in a way that is not a
-/// parse or tokenizer failure.
+/// Returns an error when two pairs name one path, or when the parser gives a side no tree.
 pub fn cycle_dodge(pairs: &[&Pair], tree: DodgeTree<'_>) -> Result<Outcome, Error> {
     let (imports, chains) = match tree {
         DodgeTree::Stopped { seconds } => return Ok(stopped(seconds)),
         DodgeTree::Built { imports, chains } => (imports, chains),
     };
-    let (_, mut findings) = each_pair(pairs, |pair, language| {
-        read_sides(pair, language, &DODGE_GAPS)
-    })?;
+    let (_, mut findings) = each_pair(pairs, |pair, _| not_parsed(pair, &imports.unparsed))?;
     let unread: BTreeSet<String> = findings
         .iter()
         .map(|row| row.finding.path.clone())
@@ -151,6 +163,25 @@ fn stopped(seconds: u64) -> Outcome {
         findings: vec![row],
         observed: Observed::default(),
     }
+}
+
+// The check reads the facts, not the measurement, so a side that only the tokenizer rejects is
+// compared. The row names the old side when both sides hold an error.
+fn not_parsed(pair: &Pair, unparsed: &[Unparsed]) -> Result<Read<()>, Error> {
+    refuse_unparsable(pair)?;
+    let path = pair.path();
+    let sides = unparsed.iter().filter(|side| side.path == path);
+    let Some(side) = sides.min_by_key(|side| side.tree) else {
+        return Ok(Read::Value(()));
+    };
+    let template = match side.tree {
+        Tree::Before => &messages::CYCLE_DODGE_OLD_NOT_PARSED,
+        Tree::After => &messages::CYCLE_DODGE_NEW_NOT_PARSED,
+    };
+    let reason = messages::CYCLE_DODGE_DOES_NOT_PARSE.render((path, side.line as usize));
+    let message = template.render((path, &reason));
+    let row = not_checked(crate::CYCLE_DODGE, path, message, UNMEASURABLE_SOURCE, None);
+    Ok(Read::Row(row))
 }
 
 // A statement pairs with the statements of the tree before the change that have its identity.

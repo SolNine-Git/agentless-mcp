@@ -669,6 +669,17 @@ pub const CONTRACT_OLD_NOT_MEASURED: Template<(Text, Text)> = Template::new(&[
 /// A text that takes no values.
 pub const CYCLE_DODGE_COMPARED: &str = "no import";
 
+/// A template that takes (`path`, `line`).
+pub const CYCLE_DODGE_DOES_NOT_PARSE: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" does not parse: the first syntax error is at line "),
+    Piece::Value(1),
+    Piece::Text(
+        ". Imports are compared only in a file that parses. Fix the \
+        syntax error, then run the check again.",
+    ),
+]);
+
 /// A template that takes (`module`, `function`, `chain`).
 pub const CYCLE_DODGE_FOUND: Template<(Text, Text, Text)> = Template::new(&[
     Piece::Text("The import of `"),

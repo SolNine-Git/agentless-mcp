@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use checks::{
     BudgetSpent, ChainHop, DodgeTree, ImportTarget, LoadChains, LoadedModule, LocalImport,
-    LocalImports, Outcome, Pair, Tree,
+    LocalImports, Outcome, Pair, Tree, Unparsed,
 };
 use facts::{Facts, Import, Runs};
 use graph::{FileFacts, Scopes, SymbolGraph, enclosing_symbol, import_chain};
-use kernel::{Deadline, checkpoint};
+use kernel::{Deadline, Span, checkpoint};
 use syntax::{ImportRule, Language};
 
 use crate::scan::line_count;
@@ -47,6 +47,7 @@ pub(crate) fn cycle_dodge(scan: &TreeScan, pairs: &[&Pair]) -> Result<Outcome, E
         before: local_imports(&before, &before_scopes),
         before_loads: loaded_modules(&before),
         loads_changed: after_loads.pairs() != before_loads.pairs(),
+        unparsed: unparsed(pairs, &after, &before),
     };
     let mut chains = Chains {
         after: after_loads,
@@ -62,8 +63,8 @@ pub(crate) fn cycle_dodge(scan: &TreeScan, pairs: &[&Pair]) -> Result<Outcome, E
     Ok(checks::cycle_dodge(pairs, tree)?)
 }
 
-// What the graphs and the local imports read of a file: its imports, the manifest and modules
-// that Rust paths resolve through, and, in scope, the symbols that name a statement's function.
+// What the check reads of a file: its imports and error spans, the manifest and modules that
+// Rust paths resolve through, and, in scope, the symbols that name a statement's function.
 fn import_facts(file: &FileFacts) -> FileFacts {
     let facts = &file.facts;
     let symbols = if in_dodge_scope(&file.path) {
@@ -78,6 +79,7 @@ fn import_facts(file: &FileFacts) -> FileFacts {
         facts: Facts {
             symbols,
             imports: facts.imports.clone(),
+            errors: facts.errors.clone(),
             manifest: facts.manifest.clone(),
             modules: facts.modules.clone(),
             ..Facts::default()
@@ -108,6 +110,37 @@ fn old_facts(pair: &Pair) -> Option<FileFacts> {
         facts: facts::extract(&parsed),
     };
     Some(import_facts(&file))
+}
+
+// Each side of a pair whose facts hold an error span, with the line where the first one starts.
+fn unparsed(pairs: &[&Pair], after: &[FileFacts], before: &[FileFacts]) -> Vec<Unparsed> {
+    let mut found = Vec::new();
+    for (tree, files) in [(Tree::Before, before), (Tree::After, after)] {
+        let errors: HashMap<&str, Span> = (files.iter())
+            .filter_map(|file| Some((file.path.as_str(), *file.facts.errors.first()?)))
+            .collect();
+        for pair in pairs {
+            let text = match tree {
+                Tree::Before => pair.old_text(),
+                Tree::After => pair.new_text(),
+            };
+            if let (Some(error), Some(text)) = (errors.get(pair.path()), text) {
+                found.push(Unparsed {
+                    path: pair.path().to_owned(),
+                    tree,
+                    line: line_at(text, error.start()),
+                });
+            }
+        }
+    }
+    found
+}
+
+// The 1-based line of the byte at `offset`.
+fn line_at(text: &str, offset: u32) -> u32 {
+    let before = text.as_bytes().iter().take(offset as usize);
+    let breaks = before.filter(|byte| **byte == b'\n').count();
+    u32::try_from(breaks + 1).unwrap_or(u32::MAX)
 }
 
 // Each import that runs in a function body, in a file in scope, with the files it imports.

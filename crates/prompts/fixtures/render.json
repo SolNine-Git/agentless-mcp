@@ -573,6 +573,13 @@
       "arguments": {},
       "text": "no import"
     },
+    "cycle_dodge_does_not_parse": {
+      "arguments": {
+        "line": 3,
+        "path": "src/app.py"
+      },
+      "text": "src/app.py does not parse: the first syntax error is at line 3. Imports are compared only in a file that parses. Fix the syntax error, then run the check again."
+    },
     "cycle_dodge_found": {
       "arguments": {
         "chain": "seaborn/axisgrid.py -> seaborn/relational.py -> seaborn/axisgrid.py",

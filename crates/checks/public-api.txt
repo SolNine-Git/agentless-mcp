@@ -609,6 +609,7 @@ pub checks::LocalImports::after: alloc::vec::Vec<checks::LocalImport>
 pub checks::LocalImports::before: alloc::vec::Vec<checks::LocalImport>
 pub checks::LocalImports::before_loads: alloc::collections::btree::set::BTreeSet<checks::LoadedModule>
 pub checks::LocalImports::loads_changed: bool
+pub checks::LocalImports::unparsed: alloc::vec::Vec<checks::Unparsed>
 impl core::clone::Clone for checks::LocalImports
 pub fn checks::LocalImports::clone(&self) -> Self
 impl core::cmp::Eq for checks::LocalImports
@@ -679,6 +680,7 @@ impl checks::Pair
 pub fn checks::Pair::language(&self) -> core::option::Option<syntax::language::Language>
 pub fn checks::Pair::measure_all(alloc::vec::Vec<checks::TextPair>, impl core::ops::function::FnOnce(&[checks::SideText<'_>]) -> alloc::vec::Vec<checks::Side>) -> alloc::vec::Vec<checks::Pair>
 pub fn checks::Pair::measured_blocks(&self, &str) -> core::option::Option<core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>>
+pub fn checks::Pair::new_text(&self) -> core::option::Option<&str>
 pub fn checks::Pair::old_text(&self) -> core::option::Option<&str>
 pub fn checks::Pair::path(&self) -> &str
 pub fn checks::Pair::sides(&self) -> impl core::iter::traits::iterator::Iterator<Item = &checks::Side>
@@ -891,6 +893,25 @@ impl core::marker::Unpin for checks::UnitState
 impl core::marker::UnsafeUnpin for checks::UnitState
 impl core::panic::unwind_safe::RefUnwindSafe for checks::UnitState
 impl core::panic::unwind_safe::UnwindSafe for checks::UnitState
+pub struct checks::Unparsed
+pub checks::Unparsed::line: u32
+pub checks::Unparsed::path: alloc::string::String
+pub checks::Unparsed::tree: checks::Tree
+impl core::clone::Clone for checks::Unparsed
+pub fn checks::Unparsed::clone(&self) -> Self
+impl core::cmp::Eq for checks::Unparsed
+impl core::cmp::PartialEq for checks::Unparsed
+pub fn checks::Unparsed::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::Unparsed
+pub fn checks::Unparsed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::Unparsed
+impl core::marker::Freeze for checks::Unparsed
+impl core::marker::Send for checks::Unparsed
+impl core::marker::Sync for checks::Unparsed
+impl core::marker::Unpin for checks::Unparsed
+impl core::marker::UnsafeUnpin for checks::Unparsed
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Unparsed
+impl core::panic::unwind_safe::UnwindSafe for checks::Unparsed
 pub const checks::CALLEE_OVERLAP: &str
 pub const checks::CLONE_DELTA: &str
 pub const checks::COMPLEXITY_DELTA: &str

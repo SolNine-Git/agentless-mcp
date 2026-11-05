@@ -25,7 +25,7 @@ pub use complexity::complexity_delta;
 pub use contract::contract_drift;
 pub use dodges::{
     BudgetSpent, DodgeTree, ImportTarget, LoadChains, LoadedModule, LocalImport, LocalImports,
-    Tree, cycle_dodge,
+    Tree, Unparsed, cycle_dodge,
 };
 pub use error::{Error, SideError};
 pub use finding::{

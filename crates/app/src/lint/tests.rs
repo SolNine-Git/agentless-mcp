@@ -531,16 +531,23 @@ const LOADER_A: &str = "import b\n\n\ndef f():\n    return b.x\n";
 const LOADER_B: &str = "x = 1\n\n\ndef g():\n    return 2\n";
 const LATE_B: &str = "x = 1\n\n\ndef g():\n    import a\n\n    return a.f()\n";
 
-// The rows of a --since run of `checks` over a repository whose b.py gains an import of a.py in a
-// function, while a.py imports b.py at load.
-fn dodge_rows(checks: &[&str], budget: Duration, clock: Arc<dyn kernel::Clock>) -> Vec<String> {
+// A line separator in a one-line string fails Python's tokenizer, and the parser accepts it.
+const TOKENIZER_B: &str =
+    "LABEL = \"left\u{2028}right\"\nx = 1\n\n\ndef g():\n    import a\n\n    return a.f()\n";
+// `def g(:` leaves only a MISSING token in the tree, so the facts hold no error span.
+const MISSING_B: &str = "x = 1\n\n\ndef g(:\n    import a\n\n    return a.f()\n";
+const BROKEN_B: &str = "x = 1\n\n\ny = x x\n\n\ndef g():\n    import a\n\n    return a.f()\n";
+
+// The rows of a --since run of cycle_dodge over a repository whose b.py becomes `late_b`, while
+// a.py imports b.py at load.
+fn dodge_rows(late_b: &str, budget: Duration, clock: Arc<dyn kernel::Clock>) -> Vec<String> {
     let sandbox = Sandbox::new();
     let root = sandbox.repo("repo", &[("a.py", LOADER_A), ("b.py", LOADER_B)]);
-    sandbox.put("repo/b.py", LATE_B);
+    sandbox.put("repo/b.py", late_b);
     let mut services = sandbox.services(sandbox.path());
     services.walk_budget = budget;
     services.clock = clock;
-    let report = since_report(&services, &root, checks);
+    let report = since_report(&services, &root, &["cycle_dodge"]);
     let rows = report.candidates[0].findings.iter();
     rows.map(|row| format!("{} {}", row.finding.location(), row.finding.message))
         .collect()
@@ -549,7 +556,7 @@ fn dodge_rows(checks: &[&str], budget: Duration, clock: Arc<dyn kernel::Clock>) 
 #[test]
 fn a_since_run_of_cycle_dodge_names_the_import_and_the_chain_back() {
     let pinned = Arc::new(PinnedClock::at(SystemTime::UNIX_EPOCH));
-    let rows = dodge_rows(&["cycle_dodge"], Duration::from_secs(10), pinned);
+    let rows = dodge_rows(LATE_B, Duration::from_secs(10), pinned);
     assert_eq!(
         rows,
         [
@@ -565,12 +572,34 @@ fn a_cycle_dodge_run_past_its_budget_gives_one_stopped_row_and_no_finding() {
     let ticking = Arc::new(Ticking {
         now: Mutex::new(Instant::now()),
     });
-    let rows = dodge_rows(&["cycle_dodge"], Duration::ZERO, ticking);
+    let rows = dodge_rows(LATE_B, Duration::ZERO, ticking);
     assert_eq!(
         rows,
         [
             "(repository) not checked: cycle_dodge stopped at its time budget of 0 s before it \
              read the imports of every file in the repository, so it compared no import."
+        ]
+    );
+}
+
+// cycle_dodge reads the facts, so only an error span in the facts of a side keeps the file out.
+#[test]
+fn a_cycle_dodge_side_is_not_compared_only_when_its_facts_hold_a_syntax_error() {
+    let rows = |late_b| {
+        let pinned = Arc::new(PinnedClock::at(SystemTime::UNIX_EPOCH));
+        dodge_rows(late_b, Duration::from_secs(10), pinned)
+    };
+    for (late_b, at) in [(TOKENIZER_B, "b.py:6"), (MISSING_B, "b.py:5")] {
+        let found = rows(late_b);
+        let head = format!("{at} The import of `a` in `g` runs only");
+        assert!(found.len() == 1 && found[0].starts_with(&head), "{found:?}");
+    }
+    assert_eq!(
+        rows(BROKEN_B),
+        [
+            "b.py not checked: cycle_dodge did not compare b.py, because its text after the change \
+             does not parse. b.py does not parse: the first syntax error is at line 4. Imports are \
+             compared only in a file that parses. Fix the syntax error, then run the check again."
         ]
     );
 }

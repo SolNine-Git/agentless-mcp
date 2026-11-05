@@ -1,10 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use metrics::Unmeasurable;
+
 use super::{
     BudgetSpent, DodgeTree, ImportTarget, LoadChains, LoadedModule, LocalImport, LocalImports,
-    Tree, cycle_dodge,
+    Tree, Unparsed, cycle_dodge,
 };
-use crate::{ChainHop, Detail, Outcome, Pair, SideText, TextPair};
+use crate::{ChainHop, Detail, Outcome, Pair, SideError, SideText, TextPair};
 
 // The chains of each tree as given, and each search the check asked for.
 #[derive(Default)]
@@ -228,31 +230,57 @@ fn a_search_past_the_budget_gives_one_stopped_row_and_no_finding() {
     assert_eq!(scan, outcome);
 }
 
+// The facts decide: a.py's old side holds a syntax error, and c.py's new side only fails the
+// tokenizer, so c.py is compared.
 #[test]
-fn a_file_whose_old_text_does_not_parse_has_a_row_and_no_compared_import() {
-    let texts = vec![TextPair {
-        path: "a.py".to_owned(),
-        old: Some("def f(:\n    pass\n".to_owned()),
-        new: Some("def f():\n    import b\n".to_owned()),
-    }];
+fn a_side_whose_facts_hold_a_syntax_error_has_a_row_and_no_compared_import() {
+    let tokenized = "LABEL = \"left\u{2028}right\"\n\n\ndef g():\n    import b\n";
+    let texts = vec![
+        TextPair {
+            path: "a.py".to_owned(),
+            old: Some("def f():\n    return f f\n".to_owned()),
+            new: Some("def f():\n    import b\n".to_owned()),
+        },
+        TextPair {
+            path: "c.py".to_owned(),
+            old: None,
+            new: Some(tokenized.to_owned()),
+        },
+    ];
     let pairs = Pair::measure_all(texts, |sides| sides.iter().map(SideText::measure).collect());
+    let measured = pairs[1].measured_blocks(tokenized);
+    assert!(
+        matches!(
+            measured,
+            Some(Err(SideError::Unmeasurable(Unmeasurable::Tokenizer(_))))
+        ),
+        "{measured:?}"
+    );
+    let unparsed = Unparsed {
+        path: "a.py".to_owned(),
+        tree: Tree::Before,
+        line: 2,
+    };
     let imports = LocalImports {
-        after: vec![local("a.py", 2, "f", "b")],
+        after: vec![local("a.py", 2, "f", "b"), local("c.py", 5, "g", "b")],
+        unparsed: vec![unparsed],
         ..LocalImports::default()
     };
-    let mut given = Given::default().chain(Tree::After, &["b.py", "a.py"]);
+    let mut given = Given::default()
+        .chain(Tree::After, &["b.py", "a.py"])
+        .chain(Tree::After, &["b.py", "c.py"]);
     let outcome = run(&pairs, imports, &mut given);
-    let messages: Vec<&str> = (outcome.findings.iter())
-        .map(|row| row.finding.message.as_str())
+    let found: Vec<(String, &str)> = (outcome.findings.iter())
+        .map(|row| (row.finding.location(), row.finding.severity.as_str()))
         .collect();
+    let unread = ("a.py".to_owned(), "not_checked");
+    assert_eq!(found, [unread, ("c.py:5".to_owned(), "advisory")]);
     assert_eq!(
-        messages,
-        [
-            "not checked: cycle_dodge did not compare a.py, because its text before the change \
-             does not parse. a.py does not parse: the first syntax error is at line 1. Complexity \
-             is measured only for a file that parses. Fix the syntax error, then measure the file \
-             again."
-        ]
+        outcome.findings[0].finding.message,
+        "not checked: cycle_dodge did not compare a.py, because its text before the change does \
+         not parse. a.py does not parse: the first syntax error is at line 2. Imports are compared \
+         only in a file that parses. Fix the syntax error, then run the check again."
     );
-    assert_eq!(given.asked, []);
+    let asked = (Tree::After, "b.py".to_owned(), "c.py".to_owned());
+    assert_eq!(given.asked, [asked]);
 }
