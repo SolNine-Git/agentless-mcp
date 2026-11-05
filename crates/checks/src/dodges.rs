@@ -145,7 +145,8 @@ pub fn cycle_dodge(pairs: &[&Pair], tree: DodgeTree<'_>) -> Result<Outcome, Erro
 // A partial search can miss the chain of the tree before the change and make a false row, so a
 // stop gives one not_checked row and no finding.
 fn stopped(seconds: u64) -> Outcome {
-    let row = budget_spent(crate::CYCLE_DODGE, messages::CYCLE_DODGE_READS, seconds);
+    let (reads, compared) = (messages::CYCLE_DODGE_READS, messages::CYCLE_DODGE_COMPARED);
+    let row = budget_spent(crate::CYCLE_DODGE, reads, compared, seconds);
     Outcome {
         findings: vec![row],
         observed: Observed::default(),

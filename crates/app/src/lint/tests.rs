@@ -570,7 +570,7 @@ fn a_cycle_dodge_run_past_its_budget_gives_one_stopped_row_and_no_finding() {
         rows,
         [
             "(repository) not checked: cycle_dodge stopped at its time budget of 0 s before it \
-             read the imports of every file in the repository, so it compared no function."
+             read the imports of every file in the repository, so it compared no import."
         ]
     );
 }

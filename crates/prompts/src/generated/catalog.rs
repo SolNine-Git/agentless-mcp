@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 271] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 275] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -200,6 +200,18 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 271] = [
     ),
     (
         "messages",
+        "callee_overlap_compared",
+        &[],
+        &[Piece::Text(messages::CALLEE_OVERLAP_COMPARED)],
+    ),
+    (
+        "messages",
+        "callee_overlap_does_not_parse",
+        &["path", "line"],
+        messages::CALLEE_OVERLAP_DOES_NOT_PARSE.pieces(),
+    ),
+    (
+        "messages",
         "callee_overlap_found",
         &["target", "name", "count", "total"],
         messages::CALLEE_OVERLAP_FOUND.pieces(),
@@ -227,6 +239,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 271] = [
         "callee_overlap_reads",
         &[],
         &[Piece::Text(messages::CALLEE_OVERLAP_READS)],
+    ),
+    (
+        "messages",
+        "callee_overlap_tokenizer_rejects",
+        &["path", "detail"],
+        messages::CALLEE_OVERLAP_TOKENIZER_REJECTS.pieces(),
     ),
     (
         "messages",
@@ -517,6 +535,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 271] = [
         "contract_old_not_measured",
         &["path", "reason"],
         messages::CONTRACT_OLD_NOT_MEASURED.pieces(),
+    ),
+    (
+        "messages",
+        "cycle_dodge_compared",
+        &[],
+        &[Piece::Text(messages::CYCLE_DODGE_COMPARED)],
     ),
     (
         "messages",
@@ -1577,7 +1601,7 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 271] = [
     (
         "messages",
         "tree_check_stopped",
-        &["check", "reads", "budget"],
+        &["check", "reads", "compared", "budget"],
         messages::TREE_CHECK_STOPPED.pieces(),
     ),
     (

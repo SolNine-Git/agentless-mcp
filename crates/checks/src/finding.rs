@@ -398,9 +398,14 @@ keyed! {
 pub(crate) const UNMEASURABLE_SOURCE: &str = "UnmeasurableSource";
 
 // The not_checked row of a tree check whose scan or later work reached its time budget.
-pub(crate) fn budget_spent(check: &'static str, reads: &str, seconds: u64) -> PairFinding {
+pub(crate) fn budget_spent(
+    check: &'static str,
+    reads: &str,
+    compared: &str,
+    seconds: u64,
+) -> PairFinding {
     let budget = usize::try_from(seconds).unwrap_or(usize::MAX);
-    let message = messages::TREE_CHECK_STOPPED.render((check, reads, budget));
+    let message = messages::TREE_CHECK_STOPPED.render((check, reads, compared, budget));
     let evidence = messages::TREE_CHECK_STOPPED_EVIDENCE;
     not_checked(check, "", message, evidence, None)
 }

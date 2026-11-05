@@ -237,9 +237,14 @@ pub(crate) const CONTRACT_GAPS: Gaps = Gaps {
     new: &messages::CONTRACT_NEW_NOT_MEASURED,
 };
 
+const CALLEE_REASONS: Reasons = Reasons::new(
+    &messages::CALLEE_OVERLAP_DOES_NOT_PARSE,
+    &messages::CALLEE_OVERLAP_TOKENIZER_REJECTS,
+);
+
 pub(crate) const CALLEE_GAPS: Gaps = Gaps {
     check: crate::CALLEE_OVERLAP,
-    reasons: &COMPLEXITY_REASONS,
+    reasons: &CALLEE_REASONS,
     old: &messages::CALLEE_OVERLAP_OLD_NOT_MEASURED,
     new: &messages::CALLEE_OVERLAP_NEW_NOT_MEASURED,
 };

@@ -129,6 +129,20 @@ pub struct Reasons {
     tokenizer: &'static Template<(Text, Text)>,
 }
 
+impl Reasons {
+    /// Returns the reasons of one check: a syntax error, then a source that the tokenizer rejects.
+    #[must_use]
+    pub const fn new(
+        does_not_parse: &'static Template<(Text, Count)>,
+        tokenizer: &'static Template<(Text, Text)>,
+    ) -> Reasons {
+        Reasons {
+            does_not_parse,
+            tokenizer,
+        }
+    }
+}
+
 /// The reasons of the complexity measurement, which health and the complexity checks give.
 pub const COMPLEXITY_REASONS: Reasons = Reasons {
     does_not_parse: &messages::COMPLEXITY_DOES_NOT_PARSE,

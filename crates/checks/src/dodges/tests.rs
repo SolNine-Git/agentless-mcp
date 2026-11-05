@@ -210,7 +210,7 @@ fn the_first_target_with_a_chain_names_the_row_and_rows_come_in_path_and_line_or
 #[test]
 fn a_search_past_the_budget_gives_one_stopped_row_and_no_finding() {
     let stopped = "not checked: cycle_dodge stopped at its time budget of 10 s before it read the \
-                   imports of every file in the repository, so it compared no function.";
+                   imports of every file in the repository, so it compared no import.";
     let imports = LocalImports {
         after: vec![local("a.py", 7, "load", "b")],
         ..LocalImports::default()

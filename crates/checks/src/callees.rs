@@ -81,8 +81,11 @@ pub struct Callee {
 pub fn callee_overlap(pairs: &[&Pair], tree: &CalleeTree) -> Result<Outcome, Error> {
     let functions = match tree {
         CalleeTree::Stopped { seconds } => {
-            let reads = messages::CALLEE_OVERLAP_READS;
-            let row = budget_spent(crate::CALLEE_OVERLAP, reads, *seconds);
+            let (reads, compared) = (
+                messages::CALLEE_OVERLAP_READS,
+                messages::CALLEE_OVERLAP_COMPARED,
+            );
+            let row = budget_spent(crate::CALLEE_OVERLAP, reads, compared, *seconds);
             return Ok(Outcome {
                 findings: vec![row],
                 observed: Observed::default(),

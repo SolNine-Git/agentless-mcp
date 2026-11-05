@@ -117,6 +117,20 @@ pub const CACHE_STALE_REMEDIATION: Template<Text> = Template::new(&[
     Piece::Text(" for performance"),
 ]);
 
+/// A text that takes no values.
+pub const CALLEE_OVERLAP_COMPARED: &str = "no function";
+
+/// A template that takes (`path`, `line`).
+pub const CALLEE_OVERLAP_DOES_NOT_PARSE: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" does not parse: the first syntax error is at line "),
+    Piece::Value(1),
+    Piece::Text(
+        ". Functions are compared only in a file that parses. Fix the \
+        syntax error, then run the check again.",
+    ),
+]);
+
 /// A template that takes (`target`, `name`, `count`, `total`).
 pub const CALLEE_OVERLAP_FOUND: Template<(Text, Text, Count, Count)> = Template::new(&[
     Piece::Text("`"),
@@ -167,6 +181,17 @@ pub const CALLEE_OVERLAP_OLD_NOT_MEASURED: Template<(Text, Text)> = Template::ne
 
 /// A text that takes no values.
 pub const CALLEE_OVERLAP_READS: &str = "the calls of every function";
+
+/// A template that takes (`path`, `detail`).
+pub const CALLEE_OVERLAP_TOKENIZER_REJECTS: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(": Python's tokenizer rejects this file ("),
+    Piece::Value(1),
+    Piece::Text(
+        "). Functions are compared only in a file the tokenizer accepts. \
+        Fix the line the error names, then run the check again.",
+    ),
+]);
 
 /// A text that takes no values.
 pub const CAPS_WALK_BYTES: &str = "note: max_walk_bytes counts only the files that a scan reads, \
@@ -640,6 +665,9 @@ pub const CONTRACT_OLD_NOT_MEASURED: Template<(Text, Text)> = Template::new(&[
     Piece::Text(", because its text before the change cannot be measured. "),
     Piece::Value(1),
 ]);
+
+/// A text that takes no values.
+pub const CYCLE_DODGE_COMPARED: &str = "no import";
 
 /// A template that takes (`module`, `function`, `chain`).
 pub const CYCLE_DODGE_FOUND: Template<(Text, Text, Text)> = Template::new(&[
@@ -2393,15 +2421,17 @@ pub const TOOL_TAKES: Template<(Text, Text)> = Template::new(&[
     Piece::Text("."),
 ]);
 
-/// A template that takes (`check`, `reads`, `budget`).
-pub const TREE_CHECK_STOPPED: Template<(Text, Text, Count)> = Template::new(&[
+/// A template that takes (`check`, `reads`, `compared`, `budget`).
+pub const TREE_CHECK_STOPPED: Template<(Text, Text, Text, Count)> = Template::new(&[
     Piece::Text("not checked: "),
     Piece::Value(0),
     Piece::Text(" stopped at its time budget of "),
-    Piece::Value(2),
+    Piece::Value(3),
     Piece::Text(" s before it read "),
     Piece::Value(1),
-    Piece::Text(" in the repository, so it compared no function."),
+    Piece::Text(" in the repository, so it compared "),
+    Piece::Value(2),
+    Piece::Text("."),
 ]);
 
 /// A text that takes no values.

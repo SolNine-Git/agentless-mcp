@@ -191,6 +191,17 @@
       },
       "text": "changed files parse live; run agentless-mcp index --repo /srv/app for performance"
     },
+    "callee_overlap_compared": {
+      "arguments": {},
+      "text": "no function"
+    },
+    "callee_overlap_does_not_parse": {
+      "arguments": {
+        "line": 3,
+        "path": "src/app.py"
+      },
+      "text": "src/app.py does not parse: the first syntax error is at line 3. Functions are compared only in a file that parses. Fix the syntax error, then run the check again."
+    },
     "callee_overlap_found": {
       "arguments": {
         "count": 4,
@@ -226,6 +237,13 @@
     "callee_overlap_reads": {
       "arguments": {},
       "text": "the calls of every function"
+    },
+    "callee_overlap_tokenizer_rejects": {
+      "arguments": {
+        "detail": "TabError: inconsistent use of tabs and spaces in indentation",
+        "path": "src/app.py"
+      },
+      "text": "src/app.py: Python's tokenizer rejects this file (TabError: inconsistent use of tabs and spaces in indentation). Functions are compared only in a file the tokenizer accepts. Fix the line the error names, then run the check again."
     },
     "caps_walk_bytes": {
       "arguments": {},
@@ -550,6 +568,10 @@
         "reason": "src/adapters/api.py does not parse"
       },
       "text": "not checked: contract_drift did not compare src/adapters/api.py, because its text before the change cannot be measured. src/adapters/api.py does not parse"
+    },
+    "cycle_dodge_compared": {
+      "arguments": {},
+      "text": "no import"
     },
     "cycle_dodge_found": {
       "arguments": {
@@ -1733,6 +1755,7 @@
       "arguments": {
         "budget": 10,
         "check": "callee_overlap",
+        "compared": "no function",
         "reads": "the calls of every function"
       },
       "text": "not checked: callee_overlap stopped at its time budget of 10 s before it read the calls of every function in the repository, so it compared no function."

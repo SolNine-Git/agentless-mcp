@@ -34,11 +34,14 @@ pub const prompts::messages::CACHE_DISCARDED_OLD_SCHEMA: prompts::Template<(prom
 pub const prompts::messages::CACHE_DISCARDED_OTHER_REPO: prompts::Template<prompts::Text>
 pub const prompts::messages::CACHE_STALE_REFRESHING: &str
 pub const prompts::messages::CACHE_STALE_REMEDIATION: prompts::Template<prompts::Text>
+pub const prompts::messages::CALLEE_OVERLAP_COMPARED: &str
+pub const prompts::messages::CALLEE_OVERLAP_DOES_NOT_PARSE: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::CALLEE_OVERLAP_FOUND: prompts::Template<(prompts::Text, prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::CALLEE_OVERLAP_FOUND_EVIDENCE: prompts::Template<(prompts::Text, prompts::Text, prompts::Count, prompts::Text)>
 pub const prompts::messages::CALLEE_OVERLAP_NEW_NOT_MEASURED: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::CALLEE_OVERLAP_OLD_NOT_MEASURED: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::CALLEE_OVERLAP_READS: &str
+pub const prompts::messages::CALLEE_OVERLAP_TOKENIZER_REJECTS: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::CAPS_WALK_BYTES: &str
 pub const prompts::messages::CLONE_AND_MORE: prompts::Template<(prompts::Count, prompts::Text)>
 pub const prompts::messages::CLONE_DOES_NOT_PARSE: prompts::Template<(prompts::Text, prompts::Count)>
@@ -88,6 +91,7 @@ pub const prompts::messages::CONTRACT_OLD_NOT_MEASURED: prompts::Template<(promp
 pub const prompts::messages::CYCLES_HEADER: prompts::Template<prompts::Count>
 pub const prompts::messages::CYCLES_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::CYCLES_UNRESOLVED: prompts::Template<prompts::Count>
+pub const prompts::messages::CYCLE_DODGE_COMPARED: &str
 pub const prompts::messages::CYCLE_DODGE_FOUND: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::messages::CYCLE_DODGE_FOUND_EVIDENCE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Count)>
 pub const prompts::messages::CYCLE_DODGE_NEW_NOT_PARSED: prompts::Template<(prompts::Text, prompts::Text)>
@@ -261,7 +265,7 @@ pub const prompts::messages::TARGET_NO_LINE: prompts::Template<(prompts::Text, p
 pub const prompts::messages::TARGET_NO_MATCH: prompts::Template<prompts::Text>
 pub const prompts::messages::TARGET_SPELLED: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::TOOL_TAKES: prompts::Template<(prompts::Text, prompts::Text)>
-pub const prompts::messages::TREE_CHECK_STOPPED: prompts::Template<(prompts::Text, prompts::Text, prompts::Count)>
+pub const prompts::messages::TREE_CHECK_STOPPED: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Count)>
 pub const prompts::messages::TREE_CHECK_STOPPED_EVIDENCE: &str
 pub const prompts::messages::UNKNOWN_TOOL: prompts::Template<prompts::Text>
 pub const prompts::messages::WALK_LISTING_CAPPED: prompts::Template<(prompts::Text, prompts::Count)>
