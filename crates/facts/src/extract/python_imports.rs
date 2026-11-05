@@ -1,4 +1,4 @@
-use syntax::{NodeId, TYPE_CHECKING};
+use syntax::{NodeId, TypeChecking};
 
 use super::tree::{Field, Tree};
 use crate::values::{Import, Runs};
@@ -7,6 +7,7 @@ use crate::values::{Import, Runs};
 const FUNCTIONS: [&str; 2] = ["function_definition", "lambda"];
 
 pub(super) fn imports(tree: &Tree) -> Vec<Import> {
+    let type_checking = TypeChecking::of(tree.parsed);
     tree.preorder(tree.root())
         .flat_map(|node| {
             let statements = match tree.kind(node) {
@@ -14,7 +15,7 @@ pub(super) fn imports(tree: &Tree) -> Vec<Import> {
                 "import_from_statement" => vec![from(tree, node)],
                 _ => return Vec::new(),
             };
-            let runs = runs(tree, node);
+            let runs = runs(tree, node, &type_checking);
             let running = |import| Import {
                 runs: runs.clone(),
                 ..import
@@ -25,14 +26,14 @@ pub(super) fn imports(tree: &Tree) -> Vec<Import> {
 }
 
 // A function around the statement wins over a TYPE_CHECKING block around it.
-fn runs(tree: &Tree, node: NodeId) -> Runs {
+fn runs(tree: &Tree, node: NodeId, type_checking: &TypeChecking) -> Runs {
     let mut runs = Runs::Load;
     let mut inner = node;
     while let Some(outer) = tree.parsed.parent(inner) {
         if tree.is_any(outer, &FUNCTIONS) {
             return Runs::Call;
         }
-        if type_checked(tree, outer, inner) {
+        if type_checked(tree, outer, inner, type_checking) {
             runs = Runs::TypeOnly;
         }
         inner = outer;
@@ -42,12 +43,12 @@ fn runs(tree: &Tree, node: NodeId) -> Runs {
 
 // `inner` is the block that runs when `outer`, an if statement, tests TYPE_CHECKING; an else or
 // elif branch of it runs when the module loads.
-fn type_checked(tree: &Tree, outer: NodeId, inner: NodeId) -> bool {
+fn type_checked(tree: &Tree, outer: NodeId, inner: NodeId, type_checking: &TypeChecking) -> bool {
     tree.is(outer, "if_statement")
         && tree.field(outer, Field::Consequence) == Some(inner)
         && tree
             .field(outer, Field::Condition)
-            .is_some_and(|condition| TYPE_CHECKING.contains(&tree.text(condition)))
+            .is_some_and(|condition| type_checking.tests(tree.text(condition)))
 }
 
 // `import a.b` and `import a.b as ab`: one statement per module.

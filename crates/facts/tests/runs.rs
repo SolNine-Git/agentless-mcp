@@ -68,6 +68,47 @@ fn an_import_under_type_checking_is_type_only_and_its_else_branch_runs_at_load()
 }
 
 #[test]
+fn a_name_that_the_file_binds_to_type_checking_is_type_checking() {
+    let source = "import typing as t\nfrom typing import TYPE_CHECKING as CHECKING\n\
+                  import typing_extensions as ext\nimport os as o\nfrom .typing import TYPE_CHECKING as LOCAL\n\n\
+                  if t.TYPE_CHECKING:\n    import a\n\n\
+                  if CHECKING:\n    import b\nelse:\n    import c\n\n\
+                  if ext.TYPE_CHECKING:\n    import d\n\n\
+                  if o.TYPE_CHECKING:\n    import e\n\n\
+                  if LOCAL:\n    import f\n\n\
+                  if u.TYPE_CHECKING:\n    import g\n\n\
+                  if t.TYPE_CHECKING and x:\n    import h\n";
+    assert_eq!(
+        runs(Language::Python, source),
+        [
+            row(1, "typing", Runs::Load),
+            row(2, "typing", Runs::Load),
+            row(3, "typing_extensions", Runs::Load),
+            row(4, "os", Runs::Load),
+            row(5, "typing", Runs::Load),
+            row(8, "a", Runs::TypeOnly),
+            row(11, "b", Runs::TypeOnly),
+            row(13, "c", Runs::Load),
+            row(16, "d", Runs::Load),
+            row(19, "e", Runs::Load),
+            row(22, "f", Runs::Load),
+            row(25, "g", Runs::Load),
+            row(28, "h", Runs::Load),
+        ]
+    );
+}
+
+#[test]
+fn an_alias_that_a_guarded_import_binds_counts() {
+    let source = "try:\n    import typing as t\nexcept ImportError:\n    t = None\n\n\
+                  if t.TYPE_CHECKING:\n    import a\n";
+    assert_eq!(
+        runs(Language::Python, source),
+        [row(2, "typing", Runs::Load), row(7, "a", Runs::TypeOnly)]
+    );
+}
+
+#[test]
 fn a_script_block_and_a_guarded_import_run_at_load() {
     let source = "try:\n    import a\nexcept ImportError:\n    a = None\n\n\
                   if __name__ == \"__main__\":\n    import b\n\nwith open(p) as h:\n    import c\n";

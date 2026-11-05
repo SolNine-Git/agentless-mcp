@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use text::testing::cases;
 
-use crate::imports::{resolve_import_target, resolve_imported_submodule};
+use crate::imports::{inside_package, resolve_import_target, resolve_imported_submodule};
 use crate::paths::{PathIndex, module_stems, module_tail, normalized, normpath, stem};
 use crate::unresolved::{names_this_repository, repository_segments};
 
@@ -137,4 +137,56 @@ fn a_hit_on_the_last_suffix_alone_is_found() {
         resolve_import_target("lib/main.py", "tool", 0, &paths),
         Some("lib/tool")
     );
+}
+
+#[test]
+fn an_absolute_import_in_a_python_package_never_resolves_beside_the_importer() {
+    let paths = PathIndex::build([
+        "sphinx/__init__.py",
+        "sphinx/util/__init__.py",
+        "sphinx/util/math.py",
+        "sphinx/util/parallel.py",
+        "sphinx/util/util.h",
+        "tools/math.py",
+        "tools/run.py",
+    ]);
+    let resolve = |importer, module, level| resolve_import_target(importer, module, level, &paths);
+    // `from math import sqrt` names the standard library, not the package's own math.py.
+    assert_eq!(resolve("sphinx/util/parallel.py", "math", 0), None);
+    assert_eq!(
+        resolve("sphinx/util/parallel.py", "math", 1),
+        Some("sphinx/util/math.py")
+    );
+    assert_eq!(
+        resolve("sphinx/util/parallel.py", "sphinx.util.math", 0),
+        Some("sphinx/util/math.py")
+    );
+    // A script directory holds no __init__.py, and Python puts it first on the import path.
+    assert_eq!(resolve("tools/run.py", "math", 0), Some("tools/math.py"));
+    // A file of another language keeps the path beside it.
+    assert_eq!(
+        resolve("sphinx/util/math.c", "util.h", 0),
+        Some("sphinx/util/util.h")
+    );
+}
+
+#[test]
+fn an_importer_is_inside_the_package_whose_directory_holds_it() {
+    let cases = [
+        ("pkg/a.py", "pkg/__init__.py", true),
+        ("pkg/sub/a.py", "pkg/__init__.py", true),
+        ("pkg/__init__.py", "pkg/__init__.py", true),
+        ("a.py", "__init__.py", true),
+        ("pkgx/a.py", "pkg/__init__.py", false),
+        ("pkg/a.py", "pkg/sub/__init__.py", false),
+        ("pkg/a.py", "pkg/mod.py", false),
+        ("pkg/a.py", "pkg/my__init__.py", false),
+    ];
+    for (importer, target, inside) in cases {
+        assert_eq!(
+            inside_package(importer, target),
+            inside,
+            "{importer} {target}"
+        );
+    }
 }

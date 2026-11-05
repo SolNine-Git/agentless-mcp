@@ -300,7 +300,7 @@ pub syntax::CloneRules::identifiers: syntax::KindSet
 pub syntax::CloneRules::indent_blocks: syntax::KindSet
 impl syntax::CloneRules
 pub fn syntax::CloneRules::literal_class(&self, syntax::KindId) -> core::option::Option<syntax::LiteralClass>
-pub fn syntax::CloneRules::skips(&self, &syntax::Parsed, syntax::NodeId) -> bool
+pub fn syntax::CloneRules::skipped<'p>(&self, &'p syntax::Parsed) -> syntax::Skipped<'p>
 impl core::marker::Freeze for syntax::CloneRules
 impl core::marker::Send for syntax::CloneRules
 impl core::marker::Sync for syntax::CloneRules
@@ -595,6 +595,16 @@ impl core::marker::Unpin for syntax::ScopeKinds
 impl core::marker::UnsafeUnpin for syntax::ScopeKinds
 impl core::panic::unwind_safe::RefUnwindSafe for syntax::ScopeKinds
 impl core::panic::unwind_safe::UnwindSafe for syntax::ScopeKinds
+pub struct syntax::Skipped<'p>
+impl<'p> syntax::Skipped<'p>
+pub fn syntax::Skipped<'p>::contains(&self, syntax::NodeId) -> bool
+impl<'p> core::marker::Freeze for syntax::Skipped<'p>
+impl<'p> core::marker::Send for syntax::Skipped<'p>
+impl<'p> core::marker::Sync for syntax::Skipped<'p>
+impl<'p> core::marker::Unpin for syntax::Skipped<'p>
+impl<'p> core::marker::UnsafeUnpin for syntax::Skipped<'p>
+impl<'p> core::panic::unwind_safe::RefUnwindSafe for syntax::Skipped<'p>
+impl<'p> core::panic::unwind_safe::UnwindSafe for syntax::Skipped<'p>
 pub struct syntax::Spec
 pub syntax::Spec::clones: syntax::CloneRules
 pub syntax::Spec::comments: syntax::KindSet
@@ -609,6 +619,27 @@ impl core::marker::Unpin for syntax::Spec
 impl core::marker::UnsafeUnpin for syntax::Spec
 impl core::panic::unwind_safe::RefUnwindSafe for syntax::Spec
 impl core::panic::unwind_safe::UnwindSafe for syntax::Spec
+pub struct syntax::TypeChecking
+impl syntax::TypeChecking
+pub fn syntax::TypeChecking::of(&syntax::Parsed) -> syntax::TypeChecking
+pub fn syntax::TypeChecking::tests(&self, &str) -> bool
+impl core::clone::Clone for syntax::TypeChecking
+pub fn syntax::TypeChecking::clone(&self) -> Self
+impl core::cmp::Eq for syntax::TypeChecking
+impl core::cmp::PartialEq for syntax::TypeChecking
+pub fn syntax::TypeChecking::eq(&self, &Self) -> bool
+impl core::default::Default for syntax::TypeChecking
+pub fn syntax::TypeChecking::default() -> Self
+impl core::fmt::Debug for syntax::TypeChecking
+pub fn syntax::TypeChecking::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for syntax::TypeChecking
+impl core::marker::Freeze for syntax::TypeChecking
+impl core::marker::Send for syntax::TypeChecking
+impl core::marker::Sync for syntax::TypeChecking
+impl core::marker::Unpin for syntax::TypeChecking
+impl core::marker::UnsafeUnpin for syntax::TypeChecking
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::TypeChecking
+impl core::panic::unwind_safe::UnwindSafe for syntax::TypeChecking
 pub struct syntax::UnitRules
 pub syntax::UnitRules::bound: syntax::KindSet
 pub syntax::UnitRules::scopes: syntax::KindSet
@@ -628,7 +659,6 @@ impl core::panic::unwind_safe::UnwindSafe for syntax::UnitRules
 pub const syntax::EXTENSIONS: [(&str, syntax::Language); 33]
 pub const syntax::PACK_VERSION: &str
 pub const syntax::TABLES_DIGEST: &str
-pub const syntax::TYPE_CHECKING: [&str; 2]
 pub fn syntax::parse(syntax::Language, alloc::rcs::arc::Arc<str>) -> core::result::Result<syntax::Parsed, syntax::Unparsable>
 pub fn syntax::rust_impl_owner(&mut syntax::FieldCursor<'_>, syntax::NodeId) -> core::option::Option<syntax::NodeId>
 pub fn syntax::tokens(&syntax::Parsed, syntax::NodeId, core::option::Option<syntax::NodeId>) -> alloc::vec::Vec<alloc::borrow::Cow<'_, str>>

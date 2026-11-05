@@ -638,6 +638,63 @@ Each byte count is of the served bytes.
 
 ### Fixed
 
+- **Three Python import forms no longer give a false import edge.** Each of
+  the 10 false alarms in 60 blind `cycle_dodge` findings (record:
+  docs/analysis/2026-11-05_cycle-dodge-measurement.md) came from one of them.
+  The import resolver is shared, so the Python import edges of map, refs,
+  explain, cycles, path and `cycle_dodge` change with it.
+  - An `if` block under a name that the file's imports bind to
+    TYPE_CHECKING is a TYPE_CHECKING block: `t.TYPE_CHECKING` after `import
+    typing as t`, and `Y` after `from typing import TYPE_CHECKING as Y`. Its
+    imports run only for a type checker (`Import.runs` is `type_only`), and
+    the clone walk skips the block as it skips `if TYPE_CHECKING:`.
+    scb-check 0.1.3 skips only the two fixed spellings. The agent guide's
+    clone-share and `clone_delta` paragraphs now say so.
+  - An absolute import in a Python file whose directory holds `__init__.py`
+    no longer resolves to a file beside the importer: `from math import
+    sqrt` in sphinx/util/parallel.py no longer names sphinx/util/math.py. A
+    Python file in a directory without `__init__.py` still tries the file
+    beside it first.
+  - `from P import N`, where P/N.py or P/N/__init__.py exists, has no edge
+    to P/__init__.py when the importing file is inside package P, because
+    such a file runs after P/__init__.py has started. An importer outside P
+    keeps that edge, and so does a member that is not a module.
+
+  The facts version goes from 12 to 13, so every tag cache indexes again
+  once. The recorded graph corpora `ext_python` and `ext_communities` change:
+  6 and 42 rows to a package's `__init__.py` go, with their file-graph rows,
+  ranks, communities and paths, and the `ext_python` cycle through
+  pkg/__init__.py becomes the cycle of pkg/cycle_a.py, pkg/cycle_b.py and
+  pkg/cycle_c.py. No golden changes. Measured with the release build of
+  d650012 on the 14 U3 snapshot copies (`lint --since <root> --only
+  cycle_dodge --json`): 1,638 rows go to 1,591 (1,567 the same, 24 with
+  another chain, 47 gone, 0 new). The 10 sampled false alarms are gone, and
+  the 50 other sampled rows remain with the same chain. Of the 83 local
+  imports with a comment that names a circular import, 56 are found (59
+  before). The 56 are the same 56 of the pilot class dodge, and the 3 that
+  the pilot classed local-only or type-only are no longer found. Over the 70
+  outside test paths, that is 80.0% (Wilson 95% 69.2% to 87.7%). A
+  false-alarm rate of this build is not measured: the 50 rows are not a new
+  sample.
+
+  Measured with the release build of f5102e4 against that of 6dce8e5 (record:
+  docs/analysis/2026-11-05_python-import-resolution-measurement.md). On
+  Loc-Bench, `ranked_files` change in 97 of 150 seeded and 110 of 150 no-seed
+  instances, each one of the 123 whose checkout holds a changed Python import
+  row or binding. recall@10 moves in 1 seeded instance (up) and 2 no-seed
+  instances (1 up, 1 down); the paired bootstrap gives +0.0007 [0, +0.0020]
+  seeded and -0.0060 [-0.0200, +0.0020] no-seed, and MAP +0.0037 and +0.0040,
+  each 95% interval holding 0. The surface diff changes cycles in 106 of 150
+  Loc-Bench answers, explain in 21 of 228, map in 116 of 150 and refs in 1 of
+  678; on the U3 copies, 28 of 28, 130 of 242, 28 of 28 and 10 of 242. No refs
+  site moves up from a name-only tier, and refs `total` does not change. In a
+  read sample of 45 changed lines, the new answer is right in 31, the old in
+  13 and neither in 1. The old answer was right for a sibling import that
+  only Python 2 or a top-level script resolves (12 lines: 11 in the sympy
+  snapshot's pygletplot, 1 in a moto ANTLR branch that runs only as a
+  top-level module), and for one `from P import N` whose P/__init__.py
+  re-binds N to a class (sentence-transformers' `SentenceTransformer`).
+
 - **The not_checked row of `callee_overlap` for a file that does not parse
   names its own check.** It gave the complexity text: "Complexity is
   measured only for a file that parses. Fix the syntax error, then measure

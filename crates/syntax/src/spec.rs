@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use crate::rules::{BindingRule, Cond, NameRule, OwnerRule, SkipRule};
+use crate::rules::{BindingRule, Cond, NameRule, OwnerRule, SkipRule, Skipped};
 use crate::tables::{
     CloneTable, DecisionTable, LiteralClass, Measured, Names, SlocRule, UnitTable,
 };
@@ -190,10 +190,10 @@ impl CloneRules {
         }
     }
 
-    /// Return whether the clone walk skips this candidate, while it still enters it.
+    /// Return the candidates of `parsed` that the clone walk skips, while it still enters them.
     #[must_use]
-    pub fn skips(&self, parsed: &Parsed, node: NodeId) -> bool {
-        self.skip.is_some_and(|skip| skip.skips(parsed, node))
+    pub fn skipped<'p>(&self, parsed: &'p Parsed) -> Skipped<'p> {
+        Skipped::read(self.skip, parsed)
     }
 
     /// Return the class that a literal of `kind` stands for in a Type-2 key.

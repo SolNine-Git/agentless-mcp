@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use facts::Import;
 use syntax::Language;
 
-use crate::imports::{resolve_import_target, resolve_imported_submodule};
+use crate::imports::{inside_package, resolve_import_target, resolve_imported_submodule};
 use crate::paths::PathIndex;
 use crate::rust_paths::RustTree;
 use crate::scan::FileFacts;
@@ -477,15 +477,24 @@ impl<'a> ImportScope<'a> {
         import: &'a Import,
         paths: &PathIndex<'a>,
     ) {
-        let target = resolve_import_target(path, &import.module, import.relative_level, paths);
-        let relative = import.is_relative || import.relative_level > 0;
-        self.statements.push(ResolvedImport {
-            module: Cow::Borrowed(&import.module),
-            line: import.line,
-            resolved: target,
-            relative,
-            statement: position,
-        });
+        let level = import.relative_level;
+        let target = resolve_import_target(path, &import.module, level, paths);
+        let relative = import.is_relative || level > 0;
+        let modules: Vec<Option<&'a str>> = import
+            .bound_names()
+            .map(|(member, _)| {
+                resolve_imported_submodule(path, &import.module, level, member, paths)
+            })
+            .collect();
+        if loads_target(path, target, &modules) {
+            self.statements.push(ResolvedImport {
+                module: Cow::Borrowed(&import.module),
+                line: import.line,
+                resolved: target,
+                relative,
+                statement: position,
+            });
+        }
         let bound = target.filter(|target| *target != path);
         if let Some(bound) = bound.filter(|_| import.binds_all) {
             self.wholesale.insert(bound);
@@ -501,8 +510,8 @@ impl<'a> ImportScope<'a> {
             relative,
             position,
         };
-        for (member, local) in import.bound_names() {
-            self.bind_member(&statement, member, local, paths);
+        for ((member, local), module) in import.bound_names().zip(modules) {
+            self.bind_member(&statement, member, local, module);
         }
     }
 
@@ -512,13 +521,10 @@ impl<'a> ImportScope<'a> {
         statement: &Statement<'a>,
         member: &'a str,
         local: &'a str,
-        paths: &PathIndex<'a>,
+        module: Option<&'a str>,
     ) {
         let import = statement.import;
-        let level = import.relative_level;
-        let submodule =
-            resolve_imported_submodule(statement.path, &import.module, level, member, paths)
-                .filter(|submodule| *submodule != statement.path);
+        let submodule = module.filter(|submodule| *submodule != statement.path);
         if let Some(submodule) = submodule {
             self.named.entry(local).or_default().insert(submodule);
             self.module_bindings
@@ -564,6 +570,13 @@ impl<'a> ImportScope<'a> {
                 .insert(target);
         }
     }
+}
+
+// `from P import N` in a module of package P loads only the modules it names, because that module
+// runs after P/__init__.py has started; a member that is not a module reads P/__init__.py.
+fn loads_target(importer: &str, target: Option<&str>, modules: &[Option<&str>]) -> bool {
+    let only_modules = !modules.is_empty() && modules.iter().all(Option::is_some);
+    !only_modules || !target.is_some_and(|target| inside_package(importer, target))
 }
 
 fn dotted(module: &str, member: &str) -> String {

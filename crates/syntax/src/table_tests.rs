@@ -279,7 +279,7 @@ fn rule_result(fields: &mut FieldCursor<'_>, node: NodeId, rule: &str) -> Value 
         "owner_of" => index(spec.units.owner_of(fields, node)),
         "rust_impl_owner" => index(rust_impl_owner(fields, node)),
         "condition" => Value::from(spec.decisions.condition(fields, node).expect("a test")),
-        "skips" => Value::from(spec.clones.skips(parsed, node)),
+        "skips" => Value::from(spec.clones.skipped(parsed).contains(node)),
         other => panic!("the fixture names an unknown rule {other}"),
     }
 }
