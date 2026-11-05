@@ -637,7 +637,8 @@ Each byte count is of the served bytes.
     typing as t`, and `Y` after `from typing import TYPE_CHECKING as Y`. Its
     imports run only for a type checker (`Import.runs` is `type_only`), and
     the clone walk skips the block as it skips `if TYPE_CHECKING:`.
-    scb-check 0.1.3 skips only the two fixed spellings.
+    scb-check 0.1.3 skips only the two fixed spellings. The agent guide's
+    clone-share and `clone_delta` paragraphs now say so.
   - An absolute import in a Python file whose directory holds `__init__.py`
     no longer resolves to a file beside the importer: `from math import
     sqrt` in sphinx/util/parallel.py no longer names sphinx/util/math.py. A

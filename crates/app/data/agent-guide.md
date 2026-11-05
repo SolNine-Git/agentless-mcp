@@ -1172,8 +1172,9 @@ docstrings are ignored (a Type-2 clone, the rule that `lint`'s `clone_delta`
 uses). Clone share counts each source line inside any instance of a block
 that has 2 or more instances, once, so nested and overlapping copies do not
 count a line twice. It divides that count by the source lines of the files
-the walk measured. Python follows scb-check 0.1.3: on a snapshot of mcp-local
-`src/`, the 2,513 clone lines of 30,603 source lines equal scb-check's
+the walk measured. Python follows scb-check 0.1.3 for a file with no aliased
+`TYPE_CHECKING`: on a snapshot of mcp-local `src/`, the 2,513 clone lines of
+30,603 source lines equal scb-check's
 `clone_loc` and `total_loc`. The share counts every copied block of 3 or more
 lines, including the short guard clauses that `clone_delta` leaves out of its
 findings. The JSON form carries `sloc`, `clone_lines`, and `clone_share`.
@@ -1568,6 +1569,8 @@ replaces each literal with its type, so `total(items)` and `summed(values)`
 with the same body share a key. Python follows scb-check
 v0.1.3: a plain-string statement is dropped as a docstring, and an
 `if TYPE_CHECKING:` block is not a block although the functions in it are.
+Unlike scb-check, `clone_delta` treats an alias, such as `if t.TYPE_CHECKING:`,
+the same way.
 Typescript and tsx share their node types, and so do c and cpp, so a copy
 between them counts. Javascript and typescript do not, because the
 typescript grammar wraps each parameter.

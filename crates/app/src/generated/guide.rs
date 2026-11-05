@@ -1024,14 +1024,15 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         inside any instance of a block\nthat has 2 or more instances, \
         once, so nested and overlapping copies do not\ncount a line \
         twice. It divides that count by the source lines of the \
-        files\nthe walk measured. Python follows scb-check 0.1.3: on a \
-        snapshot of mcp-local\n`src/`, the 2,513 clone lines of 30,603 \
-        source lines equal scb-check's\n`clone_loc` and `total_loc`. \
-        The share counts every copied block of 3 or more\nlines, \
-        including the short guard clauses that `clone_delta` leaves out \
-        of its\nfindings. The JSON form carries `sloc`, `clone_lines`, \
-        and `clone_share`.\n\n**A hotspot row carries the unit's stable \
-        id when one agentless symbol starts\non the same line with the \
+        files\nthe walk measured. Python follows scb-check 0.1.3 for a \
+        file with no aliased\n`TYPE_CHECKING`: on a snapshot of \
+        mcp-local `src/`, the 2,513 clone lines of\n30,603 source lines \
+        equal scb-check's\n`clone_loc` and `total_loc`. The share \
+        counts every copied block of 3 or more\nlines, including the \
+        short guard clauses that `clone_delta` leaves out of \
+        its\nfindings. The JSON form carries `sloc`, `clone_lines`, and \
+        `clone_share`.\n\n**A hotspot row carries the unit's stable id \
+        when one agentless symbol starts\non the same line with the \
         same name.** Otherwise the row ends `metric-only\nunit, no \
         stable id`, for example an arrow function bound to an object \
         key,\nwhich the extractor does not report as a symbol. Read \
@@ -1463,63 +1464,65 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         same body share a key. Python follows scb-check\nv0.1.3: a \
         plain-string statement is dropped as a docstring, and an\n`if \
         TYPE_CHECKING:` block is not a block although the functions in \
-        it are.\nTypescript and tsx share their node types, and so do c \
-        and cpp, so a copy\nbetween them counts. Javascript and \
-        typescript do not, because the\ntypescript grammar wraps each \
-        parameter.\n\nA finding is a block of 40 or more tokens that \
-        the change adds, and whose key\nthe repository then holds at \
-        least twice. A token is a leaf of the Type-2\nstream: an \
-        identifier, a literal, a keyword, an operator, or a \
-        punctuation\nmark, with comments and docstrings dropped. Nearly \
-        every guard clause falls\nunder 40 tokens. A guard clause here \
-        is an `if` with no `else` whose body is at\nmost two \
-        statements, the last a raise, throw, or return, as when a lint \
-        rule\nmakes every check build its message and then raise. On \
-        mcp-local `src/` and\nfive Loc-Bench checkouts, 183 of 2,424 \
-        clone groups are guard clauses. A floor\nof 40 tokens keeps 4 \
-        of them, and a floor of 6 source lines keeps 28. The \
-        floor\napplies to findings only, so the clone groups count \
-        every block of 3 or more\nsource lines. Old and new blocks pair \
-        within each file first, then across\nfiles, so a block moved to \
-        another file is not new. A new block with no other\ninstance is \
-        not a finding. When a copy is the same text as its original, \
-        the\ncopy is the block the line diff did not keep in place. The \
-        evidence names up to\nthree other copies, and the JSON `detail` \
-        names up to 20.\n\n`clone_delta` skips a function that \
-        `near_duplicates` reported at the same\npath and line in the \
-        same run. Two cases defeat that match, so both checks\nreport \
-        the same function: a function in a file the candidate creates, \
-        which\n`near_duplicates` reports at line 0, and a function \
-        below an earlier edit of\nthe same file that changes the line \
-        count, which `near_duplicates` reports at\nits line before the \
-        edit.\n\n**`callee_overlap` compares what the functions call.** \
-        It finds a new copy\nthat `clone_delta` cannot see, because the \
-        code is written another way: a\nfunction that calls the same \
-        helpers as an existing one. It reads Rust and\nPython only, the \
-        languages whose table holds a `callee_stoplist`, and \
-        only\nfunctions and methods outside test and fixture paths. A \
-        Rust method of\n`impl Trait for T`, a Python dunder, and Rust \
-        test code (a `#[test]`-like\nattribute, or `cfg(test)` on the \
-        function or around it) are never compared.\nA callee is a \
-        function or method of the repository that a call resolves to \
-        at\nthe same-file or resolved-via-import tier. A unique or \
-        name-only match does not\ncount, so a Rust call on a receiver \
-        (`x.m()`) and a Python attribute call\n(`self.m()`) never \
-        count. A callee named in the stoplist (`clone`, `into`,\n`len`, \
-        `new`, `push`, `unwrap`) and a test function never \
-        count.\n\nThe rule: an existing function g has three or more \
-        callees, the changed\nfunction f calls at least 80% of them, \
-        and f does not spell the name of g. f\nis a function the change \
-        adds, or one it rewrites whose old text spelled fewer\nthan 80% \
-        of the names of g's callees. A function moved to another file \
-        or\nrenamed without other change is not new. g is skipped when \
-        five or more other\nfunctions also meet the rule for it: such a \
-        set is a convention, not a copy.\nEach f gets at most three \
-        rows: the most shared callees first, then the larger\nset of g, \
-        then g's path and line. Two new functions that meet the rule \
-        for\neach other give one row. The scan and the graph build stop \
-        after 10 s, and\nthen the check gives one `not_checked` row and \
-        no finding, because a part of\nthe graph can make a false \
+        it are.\nUnlike scb-check, `clone_delta` treats an alias, such \
+        as `if t.TYPE_CHECKING:`,\nthe same way.\nTypescript and tsx \
+        share their node types, and so do c and cpp, so a copy\nbetween \
+        them counts. Javascript and typescript do not, because \
+        the\ntypescript grammar wraps each parameter.\n\nA finding is a \
+        block of 40 or more tokens that the change adds, and whose \
+        key\nthe repository then holds at least twice. A token is a \
+        leaf of the Type-2\nstream: an identifier, a literal, a \
+        keyword, an operator, or a punctuation\nmark, with comments and \
+        docstrings dropped. Nearly every guard clause falls\nunder 40 \
+        tokens. A guard clause here is an `if` with no `else` whose \
+        body is at\nmost two statements, the last a raise, throw, or \
+        return, as when a lint rule\nmakes every check build its \
+        message and then raise. On mcp-local `src/` and\nfive Loc-Bench \
+        checkouts, 183 of 2,424 clone groups are guard clauses. A \
+        floor\nof 40 tokens keeps 4 of them, and a floor of 6 source \
+        lines keeps 28. The floor\napplies to findings only, so the \
+        clone groups count every block of 3 or more\nsource lines. Old \
+        and new blocks pair within each file first, then across\nfiles, \
+        so a block moved to another file is not new. A new block with \
+        no other\ninstance is not a finding. When a copy is the same \
+        text as its original, the\ncopy is the block the line diff did \
+        not keep in place. The evidence names up to\nthree other \
+        copies, and the JSON `detail` names up to 20.\n\n`clone_delta` \
+        skips a function that `near_duplicates` reported at the \
+        same\npath and line in the same run. Two cases defeat that \
+        match, so both checks\nreport the same function: a function in \
+        a file the candidate creates, which\n`near_duplicates` reports \
+        at line 0, and a function below an earlier edit of\nthe same \
+        file that changes the line count, which `near_duplicates` \
+        reports at\nits line before the edit.\n\n**`callee_overlap` \
+        compares what the functions call.** It finds a new copy\nthat \
+        `clone_delta` cannot see, because the code is written another \
+        way: a\nfunction that calls the same helpers as an existing \
+        one. It reads Rust and\nPython only, the languages whose table \
+        holds a `callee_stoplist`, and only\nfunctions and methods \
+        outside test and fixture paths. A Rust method of\n`impl Trait \
+        for T`, a Python dunder, and Rust test code (a \
+        `#[test]`-like\nattribute, or `cfg(test)` on the function or \
+        around it) are never compared.\nA callee is a function or \
+        method of the repository that a call resolves to at\nthe \
+        same-file or resolved-via-import tier. A unique or name-only \
+        match does not\ncount, so a Rust call on a receiver (`x.m()`) \
+        and a Python attribute call\n(`self.m()`) never count. A callee \
+        named in the stoplist (`clone`, `into`,\n`len`, `new`, `push`, \
+        `unwrap`) and a test function never count.\n\nThe rule: an \
+        existing function g has three or more callees, the \
+        changed\nfunction f calls at least 80% of them, and f does not \
+        spell the name of g. f\nis a function the change adds, or one \
+        it rewrites whose old text spelled fewer\nthan 80% of the names \
+        of g's callees. A function moved to another file or\nrenamed \
+        without other change is not new. g is skipped when five or more \
+        other\nfunctions also meet the rule for it: such a set is a \
+        convention, not a copy.\nEach f gets at most three rows: the \
+        most shared callees first, then the larger\nset of g, then g's \
+        path and line. Two new functions that meet the rule for\neach \
+        other give one row. The scan and the graph build stop after 10 \
+        s, and\nthen the check gives one `not_checked` row and no \
+        finding, because a part of\nthe graph can make a false \
         row.\n\nThe check is advisory, the hook does not run it, and \
         `erosion_gate` does not\ntake it, until its false-positive rate \
         is measured on real changes. On planted\npairs in Rust and in \
@@ -1849,7 +1852,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3_599, 4_432),
     ("stable-ids", 4_434, 5_923),
     ("the-two-surfaces", 5_925, 11_608),
-    ("per-tool-usage", 11_610, 102_033),
+    ("per-tool-usage", 11_610, 102_170),
     ("claude-code-specifics", 13_226, 15_038),
     ("map", 15_040, 25_069),
     ("tree", 25_071, 25_392),
@@ -1864,15 +1867,15 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("cycles", 47_915, 49_420),
     ("communities", 49_422, 51_945),
     ("diagram", 51_947, 54_861),
-    ("health", 54_863, 61_098),
-    ("html", 61_100, 62_051),
-    ("resolve-locs", 62_053, 62_868),
-    ("capabilities", 62_870, 64_584),
-    ("index", 64_586, 67_327),
-    ("lint", 67_329, 90_833),
-    ("validate-vote", 90_835, 100_432),
-    ("warmup", 100_434, 102_033),
-    ("project-defaults-agentless-mcp-json", 102_035, 105_988),
-    ("token-counting", 105_990, 106_404),
-    ("exit-codes", 106_406, 106_864),
+    ("health", 54_863, 61_141),
+    ("html", 61_143, 62_094),
+    ("resolve-locs", 62_096, 62_911),
+    ("capabilities", 62_913, 64_627),
+    ("index", 64_629, 67_370),
+    ("lint", 67_372, 90_970),
+    ("validate-vote", 90_972, 100_569),
+    ("warmup", 100_571, 102_170),
+    ("project-defaults-agentless-mcp-json", 102_172, 106_125),
+    ("token-counting", 106_127, 106_541),
+    ("exit-codes", 106_543, 107_001),
 ];
