@@ -1,0 +1,129 @@
+{
+  "candidates": [
+    {
+      "id": "HEAD",
+      "findings": [
+        {
+          "check": "cycle_dodge",
+          "severity": "advisory",
+          "message": "The import of `chain_a` in `report` runs only when the function runs. At module level it closes this import cycle: chain_c.py -> chain_a.py -> chain_b.py -> chain_c.py. Break the cycle: move the shared code to a module that both files import, or invert the dependency.",
+          "path": "chain_c.py",
+          "line": 9,
+          "location": "chain_c.py:9",
+          "evidence": "chain_c.py:9 imports chain_a.py; chain_a.py imports chain_c.py back through chain_a.py:3 -> chain_b.py:3",
+          "detail": {
+            "module": "chain_a",
+            "target": "chain_a.py",
+            "function": "report",
+            "via": "new",
+            "chain": [
+              {
+                "path": "chain_a.py",
+                "line": 3,
+                "target": "chain_b.py"
+              },
+              {
+                "path": "chain_b.py",
+                "line": 3,
+                "target": "chain_c.py"
+              }
+            ]
+          }
+        },
+        {
+          "check": "cycle_dodge",
+          "severity": "advisory",
+          "message": "The import of `.tools` in `Part.tool` runs only when the function runs. At module level it closes this import cycle: kit/parts.py -> kit/tools.py -> kit/parts.py. Break the cycle: move the shared code to a module that both files import, or invert the dependency.",
+          "path": "kit/parts.py",
+          "line": 9,
+          "location": "kit/parts.py:9",
+          "evidence": "kit/parts.py:9 imports kit/tools.py; kit/tools.py imports kit/parts.py back through kit/tools.py:3",
+          "detail": {
+            "module": ".tools",
+            "target": "kit/tools.py",
+            "function": "Part.tool",
+            "via": "new",
+            "chain": [
+              {
+                "path": "kit/tools.py",
+                "line": 3,
+                "target": "kit/parts.py"
+              }
+            ]
+          }
+        },
+        {
+          "check": "cycle_dodge",
+          "severity": "advisory",
+          "message": "The import of `late_b` in `load` runs only when the function runs. At module level it closes this import cycle: late_a.py -> late_b.py -> late_a.py. Break the cycle: move the shared code to a module that both files import, or invert the dependency.",
+          "path": "late_a.py",
+          "line": 5,
+          "location": "late_a.py:5",
+          "evidence": "late_a.py:5 imports late_b.py; late_b.py imports late_a.py back through late_b.py:3",
+          "detail": {
+            "module": "late_b",
+            "target": "late_b.py",
+            "function": "load",
+            "via": "return_path",
+            "chain": [
+              {
+                "path": "late_b.py",
+                "line": 3,
+                "target": "late_a.py"
+              }
+            ]
+          }
+        },
+        {
+          "check": "cycle_dodge",
+          "severity": "advisory",
+          "message": "The import of `moved_b` in `total` runs only when the function runs. At module level it closes this import cycle: moved_a.py -> moved_b.py -> moved_a.py. Break the cycle: move the shared code to a module that both files import, or invert the dependency.",
+          "path": "moved_a.py",
+          "line": 5,
+          "location": "moved_a.py:5",
+          "evidence": "moved_a.py:5 imports moved_b.py; moved_b.py imports moved_a.py back through moved_b.py:3",
+          "detail": {
+            "module": "moved_b",
+            "target": "moved_b.py",
+            "function": "total",
+            "via": "moved",
+            "chain": [
+              {
+                "path": "moved_b.py",
+                "line": 3,
+                "target": "moved_a.py"
+              }
+            ]
+          }
+        },
+        {
+          "check": "cycle_dodge",
+          "severity": "advisory",
+          "message": "The import of `views` in `Item.render` runs only when the function runs. At module level it closes this import cycle: shop/models.py -> views.py -> shop/__init__.py -> shop/models.py. Break the cycle: move the shared code to a module that both files import, or invert the dependency.",
+          "path": "shop/models.py",
+          "line": 9,
+          "location": "shop/models.py:9",
+          "evidence": "shop/models.py:9 imports views.py; views.py imports shop/models.py back through views.py:3 -> shop/__init__.py:3",
+          "detail": {
+            "module": "views",
+            "target": "views.py",
+            "function": "Item.render",
+            "via": "new",
+            "chain": [
+              {
+                "path": "views.py",
+                "line": 3,
+                "target": "shop/__init__.py"
+              },
+              {
+                "path": "shop/__init__.py",
+                "line": 3,
+                "target": "shop/models.py"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -20,7 +20,7 @@ use syntax::{Extraction, ImportRule, Language, NodeId, Parsed, SymbolRule};
 
 use crate::spelling::normalise_signature;
 use crate::stable_id::disambiguate;
-use crate::values::{Facts, Import, Marks, Symbol, SymbolKind};
+use crate::values::{Facts, Import, Marks, Runs, Symbol, SymbolKind};
 use tree::Tree;
 
 pub use data_languages::{DataOutline, OUTLINE_CAP, OutlineRow};
@@ -168,6 +168,7 @@ impl Import {
             binds_all: false,
             alias: String::new(),
             inline_depth: 0,
+            runs: Runs::Load,
         }
     }
 

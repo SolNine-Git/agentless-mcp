@@ -628,6 +628,7 @@ impl core::panic::unwind_safe::UnwindSafe for syntax::UnitRules
 pub const syntax::EXTENSIONS: [(&str, syntax::Language); 33]
 pub const syntax::PACK_VERSION: &str
 pub const syntax::TABLES_DIGEST: &str
+pub const syntax::TYPE_CHECKING: [&str; 2]
 pub fn syntax::parse(syntax::Language, alloc::rcs::arc::Arc<str>) -> core::result::Result<syntax::Parsed, syntax::Unparsable>
 pub fn syntax::rust_impl_owner(&mut syntax::FieldCursor<'_>, syntax::NodeId) -> core::option::Option<syntax::NodeId>
 pub fn syntax::tokens(&syntax::Parsed, syntax::NodeId, core::option::Option<syntax::NodeId>) -> alloc::vec::Vec<alloc::borrow::Cow<'_, str>>

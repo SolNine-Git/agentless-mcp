@@ -334,6 +334,7 @@ pub struct graph::ImportScope<'a>
 impl<'a> graph::ImportScope<'a>
 pub fn graph::ImportScope<'a>::member_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &'a str> + '_
 pub fn graph::ImportScope<'a>::resolved_edges<'s>(&'s self, &'s str) -> impl core::iter::traits::iterator::Iterator<Item = (&'s str, u32, &'a str)> + 's
+pub fn graph::ImportScope<'a>::resolved_statements<'s>(&'s self, &'s str) -> impl core::iter::traits::iterator::Iterator<Item = (usize, &'s str, &'a str)> + 's
 impl<'a> core::clone::Clone for graph::ImportScope<'a>
 pub fn graph::ImportScope<'a>::clone(&self) -> Self
 impl<'a> core::default::Default for graph::ImportScope<'a>
@@ -645,6 +646,7 @@ pub fn graph::detect_communities<'a>(&graph::FileGraph<'a>, f64, core::option::O
 pub fn graph::enclosing_symbol(&[facts::values::Symbol], u32) -> core::option::Option<&facts::values::Symbol>
 pub fn graph::flood_backward<'a, 's>(&graph::FileGraph<'a>, impl core::iter::traits::collect::IntoIterator<Item = &'s str>, u32) -> graph::Flood<'a>
 pub fn graph::holds_file(&graph::NameIndex<'_>, &str) -> bool
+pub fn graph::import_chain<'g, 'a>(&'g graph::SymbolGraph<'a>, &str, &str, impl core::ops::function::Fn(&'a str, u32) -> bool) -> core::option::Option<alloc::vec::Vec<&'g graph::SymbolEdge<'a>>>
 pub fn graph::import_cycles<'a>(&graph::SymbolGraph<'a>) -> alloc::vec::Vec<graph::Cycle<'a>>
 pub fn graph::in_name_graph(&graph::FileFacts) -> bool
 pub fn graph::joins_name_graph(syntax::language::Language) -> bool

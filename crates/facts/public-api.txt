@@ -64,6 +64,36 @@ impl core::marker::Unpin for facts::Role
 impl core::marker::UnsafeUnpin for facts::Role
 impl core::panic::unwind_safe::RefUnwindSafe for facts::Role
 impl core::panic::unwind_safe::UnwindSafe for facts::Role
+pub enum facts::Runs
+pub facts::Runs::Call
+pub facts::Runs::Load
+pub facts::Runs::TypeOnly
+impl facts::Runs
+pub const facts::Runs::ALL: [facts::Runs; 3]
+pub fn facts::Runs::as_str(&self) -> &'static str
+impl core::clone::Clone for facts::Runs
+pub fn facts::Runs::clone(&self) -> Self
+impl core::cmp::Eq for facts::Runs
+impl core::cmp::PartialEq for facts::Runs
+pub fn facts::Runs::eq(&self, &Self) -> bool
+impl core::default::Default for facts::Runs
+pub fn facts::Runs::default() -> Self
+impl core::fmt::Debug for facts::Runs
+pub fn facts::Runs::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for facts::Runs
+pub fn facts::Runs::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for facts::Runs
+impl serde_core::ser::Serialize for facts::Runs
+pub fn facts::Runs::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for facts::Runs
+pub fn facts::Runs::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for facts::Runs
+impl core::marker::Send for facts::Runs
+impl core::marker::Sync for facts::Runs
+impl core::marker::Unpin for facts::Runs
+impl core::marker::UnsafeUnpin for facts::Runs
+impl core::panic::unwind_safe::RefUnwindSafe for facts::Runs
+impl core::panic::unwind_safe::UnwindSafe for facts::Runs
 pub enum facts::StableIdError
 pub facts::StableIdError::Malformed
 pub facts::StableIdError::Malformed::text: alloc::string::String
@@ -214,6 +244,7 @@ pub facts::Import::local_names: alloc::vec::Vec<alloc::string::String>
 pub facts::Import::module: alloc::string::String
 pub facts::Import::names: alloc::vec::Vec<alloc::string::String>
 pub facts::Import::relative_level: u32
+pub facts::Import::runs: facts::Runs
 impl facts::Import
 pub fn facts::Import::bound_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &str)>
 impl core::clone::Clone for facts::Import

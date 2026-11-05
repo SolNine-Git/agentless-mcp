@@ -237,8 +237,13 @@ const SETTINGS: &str = "from helpers import check, parse, read_text\n\n\ndef loa
 
 // The report of `lint --since HEAD --only callee_overlap` on the repository at `root`.
 fn callee_report(services: &crate::Services, root: &Path) -> LintReport {
+    since_report(services, root, &["callee_overlap"])
+}
+
+// The report of `lint --since HEAD --only <checks>` on the repository at `root`.
+fn since_report(services: &crate::Services, root: &Path, checks: &[&str]) -> LintReport {
     let repo = Repo::load(services, root).expect("the repository loads");
-    let names = ["callee_overlap".to_owned()];
+    let names: Vec<String> = checks.iter().map(|check| (*check).to_owned()).collect();
     let request = LintRequest {
         form: LintForm::Revision {
             revision: "HEAD".to_owned(),
@@ -395,6 +400,15 @@ const LINT_GOLDENS: &str = "../../tests/characterization/goldens/lint";
 // The M1 planted pairs of one fixture repository: base/ is committed, change/ is laid over it,
 // and the run's report is the golden.
 fn planted_report_equals_its_golden(name: &str) {
+    let (fixture, report) = planted_report(name, "callee_overlap");
+    let planted = std::fs::read_to_string(fixture.join("pairs.json")).expect("the planted pairs");
+    let planted: Planted = serde_json::from_str(&planted).expect("a planted list");
+    assert_rows_are_planted(name, &report, &planted);
+}
+
+// The report of `lint --since HEAD --only <check>` on one planted repository, which must equal
+// its golden, and the fixture's directory.
+fn planted_report(name: &str, check: &str) -> (PathBuf, LintReport) {
     let fixture: PathBuf = [MANIFEST_DIR, FIXTURES, name].iter().collect();
     let sandbox = Sandbox::new();
     sandbox.mkdir("repo");
@@ -409,16 +423,14 @@ fn planted_report_equals_its_golden(name: &str) {
         }
     }
     let services = sandbox.services(sandbox.path());
-    let report = callee_report(&services, &sandbox.path().join("repo"));
+    let report = since_report(&services, &sandbox.path().join("repo"), &[check]);
     let text = to_text(&report, JsonForm::Indented).expect("a report serializes") + "\n";
     let golden: PathBuf = [MANIFEST_DIR, LINT_GOLDENS, &format!("{name}.lint.json")]
         .iter()
         .collect();
     let want = std::fs::read_to_string(&golden).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(text, want, "{name}");
-    let planted = std::fs::read_to_string(fixture.join("pairs.json")).expect("the planted pairs");
-    let planted: Planted = serde_json::from_str(&planted).expect("a planted list");
-    assert_rows_are_planted(name, &report, &planted);
+    (fixture, report)
 }
 
 // Each row is a planted positive, and no row names a planted negative.
@@ -453,4 +465,170 @@ fn the_rust_planted_pairs_give_the_golden_rows_and_no_row_on_a_negative() {
 #[test]
 fn the_python_planted_pairs_give_the_golden_rows_and_no_row_on_a_negative() {
     planted_report_equals_its_golden("callee_overlap_py");
+}
+
+#[derive(Deserialize)]
+struct PlantedImports {
+    positives: Vec<PlantedImport>,
+    negatives: Vec<PlantedImport>,
+}
+
+#[derive(Deserialize)]
+struct PlantedImport {
+    kind: String,
+    via: Option<String>,
+    path: String,
+    function: String,
+    module: String,
+}
+
+// Each row is a planted positive with its via, and no row names a planted negative.
+#[test]
+fn the_planted_imports_give_the_golden_rows_and_no_row_on_a_negative() {
+    let name = "cycle_dodge_py";
+    let (fixture, report) = planted_report(name, "cycle_dodge");
+    let planted = std::fs::read_to_string(fixture.join("planted.json")).expect("the planted list");
+    let planted: PlantedImports = serde_json::from_str(&planted).expect("a planted list");
+    let rows: Vec<(&str, &str, &str, &str)> = report.candidates[0]
+        .findings
+        .iter()
+        .map(|row| match &row.detail {
+            Some(checks::Detail::Dodge(dodge)) => (
+                row.finding.path.as_str(),
+                dodge.function.as_str(),
+                dodge.module.as_str(),
+                dodge.via.as_str(),
+            ),
+            other => panic!("{name}: a row that is no dodge: {other:?}"),
+        })
+        .collect();
+    let place = |import: &PlantedImport| (import.path.clone(), import.function.clone());
+    for negative in &planted.negatives {
+        let named = |row: &&(&str, &str, &str, &str)| (row.0.to_owned(), row.1.to_owned());
+        assert!(
+            !rows
+                .iter()
+                .map(|row| named(&row))
+                .any(|at| at == place(negative)),
+            "{name}: a row names the {} negative",
+            negative.kind
+        );
+    }
+    let positives: Vec<(&str, &str, &str, &str)> = (planted.positives.iter())
+        .map(|import| {
+            let via = import.via.as_deref().expect("a positive names its via");
+            (&*import.path, &*import.function, &*import.module, via)
+        })
+        .collect();
+    assert_eq!(rows.len(), positives.len(), "{name}: {rows:?}");
+    assert!(
+        rows.iter().all(|row| positives.contains(row)),
+        "{name}: {rows:?}"
+    );
+}
+
+const LOADER_A: &str = "import b\n\n\ndef f():\n    return b.x\n";
+const LOADER_B: &str = "x = 1\n\n\ndef g():\n    return 2\n";
+const LATE_B: &str = "x = 1\n\n\ndef g():\n    import a\n\n    return a.f()\n";
+
+// A line separator in a one-line string fails Python's tokenizer, and the parser accepts it.
+const TOKENIZER_B: &str =
+    "LABEL = \"left\u{2028}right\"\nx = 1\n\n\ndef g():\n    import a\n\n    return a.f()\n";
+// `def g(:` leaves only a MISSING token in the tree, so the facts hold no error span.
+const MISSING_B: &str = "x = 1\n\n\ndef g(:\n    import a\n\n    return a.f()\n";
+const BROKEN_B: &str = "x = 1\n\n\ny = x x\n\n\ndef g():\n    import a\n\n    return a.f()\n";
+
+// The rows of a --since run of cycle_dodge over a repository whose b.py becomes `late_b`, while
+// a.py imports b.py at load.
+fn dodge_rows(late_b: &str, budget: Duration, clock: Arc<dyn kernel::Clock>) -> Vec<String> {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repo("repo", &[("a.py", LOADER_A), ("b.py", LOADER_B)]);
+    sandbox.put("repo/b.py", late_b);
+    let mut services = sandbox.services(sandbox.path());
+    services.walk_budget = budget;
+    services.clock = clock;
+    let report = since_report(&services, &root, &["cycle_dodge"]);
+    let rows = report.candidates[0].findings.iter();
+    rows.map(|row| format!("{} {}", row.finding.location(), row.finding.message))
+        .collect()
+}
+
+#[test]
+fn a_since_run_of_cycle_dodge_names_the_import_and_the_chain_back() {
+    let pinned = Arc::new(PinnedClock::at(SystemTime::UNIX_EPOCH));
+    let rows = dodge_rows(LATE_B, Duration::from_secs(10), pinned);
+    assert_eq!(
+        rows,
+        [
+            "b.py:5 The import of `a` in `g` runs only when the function runs. At module level it \
+             closes this import cycle: b.py -> a.py -> b.py. Break the cycle: move the shared code \
+             to a module that both files import, or invert the dependency."
+        ]
+    );
+}
+
+#[test]
+fn a_cycle_dodge_run_past_its_budget_gives_one_stopped_row_and_no_finding() {
+    let ticking = Arc::new(Ticking {
+        now: Mutex::new(Instant::now()),
+    });
+    let rows = dodge_rows(LATE_B, Duration::ZERO, ticking);
+    assert_eq!(
+        rows,
+        [
+            "(repository) not checked: cycle_dodge stopped at its time budget of 0 s before it \
+             read the imports of every file in the repository, so it compared no import."
+        ]
+    );
+}
+
+// cycle_dodge reads the facts, so only an error span in the facts of a side keeps the file out.
+#[test]
+fn a_cycle_dodge_side_is_not_compared_only_when_its_facts_hold_a_syntax_error() {
+    let rows = |late_b| {
+        let pinned = Arc::new(PinnedClock::at(SystemTime::UNIX_EPOCH));
+        dodge_rows(late_b, Duration::from_secs(10), pinned)
+    };
+    for (late_b, at) in [(TOKENIZER_B, "b.py:6"), (MISSING_B, "b.py:5")] {
+        let found = rows(late_b);
+        let head = format!("{at} The import of `a` in `g` runs only");
+        assert!(found.len() == 1 && found[0].starts_with(&head), "{found:?}");
+    }
+    assert_eq!(
+        rows(BROKEN_B),
+        [
+            "b.py not checked: cycle_dodge did not compare b.py, because its text after the change \
+             does not parse. b.py does not parse: the first syntax error is at line 4. Imports are \
+             compared only in a file that parses. Fix the syntax error, then run the check again."
+        ]
+    );
+}
+
+// The two tree checks of one run read one scan, and each gives its own rows in check order.
+#[test]
+fn a_run_of_both_tree_checks_gives_the_rows_of_each() {
+    let sandbox = Sandbox::new();
+    let files = [
+        ("helpers.py", HELPERS),
+        ("loader.py", LOADER),
+        ("a.py", LOADER_A),
+        ("b.py", LOADER_B),
+    ];
+    let root = sandbox.repo("repo", &files);
+    sandbox.put("repo/settings.py", SETTINGS);
+    sandbox.put("repo/b.py", LATE_B);
+    let services = sandbox.services(sandbox.path());
+    let report = since_report(&services, &root, &["callee_overlap", "cycle_dodge"]);
+    let rows: Vec<(String, &str)> = report.candidates[0]
+        .findings
+        .iter()
+        .map(|row| (row.finding.location(), row.finding.check))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("settings.py:4".to_owned(), "callee_overlap"),
+            ("b.py:5".to_owned(), "cycle_dodge")
+        ]
+    );
 }

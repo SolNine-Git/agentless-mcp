@@ -25,7 +25,7 @@ pub use communities::{
     Community, CommunityPartition, DEFAULT_RESOLUTION, ROOT_LABEL, community_label,
     detect_communities,
 };
-pub use cycles::{Cycle, import_cycles};
+pub use cycles::{Cycle, import_chain, import_cycles};
 pub use files::{FileGraph, Weighting};
 pub use flood::{Flood, Reached, flood_backward};
 pub use imports::ImportTargets;

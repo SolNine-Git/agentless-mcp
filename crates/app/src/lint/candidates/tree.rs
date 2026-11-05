@@ -79,7 +79,7 @@ pub(super) fn pair_rows(
         config,
         index,
         reported,
-        callees: None,
+        tree: None,
     };
     let judged = run_pairs(pairs, selection, inputs)?;
     rows.extend(judged.rows);

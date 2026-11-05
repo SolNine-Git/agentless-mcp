@@ -5,13 +5,16 @@ pub const checks::schema::CAPTURE: &str
 pub const checks::schema::CC: &str
 pub const checks::schema::CC_NEW: &str
 pub const checks::schema::CC_OLD: &str
+pub const checks::schema::CHAIN: &str
 pub const checks::schema::CLONE_INSTANCES: &str
 pub const checks::schema::CONTRACT_KEYS: &str
 pub const checks::schema::END_LINE: &str
 pub const checks::schema::FAMILY: &str
+pub const checks::schema::FUNCTION: &str
 pub const checks::schema::KEY: &str
 pub const checks::schema::LINE: &str
 pub const checks::schema::MATCH: &str
+pub const checks::schema::MODULE: &str
 pub const checks::schema::OTHER: &str
 pub const checks::schema::OTHER_CALLEES: &str
 pub const checks::schema::OTHER_LINE: &str
@@ -25,11 +28,13 @@ pub const checks::schema::SITES_TOTAL: &str
 pub const checks::schema::SLOC: &str
 pub const checks::schema::SLOC_NEW: &str
 pub const checks::schema::SLOC_OLD: &str
+pub const checks::schema::TARGET: &str
 pub const checks::schema::THRESHOLD: &str
 pub const checks::schema::TIER: &str
 pub const checks::schema::UNIT: &str
 pub const checks::schema::UNITS_CHANGED: &str
 pub const checks::schema::UNITS_OVER_THRESHOLD: &str
+pub const checks::schema::VIA: &str
 pub enum checks::CalleeTree
 pub checks::CalleeTree::Built(alloc::vec::Vec<checks::TreeFunction>)
 pub checks::CalleeTree::Stopped
@@ -93,6 +98,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for checks::CloneIndex
 impl core::panic::unwind_safe::UnwindSafe for checks::CloneIndex
 pub enum checks::Detail
 pub checks::Detail::Copy(checks::CloneCopy)
+pub checks::Detail::Dodge(checks::ImportDodge)
 pub checks::Detail::Drift(checks::DriftKey)
 pub checks::Detail::Gap(checks::CheckGap)
 pub checks::Detail::Overlap(alloc::boxed::Box<checks::CalleeShare>)
@@ -114,6 +120,43 @@ impl core::marker::Unpin for checks::Detail
 impl core::marker::UnsafeUnpin for checks::Detail
 impl core::panic::unwind_safe::RefUnwindSafe for checks::Detail
 impl core::panic::unwind_safe::UnwindSafe for checks::Detail
+pub enum checks::DodgeTree<'c>
+pub checks::DodgeTree::Built
+pub checks::DodgeTree::Built::chains: &'c mut dyn checks::LoadChains
+pub checks::DodgeTree::Built::imports: checks::LocalImports
+pub checks::DodgeTree::Stopped
+pub checks::DodgeTree::Stopped::seconds: u64
+impl<'c> core::marker::Freeze for checks::DodgeTree<'c>
+impl<'c> !core::marker::Send for checks::DodgeTree<'c>
+impl<'c> !core::marker::Sync for checks::DodgeTree<'c>
+impl<'c> core::marker::Unpin for checks::DodgeTree<'c>
+impl<'c> core::marker::UnsafeUnpin for checks::DodgeTree<'c>
+impl<'c> !core::panic::unwind_safe::RefUnwindSafe for checks::DodgeTree<'c>
+impl<'c> !core::panic::unwind_safe::UnwindSafe for checks::DodgeTree<'c>
+pub enum checks::DodgeVia
+pub checks::DodgeVia::Moved
+pub checks::DodgeVia::New
+pub checks::DodgeVia::ReturnPath
+impl checks::DodgeVia
+pub const fn checks::DodgeVia::as_str(self) -> &'static str
+impl core::clone::Clone for checks::DodgeVia
+pub fn checks::DodgeVia::clone(&self) -> Self
+impl core::cmp::Eq for checks::DodgeVia
+impl core::cmp::PartialEq for checks::DodgeVia
+pub fn checks::DodgeVia::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::DodgeVia
+pub fn checks::DodgeVia::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for checks::DodgeVia
+impl core::marker::StructuralPartialEq for checks::DodgeVia
+impl serde_core::ser::Serialize for checks::DodgeVia
+pub fn checks::DodgeVia::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::DodgeVia
+impl core::marker::Send for checks::DodgeVia
+impl core::marker::Sync for checks::DodgeVia
+impl core::marker::Unpin for checks::DodgeVia
+impl core::marker::UnsafeUnpin for checks::DodgeVia
+impl core::panic::unwind_safe::RefUnwindSafe for checks::DodgeVia
+impl core::panic::unwind_safe::UnwindSafe for checks::DodgeVia
 pub enum checks::Error
 pub checks::Error::NotIndexable
 pub checks::Error::NotIndexable::path: alloc::string::String
@@ -208,6 +251,49 @@ impl core::marker::Unpin for checks::SideError
 impl core::marker::UnsafeUnpin for checks::SideError
 impl core::panic::unwind_safe::RefUnwindSafe for checks::SideError
 impl core::panic::unwind_safe::UnwindSafe for checks::SideError
+pub enum checks::Tree
+pub checks::Tree::After
+pub checks::Tree::Before
+impl core::clone::Clone for checks::Tree
+pub fn checks::Tree::clone(&self) -> Self
+impl core::cmp::Eq for checks::Tree
+impl core::cmp::Ord for checks::Tree
+pub fn checks::Tree::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for checks::Tree
+pub fn checks::Tree::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for checks::Tree
+pub fn checks::Tree::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for checks::Tree
+pub fn checks::Tree::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for checks::Tree
+pub fn checks::Tree::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for checks::Tree
+impl core::marker::StructuralPartialEq for checks::Tree
+impl core::marker::Freeze for checks::Tree
+impl core::marker::Send for checks::Tree
+impl core::marker::Sync for checks::Tree
+impl core::marker::Unpin for checks::Tree
+impl core::marker::UnsafeUnpin for checks::Tree
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Tree
+impl core::panic::unwind_safe::UnwindSafe for checks::Tree
+pub struct checks::BudgetSpent
+pub checks::BudgetSpent::seconds: u64
+impl core::clone::Clone for checks::BudgetSpent
+pub fn checks::BudgetSpent::clone(&self) -> Self
+impl core::cmp::Eq for checks::BudgetSpent
+impl core::cmp::PartialEq for checks::BudgetSpent
+pub fn checks::BudgetSpent::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::BudgetSpent
+pub fn checks::BudgetSpent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for checks::BudgetSpent
+impl core::marker::StructuralPartialEq for checks::BudgetSpent
+impl core::marker::Freeze for checks::BudgetSpent
+impl core::marker::Send for checks::BudgetSpent
+impl core::marker::Sync for checks::BudgetSpent
+impl core::marker::Unpin for checks::BudgetSpent
+impl core::marker::UnsafeUnpin for checks::BudgetSpent
+impl core::panic::unwind_safe::RefUnwindSafe for checks::BudgetSpent
+impl core::panic::unwind_safe::UnwindSafe for checks::BudgetSpent
 pub struct checks::Callee
 pub checks::Callee::id: alloc::string::String
 pub checks::Callee::name: alloc::string::String
@@ -254,6 +340,27 @@ impl core::marker::Unpin for checks::CalleeShare
 impl core::marker::UnsafeUnpin for checks::CalleeShare
 impl core::panic::unwind_safe::RefUnwindSafe for checks::CalleeShare
 impl core::panic::unwind_safe::UnwindSafe for checks::CalleeShare
+pub struct checks::ChainHop
+pub checks::ChainHop::line: u32
+pub checks::ChainHop::path: alloc::string::String
+pub checks::ChainHop::target: alloc::string::String
+impl core::clone::Clone for checks::ChainHop
+pub fn checks::ChainHop::clone(&self) -> Self
+impl core::cmp::Eq for checks::ChainHop
+impl core::cmp::PartialEq for checks::ChainHop
+pub fn checks::ChainHop::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::ChainHop
+pub fn checks::ChainHop::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::ChainHop
+impl serde_core::ser::Serialize for checks::ChainHop
+pub fn checks::ChainHop::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::ChainHop
+impl core::marker::Send for checks::ChainHop
+impl core::marker::Sync for checks::ChainHop
+impl core::marker::Unpin for checks::ChainHop
+impl core::marker::UnsafeUnpin for checks::ChainHop
+impl core::panic::unwind_safe::RefUnwindSafe for checks::ChainHop
+impl core::panic::unwind_safe::UnwindSafe for checks::ChainHop
 pub struct checks::CloneCopy
 pub checks::CloneCopy::end_line: u32
 pub checks::CloneCopy::key: kernel::key::Key
@@ -389,6 +496,47 @@ impl core::marker::Unpin for checks::HitState
 impl core::marker::UnsafeUnpin for checks::HitState
 impl core::panic::unwind_safe::RefUnwindSafe for checks::HitState
 impl core::panic::unwind_safe::UnwindSafe for checks::HitState
+pub struct checks::ImportDodge
+pub checks::ImportDodge::chain: alloc::vec::Vec<checks::ChainHop>
+pub checks::ImportDodge::function: alloc::string::String
+pub checks::ImportDodge::module: alloc::string::String
+pub checks::ImportDodge::target: alloc::string::String
+pub checks::ImportDodge::via: checks::DodgeVia
+impl core::clone::Clone for checks::ImportDodge
+pub fn checks::ImportDodge::clone(&self) -> Self
+impl core::cmp::Eq for checks::ImportDodge
+impl core::cmp::PartialEq for checks::ImportDodge
+pub fn checks::ImportDodge::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::ImportDodge
+pub fn checks::ImportDodge::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::ImportDodge
+impl serde_core::ser::Serialize for checks::ImportDodge
+pub fn checks::ImportDodge::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::ImportDodge
+impl core::marker::Send for checks::ImportDodge
+impl core::marker::Sync for checks::ImportDodge
+impl core::marker::Unpin for checks::ImportDodge
+impl core::marker::UnsafeUnpin for checks::ImportDodge
+impl core::panic::unwind_safe::RefUnwindSafe for checks::ImportDodge
+impl core::panic::unwind_safe::UnwindSafe for checks::ImportDodge
+pub struct checks::ImportTarget
+pub checks::ImportTarget::module: alloc::string::String
+pub checks::ImportTarget::path: alloc::string::String
+impl core::clone::Clone for checks::ImportTarget
+pub fn checks::ImportTarget::clone(&self) -> Self
+impl core::cmp::Eq for checks::ImportTarget
+impl core::cmp::PartialEq for checks::ImportTarget
+pub fn checks::ImportTarget::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::ImportTarget
+pub fn checks::ImportTarget::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::ImportTarget
+impl core::marker::Freeze for checks::ImportTarget
+impl core::marker::Send for checks::ImportTarget
+impl core::marker::Sync for checks::ImportTarget
+impl core::marker::Unpin for checks::ImportTarget
+impl core::marker::UnsafeUnpin for checks::ImportTarget
+impl core::panic::unwind_safe::RefUnwindSafe for checks::ImportTarget
+impl core::panic::unwind_safe::UnwindSafe for checks::ImportTarget
 pub struct checks::IndexedFiles
 pub checks::IndexedFiles::files: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<metrics::Block>>
 pub checks::IndexedFiles::unindexed: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>
@@ -410,6 +558,75 @@ impl core::marker::Unpin for checks::IndexedFiles
 impl core::marker::UnsafeUnpin for checks::IndexedFiles
 impl core::panic::unwind_safe::RefUnwindSafe for checks::IndexedFiles
 impl core::panic::unwind_safe::UnwindSafe for checks::IndexedFiles
+pub struct checks::LoadedModule
+pub checks::LoadedModule::level: u32
+pub checks::LoadedModule::module: alloc::string::String
+pub checks::LoadedModule::path: alloc::string::String
+impl core::clone::Clone for checks::LoadedModule
+pub fn checks::LoadedModule::clone(&self) -> Self
+impl core::cmp::Eq for checks::LoadedModule
+impl core::cmp::Ord for checks::LoadedModule
+pub fn checks::LoadedModule::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for checks::LoadedModule
+pub fn checks::LoadedModule::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for checks::LoadedModule
+pub fn checks::LoadedModule::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for checks::LoadedModule
+pub fn checks::LoadedModule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::LoadedModule
+impl core::marker::Freeze for checks::LoadedModule
+impl core::marker::Send for checks::LoadedModule
+impl core::marker::Sync for checks::LoadedModule
+impl core::marker::Unpin for checks::LoadedModule
+impl core::marker::UnsafeUnpin for checks::LoadedModule
+impl core::panic::unwind_safe::RefUnwindSafe for checks::LoadedModule
+impl core::panic::unwind_safe::UnwindSafe for checks::LoadedModule
+pub struct checks::LocalImport
+pub checks::LocalImport::function: core::option::Option<alloc::string::String>
+pub checks::LocalImport::level: u32
+pub checks::LocalImport::line: u32
+pub checks::LocalImport::module: alloc::string::String
+pub checks::LocalImport::names: alloc::vec::Vec<alloc::string::String>
+pub checks::LocalImport::path: alloc::string::String
+pub checks::LocalImport::targets: alloc::vec::Vec<checks::ImportTarget>
+impl core::clone::Clone for checks::LocalImport
+pub fn checks::LocalImport::clone(&self) -> Self
+impl core::cmp::Eq for checks::LocalImport
+impl core::cmp::PartialEq for checks::LocalImport
+pub fn checks::LocalImport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::LocalImport
+pub fn checks::LocalImport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::LocalImport
+impl core::marker::Freeze for checks::LocalImport
+impl core::marker::Send for checks::LocalImport
+impl core::marker::Sync for checks::LocalImport
+impl core::marker::Unpin for checks::LocalImport
+impl core::marker::UnsafeUnpin for checks::LocalImport
+impl core::panic::unwind_safe::RefUnwindSafe for checks::LocalImport
+impl core::panic::unwind_safe::UnwindSafe for checks::LocalImport
+pub struct checks::LocalImports
+pub checks::LocalImports::after: alloc::vec::Vec<checks::LocalImport>
+pub checks::LocalImports::before: alloc::vec::Vec<checks::LocalImport>
+pub checks::LocalImports::before_loads: alloc::collections::btree::set::BTreeSet<checks::LoadedModule>
+pub checks::LocalImports::loads_changed: bool
+pub checks::LocalImports::unparsed: alloc::vec::Vec<checks::Unparsed>
+impl core::clone::Clone for checks::LocalImports
+pub fn checks::LocalImports::clone(&self) -> Self
+impl core::cmp::Eq for checks::LocalImports
+impl core::cmp::PartialEq for checks::LocalImports
+pub fn checks::LocalImports::eq(&self, &Self) -> bool
+impl core::default::Default for checks::LocalImports
+pub fn checks::LocalImports::default() -> Self
+impl core::fmt::Debug for checks::LocalImports
+pub fn checks::LocalImports::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::LocalImports
+impl core::marker::Freeze for checks::LocalImports
+impl core::marker::Send for checks::LocalImports
+impl core::marker::Sync for checks::LocalImports
+impl core::marker::Unpin for checks::LocalImports
+impl core::marker::UnsafeUnpin for checks::LocalImports
+impl core::panic::unwind_safe::RefUnwindSafe for checks::LocalImports
+impl core::panic::unwind_safe::UnwindSafe for checks::LocalImports
 pub struct checks::Observed
 pub checks::Observed::clone_instances: core::option::Option<alloc::vec::Vec<checks::CloneState>>
 pub checks::Observed::contract_keys: core::option::Option<alloc::vec::Vec<checks::HitState>>
@@ -463,6 +680,8 @@ impl checks::Pair
 pub fn checks::Pair::language(&self) -> core::option::Option<syntax::language::Language>
 pub fn checks::Pair::measure_all(alloc::vec::Vec<checks::TextPair>, impl core::ops::function::FnOnce(&[checks::SideText<'_>]) -> alloc::vec::Vec<checks::Side>) -> alloc::vec::Vec<checks::Pair>
 pub fn checks::Pair::measured_blocks(&self, &str) -> core::option::Option<core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>>
+pub fn checks::Pair::new_text(&self) -> core::option::Option<&str>
+pub fn checks::Pair::old_text(&self) -> core::option::Option<&str>
 pub fn checks::Pair::path(&self) -> &str
 pub fn checks::Pair::sides(&self) -> impl core::iter::traits::iterator::Iterator<Item = &checks::Side>
 impl !core::marker::Freeze for checks::Pair
@@ -674,14 +893,37 @@ impl core::marker::Unpin for checks::UnitState
 impl core::marker::UnsafeUnpin for checks::UnitState
 impl core::panic::unwind_safe::RefUnwindSafe for checks::UnitState
 impl core::panic::unwind_safe::UnwindSafe for checks::UnitState
+pub struct checks::Unparsed
+pub checks::Unparsed::line: u32
+pub checks::Unparsed::path: alloc::string::String
+pub checks::Unparsed::tree: checks::Tree
+impl core::clone::Clone for checks::Unparsed
+pub fn checks::Unparsed::clone(&self) -> Self
+impl core::cmp::Eq for checks::Unparsed
+impl core::cmp::PartialEq for checks::Unparsed
+pub fn checks::Unparsed::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::Unparsed
+pub fn checks::Unparsed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::Unparsed
+impl core::marker::Freeze for checks::Unparsed
+impl core::marker::Send for checks::Unparsed
+impl core::marker::Sync for checks::Unparsed
+impl core::marker::Unpin for checks::Unparsed
+impl core::marker::UnsafeUnpin for checks::Unparsed
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Unparsed
+impl core::panic::unwind_safe::UnwindSafe for checks::Unparsed
 pub const checks::CALLEE_OVERLAP: &str
 pub const checks::CLONE_DELTA: &str
 pub const checks::COMPLEXITY_DELTA: &str
 pub const checks::CONTRACT_DRIFT: &str
+pub const checks::CYCLE_DODGE: &str
+pub trait checks::LoadChains
+pub fn checks::LoadChains::chain(&mut self, checks::Tree, &str, &str) -> core::result::Result<core::option::Option<alloc::vec::Vec<checks::ChainHop>>, checks::BudgetSpent>
 pub fn checks::callee_overlap(&[&checks::Pair], &checks::CalleeTree) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::clone_delta(&[&checks::Pair], &checks::CloneIndex, &alloc::collections::btree::set::BTreeSet<(alloc::string::String, u32)>) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::clone_index<B, T>(&alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, &alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, B, T) -> core::result::Result<checks::IndexedFiles, checks::Error> where B: core::ops::function::FnMut(&str, &str, syntax::language::Language) -> core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>, T: core::ops::function::FnMut() -> bool
 pub fn checks::complexity_delta(&[&checks::Pair], u32) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::contract_drift(&[&checks::Pair], &[alloc::string::String]) -> core::result::Result<checks::Outcome, checks::Error>
+pub fn checks::cycle_dodge(&[&checks::Pair], checks::DodgeTree<'_>) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::measure_blocks(syntax::language::Language, &str) -> core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>
 pub fn checks::pair_language(&str) -> core::option::Option<syntax::language::Language>

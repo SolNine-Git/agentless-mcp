@@ -227,6 +227,32 @@ fn a_moved_function_is_not_new_and_a_stopped_build_gives_one_row() {
 }
 
 #[test]
+fn a_side_with_a_syntax_error_or_a_tokenizer_error_gives_a_reason_that_names_functions() {
+    let (syntax, tokenizer) = ("def f(:\n    pass\n", "LABEL = \"left\u{2028}right\"\n");
+    let pairs = pairs(&[
+        ("a.py", None, Some(syntax.to_owned())),
+        ("b.py", None, Some(tokenizer.to_owned())),
+    ]);
+    let outcome = run(&pairs, Vec::new());
+    let messages: Vec<&str> = (outcome.findings.iter())
+        .map(|row| row.finding.message.as_str())
+        .collect();
+    assert_eq!(
+        messages,
+        [
+            "not checked: callee_overlap did not compare a.py, because its text after the change \
+             cannot be measured. a.py does not parse: the first syntax error is at line 1. \
+             Functions are compared only in a file that parses. Fix the syntax error, then run \
+             the check again.",
+            "not checked: callee_overlap did not compare b.py, because its text after the change \
+             cannot be measured. b.py: Python's tokenizer rejects this file (TokenError: \
+             unterminated string literal (detected at line 1)). Functions are compared only in a \
+             file the tokenizer accepts. Fix the line the error names, then run the check again."
+        ]
+    );
+}
+
+#[test]
 fn the_row_names_both_functions_and_its_detail_carries_both_callee_sets_with_tiers() {
     let new = body("f", &FOUR);
     let pairs = pairs(&[("src/new.py", None, Some(new))]);

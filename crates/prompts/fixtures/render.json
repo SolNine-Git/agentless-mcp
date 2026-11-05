@@ -191,6 +191,17 @@
       },
       "text": "changed files parse live; run agentless-mcp index --repo /srv/app for performance"
     },
+    "callee_overlap_compared": {
+      "arguments": {},
+      "text": "no function"
+    },
+    "callee_overlap_does_not_parse": {
+      "arguments": {
+        "line": 3,
+        "path": "src/app.py"
+      },
+      "text": "src/app.py does not parse: the first syntax error is at line 3. Functions are compared only in a file that parses. Fix the syntax error, then run the check again."
+    },
     "callee_overlap_found": {
       "arguments": {
         "count": 4,
@@ -223,16 +234,17 @@
       },
       "text": "not checked: callee_overlap did not compare src/app.rs, because its text before the change cannot be measured. src/app.rs does not parse: the first syntax error is at line 3."
     },
-    "callee_overlap_stopped": {
-      "arguments": {
-        "budget": 10
-      },
-      "text": "not checked: callee_overlap stopped at its time budget of 10 s before it read the calls of every function in the repository, so it compared no function."
-    },
-    "callee_overlap_stopped_evidence": {
+    "callee_overlap_reads": {
       "arguments": {},
-      "text": "time budget spent"
+      "text": "the calls of every function"
+    },
+    "callee_overlap_tokenizer_rejects": {
+      "arguments": {
+        "detail": "TabError: inconsistent use of tabs and spaces in indentation",
+        "path": "src/app.py"
       },
+      "text": "src/app.py: Python's tokenizer rejects this file (TabError: inconsistent use of tabs and spaces in indentation). Functions are compared only in a file the tokenizer accepts. Fix the line the error names, then run the check again."
+    },
     "caps_walk_bytes": {
       "arguments": {},
       "text": "note: max_walk_bytes counts only the files that a scan reads, each with a suffix from the extensions list and at most max_file_bytes bytes"
@@ -556,6 +568,52 @@
         "reason": "src/adapters/api.py does not parse"
       },
       "text": "not checked: contract_drift did not compare src/adapters/api.py, because its text before the change cannot be measured. src/adapters/api.py does not parse"
+    },
+    "cycle_dodge_compared": {
+      "arguments": {},
+      "text": "no import"
+    },
+    "cycle_dodge_does_not_parse": {
+      "arguments": {
+        "line": 3,
+        "path": "src/app.py"
+      },
+      "text": "src/app.py does not parse: the first syntax error is at line 3. Imports are compared only in a file that parses. Fix the syntax error, then run the check again."
+    },
+    "cycle_dodge_found": {
+      "arguments": {
+        "chain": "seaborn/axisgrid.py -> seaborn/relational.py -> seaborn/axisgrid.py",
+        "function": "PairGrid.map",
+        "module": ".relational"
+      },
+      "text": "The import of `.relational` in `PairGrid.map` runs only when the function runs. At module level it closes this import cycle: seaborn/axisgrid.py -> seaborn/relational.py -> seaborn/axisgrid.py. Break the cycle: move the shared code to a module that both files import, or invert the dependency."
+    },
+    "cycle_dodge_found_evidence": {
+      "arguments": {
+        "hops": "seaborn/relational.py:12",
+        "line": 2157,
+        "path": "seaborn/axisgrid.py",
+        "target": "seaborn/relational.py"
+      },
+      "text": "seaborn/axisgrid.py:2157 imports seaborn/relational.py; seaborn/relational.py imports seaborn/axisgrid.py back through seaborn/relational.py:12"
+    },
+    "cycle_dodge_new_not_parsed": {
+      "arguments": {
+        "path": "src/app.py",
+        "reason": "src/app.py does not parse: the first syntax error is at line 3."
+      },
+      "text": "not checked: cycle_dodge did not compare src/app.py, because its text after the change does not parse. src/app.py does not parse: the first syntax error is at line 3."
+    },
+    "cycle_dodge_old_not_parsed": {
+      "arguments": {
+        "path": "src/app.py",
+        "reason": "src/app.py does not parse: the first syntax error is at line 3."
+      },
+      "text": "not checked: cycle_dodge did not compare src/app.py, because its text before the change does not parse. src/app.py does not parse: the first syntax error is at line 3."
+    },
+    "cycle_dodge_reads": {
+      "arguments": {},
+      "text": "the imports of every file"
     },
     "cycles_header": {
       "arguments": {
@@ -1089,10 +1147,6 @@
       },
       "text": "quote: core.py no longer defines quote. Pass a stable id from a map, overview, find, explain or locate answer; history is span-scoped, so a bare name is refused."
     },
-    "lint_callee_overlap_since_only": {
-      "arguments": {},
-      "text": "callee_overlap runs only with --since REV. It reads the calls of every function in the working tree after the change, and only --since compares a change that the working tree holds. Remove callee_overlap from --only."
-    },
     "lint_no_checks": {
       "arguments": {
         "checks": "arity, complexity_delta"
@@ -1199,6 +1253,13 @@
         "pair_checks": "complexity_delta"
       },
       "text": "--since runs only the pair checks (complexity_delta), because the other checks compare a patch with the current tree and would see two states mixed. Remove arity from --only."
+    },
+    "lint_tree_check_since_only": {
+      "arguments": {
+        "check": "callee_overlap",
+        "reads": "the calls of every function"
+      },
+      "text": "callee_overlap runs only with --since REV. It reads the calls of every function in the working tree after the change, and only --since compares a change that the working tree holds. Remove callee_overlap from --only."
     },
     "lint_unknown_check": {
       "arguments": {
@@ -1696,6 +1757,19 @@
         "tool": "history"
       },
       "text": "history takes target, repo_root, limit and budget."
+    },
+    "tree_check_stopped": {
+      "arguments": {
+        "budget": 10,
+        "check": "callee_overlap",
+        "compared": "no function",
+        "reads": "the calls of every function"
+      },
+      "text": "not checked: callee_overlap stopped at its time budget of 10 s before it read the calls of every function in the repository, so it compared no function."
+    },
+    "tree_check_stopped_evidence": {
+      "arguments": {},
+      "text": "time budget spent"
     },
     "unknown_tool": {
       "arguments": {

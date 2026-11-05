@@ -642,8 +642,9 @@ pub app::PairCheck::CalleeOverlap
 pub app::PairCheck::CloneDelta
 pub app::PairCheck::ComplexityDelta
 pub app::PairCheck::ContractDrift
+pub app::PairCheck::CycleDodge
 impl app::PairCheck
-pub const app::PairCheck::ALL: [app::PairCheck; 4]
+pub const app::PairCheck::ALL: [app::PairCheck; 5]
 pub fn app::PairCheck::from_name(&str) -> core::option::Option<app::PairCheck>
 pub const fn app::PairCheck::name(self) -> &'static str
 impl core::clone::Clone for app::PairCheck
@@ -3088,7 +3089,7 @@ impl core::marker::UnsafeUnpin for app::WarmupRequest
 impl core::panic::unwind_safe::RefUnwindSafe for app::WarmupRequest
 impl core::panic::unwind_safe::UnwindSafe for app::WarmupRequest
 pub const app::CAPS: [(&str, app::CapValue); 28]
-pub const app::CHECKS: [app::LintCheck; 11]
+pub const app::CHECKS: [app::LintCheck; 12]
 pub const app::COVERAGE: &str
 pub const app::DEFAULT_JOBS: usize
 pub const app::DEFAULT_REPEAT_BASELINE: usize
