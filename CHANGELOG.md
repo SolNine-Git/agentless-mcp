@@ -666,6 +666,24 @@ Each byte count is of the served bytes.
   false-alarm rate of this build is not measured: the 50 rows are not a new
   sample.
 
+  Measured with the release build of f5102e4 against that of 6dce8e5 (record:
+  docs/analysis/2026-11-05_python-import-resolution-measurement.md). On
+  Loc-Bench, `ranked_files` change in 97 of 150 seeded and 110 of 150 no-seed
+  instances, each one of the 123 whose checkout holds a changed Python import
+  row or binding. recall@10 moves in 1 seeded instance (up) and 2 no-seed
+  instances (1 up, 1 down); the paired bootstrap gives +0.0007 [0, +0.0020]
+  seeded and -0.0060 [-0.0200, +0.0020] no-seed, and MAP +0.0037 and +0.0040,
+  each 95% interval holding 0. The surface diff changes cycles in 106 of 150
+  Loc-Bench answers, explain in 21 of 228, map in 116 of 150 and refs in 1 of
+  678; on the U3 copies, 28 of 28, 130 of 242, 28 of 28 and 10 of 242. No refs
+  site moves up from a name-only tier, and refs `total` does not change. In a
+  read sample of 45 changed lines, the new answer is right in 31, the old in
+  13 and neither in 1. The old answer was right for a sibling import that
+  only Python 2 or a top-level script resolves (12 lines: 11 in the sympy
+  snapshot's pygletplot, 1 in a moto ANTLR branch that runs only as a
+  top-level module), and for one `from P import N` whose P/__init__.py
+  re-binds N to a class (sentence-transformers' `SentenceTransformer`).
+
 - **The not_checked row of `callee_overlap` for a file that does not parse
   names its own check.** It gave the complexity text: "Complexity is
   measured only for a file that parses. Fix the syntax error, then measure
