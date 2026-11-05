@@ -1,4 +1,4 @@
-use crate::{FieldCursor, NodeId, Parsed};
+use crate::{FieldCursor, FieldId, Language, NodeId, Parsed};
 
 const C_NAMES: [&str; 1] = ["identifier"];
 const CPP_NAMES: [&str; 7] = [
@@ -30,8 +30,29 @@ const ECMASCRIPT_BINDING_NAMES: [&str; 4] = [
 const LUA_BINDING_NAMES: [&str; 2] = ["identifier", "dot_index_expression"];
 // A named type first, then a primitive one: `impl Trait for i32` owns `i32.f`.
 const RUST_OWNER_KINDS: [&str; 2] = ["type_identifier", "primitive_type"];
-/// The conditions of a Python `if` block that only a type checker runs, as the source spells them.
-pub const TYPE_CHECKING: [&str; 2] = ["TYPE_CHECKING", "typing.TYPE_CHECKING"];
+// The conditions of a Python `if` block that only a type checker runs, in every file.
+const TYPE_CHECKING: [&str; 2] = ["TYPE_CHECKING", "typing.TYPE_CHECKING"];
+const TYPING: &str = "typing";
+const TYPE_CHECKING_NAME: &str = "TYPE_CHECKING";
+
+/// The spellings of an `if` condition that only a type checker runs, in one Python file.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TypeChecking {
+    aliases: Vec<String>,
+}
+
+/// The candidates of one parse that the clone walk skips, while it still enters them.
+pub struct Skipped<'p> {
+    parsed: &'p Parsed,
+    type_checking: Option<TypeChecking>,
+}
+
+// The fields of a Python import statement that a TYPE_CHECKING alias is read from.
+struct ImportFields {
+    name: FieldId,
+    alias: FieldId,
+    module: FieldId,
+}
 
 // The rule that finds a unit's or a scope's name node.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,17 +142,105 @@ impl OwnerRule {
     }
 }
 
-impl SkipRule {
-    // The clone walk visits the last sibling first, and a FieldCursor reaches each sibling from
-    // the first one, so this rule reads the field from the root.
-    pub(crate) fn skips(self, parsed: &Parsed, node: NodeId) -> bool {
-        match self {
-            SkipRule::TypeChecking => parsed
-                .language()
-                .field("condition")
-                .and_then(|condition| parsed.child_by_field(node, condition))
-                .is_some_and(|condition| TYPE_CHECKING.contains(&parsed.text(condition))),
+impl TypeChecking {
+    /// Read the names that the file's imports bind to `typing` and to `typing.TYPE_CHECKING`.
+    #[must_use]
+    pub fn of(parsed: &Parsed) -> TypeChecking {
+        let Some(fields) = ImportFields::of(parsed.language()) else {
+            return TypeChecking::default();
+        };
+        let aliases = parsed
+            .descendants(parsed.root())
+            .flat_map(|node| fields.aliases(parsed, node))
+            .collect();
+        TypeChecking { aliases }
+    }
+
+    /// Return whether `condition`, the source text of an `if` condition, tests `TYPE_CHECKING`.
+    #[must_use]
+    pub fn tests(&self, condition: &str) -> bool {
+        TYPE_CHECKING.contains(&condition) || self.aliases.iter().any(|alias| alias == condition)
+    }
+}
+
+impl ImportFields {
+    fn of(language: Language) -> Option<ImportFields> {
+        Some(ImportFields {
+            name: language.field("name")?,
+            alias: language.field("alias")?,
+            module: language.field("module_name")?,
+        })
+    }
+
+    fn aliases(&self, parsed: &Parsed, node: NodeId) -> Vec<String> {
+        match parsed.kind_name(node) {
+            "import_statement" => self
+                .renamed(parsed, node, TYPING)
+                .map(|local| format!("{local}.{TYPE_CHECKING_NAME}"))
+                .collect(),
+            "import_from_statement" if self.names_typing(parsed, node) => self
+                .renamed(parsed, node, TYPE_CHECKING_NAME)
+                .map(str::to_owned)
+                .collect(),
+            _ => Vec::new(),
         }
+    }
+
+    // A relative `from .typing import ...` names a module of the repository, not `typing`.
+    fn names_typing(&self, parsed: &Parsed, node: NodeId) -> bool {
+        parsed
+            .children_by_field(node, self.module)
+            .next()
+            .is_some_and(|module| {
+                parsed.kind_name(module) == "dotted_name" && parsed.text(module) == TYPING
+            })
+    }
+
+    // The local name of each `imported as local` that the statement holds.
+    fn renamed<'p>(
+        &self,
+        parsed: &'p Parsed,
+        node: NodeId,
+        imported: &'p str,
+    ) -> impl Iterator<Item = &'p str> + 'p {
+        let (name, alias) = (self.name, self.alias);
+        parsed
+            .children(node)
+            .filter(|child| parsed.kind_name(*child) == "aliased_import")
+            .filter(move |child| {
+                let named = parsed.children_by_field(*child, name).next();
+                named.is_some_and(|named| parsed.text(named) == imported)
+            })
+            .filter_map(move |child| parsed.children_by_field(child, alias).next())
+            .map(|local| parsed.text(local))
+    }
+}
+
+impl<'p> Skipped<'p> {
+    pub(crate) fn read(rule: Option<SkipRule>, parsed: &'p Parsed) -> Skipped<'p> {
+        let type_checking = rule.map(|rule| match rule {
+            SkipRule::TypeChecking => TypeChecking::of(parsed),
+        });
+        Skipped {
+            parsed,
+            type_checking,
+        }
+    }
+
+    /// Return whether the clone walk skips `node`.
+    #[must_use]
+    pub fn contains(&self, node: NodeId) -> bool {
+        let Some(type_checking) = &self.type_checking else {
+            return false;
+        };
+        // The clone walk visits the last sibling first, and a FieldCursor reaches each sibling
+        // from the first one, so this test reads the field from the root.
+        let parsed = self.parsed;
+        parsed
+            .language()
+            .field("condition")
+            .and_then(|condition| parsed.child_by_field(node, condition))
+            .is_some_and(|condition| type_checking.tests(parsed.text(condition)))
     }
 }
 

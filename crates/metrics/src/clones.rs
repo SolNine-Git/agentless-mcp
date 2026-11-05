@@ -39,13 +39,14 @@ pub(crate) fn blocks(
     sloc_lines: &[u32],
 ) -> Vec<Block> {
     let rules = &spec.clones;
+    let skipped = rules.skipped(parsed);
     let mut found = Vec::new();
     let mut stack = vec![parsed.root()];
     while let Some(node) = stack.pop() {
         stack.extend(parsed.children(node));
         let kind = parsed.kind(node);
         let function = rules.functions.contains(kind);
-        if !(function || rules.blocks.contains(kind)) || rules.skips(parsed, node) {
+        if !(function || rules.blocks.contains(kind)) || skipped.contains(node) {
             continue;
         }
         let start_line = line(parsed.start_point(node));
