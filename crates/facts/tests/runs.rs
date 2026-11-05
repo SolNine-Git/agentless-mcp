@@ -70,10 +70,10 @@ fn an_import_under_type_checking_is_type_only_and_its_else_branch_runs_at_load()
 #[test]
 fn a_name_that_the_file_binds_to_type_checking_is_type_checking() {
     let source = "import typing as t\nfrom typing import TYPE_CHECKING as CHECKING\n\
-                  import typing_extensions as te\nimport os as o\nfrom .typing import TYPE_CHECKING as LOCAL\n\n\
+                  import typing_extensions as ext\nimport os as o\nfrom .typing import TYPE_CHECKING as LOCAL\n\n\
                   if t.TYPE_CHECKING:\n    import a\n\n\
                   if CHECKING:\n    import b\nelse:\n    import c\n\n\
-                  if te.TYPE_CHECKING:\n    import d\n\n\
+                  if ext.TYPE_CHECKING:\n    import d\n\n\
                   if o.TYPE_CHECKING:\n    import e\n\n\
                   if LOCAL:\n    import f\n\n\
                   if u.TYPE_CHECKING:\n    import g\n\n\

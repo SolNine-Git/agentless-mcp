@@ -29,7 +29,7 @@ fn skipped_ifs(parsed: &Parsed) -> Vec<(String, bool)> {
 #[test]
 fn type_checking_holds_the_fixed_spellings_and_each_name_the_file_binds_to_them() {
     let source = "import typing as t, os as o\nfrom typing import TYPE_CHECKING as CHECKING, Any as A\n\
-                  import typing.io as tio\nimport typing_extensions as te\n\
+                  import typing.io as tio\nimport typing_extensions as ext\n\
                   from .typing import TYPE_CHECKING as LOCAL\n\n\
                   def f():\n    from typing import TYPE_CHECKING as INNER\n";
     let found = TypeChecking::of(&parsed(Language::Python, source));
@@ -43,7 +43,7 @@ fn type_checking_holds_the_fixed_spellings_and_each_name_the_file_binds_to_them(
         ("o.TYPE_CHECKING", false),
         ("A", false),
         ("tio.TYPE_CHECKING", false),
-        ("te.TYPE_CHECKING", false),
+        ("ext.TYPE_CHECKING", false),
         ("LOCAL", false),
         ("not TYPE_CHECKING", false),
         ("t.TYPE_CHECKING and x", false),
