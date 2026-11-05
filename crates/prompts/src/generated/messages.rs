@@ -165,18 +165,8 @@ pub const CALLEE_OVERLAP_OLD_NOT_MEASURED: Template<(Text, Text)> = Template::ne
     Piece::Value(1),
 ]);
 
-/// A template that takes `budget`.
-pub const CALLEE_OVERLAP_STOPPED: Template<Count> = Template::new(&[
-    Piece::Text("not checked: callee_overlap stopped at its time budget of "),
-    Piece::Value(0),
-    Piece::Text(
-        " s before it read the calls of every function in the \
-        repository, so it compared no function.",
-    ),
-]);
-
 /// A text that takes no values.
-pub const CALLEE_OVERLAP_STOPPED_EVIDENCE: &str = "time budget spent";
+pub const CALLEE_OVERLAP_READS: &str = "the calls of every function";
 
 /// A text that takes no values.
 pub const CAPS_WALK_BYTES: &str = "note: max_walk_bytes counts only the files that a scan reads, \
@@ -1500,12 +1490,6 @@ pub const HISTORY_TARGET_UNRESOLVED: Template<(Text, Text)> = Template::new(&[
     ),
 ]);
 
-/// A text that takes no values.
-pub const LINT_CALLEE_OVERLAP_SINCE_ONLY: &str = "callee_overlap runs only with --since REV. It \
-        reads the calls of every function in the working tree after the \
-        change, and only --since compares a change that the working \
-        tree holds. Remove callee_overlap from --only.";
-
 /// A template that takes `checks`.
 pub const LINT_NO_CHECKS: Template<Text> = Template::new(&[
     Piece::Text("no check selected. Name at least one of these checks: "),
@@ -1643,6 +1627,19 @@ pub const LINT_SINCE_TAKES_PAIR_CHECKS: Template<(Text, Text)> = Template::new(&
         tree and would see two states mixed. Remove ",
     ),
     Piece::Value(1),
+    Piece::Text(" from --only."),
+]);
+
+/// A template that takes (`check`, `reads`).
+pub const LINT_TREE_CHECK_SINCE_ONLY: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" runs only with --since REV. It reads "),
+    Piece::Value(1),
+    Piece::Text(
+        " in the working tree after the change, and only --since \
+        compares a change that the working tree holds. Remove ",
+    ),
+    Piece::Value(0),
     Piece::Text(" from --only."),
 ]);
 
@@ -2344,6 +2341,20 @@ pub const TOOL_TAKES: Template<(Text, Text)> = Template::new(&[
     Piece::Value(1),
     Piece::Text("."),
 ]);
+
+/// A template that takes (`check`, `reads`, `budget`).
+pub const TREE_CHECK_STOPPED: Template<(Text, Text, Count)> = Template::new(&[
+    Piece::Text("not checked: "),
+    Piece::Value(0),
+    Piece::Text(" stopped at its time budget of "),
+    Piece::Value(2),
+    Piece::Text(" s before it read "),
+    Piece::Value(1),
+    Piece::Text(" in the repository, so it compared no function."),
+]);
+
+/// A text that takes no values.
+pub const TREE_CHECK_STOPPED_EVIDENCE: &str = "time budget spent";
 
 /// A template that takes `listed`.
 pub const UNKNOWN_TOOL: Template<Text> = Template::new(&[

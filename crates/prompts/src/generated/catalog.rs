@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 265] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 266] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -224,15 +224,9 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 265] = [
     ),
     (
         "messages",
-        "callee_overlap_stopped",
-        &["budget"],
-        messages::CALLEE_OVERLAP_STOPPED.pieces(),
-    ),
-    (
-        "messages",
-        "callee_overlap_stopped_evidence",
+        "callee_overlap_reads",
         &[],
-        &[Piece::Text(messages::CALLEE_OVERLAP_STOPPED_EVIDENCE)],
+        &[Piece::Text(messages::CALLEE_OVERLAP_READS)],
     ),
     (
         "messages",
@@ -994,12 +988,6 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 265] = [
     ),
     (
         "messages",
-        "lint_callee_overlap_since_only",
-        &[],
-        &[Piece::Text(messages::LINT_CALLEE_OVERLAP_SINCE_ONLY)],
-    ),
-    (
-        "messages",
         "lint_no_checks",
         &["checks"],
         messages::LINT_NO_CHECKS.pieces(),
@@ -1105,6 +1093,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 265] = [
         "lint_since_takes_pair_checks",
         &["pair_checks", "checks"],
         messages::LINT_SINCE_TAKES_PAIR_CHECKS.pieces(),
+    ),
+    (
+        "messages",
+        "lint_tree_check_since_only",
+        &["check", "reads"],
+        messages::LINT_TREE_CHECK_SINCE_ONLY.pieces(),
     ),
     (
         "messages",
@@ -1549,6 +1543,18 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 265] = [
         "tool_takes",
         &["tool", "accepted"],
         messages::TOOL_TAKES.pieces(),
+    ),
+    (
+        "messages",
+        "tree_check_stopped",
+        &["check", "reads", "budget"],
+        messages::TREE_CHECK_STOPPED.pieces(),
+    ),
+    (
+        "messages",
+        "tree_check_stopped_evidence",
+        &[],
+        &[Piece::Text(messages::TREE_CHECK_STOPPED_EVIDENCE)],
     ),
     (
         "messages",

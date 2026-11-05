@@ -3,8 +3,10 @@
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
-use checks::{CalleeTree, CloneIndex, Outcome, Pair, Side};
+use checks::{CloneIndex, Outcome, Pair, Side};
 
+use crate::callees::callee_tree;
+use crate::tree_scan::TreeScan;
 use crate::{Error, parallel};
 
 // The clone index of a run, given the measured pairs that clone_delta keeps. Every candidate of
@@ -14,15 +16,16 @@ pub(crate) type IndexOf<'a> = dyn FnMut(&[&Pair]) -> Result<Rc<CloneIndex>, Erro
 // The path and line of each function that near_duplicates reported in the same run.
 pub(crate) type Reported = BTreeSet<(String, u32)>;
 
-// The callee sets of the working tree, which only the --since form has.
-pub(crate) type CalleesOf<'a> = dyn FnMut() -> Result<CalleeTree, Error> + 'a;
+// The scan of the working tree, which only the --since form has. Every tree check of a run
+// shares one scan.
+pub(crate) type TreeOf<'a> = dyn FnMut() -> Result<&'a TreeScan, Error> + 'a;
 
 // What a run reads besides its pairs.
 pub(crate) struct RunInputs<'r, 'i> {
     pub(crate) config: &'r io::ProjectConfig,
     pub(crate) index: &'r mut IndexOf<'i>,
     pub(crate) reported: &'r Reported,
-    pub(crate) callees: Option<&'r mut CalleesOf<'i>>,
+    pub(crate) tree: Option<&'r mut TreeOf<'i>>,
 }
 
 // A check's run on the pairs it keeps. `None` is a run that gives no outcome at all.
@@ -68,9 +71,10 @@ pub(crate) fn callee_overlap(
     if pairs.is_empty() {
         return Ok(None);
     }
-    let callees = inputs.callees.as_mut();
-    let tree = (callees.expect("only the --since form selects callee_overlap"))()?;
-    Ok(Some(checks::callee_overlap(pairs, &tree)?))
+    let tree = inputs.tree.as_mut();
+    let scan = (tree.expect("only the --since form selects callee_overlap"))()?;
+    let callees = callee_tree(scan)?;
+    Ok(Some(checks::callee_overlap(pairs, &callees)?))
 }
 
 // Only clone_delta reads blocks, so the pool finds them before the index and the check read them.

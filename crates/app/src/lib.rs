@@ -50,6 +50,7 @@ mod symbol_graph;
 mod tags;
 mod tokens;
 mod tree;
+mod tree_scan;
 mod validate;
 mod verdicts;
 mod views;

@@ -223,16 +223,10 @@
       },
       "text": "not checked: callee_overlap did not compare src/app.rs, because its text before the change cannot be measured. src/app.rs does not parse: the first syntax error is at line 3."
     },
-    "callee_overlap_stopped": {
-      "arguments": {
-        "budget": 10
-      },
-      "text": "not checked: callee_overlap stopped at its time budget of 10 s before it read the calls of every function in the repository, so it compared no function."
-    },
-    "callee_overlap_stopped_evidence": {
+    "callee_overlap_reads": {
       "arguments": {},
-      "text": "time budget spent"
-      },
+      "text": "the calls of every function"
+    },
     "caps_walk_bytes": {
       "arguments": {},
       "text": "note: max_walk_bytes counts only the files that a scan reads, each with a suffix from the extensions list and at most max_file_bytes bytes"
@@ -1089,10 +1083,6 @@
       },
       "text": "quote: core.py no longer defines quote. Pass a stable id from a map, overview, find, explain or locate answer; history is span-scoped, so a bare name is refused."
     },
-    "lint_callee_overlap_since_only": {
-      "arguments": {},
-      "text": "callee_overlap runs only with --since REV. It reads the calls of every function in the working tree after the change, and only --since compares a change that the working tree holds. Remove callee_overlap from --only."
-    },
     "lint_no_checks": {
       "arguments": {
         "checks": "arity, complexity_delta"
@@ -1199,6 +1189,13 @@
         "pair_checks": "complexity_delta"
       },
       "text": "--since runs only the pair checks (complexity_delta), because the other checks compare a patch with the current tree and would see two states mixed. Remove arity from --only."
+    },
+    "lint_tree_check_since_only": {
+      "arguments": {
+        "check": "callee_overlap",
+        "reads": "the calls of every function"
+      },
+      "text": "callee_overlap runs only with --since REV. It reads the calls of every function in the working tree after the change, and only --since compares a change that the working tree holds. Remove callee_overlap from --only."
     },
     "lint_unknown_check": {
       "arguments": {
@@ -1696,6 +1693,18 @@
         "tool": "history"
       },
       "text": "history takes target, repo_root, limit and budget."
+    },
+    "tree_check_stopped": {
+      "arguments": {
+        "budget": 10,
+        "check": "callee_overlap",
+        "reads": "the calls of every function"
+      },
+      "text": "not checked: callee_overlap stopped at its time budget of 10 s before it read the calls of every function in the repository, so it compared no function."
+    },
+    "tree_check_stopped_evidence": {
+      "arguments": {},
+      "text": "time budget spent"
     },
     "unknown_tool": {
       "arguments": {
