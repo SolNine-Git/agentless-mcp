@@ -108,7 +108,8 @@ Over all 60, the readers agree on 56 (kappa 0.722), and the 4 disagreements are 
 
 - Bar A (advisory: FP at most 40% over at least 40 findings): PASS, also when every disputed finding is an FP.
 - Bar B (block: FP at most 10% with a Wilson upper bound at most 20%, 60 findings, planted recall at least 50%
-  per kind, marked recall at least 70%): FAIL. The best case meets 10% but its upper bound is 20.1%.
+  per kind, marked recall at least 70%): FAIL. The decided rate, 16.7%, is above 10%. Even the best case,
+  which meets 10%, has an upper bound of 20.1%.
 - Recorded, not a gate: weighted by each snapshot's share of the 1,638 rows, the best-case FP rate is 1.7%,
   because sympy holds 62% of the rows and none of its sampled rows is an FP.
 - The 7 marked rows: 6 are `hidden_cycle` for both readers, and the seventh is one of the 4 disputed.
