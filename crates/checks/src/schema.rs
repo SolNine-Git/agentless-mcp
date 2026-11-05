@@ -62,6 +62,16 @@ pub const CALLEE: &str = "callee";
 pub const TIER: &str = "tier";
 /// The evidence tier of the existing function's edge.
 pub const OTHER_TIER: &str = "other_tier";
+/// The module that an import statement names.
+pub const MODULE: &str = "module";
+/// The repository file that an import statement imports.
+pub const TARGET: &str = "target";
+/// The qualified name of the declaration around an import statement.
+pub const FUNCTION: &str = "function";
+/// What a change did to make an import close a cycle.
+pub const VIA: &str = "via";
+/// The load-time imports from a file back to the importing file.
+pub const CHAIN: &str = "chain";
 
 // Serializes each named struct as one JSON object: each field under its key const, in order.
 macro_rules! keyed {

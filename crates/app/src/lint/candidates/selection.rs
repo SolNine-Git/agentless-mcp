@@ -33,7 +33,7 @@ impl CheckSelection {
             return Err(refusal);
         }
         if let Some(refusal) = form_refusal(names, FORM) {
-            return Err(refusal.to_owned());
+            return Err(refusal);
         }
         Ok(Self::chosen(|name| names.iter().any(|given| given == name)))
     }

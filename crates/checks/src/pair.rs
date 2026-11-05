@@ -132,6 +132,20 @@ impl Pair {
         [&self.old, &self.new].into_iter().flatten()
     }
 
+    /// Return the text before the change, or `None` for a file that the change adds or that the
+    /// checks skip.
+    #[must_use]
+    pub fn old_text(&self) -> Option<&str> {
+        self.old.as_ref().map(|side| &*side.text)
+    }
+
+    /// Return the text after the change, or `None` for a file that the change deletes or that the
+    /// checks skip.
+    #[must_use]
+    pub fn new_text(&self) -> Option<&str> {
+        self.new.as_ref().map(|side| &*side.text)
+    }
+
     /// Return the clone blocks of the side whose text is `text`, or `None` when no side has it.
     #[must_use]
     pub fn measured_blocks(&self, text: &str) -> Option<Result<Vec<Block>, SideError>> {
@@ -230,9 +244,14 @@ pub(crate) const CONTRACT_GAPS: Gaps = Gaps {
     new: &messages::CONTRACT_NEW_NOT_MEASURED,
 };
 
+const CALLEE_REASONS: Reasons = Reasons::new(
+    &messages::CALLEE_OVERLAP_DOES_NOT_PARSE,
+    &messages::CALLEE_OVERLAP_TOKENIZER_REJECTS,
+);
+
 pub(crate) const CALLEE_GAPS: Gaps = Gaps {
     check: crate::CALLEE_OVERLAP,
-    reasons: &COMPLEXITY_REASONS,
+    reasons: &CALLEE_REASONS,
     old: &messages::CALLEE_OVERLAP_OLD_NOT_MEASURED,
     new: &messages::CALLEE_OVERLAP_NEW_NOT_MEASURED,
 };
@@ -260,6 +279,22 @@ pub(crate) fn side_reason(
         path: path.to_owned(),
         source: error.clone(),
     })
+}
+
+// For a check that reads no measurement: a side that the parser gives no tree stops the run, as
+// it stops the checks that read the sides.
+pub(crate) fn refuse_unparsable(pair: &Pair) -> Result<(), Error> {
+    let unparsable = pair.sides().find_map(|side| match &side.outcome {
+        Err(error @ SideError::Unparsable(_)) => Some(error),
+        Ok(_) | Err(SideError::Unmeasurable(_) | SideError::Recorded(_)) => None,
+    });
+    match unparsable {
+        Some(error) => Err(Error::Side {
+            path: pair.path.clone(),
+            source: error.clone(),
+        }),
+        None => Ok(()),
+    }
 }
 
 pub(crate) enum Read<T> {

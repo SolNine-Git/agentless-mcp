@@ -33,7 +33,7 @@ fn the_registry_lists_each_check_with_its_input_in_order() {
 }
 
 #[test]
-fn the_erosion_checks_and_callee_overlap_are_the_pair_checks() {
+fn the_erosion_checks_and_the_tree_checks_are_the_pair_checks() {
     let [expected]: [Vec<String>; 1] = cases("pair_checks");
     let found: Vec<&str> = PairCheck::ALL.map(PairCheck::name).to_vec();
     assert_eq!(found, expected);
@@ -111,6 +111,7 @@ fn each_pair_check_keeps_the_paths_of_its_rule() {
         ("contract_drift", [true, false, false, true]),
         ("clone_delta", [true, false, false, false]),
         ("callee_overlap", [true, false, false, false]),
+        ("cycle_dodge", [true, false, false, false]),
     ];
     assert_eq!(found, expected);
 }
@@ -130,17 +131,25 @@ fn each_pair_check_that_a_form_does_not_run_has_its_own_refusal() {
         }
     }
     assert!(PairCheck::CalleeOverlap.runs_in(FormKind::Since));
+    assert!(PairCheck::CycleDodge.runs_in(FormKind::Since));
 }
 
+// callee_overlap reads Rust and Python source files, and cycle_dodge Python ones only: the
+// languages whose tables hold a callee stoplist, and the one whose walker sets Import.runs.
 #[test]
-fn a_rust_or_python_source_file_is_in_callee_scope_and_other_tier_one_languages_are_not() {
+fn each_tree_check_keeps_the_source_files_of_its_languages_and_no_test_or_fixture() {
     let paths = [
         "src/app.rs",
         "src/app.py",
         "src/app.go",
         "src/app.ts",
         "tests/app.rs",
+        "tests/app.py",
+        "src/fixtures/app.py",
     ];
-    let kept = paths.map(|path| PairCheck::CalleeOverlap.keeps(path));
-    assert_eq!(kept, [true, true, false, false, false]);
+    let kept = |check: PairCheck| paths.map(|path| check.keeps(path));
+    let callee = [true, true, false, false, false, false, false];
+    assert_eq!(kept(PairCheck::CalleeOverlap), callee);
+    let dodge = [false, true, false, false, false, false, false];
+    assert_eq!(kept(PairCheck::CycleDodge), dodge);
 }

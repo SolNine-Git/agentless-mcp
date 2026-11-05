@@ -117,6 +117,20 @@ pub const CACHE_STALE_REMEDIATION: Template<Text> = Template::new(&[
     Piece::Text(" for performance"),
 ]);
 
+/// A text that takes no values.
+pub const CALLEE_OVERLAP_COMPARED: &str = "no function";
+
+/// A template that takes (`path`, `line`).
+pub const CALLEE_OVERLAP_DOES_NOT_PARSE: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" does not parse: the first syntax error is at line "),
+    Piece::Value(1),
+    Piece::Text(
+        ". Functions are compared only in a file that parses. Fix the \
+        syntax error, then run the check again.",
+    ),
+]);
+
 /// A template that takes (`target`, `name`, `count`, `total`).
 pub const CALLEE_OVERLAP_FOUND: Template<(Text, Text, Count, Count)> = Template::new(&[
     Piece::Text("`"),
@@ -165,18 +179,19 @@ pub const CALLEE_OVERLAP_OLD_NOT_MEASURED: Template<(Text, Text)> = Template::ne
     Piece::Value(1),
 ]);
 
-/// A template that takes `budget`.
-pub const CALLEE_OVERLAP_STOPPED: Template<Count> = Template::new(&[
-    Piece::Text("not checked: callee_overlap stopped at its time budget of "),
+/// A text that takes no values.
+pub const CALLEE_OVERLAP_READS: &str = "the calls of every function";
+
+/// A template that takes (`path`, `detail`).
+pub const CALLEE_OVERLAP_TOKENIZER_REJECTS: Template<(Text, Text)> = Template::new(&[
     Piece::Value(0),
+    Piece::Text(": Python's tokenizer rejects this file ("),
+    Piece::Value(1),
     Piece::Text(
-        " s before it read the calls of every function in the \
-        repository, so it compared no function.",
+        "). Functions are compared only in a file the tokenizer accepts. \
+        Fix the line the error names, then run the check again.",
     ),
 ]);
-
-/// A text that takes no values.
-pub const CALLEE_OVERLAP_STOPPED_EVIDENCE: &str = "time budget spent";
 
 /// A text that takes no values.
 pub const CAPS_WALK_BYTES: &str = "note: max_walk_bytes counts only the files that a scan reads, \
@@ -650,6 +665,71 @@ pub const CONTRACT_OLD_NOT_MEASURED: Template<(Text, Text)> = Template::new(&[
     Piece::Text(", because its text before the change cannot be measured. "),
     Piece::Value(1),
 ]);
+
+/// A text that takes no values.
+pub const CYCLE_DODGE_COMPARED: &str = "no import";
+
+/// A template that takes (`path`, `line`).
+pub const CYCLE_DODGE_DOES_NOT_PARSE: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" does not parse: the first syntax error is at line "),
+    Piece::Value(1),
+    Piece::Text(
+        ". Imports are compared only in a file that parses. Fix the \
+        syntax error, then run the check again.",
+    ),
+]);
+
+/// A template that takes (`module`, `function`, `chain`).
+pub const CYCLE_DODGE_FOUND: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Text("The import of `"),
+    Piece::Value(0),
+    Piece::Text("` in `"),
+    Piece::Value(1),
+    Piece::Text(
+        "` runs only when the function runs. At module level it closes \
+        this import cycle: ",
+    ),
+    Piece::Value(2),
+    Piece::Text(
+        ". Break the cycle: move the shared code to a module that both \
+        files import, or invert the dependency.",
+    ),
+]);
+
+/// A template that takes (`path`, `target`, `hops`, `line`).
+pub const CYCLE_DODGE_FOUND_EVIDENCE: Template<(Text, Text, Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(":"),
+    Piece::Value(3),
+    Piece::Text(" imports "),
+    Piece::Value(1),
+    Piece::Text("; "),
+    Piece::Value(1),
+    Piece::Text(" imports "),
+    Piece::Value(0),
+    Piece::Text(" back through "),
+    Piece::Value(2),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const CYCLE_DODGE_NEW_NOT_PARSED: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("not checked: cycle_dodge did not compare "),
+    Piece::Value(0),
+    Piece::Text(", because its text after the change does not parse. "),
+    Piece::Value(1),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const CYCLE_DODGE_OLD_NOT_PARSED: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("not checked: cycle_dodge did not compare "),
+    Piece::Value(0),
+    Piece::Text(", because its text before the change does not parse. "),
+    Piece::Value(1),
+]);
+
+/// A text that takes no values.
+pub const CYCLE_DODGE_READS: &str = "the imports of every file";
 
 /// A template that takes `count`.
 pub const CYCLES_HEADER: Template<Count> = Template::new(&[
@@ -1500,12 +1580,6 @@ pub const HISTORY_TARGET_UNRESOLVED: Template<(Text, Text)> = Template::new(&[
     ),
 ]);
 
-/// A text that takes no values.
-pub const LINT_CALLEE_OVERLAP_SINCE_ONLY: &str = "callee_overlap runs only with --since REV. It \
-        reads the calls of every function in the working tree after the \
-        change, and only --since compares a change that the working \
-        tree holds. Remove callee_overlap from --only.";
-
 /// A template that takes `checks`.
 pub const LINT_NO_CHECKS: Template<Text> = Template::new(&[
     Piece::Text("no check selected. Name at least one of these checks: "),
@@ -1643,6 +1717,19 @@ pub const LINT_SINCE_TAKES_PAIR_CHECKS: Template<(Text, Text)> = Template::new(&
         tree and would see two states mixed. Remove ",
     ),
     Piece::Value(1),
+    Piece::Text(" from --only."),
+]);
+
+/// A template that takes (`check`, `reads`).
+pub const LINT_TREE_CHECK_SINCE_ONLY: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" runs only with --since REV. It reads "),
+    Piece::Value(1),
+    Piece::Text(
+        " in the working tree after the change, and only --since \
+        compares a change that the working tree holds. Remove ",
+    ),
+    Piece::Value(0),
     Piece::Text(" from --only."),
 ]);
 
@@ -2344,6 +2431,22 @@ pub const TOOL_TAKES: Template<(Text, Text)> = Template::new(&[
     Piece::Value(1),
     Piece::Text("."),
 ]);
+
+/// A template that takes (`check`, `reads`, `compared`, `budget`).
+pub const TREE_CHECK_STOPPED: Template<(Text, Text, Text, Count)> = Template::new(&[
+    Piece::Text("not checked: "),
+    Piece::Value(0),
+    Piece::Text(" stopped at its time budget of "),
+    Piece::Value(3),
+    Piece::Text(" s before it read "),
+    Piece::Value(1),
+    Piece::Text(" in the repository, so it compared "),
+    Piece::Value(2),
+    Piece::Text("."),
+]);
+
+/// A text that takes no values.
+pub const TREE_CHECK_STOPPED_EVIDENCE: &str = "time budget spent";
 
 /// A template that takes `listed`.
 pub const UNKNOWN_TOOL: Template<Text> = Template::new(&[

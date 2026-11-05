@@ -11,7 +11,7 @@ use syntax::Parsed;
 use crate::error::Error;
 use crate::finding::{
     CalleeShare, Detail, Finding, Match, PairFinding, Severity, SharedCallee, TieredCallee,
-    not_checked, sorted,
+    budget_spent, sorted,
 };
 use crate::matching::{Paired, file_units, match_run};
 use crate::observed::{Observed, Outcome};
@@ -81,10 +81,11 @@ pub struct Callee {
 pub fn callee_overlap(pairs: &[&Pair], tree: &CalleeTree) -> Result<Outcome, Error> {
     let functions = match tree {
         CalleeTree::Stopped { seconds } => {
-            let message = messages::CALLEE_OVERLAP_STOPPED
-                .render(usize::try_from(*seconds).unwrap_or(usize::MAX));
-            let evidence = messages::CALLEE_OVERLAP_STOPPED_EVIDENCE;
-            let row = not_checked(crate::CALLEE_OVERLAP, "", message, evidence, None);
+            let (reads, compared) = (
+                messages::CALLEE_OVERLAP_READS,
+                messages::CALLEE_OVERLAP_COMPARED,
+            );
+            let row = budget_spent(crate::CALLEE_OVERLAP, reads, compared, *seconds);
             return Ok(Outcome {
                 findings: vec![row],
                 observed: Observed::default(),

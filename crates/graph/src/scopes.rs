@@ -58,9 +58,27 @@ impl<'a> ImportScope<'a> {
         &'s self,
         path: &'s str,
     ) -> impl Iterator<Item = (&'s str, u32, &'a str)> + 's {
+        self.edge_rows(path)
+            .map(|(row, target)| (row.module.as_ref(), row.line, target))
+    }
+
+    /// Return `(statement, module, target)` for each import edge of the file at `path`, where
+    /// `statement` is the position of its statement in the file's imports.
+    pub fn resolved_statements<'s>(
+        &'s self,
+        path: &'s str,
+    ) -> impl Iterator<Item = (usize, &'s str, &'a str)> + 's {
+        self.edge_rows(path)
+            .map(|(row, target)| (row.statement, row.module.as_ref(), target))
+    }
+
+    fn edge_rows<'s>(
+        &'s self,
+        path: &'s str,
+    ) -> impl Iterator<Item = (&'s ResolvedImport<'a>, &'a str)> + 's {
         self.statements.iter().filter_map(move |row| {
             let target = row.resolved.filter(|target| *target != path)?;
-            Some((row.module.as_ref(), row.line, target))
+            Some((row, target))
         })
     }
 

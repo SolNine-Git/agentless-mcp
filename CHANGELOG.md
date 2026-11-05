@@ -10,6 +10,28 @@ Each byte count is of the served bytes.
 
 ### Added
 
+- **`lint` gains `cycle_dodge`, an advisory check for an import that a
+  function body hides from an import cycle.** It reports an import in a
+  Python function body when the file that it imports imports the importing
+  file back through imports that run at load, and the change made it so:
+  the change moved the import from module level into the function, added
+  it, or gave an import that was there before a new chain back. Such an
+  import defers the cycle and does not break it (design in
+  docs/plans/2026-11-05_cycle-dodge-check.md). It reads Python files
+  outside test and fixture paths. An import in a function body or under
+  `if TYPE_CHECKING:` is not part of a chain. Only `lint --since REV --only
+  cycle_dodge` runs it: the other forms refuse it by name, and it is not in
+  any default selection. `capabilities` lists it with the input
+  `pairs+graph`. A new fact, `Import.runs`, tells when a Python import
+  runs: `load`, `call` (in a function body) or `type_only` (under `if
+  TYPE_CHECKING:`). The facts version goes from 11 to 12, so every tag
+  cache indexes again once. Measured, planted pairs
+  (`tests/characterization/fixtures/cycle_dodge_py`): 5 of 5 positives found
+  (a moved import, a new chain of 3 files, a chain through a package
+  `__init__.py`, a relative import in a method, and a new chain back to an
+  old import) and no row on the 6 negatives. Its false-alarm rate on real
+  code is not measured yet.
+
 - **`lint` gains `callee_overlap`, an advisory check for a function that a
   change writes again.** It reports a function that the change adds, or
   rewrites, when it calls at least 80% of the three or more callees of an
@@ -604,6 +626,13 @@ Each byte count is of the served bytes.
     `crates/app/fixtures/read/tokens.json` changes.
 
 ### Fixed
+
+- **The not_checked row of `callee_overlap` for a file that does not parse
+  names its own check.** It gave the complexity text: "Complexity is
+  measured only for a file that parses. Fix the syntax error, then measure
+  the file again." It now gives "Functions are compared only in a file that
+  parses. Fix the syntax error, then run the check again.", and the text for
+  a file that Python's tokenizer rejects changes the same way.
 
 - **`mod tests { use super::*; }` no longer binds every name of its file to
   the file's methods.** The glob named the file itself, and every bare name,

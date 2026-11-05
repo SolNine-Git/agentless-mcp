@@ -285,7 +285,7 @@ fn skip(path: &str, reason: &impl ToString) -> Skipped {
 }
 
 // The scan counts the parts that "\n" splits the text into, so a final newline adds a line.
-fn line_count(text: &str) -> u32 {
+pub(crate) fn line_count(text: &str) -> u32 {
     u32::try_from(text.split('\n').count()).unwrap_or(u32::MAX)
 }
 

@@ -2,17 +2,18 @@
 
 mod candidates;
 
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::rc::Rc;
 
-use checks::{CalleeTree, CloneIndex, Observed, PairFinding};
+use checks::{CloneIndex, Observed, PairFinding};
 use serde::Serialize;
 
-use crate::callees::callee_tree;
-use crate::pair_runs::{CalleesOf, IndexOf, Reported, RunInputs};
+use crate::detached::drop_detached;
+use crate::pair_runs::{IndexOf, Reported, RunInputs, TreeOf};
 use crate::pairs::{Judged, Lookup, built_index, run_pairs};
 use crate::proposed::{After, Proposed, proposed};
 use crate::revision::compared;
+use crate::tree_scan::{TreeScan, tree_scan};
 use crate::{Error, Noted, PairSelection, Repo, Services, Tags};
 
 pub use candidates::{
@@ -89,8 +90,8 @@ pub(crate) struct BlockSource<'a> {
     pub(crate) lookup: &'a mut Lookup<'a>,
 }
 
-// The clone index walk and the callee scan raise the warnings, so they reach the caller with
-// either outcome.
+// The clone index walk and the tree scan raise the warnings, so they reach the caller with
+// either outcome. The scan is freed on a detached thread once the report is made.
 pub(crate) fn lint_with(
     services: &Services,
     repo: &Repo,
@@ -98,23 +99,31 @@ pub(crate) fn lint_with(
     request: &LintRequest,
 ) -> Noted<Result<LintReport, Error>> {
     let warnings = RefCell::new(Vec::new());
+    let scanned: OnceCell<TreeScan> = OnceCell::new();
     let BlockSource { cached, lookup } = source;
     let mut index = |measured: &[&checks::Pair]| -> Result<Rc<CloneIndex>, Error> {
         let built = built_index(services, &repo.root, lookup, measured);
         warnings.borrow_mut().extend(built.diagnostics);
         built.value.map(|files| Rc::new(CloneIndex::Built(files)))
     };
-    let mut callees = || -> Result<CalleeTree, Error> {
-        let built = callee_tree(services, &repo.root);
+    let mut scan = || -> Result<&TreeScan, Error> {
+        if let Some(scan) = scanned.get() {
+            return Ok(scan);
+        }
+        let built = tree_scan(services, &repo.root);
         warnings.borrow_mut().extend(built.diagnostics);
-        built.value
+        let scan = built.value?;
+        Ok(scanned.get_or_init(|| scan))
     };
     let tree = TreeSources {
         cached,
         index: &mut index,
-        callees: &mut callees,
+        scan: &mut scan,
     };
     let report = report(services, repo, request, tree);
+    if let Some(scan) = scanned.into_inner() {
+        drop_detached(scan.facts);
+    }
     Noted {
         value: report,
         diagnostics: warnings.into_inner(),
@@ -122,11 +131,11 @@ pub(crate) fn lint_with(
 }
 
 // What the run reads from the tree besides the edited files: whether a tag cache is usable, the
-// clone index, and the callee sets.
+// clone index, and the scan that the tree checks share.
 struct TreeSources<'r, 'i> {
     cached: bool,
     index: &'r mut IndexOf<'i>,
-    callees: &'r mut CalleesOf<'i>,
+    scan: &'r mut TreeOf<'i>,
 }
 
 // Without a usable tag cache, the proposed form reports the no_tag_cache gap and reads no other
@@ -140,7 +149,7 @@ fn report(
     let TreeSources {
         cached,
         index,
-        callees,
+        scan,
     } = tree;
     let (id, judged) = match &request.form {
         LintForm::Proposed { path, after } => {
@@ -158,7 +167,7 @@ fn report(
                 config: &repo.config,
                 index,
                 reported: &Reported::new(),
-                callees: Some(callees),
+                tree: Some(scan),
             };
             let judged = run_pairs(compared.pairs, request.checks, inputs)?;
             (revision, with_rows(compared.rows, judged))
@@ -181,7 +190,7 @@ fn judge_proposed(
                 config,
                 index,
                 reported: &Reported::new(),
-                callees: None,
+                tree: None,
             };
             run_pairs(vec![pair], checks, inputs)
         }

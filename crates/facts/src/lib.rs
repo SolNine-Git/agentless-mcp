@@ -23,5 +23,5 @@ pub use slices::{OutsideFile, line_count, line_prefix, slice_lines};
 pub use spelling::base_name;
 pub use stable_id::{StableId, StableIdError, rationale_handle, split_ordinal};
 pub use values::{
-    Facts, Import, Manifest, Marks, Rationale, RationaleKind, Ref, Role, Symbol, SymbolKind,
+    Facts, Import, Manifest, Marks, Rationale, RationaleKind, Ref, Role, Runs, Symbol, SymbolKind,
 };

@@ -111,6 +111,8 @@ impl core::marker::UnsafeUnpin for metrics::Measurable
 impl core::panic::unwind_safe::RefUnwindSafe for metrics::Measurable
 impl core::panic::unwind_safe::UnwindSafe for metrics::Measurable
 pub struct metrics::Reasons
+impl metrics::Reasons
+pub const fn metrics::Reasons::new(&'static prompts::template::Template<(prompts::template::Text, prompts::template::Count)>, &'static prompts::template::Template<(prompts::template::Text, prompts::template::Text)>) -> metrics::Reasons
 impl core::marker::Freeze for metrics::Reasons
 impl core::marker::Send for metrics::Reasons
 impl core::marker::Sync for metrics::Reasons

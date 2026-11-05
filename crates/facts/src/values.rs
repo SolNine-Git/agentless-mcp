@@ -128,6 +128,24 @@ pub struct Import {
     /// How many inline module bodies, such as Rust's `mod name { ... }`, enclose the statement.
     #[serde(default)]
     pub inline_depth: u32,
+    /// When the statement runs. Only the Python walker tells; a stored statement that runs when
+    /// the module loads leaves the field out.
+    #[serde(default, skip_serializing_if = "Runs::is_load")]
+    pub runs: Runs,
+}
+
+/// When an import statement runs. serde reads it by reference to skip the default, so the type is
+/// not `Copy`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Runs {
+    /// When the module loads.
+    #[default]
+    Load,
+    /// When the function around it runs.
+    Call,
+    /// Only for a type checker: under `if TYPE_CHECKING:`, outside a function.
+    TypeOnly,
 }
 
 /// One identifier occurrence: the name, its line, and what it does there.
@@ -249,6 +267,25 @@ impl Import {
     }
 }
 
+impl Runs {
+    /// Every value, in declaration order.
+    pub const ALL: [Runs; 3] = [Runs::Load, Runs::Call, Runs::TypeOnly];
+
+    /// Return the value's name, such as `type_only`.
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Runs::Load => "load",
+            Runs::Call => "call",
+            Runs::TypeOnly => "type_only",
+        }
+    }
+
+    fn is_load(&self) -> bool {
+        *self == Runs::Load
+    }
+}
+
 impl Ref {
     /// Return whether the occurrence is an unqualified reference to a repository symbol.
     #[must_use]
@@ -275,7 +312,7 @@ impl Role {
 mod tests {
     use serde::Serialize;
 
-    use super::{Import, RationaleKind, Role, SymbolKind};
+    use super::{Import, RationaleKind, Role, Runs, SymbolKind};
 
     fn serde_name(value: impl Serialize) -> String {
         serde_json::to_value(value)
@@ -317,6 +354,9 @@ mod tests {
         for role in roles {
             assert_eq!(serde_name(role), role.as_str());
         }
+        for runs in Runs::ALL {
+            assert_eq!(serde_name(runs.clone()), runs.as_str());
+        }
     }
 
     #[test]
@@ -331,6 +371,7 @@ mod tests {
             binds_all: false,
             alias: String::new(),
             inline_depth: 0,
+            runs: Runs::Load,
         };
         let pairs: Vec<(&str, &str)> = import.bound_names().collect();
         assert_eq!(pairs, [("a", "a"), ("b", "b")]);

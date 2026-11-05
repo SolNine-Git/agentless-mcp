@@ -1,20 +1,16 @@
-//! The tree side of `callee_overlap`: one scan of the working tree under the walk budget, its
-//! resolved symbol graph, and the counted callees and spelled names of each function it reads.
-
-use std::path::Path;
-use std::sync::Arc;
+//! The tree side of `callee_overlap`: the resolved symbol graph of the shared scan of the working
+//! tree, and the counted callees and spelled names of each function it reads.
 
 use checks::{Callee, CalleeTree, TreeFunction};
 use facts::{Ref, StableId, Symbol, SymbolKind};
 use graph::{FileFacts, Relation, SymbolGraph};
 use kernel::Deadline;
-use store::FactSource;
 use syntax::Language;
 
-use crate::detached::answered_over;
 use crate::scan::RepoFacts;
 use crate::symbol_graph::with_resolved;
-use crate::{Error, Noted, Services, in_metric_scope};
+use crate::tree_scan::TreeScan;
+use crate::{Error, in_metric_scope};
 
 // Returns true when callee_overlap reads `path`: a tier-1 source file outside test and fixture
 // paths, in a language whose table holds a callee stoplist.
@@ -28,21 +24,18 @@ fn stoplist(path: &str) -> Option<&'static [&'static str]> {
 
 // A stop of the scan or the build gives the stopped tree: a partial edge set makes an existing
 // function's set smaller and can make a false row.
-pub(crate) fn callee_tree(services: &Services, root: &Path) -> Noted<Result<CalleeTree, Error>> {
-    let budget = services.walk_budget;
-    let deadline = Deadline::new(budget.as_secs_f64(), 0.0, Arc::clone(&services.clock));
-    let source = FactSource::parsing();
-    let scanned = RepoFacts::load_at(services, root, &source, Some(&deadline));
-    scanned.map(|scanned| {
-        let built = scanned.and_then(|repo| answered_over(repo, |repo| resolved(repo, &deadline)));
-        match built {
-            Ok(functions) => Ok(CalleeTree::Built(functions)),
-            Err(Error::Kind(kernel::Error::CallStopped(_))) => Ok(CalleeTree::Stopped {
-                seconds: budget.as_secs(),
-            }),
-            Err(error) => Err(error),
-        }
-    })
+pub(crate) fn callee_tree(scan: &TreeScan) -> Result<CalleeTree, Error> {
+    let stopped = CalleeTree::Stopped {
+        seconds: scan.seconds,
+    };
+    let Some(repo) = &scan.facts else {
+        return Ok(stopped);
+    };
+    match resolved(repo, &scan.deadline) {
+        Ok(functions) => Ok(CalleeTree::Built(functions)),
+        Err(Error::Kind(kernel::Error::CallStopped(_))) => Ok(stopped),
+        Err(error) => Err(error),
+    }
 }
 
 fn resolved(repo: &RepoFacts, deadline: &Deadline) -> Result<Vec<TreeFunction>, Error> {
