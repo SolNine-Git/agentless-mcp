@@ -15,7 +15,7 @@ measurement standard and the code-correctness experiment get their own documents
 
 | Run | Date | Build | Tasks | Arms, in run order |
 |---|---|---|---|---|
-| conf2 | 2026-10-29 | ef6a1a2 | bench300, 300 | native, ungated, forced, hooked |
+| conf2 | 2026-10-29 | ef6a1a2, Claude Code 2.1.312 | bench300, 300 | native, ungated, forced, hooked (concurrent) |
 | PH2 screen | 2026-11-04 | 81d5a7e, Claude Code 2.1.318 | flat60, 60 | native, enrich, native_placebo, hooked, compact, one after another |
 | PH2C, native arm | 2026-11-04 | 81d5a7e, Claude Code 2.1.318 | bench300, 300 | native (the enrich arm ran after this record) |
 
@@ -107,8 +107,9 @@ conf2 native against PH2C native 6 days apart, moved the priced cost by -5.3% [-
 
 1. A screen runs 100 tasks per arm, from a fixed set that is chosen without past outcomes. A decision needs a
    confirmation on tasks that the screen did not use.
-2. A WCC effect below about 0.02 is not measurable at 300 tasks, and one below about 0.01 is not measurable on
-   the whole benchmark. Report such an effect as "no effect found", not as a small gain.
+2. At 300 tasks per arm, a WCC effect below about 0.012 to 0.017 is not measurable. On the whole benchmark
+   (848 tasks), the limit is about 0.007 to 0.010 (derived from the same SDs). Report such an effect as "no
+   effect found", not as a small gain.
 3. Report context and priced cost side by side. A priced cost decides a question only when the arms alternate
    task by task. A context result is valid in either order.
 4. Every run has a placebo arm.
@@ -120,7 +121,10 @@ conf2 native against PH2C native 6 days apart, moved the priced cost by -5.3% [-
 - The SDs come from three runs and six pairs. A new treatment can have a larger SD.
 - The MDE formula is a normal approximation. At 30 tasks it understates the needed sample slightly.
 - The priced weights assume the 5-minute cache write (1.25x). A 1-hour cache write costs 2x.
-- conf2's Claude Code version is not recorded in this record's sources.
+- conf2 ran Claude Code 2.1.312 with the model claude-sonnet-5-5 (the init events of its streams). Its four arms
+  ran at the same time (2026-10-29, 20:40 to 21:46, from the transcript file times). Arms with the same tool list
+  can share the prompt cache, so their priced cost can read low. Each arm also ran its own sessions one after
+  another, so its prompt prefix stayed cached anyway; the size of this effect is not measured.
 
 ## Repeat
 
