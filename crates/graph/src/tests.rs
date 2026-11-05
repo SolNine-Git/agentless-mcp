@@ -1,3 +1,4 @@
+mod chains;
 mod corpus;
 mod deadline;
 mod files;

@@ -1,9 +1,10 @@
 //! The import cycles the resolved imports prove: strongly connected components of two or more
-//! files, each with one shortest chain that closes it.
+//! files, each with one shortest chain that closes it; and the shortest chain from one file to
+//! another.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::symbols::SymbolGraph;
+use crate::symbols::{Relation, SymbolEdge, SymbolGraph};
 
 // A component of one file is not a cycle.
 const SMALLEST_CYCLE: usize = 2;
@@ -44,6 +45,52 @@ pub fn import_cycles<'a>(graph: &SymbolGraph<'a>) -> Vec<Cycle<'a>> {
         (left.files.len(), &left.files).cmp(&(right.files.len(), &right.files))
     });
     cycles
+}
+
+/// Return the shortest chain of import edges from the file `from` to the file `to`, over the edges
+/// whose source path and line `keeps` accepts, or `None` when there is no such chain.
+#[must_use]
+pub fn import_chain<'g, 'a>(
+    graph: &'g SymbolGraph<'a>,
+    from: &str,
+    to: &str,
+    keeps: impl Fn(&'a str, u32) -> bool,
+) -> Option<Vec<&'g SymbolEdge<'a>>> {
+    let mut previous: BTreeMap<&'a str, &'g SymbolEdge<'a>> = BTreeMap::new();
+    let mut queue = VecDeque::from([from]);
+    while let Some(node) = queue.pop_front() {
+        let kept = graph.outgoing(node).iter().filter(|edge| {
+            let source = edge.source();
+            edge.relation() == Relation::Imports && keeps(source.path(), source.line())
+        });
+        for edge in kept {
+            let child = edge.target().path();
+            if child == to {
+                return Some(edges_back(edge, from, &previous));
+            }
+            if child != from && !previous.contains_key(child) {
+                previous.insert(child, edge);
+                queue.push_back(child);
+            }
+        }
+    }
+    None
+}
+
+fn edges_back<'g, 'a>(
+    last: &'g SymbolEdge<'a>,
+    from: &str,
+    previous: &BTreeMap<&'a str, &'g SymbolEdge<'a>>,
+) -> Vec<&'g SymbolEdge<'a>> {
+    let mut chain = vec![last];
+    let mut source = last.source().path();
+    while source != from {
+        let edge = previous[source];
+        chain.push(edge);
+        source = edge.source().path();
+    }
+    chain.reverse();
+    chain
 }
 
 // Tarjan's components, iteratively: a long import chain must not exhaust the stack.
