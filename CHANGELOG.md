@@ -31,8 +31,8 @@ Each byte count is of the served bytes.
   `__init__.py`, a relative import in a method, and a new chain back to an
   old import) and no row on the 6 negatives. Measured on real code (14
   Python snapshots of the bench, each taken as new, 1,638 rows; 60 sampled
-  rows with blind labels from two agent readers, 2026-11-05): 6 to 10 of the
-  60 are false alarms (10% to 17%, Wilson 95% upper bound 28%), so it meets
+  rows with blind labels from two agent readers, 2026-11-05): 10 of the 60
+  are false alarms (17%, Wilson 95% 9% to 28%), so it meets
   the bar for an advisory check and not the bar for a blocking one. Each
   false alarm comes from one of three resolver faults: a block under an
   aliased `TYPE_CHECKING` (`if t.TYPE_CHECKING:`) counts as code that runs

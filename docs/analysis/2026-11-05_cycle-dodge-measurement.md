@@ -5,8 +5,9 @@ section 8 of the specification (the plan with the owner's answers is
 [docs/plans/2026-11-05_cycle-dodge-check.md](../plans/2026-11-05_cycle-dodge-check.md)). It also holds the
 paper test (B0) of the second planned check, `mirrored_shapes`, which stopped that check before any code.
 
-Result: over 60 blind findings, 6 to 10 are false alarms (10.0% to 16.7%). The check passes bar A (an advisory
-check) and fails bar B (a blocking check). Every false alarm comes from one of three faults in how the check
+Result: over 60 blind findings, 10 are false alarms (16.7%, Wilson 95% 9.3% to 28.0%), with the owner's ruling
+on the 4 findings that the readers disputed. The check passes bar A (an advisory check) and fails bar B (a
+blocking check). Every false alarm comes from one of three faults in how the check
 resolves a Python import. The build is the release build of 6dce8e5, whose tree is the tree of main 0193eb1.
 
 ## M1: planted pairs
@@ -94,7 +95,8 @@ The 4 disagreements are one case: `from P import N` in a module of P, where N is
 does not bind, and the check names `P/__init__.py` as the next file. Before round 2, main sent both readers the
 same clarification: such a statement loads the submodule file `P/N.py`, so an edge named to `P/__init__.py` is a
 `false_edge`. When `P/__init__.py` binds N, the edge holds. The round 1 labels stand as given. Reader 2 reports
-that its 4 round 1 labels would be `false_edge` under the clarification. The owner rules on the 4.
+that its 4 round 1 labels would be `false_edge` under the clarification. The owner ruled (2026-11-05) that the
+4 are false alarms.
 
 Over all 60, the readers agree on 56 (kappa 0.722), and the 4 disagreements are the same 4.
 
@@ -102,6 +104,7 @@ Over all 60, the readers agree on 56 (kappa 0.722), and the 4 disagreements are 
 |---|---|---|
 | both readers say FP | 6/60 = 10.0% | 4.7% to 20.1% |
 | one reader is enough | 10/60 = 16.7% | 9.3% to 28.0% |
+| decided (the owner's ruling on the 4) | 10/60 = 16.7% | 9.3% to 28.0% |
 
 - Bar A (advisory: FP at most 40% over at least 40 findings): PASS, also when every disputed finding is an FP.
 - Bar B (block: FP at most 10% with a Wilson upper bound at most 20%, 60 findings, planted recall at least 50%
