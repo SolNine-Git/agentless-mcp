@@ -1,12 +1,13 @@
 //! The gate log: one JSON line per decision, appended to the file that `AGENTLESS_GATE_LOG` names.
 
 use std::borrow::Cow;
+use std::ffi::OsStr;
 use std::path::Path;
 
 use json::JsonValue;
 use kernel::Clock;
 
-use super::{Gate, Suppressed};
+use super::Suppressed;
 use crate::record;
 
 pub(crate) const LOG_ENV: &str = "AGENTLESS_GATE_LOG";
@@ -39,8 +40,8 @@ pub(crate) fn value(found: Option<&JsonValue>) -> Cow<'_, JsonValue> {
 }
 
 // An unset or empty variable writes nothing. A failed append is suppressed, deny included.
-pub(crate) fn append(gate: &Gate<'_>, entry: &Entry<'_>) -> Result<(), Suppressed> {
-    let Some(target) = gate.log.filter(|target| !target.is_empty()) else {
+pub(crate) fn append(log: Option<&OsStr>, entry: &Entry<'_>) -> Result<(), Suppressed> {
+    let Some(target) = log.filter(|target| !target.is_empty()) else {
         return Ok(());
     };
     io::append_line(Path::new(target), line(entry).as_bytes()).map_err(|_| Suppressed)
