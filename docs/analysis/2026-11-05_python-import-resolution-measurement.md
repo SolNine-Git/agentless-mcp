@@ -192,3 +192,118 @@ lines; it is post hoc. map is out of the sample: its changed lines are rank valu
   guess was about 100.
 - The prediction of the sample verdicts: rule 3 was expected to be right in every read line. One
   line (the re-bound member above) was not.
+
+## The re-bound member
+
+The read sample above found one line where rule 3 is wrong:
+sentence_transformers/losses/MegaBatchMarginLoss.py:9. Commit a0c7dd2 adds an exception to rule 3.
+The work records are under `/var/tmp/claude-rust-port/r3k` (ticket R3K); its `status.md` holds each
+prediction, written before its run. The base is the deployed release build of b3969db
+(agentless-mcp sha256 `67e155f3...`), and the tip is the release build of a0c7dd2 (`2a9c3ebb...`).
+Every run had an absolute `XDG_CACHE_HOME` and the gate and erosion logs under the work directory.
+
+### The rule
+
+For an importer inside package P and `from P import N...` where every N is a module, the row to
+P/__init__.py stays when P/__init__.py binds one of the N at module level to an object that is not
+the module P/N:
+
+- a symbol of P/__init__.py named N with no parent: a def, a class, an upper-case constant or a
+  type alias, in any module-level block;
+- an import that runs at load (not in a function, not in a TYPE_CHECKING block) and is not a star
+  import, whose local name is N and whose object is not the file P/N. `from .N import N` binds the
+  class; `from . import N`, `from P import N` and `import P.N as N` bind the module.
+
+The rule reads the facts of P/__init__.py, so nothing parses again, and the bindings that refs and
+explain read do not change. `cycle_dodge` and `cycle_delta` build their import graphs from reduced
+facts; both now keep the symbols of a package entry, so every import graph reads the same rule. The
+rule does not read a lower-case `N = ...` (the facts make only an upper-case module assignment a
+symbol), a star import or a module `__getattr__`. A def, class or constant in a TYPE_CHECKING block
+counts, because a symbol carries no load mark.
+
+The definition of the earlier count (`shadowed.py`: the top-level statements of P/__init__.py, by
+Python's ast) differs: the rule also reads nested blocks, class bodies and `import` statements,
+counts only upper-case assignments, and decides "the module itself" by the resolved file, not by
+the module text. Derived (a Python model of the rule over the same rows): the rule keeps 92 of
+7,856 rule-3 rows on Loc-Bench (in 10 checkouts) and 3 of 1,317 on U3 (in sympy), the same rows as
+`shadowed.py`. An import at top level re-binds each one: on Loc-Bench 71 `from X import N` from
+another module and 21 `from .N import N`, on U3 3 `from .N import N`. No def, class or assignment
+form occurs.
+
+### The U3 rerun of the exception
+
+`lint --repo <copy> --since <root> --only cycle_dodge --json` with the tip build on the 14 snapshot
+copies, read-only (measured, 14 runs, each exit 0, 0.07 to 0.61 s, at most 541 MB). The prediction:
+the 13 copies without a restored row give byte-equal output, sympy keeps every row, and the 10
+false alarms stay gone. The result: all 14 outputs are byte-equal (`cmp`) to the rerun of d650012
+above: 1,591 rows, none new, none gone and none with another chain. The 10 false alarms stay gone,
+and the 50 other sampled rows remain with the same chain. The 3 restored rows of sympy close no new
+chain.
+
+### The retrieval tier of the exception
+
+Seeded and no-seed, 150 instances per arm (measured; 23 to 24 s per arm). After each run, 0 files
+of the harness were newer than the run's stamp.
+
+- The base against the stored tip of this record (f5102e4): 0 of 150 instances differ in `ok`,
+  `ranked_files`, `resolved_seeds` and `unresolved_seeds`, in each arm. Main changed no graph, map
+  or rank code between them.
+- The prediction: `ranked_files` change only in the 10 instances whose checkout holds a restored
+  row (derived). The result: 5 of 150 seeded and 6 of 150 no-seed lists change, each one of the 10;
+  `ok`, `resolved_seeds` and `unresolved_seeds`: 0 differ.
+
+The paired bootstrap (10,000 samples, seed 20261106; mean delta, 95% interval, instances better
+and worse), measured:
+
+| Metric | seeded | no-seed |
+|---|---|---|
+| recall@10 | 0 [0, 0] (0, 0) | 0 [0, 0] (0, 0) |
+| MAP | -0.000111 [-0.000333, 0] (0, 1) | +0.000101 [-0.000333, +0.000635] (1, 1) |
+| nDCG@10 | 0 [0, 0] (0, 0) | +0.000215 [0, +0.000646] (1, 0) |
+| recall@5 | 0 [0, 0] (0, 0) | 0 [0, 0] (0, 0) |
+| acc_any@1 | 0 [0, 0] (0, 0) | 0 [0, 0] (0, 0) |
+| acc_any@5 | 0 [0, 0] (0, 0) | 0 [0, 0] (0, 0) |
+
+matchms-backup-187 loses MAP (-0.0167 in both arms): the importer of its restored row,
+matchms/exporting/save_as_mgf.py, enters the list at rank 19, and the gold file
+matchms/filtering/derive_inchi_from_smiles.py falls out from rank 20. sentence-transformers-3035
+gains in the no-seed arm (MAP +0.0317, nDCG@10 +0.0323).
+
+### The surface diff of the exception
+
+The tools, targets and queries of the surface diff above, base against tip, on new copies of the
+checkouts (1,206 Loc-Bench and 540 U3 queries). Both builds listed identical `find-symbol` frames;
+no call timed out, changed its exit code or changed its stderr.
+
+| Surface | Loc-Bench changed / calls | U3 changed / calls |
+|---|---|---|
+| cycles | 5 / 150 | 0 / 28 |
+| explain | 0 / 228 | 0 / 242 |
+| map | 7 / 150 | 0 / 28 |
+| refs | 0 / 678 | 0 / 242 |
+
+- The prediction: no change outside the 10 instances; no refs or explain change; one more cycle in
+  each of sentence-transformers-3035, -3073, -3076, cupy-3730 and matchms-backup-187; at most a
+  printed chain in numba-9757; map changes only in the 10. The result meets each clause. The new
+  cycles are the model's components: the 5 files of sentence_transformers/readers,
+  cupyx/scipy/special/__init__.py with polygamma.py, and matchms/__init__.py with
+  matchms/exporting/__init__.py and save_as_mgf.py. numba-9757 does not change.
+- refs: every site keeps its tier, keyed by (path, line). The loss count is 0. Truncated answers:
+  18 and 18 (Loc-Bench), 7 and 7 (U3); no changed answer is truncated.
+
+The read sample (seed 20261106): the refs and explain pools are empty, so the sample is 20 of the
+74 restored rows in a component of a changed cycles answer, read in the source. The new answer is
+right in 20 and the old in 0. All 20 are in the sentence-transformers checkouts: 17 `from
+sentence_transformers import SentenceTransformer`, where the entry binds the class
+(`from sentence_transformers.SentenceTransformer import SentenceTransformer`, __init__.py:20), and
+3 `from . import InputExample` in sentence_transformers/readers, where readers/__init__.py:3 binds
+the class before those modules load. 5 of the 20 run in a function, and they read the entry's
+attribute when called.
+
+### Where the predictions of the exception missed
+
+- The retrieval tier: the point guesses were 8 of 10 seeded and 9 of 10 no-seed changed lists;
+  measured 5 and 6. The bound held.
+- The surface diff: map changed in 7 of the 10 instances; the guess was 8.
+- The first clippy run refused two functions (nesting, and six arguments); the commit has the
+  fixed code, and every proof above is of that code.
