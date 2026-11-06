@@ -1,4 +1,4 @@
-//! The lint run on its own thread, so that the gate stops waiting for it at the deadline.
+//! A hook's job run on its own thread, so that the hook stops waiting for it at the deadline.
 
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
@@ -21,45 +21,58 @@ pub(crate) fn in_process(
     app::lint(services, repo, &tags, request).value
 }
 
-// Everything the thread owns, so that it can outlive the wait.
+// Everything the lint thread owns, so that it can outlive the wait.
 pub(crate) struct Job {
     pub(crate) services: Services,
     pub(crate) repo: Repo,
     pub(crate) request: LintRequest,
 }
 
+impl Job {
+    // The lint of this job as work that a thread can own.
+    pub(crate) fn linted_by(
+        self,
+        lint: LintFn,
+    ) -> impl FnOnce() -> Result<LintReport, app::Error> + Send + 'static {
+        move || lint(&self.services, &self.repo, &self.request)
+    }
+}
+
 #[derive(Debug)]
-pub(crate) enum Linted {
-    Report(LintReport),
+pub(crate) enum Finished<T> {
+    Done(T),
     Failed(app::Error),
     Panicked(String),
     TimedOut,
 }
 
-#[derive(Default)]
-struct Slot {
-    result: Mutex<Option<Linted>>,
+struct Slot<T> {
+    result: Mutex<Option<Finished<T>>>,
     filled: Condvar,
 }
 
 // Waits at most `budget`. A thread still running at the deadline runs on until the process
 // exits. It only reads, apart from the cache's time stamp, so the exit leaves nothing half written.
-pub(crate) fn run(lint: LintFn, job: Job, budget: Duration) -> std::io::Result<Linted> {
-    let slot = Arc::new(Slot::default());
+pub(crate) fn run<T: Send + 'static>(
+    name: &str,
+    work: impl FnOnce() -> Result<T, app::Error> + Send + 'static,
+    budget: Duration,
+) -> std::io::Result<Finished<T>> {
+    let slot = Arc::new(Slot {
+        result: Mutex::new(None),
+        filled: Condvar::new(),
+    });
     let filled = Arc::clone(&slot);
     thread::Builder::new()
-        .name("erosion-lint".to_owned())
+        .name(name.to_owned())
         .spawn(move || {
-            let ran = panic::catch_unwind(AssertUnwindSafe(|| {
-                lint(&job.services, &job.repo, &job.request)
-            }));
-            let linted = match ran {
-                Ok(Ok(report)) => Linted::Report(report),
-                Ok(Err(error)) => Linted::Failed(error),
-                Err(payload) => Linted::Panicked(panic_text(&*payload)),
+            let finished = match panic::catch_unwind(AssertUnwindSafe(work)) {
+                Ok(Ok(value)) => Finished::Done(value),
+                Ok(Err(error)) => Finished::Failed(error),
+                Err(payload) => Finished::Panicked(panic_text(&*payload)),
             };
             let mut result = filled.result.lock().unwrap_or_else(PoisonError::into_inner);
-            *result = Some(linted);
+            *result = Some(finished);
             filled.filled.notify_one();
         })?;
     let result = slot.result.lock().unwrap_or_else(PoisonError::into_inner);
@@ -67,7 +80,7 @@ pub(crate) fn run(lint: LintFn, job: Job, budget: Duration) -> std::io::Result<L
         .filled
         .wait_timeout_while(result, budget, |result| result.is_none())
         .unwrap_or_else(PoisonError::into_inner);
-    Ok(result.take().unwrap_or(Linted::TimedOut))
+    Ok(result.take().unwrap_or(Finished::TimedOut))
 }
 
 #[cfg(test)]

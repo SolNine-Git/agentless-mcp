@@ -6,7 +6,10 @@ use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use app::{After, LintCandidate, LintForm, LintRequest, PairCheck, PairSelection, Repo, Services};
+use app::{
+    After, LintCandidate, LintForm, LintReport, LintRequest, PairCheck, PairSelection, Repo,
+    Services,
+};
 
 use crate::Output;
 use crate::call::Call;
@@ -17,10 +20,11 @@ use crate::modes::{self, Modes};
 use crate::payload::{self, Payload};
 use crate::text::{panic_text, sha256_hex, shown};
 use crate::verdict::{self, Decision};
-use crate::worker::{self, Job, LintFn, Linted};
+use crate::worker::{self, Finished, Job, LintFn};
 
 // A git timeout ends the call as degraded, so a hung git costs one edit at most this long.
 const GIT_TIMEOUT: Duration = Duration::from_secs(2);
+const LINT_THREAD: &str = "erosion-lint";
 
 pub(crate) struct Ports<'a> {
     pub(crate) services: &'a Services,
@@ -179,17 +183,17 @@ fn lint(
             checks: selection,
         },
     };
-    let linted = worker::run(ports.lint, job, budget)
+    let linted = worker::run(LINT_THREAD, job.linted_by(ports.lint), budget)
         .map_err(|error| Halt::internal(format!("the lint thread did not start: {error}")))?;
     candidate(linted, budget)
 }
 
-fn candidate(linted: Linted, budget: Duration) -> Result<LintCandidate, Halt> {
+fn candidate(linted: Finished<LintReport>, budget: Duration) -> Result<LintCandidate, Halt> {
     let report = match linted {
-        Linted::Report(report) => report,
-        Linted::Failed(error) => return Err(Halt::degraded(format!("lint failed: {error}"))),
-        Linted::Panicked(message) => return Err(Halt::internal(format!("panic: {message}"))),
-        Linted::TimedOut => {
+        Finished::Done(report) => report,
+        Finished::Failed(error) => return Err(Halt::degraded(format!("lint failed: {error}"))),
+        Finished::Panicked(message) => return Err(Halt::internal(format!("panic: {message}"))),
+        Finished::TimedOut => {
             let seconds = budget.as_secs_f64();
             return Err(Halt::degraded(format!(
                 "lint timed out after {seconds:.1} s"
