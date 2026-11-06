@@ -1,7 +1,8 @@
-//! The hooks that Claude Code runs around tool calls. The erosion gate lints the proposed text of
-//! each Write and Edit, decides whether to block, advise or allow, and appends one log record.
-//! The search gate holds broad text search until a localizing agentless call, and records that
-//! call.
+//! The hooks that Claude Code runs around tool calls and prompts. The erosion gate lints the
+//! proposed text of each Write and Edit, decides whether to block, advise or allow, and appends
+//! one log record. The search gate holds broad text search until a localizing agentless call, and
+//! records that call. The prompt map names the files that rank first for the names in the first
+//! prompt of a session.
 
 mod call;
 mod destination;
@@ -10,6 +11,7 @@ mod gate;
 mod halt;
 mod modes;
 mod payload;
+mod prompt_map;
 mod record;
 mod report;
 mod search;
@@ -29,6 +31,7 @@ use std::sync::Arc;
 use app::{EnvConfig, Services};
 use kernel::{Clock, SystemClock};
 
+pub use crate::prompt_map::prompt_map;
 pub use crate::report::gate_report;
 pub use crate::search::{gate_check, gate_mark};
 

@@ -163,7 +163,8 @@ fn a_hook_command_line_that_names_no_hook_is_refused() {
     assert_eq!(cli::refuse_hook(&mut streams), 2);
     assert!(out.is_empty());
     let err = String::from_utf8(err).expect("UTF-8");
-    let refusal = "agentless-mcp: hook takes one argument: erosion, gate-check or gate-mark\n";
+    let refusal =
+        "agentless-mcp: hook takes one argument: erosion, gate-check, gate-mark or prompt-map\n";
     assert_eq!(err, refusal);
 }
 

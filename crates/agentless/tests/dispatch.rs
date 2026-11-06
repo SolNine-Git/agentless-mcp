@@ -7,15 +7,20 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use io::testing::Tree;
+use io::testing::{Identity, Tree};
 
 const BINARY: &str = env!("CARGO_BIN_EXE_agentless-mcp");
 const DEADLINE: Duration = Duration::from_secs(30);
 const HOOK_REFUSAL: &str =
-    "agentless-mcp: hook takes one argument: erosion, gate-check or gate-mark\n";
+    "agentless-mcp: hook takes one argument: erosion, gate-check, gate-mark or prompt-map\n";
 const GATE_LOG: &str = "AGENTLESS_GATE_LOG";
 // The shell enters `gone`, removes it, and then becomes the hook, so the hook starts there.
 const IN_REMOVED_DIRECTORY: &str = r#"cd gone && rmdir "$PWD" && exec "$0" hook "$1""#;
+const IDENTITY: Identity = Identity {
+    name: "hook tests",
+    email: "hook@example.invalid",
+    date: "2026-02-01T00:00:00Z",
+};
 
 struct Ran {
     code: Option<i32>,
@@ -112,6 +117,7 @@ fn a_hook_command_line_that_names_no_hook_is_refused() {
         &["hook", "erosion", "extra"],
         &["hook", "gate-check", "extra"],
         &["hook", "gate-mark", "extra"],
+        &["hook", "prompt-map", "extra"],
     ] {
         let ran = run(&tree, args, &[]);
         assert_eq!(
@@ -234,6 +240,67 @@ fn the_gate_hooks_run_in_a_removed_directory() {
         r#""event": "native_search_allowed", "reason": "no_session_id"}"#,
     );
     assert_eq!(after_ts(&line), format!("{tail}\n"));
+}
+
+// The prompt map also comes before the start-up directory test, and an empty stdin is silent.
+#[test]
+fn hook_prompt_map_on_an_empty_stdin_in_a_removed_directory_writes_nothing() {
+    let tree = sandbox();
+    tree.create_dir("gone").expect("the start directory");
+    let tmp = tree.path().display().to_string();
+    let mut command = Command::new("sh");
+    command.args(["-c", IN_REMOVED_DIRECTORY, BINARY, "prompt-map"]);
+
+    let ran = fed(command, &tree, "", &[("TMPDIR", &tmp)]);
+
+    let quiet = (Some(0), "", "");
+    assert_eq!((ran.code, ran.out.as_str(), ran.err.as_str()), quiet);
+}
+
+#[test]
+fn hook_prompt_map_names_the_files_that_rank_first_for_a_first_prompt() {
+    let tree = sandbox();
+    let repo = tree.create_dir("repo").expect("the repository directory");
+    tree.create_dir("repo/src/billing")
+        .expect("a source directory");
+    tree.write_file(
+        "repo/src/billing/invoice.py",
+        "class InvoiceTotal:\n    pass\n",
+    )
+    .expect("a source file");
+    let vars = env(&tree, &[]);
+    for args in [
+        &["init", "--quiet", "-b", "main"][..],
+        &["add", "-A"],
+        &["commit", "--quiet", "-m", "fixture"],
+    ] {
+        drop(io::testing::run_git(&repo, args, &vars, &IDENTITY));
+    }
+    let payload = serde_json::json!({
+        "session_id": "s1",
+        "cwd": repo,
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "InvoiceTotal is wrong in `src/billing/invoice.py`.",
+    });
+    let tmp = tree.path().display().to_string();
+
+    let ran = gate(
+        &tree,
+        "prompt-map",
+        &payload.to_string(),
+        &[("TMPDIR", &tmp)],
+    );
+
+    assert_eq!((ran.code, ran.err.as_str()), (Some(0), ""));
+    let reply: serde_json::Value = serde_json::from_str(&ran.out).expect("one JSON object");
+    let context = reply["hookSpecificOutput"]["additionalContext"].as_str();
+    let head = "Repository map (agentless-mcp): for src/billing/invoice.py, InvoiceTotal in this \
+                task, the files that rank first are src/billing/invoice.py";
+    assert!(
+        context.is_some_and(|text| text.starts_with(head)),
+        "{}",
+        ran.out
+    );
 }
 
 #[test]

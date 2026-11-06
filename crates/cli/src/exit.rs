@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::panic::PanicHookInfo;
 
 use kernel::Error as Kind;
-use prompts::messages::WALK_REFUSED_CLI;
+use prompts::messages::{HOOK_USAGE, WALK_REFUSED_CLI};
 use render::one_line;
 
 use crate::Streams;
@@ -85,13 +85,9 @@ fn flush_failure(error: &io::Error) -> String {
     )
 }
 
-/// Writes the refusal of a `hook` command line that names none of the three hooks, and returns 2.
+/// Writes the refusal of a `hook` command line that names none of the four hooks, and returns 2.
 pub fn refuse_hook(streams: &mut Streams<'_>) -> u8 {
-    fail(
-        streams.err,
-        "hook takes one argument: erosion, gate-check or gate-mark",
-        EXIT_USAGE,
-    )
+    fail(streams.err, HOOK_USAGE, EXIT_USAGE)
 }
 
 /// Returns the one stderr line that reports a panic.
