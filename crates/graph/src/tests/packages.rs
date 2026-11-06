@@ -15,9 +15,14 @@ const PACKAGE: [(&str, &str); 6] = [
 
 // The `(module, target)` rows of each statement of the file `path` written as `text`.
 fn rows(path: &str, text: &str) -> Vec<(usize, String, String)> {
+    rows_of(&[(path, text)], path)
+}
+
+// The rows of the file `path` when each `(path, text)` of `written` replaces or adds a file.
+fn rows_of(written: &[(&str, &str)], path: &str) -> Vec<(usize, String, String)> {
     let mut files = PACKAGE.to_vec();
-    files.retain(|(held, _)| *held != path);
-    files.push((path, text));
+    files.retain(|(held, _)| written.iter().all(|(replaced, _)| replaced != held));
+    files.extend_from_slice(written);
     let files = scanned(&files);
     let scopes = Scopes::build(&files);
     let scope = scopes.get(path).expect("a scanned file");
@@ -80,6 +85,120 @@ fn a_member_that_is_not_a_module_keeps_the_entry() {
     assert_eq!(
         rows("pkg/a.py", "from pkg import *\n"),
         [row(0, "pkg", "pkg/__init__.py")]
+    );
+}
+
+// The rows of `from pkg import mod` in pkg/a.py when pkg/__init__.py is written as `entry`.
+fn entry_rows(entry: &str) -> Vec<(usize, String, String)> {
+    let written = [
+        ("pkg/__init__.py", entry),
+        ("pkg/a.py", "from pkg import mod\n"),
+    ];
+    rows_of(&written, "pkg/a.py")
+}
+
+fn kept() -> [(usize, String, String); 2] {
+    [
+        row(0, "pkg", "pkg/__init__.py"),
+        row(0, "pkg.mod", "pkg/mod.py"),
+    ]
+}
+
+fn dropped() -> [(usize, String, String); 1] {
+    [row(0, "pkg.mod", "pkg/mod.py")]
+}
+
+#[test]
+fn an_entry_that_defines_the_member_keeps_the_row_to_it() {
+    let entries = [
+        "def mod():\n    pass\n",
+        "class mod:\n    pass\n",
+        "if True:\n    def mod():\n        pass\n",
+    ];
+    for entry in entries {
+        assert_eq!(entry_rows(entry), kept(), "{entry:?}");
+    }
+}
+
+// Only an upper-case assignment is a symbol of the facts, so the rule never sees a lower-case one.
+#[test]
+fn an_entry_that_assigns_an_upper_case_member_keeps_the_row_to_it() {
+    let written = [
+        ("pkg/__init__.py", "MOD = 1\n"),
+        ("pkg/MOD.py", ""),
+        ("pkg/a.py", "from pkg import MOD\n"),
+    ];
+    assert_eq!(
+        rows_of(&written, "pkg/a.py"),
+        [
+            row(0, "pkg", "pkg/__init__.py"),
+            row(0, "pkg.MOD", "pkg/MOD.py")
+        ]
+    );
+    assert_eq!(entry_rows("mod = 1\n"), dropped());
+}
+
+#[test]
+fn an_entry_that_imports_another_object_as_the_member_keeps_the_row_to_it() {
+    let entries = [
+        "from .mod import mod\n",
+        "from pkg.mod import mod\n",
+        "from .sub import deep as mod\n",
+        "from . import sub as mod\n",
+        "import json as mod\n",
+        "try:\n    from .mod import mod\nexcept ImportError:\n    pass\n",
+        "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    pass\nelse:\n    from .mod import mod\n",
+    ];
+    for entry in entries {
+        assert_eq!(entry_rows(entry), kept(), "{entry:?}");
+    }
+}
+
+#[test]
+fn an_entry_that_binds_the_submodule_itself_or_another_name_gives_no_row_to_it() {
+    let entries = [
+        "from . import mod\n",
+        "from pkg import mod\n",
+        "import pkg.mod as mod\n",
+        "from .mod import y\nname = 1\n",
+        "",
+    ];
+    for entry in entries {
+        assert_eq!(entry_rows(entry), dropped(), "{entry:?}");
+    }
+}
+
+#[test]
+fn an_import_that_does_not_run_at_load_rebinds_no_member() {
+    let entries = [
+        "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from .mod import mod\n",
+        "import typing as t\nif t.TYPE_CHECKING:\n    from .mod import mod\n",
+        "def load():\n    from .mod import mod\n",
+    ];
+    for entry in entries {
+        assert_eq!(entry_rows(entry), dropped(), "{entry:?}");
+    }
+}
+
+#[test]
+fn one_rebound_member_keeps_the_row_of_the_whole_statement() {
+    let entry = ("pkg/__init__.py", "from .mod import mod\n");
+    let mixed = [entry, ("pkg/a.py", "from pkg import mod, sub\n")];
+    assert_eq!(
+        rows_of(&mixed, "pkg/a.py"),
+        [
+            row(0, "pkg", "pkg/__init__.py"),
+            row(0, "pkg.mod", "pkg/mod.py"),
+            row(0, "pkg.sub", "pkg/sub/__init__.py")
+        ]
+    );
+    // The entry's attribute is the member's name, not the importer's alias for it.
+    let aliased = [entry, ("pkg/a.py", "from pkg import mod as m\n")];
+    assert_eq!(rows_of(&aliased, "pkg/a.py"), kept());
+    let nested = [entry, ("pkg/sub/b.py", "from .. import mod\n")];
+    assert_eq!(
+        rows_of(&nested, "pkg/sub/b.py"),
+        [row(0, "", "pkg/__init__.py"), row(0, "mod", "pkg/mod.py")]
     );
 }
 

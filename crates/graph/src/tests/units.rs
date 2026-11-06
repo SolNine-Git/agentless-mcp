@@ -1,7 +1,9 @@
 use serde::Deserialize;
 use text::testing::cases;
 
-use crate::imports::{inside_package, resolve_import_target, resolve_imported_submodule};
+use crate::imports::{
+    inside_package, is_package_entry, resolve_import_target, resolve_imported_submodule,
+};
 use crate::paths::{PathIndex, module_stems, module_tail, normalized, normpath, stem};
 use crate::unresolved::{names_this_repository, repository_segments};
 
@@ -168,6 +170,22 @@ fn an_absolute_import_in_a_python_package_never_resolves_beside_the_importer() {
         resolve("sphinx/util/math.c", "util.h", 0),
         Some("sphinx/util/util.h")
     );
+}
+
+#[test]
+fn a_package_entry_is_an_init_file_at_any_depth() {
+    let cases = [
+        ("__init__.py", true),
+        ("pkg/__init__.py", true),
+        ("pkg/sub/__init__.py", true),
+        ("pkg/my__init__.py", false),
+        ("pkg/__init__.pyi", false),
+        ("pkg/mod.py", false),
+        ("__init__.py/a.py", false),
+    ];
+    for (path, entry) in cases {
+        assert_eq!(is_package_entry(path), entry, "{path}");
+    }
 }
 
 #[test]

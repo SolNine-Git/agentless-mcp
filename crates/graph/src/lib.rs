@@ -4,6 +4,7 @@
 mod ambiguous;
 mod communities;
 mod cycles;
+mod entries;
 mod files;
 mod flood;
 mod imports;
@@ -28,7 +29,7 @@ pub use communities::{
 pub use cycles::{Cycle, import_chain, import_cycles};
 pub use files::{FileGraph, Weighting};
 pub use flood::{Flood, Reached, flood_backward};
-pub use imports::ImportTargets;
+pub use imports::{ImportTargets, is_package_entry};
 pub use lookup::{
     Lookup, Target, TargetForm, data_key_at, definitions_for, holds_file, lookup_target,
     parse_target, path_end, path_name_id, references_to, resolve_definitions,

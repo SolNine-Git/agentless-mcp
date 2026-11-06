@@ -105,10 +105,30 @@ pub(crate) fn resolve_imported_submodule<'a>(
 // The importer is in the package whose entry point `target` is: the directory of a root
 // `__init__.py` holds every file.
 pub(crate) fn inside_package(importer: &str, target: &str) -> bool {
-    target
-        .strip_suffix(PACKAGE_ENTRY)
+    package_directory(target).is_some_and(|directory| importer.starts_with(directory))
+}
+
+/// Return whether `path` is a package entry, `__init__.py`, whose symbols the import graph reads.
+#[must_use]
+pub fn is_package_entry(path: &str) -> bool {
+    package_directory(path).is_some()
+}
+
+// The directory of the package whose entry point is `path`, with its final "/"; empty at the root.
+fn package_directory(path: &str) -> Option<&str> {
+    path.strip_suffix(PACKAGE_ENTRY)
         .filter(|directory| directory.is_empty() || directory.ends_with('/'))
-        .is_some_and(|directory| importer.starts_with(directory))
+}
+
+// The local name that `import a.b` binds and the module it names: `a` and `a` unaliased, the
+// alias and `a.b` aliased.
+pub(crate) fn module_object(import: &Import) -> (&str, &str) {
+    if import.alias.is_empty() {
+        let package = import.module.split('.').next().unwrap_or_default();
+        (package, package)
+    } else {
+        (import.alias.as_str(), import.module.as_str())
+    }
 }
 
 // Every candidate starts with its base, so a base that no path starts with skips its suffixes.

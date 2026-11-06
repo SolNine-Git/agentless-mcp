@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use checks::{Finding, Severity};
 use facts::Facts;
-use graph::{Cycle, FileFacts, Scopes, SymbolGraph, import_cycles};
+use graph::{Cycle, FileFacts, Scopes, SymbolGraph, import_cycles, is_package_entry};
 use patch::Edit;
 use syntax::Unparsable;
 
@@ -86,8 +86,8 @@ fn cycles_of(files: &[FileFacts]) -> Vec<Cycle<'_>> {
     import_cycles(&SymbolGraph::imports(&Scopes::build(files)))
 }
 
-// Each scanned file with only its import table and Cargo manifest, read again from the patched
-// text for an edited file: the import graph reads nothing else.
+// Each scanned file with only what the import graph reads, read again from the patched text for
+// an edited file.
 fn patched_files(
     facts: &PatchBaseline<'_>,
     contents: &[(String, String)],
@@ -100,25 +100,34 @@ fn patched_files(
     facts
         .files()
         .map(|file| {
-            let (imports, manifest) = match patched.get(file.path.as_str()) {
-                Some(text) => {
-                    let read = extract(parse, file.language, text)?;
-                    (read.imports, read.manifest)
-                }
-                None => (file.facts.imports.clone(), file.facts.manifest.clone()),
-            };
+            let read = patched.get(file.path.as_str());
+            let read = read
+                .map(|text| extract(parse, file.language, text))
+                .transpose()?;
             Ok(FileFacts {
                 path: file.path.clone(),
                 language: file.language,
                 line_count: file.line_count,
-                facts: Facts {
-                    imports,
-                    manifest,
-                    ..Facts::default()
-                },
+                facts: import_view(&file.path, read.as_ref().unwrap_or(&file.facts)),
             })
         })
         .collect()
+}
+
+// The import table, the Cargo manifest and, of a package entry, the symbols: the import graph
+// reads nothing else.
+fn import_view(path: &str, facts: &Facts) -> Facts {
+    let symbols = if is_package_entry(path) {
+        facts.symbols.clone()
+    } else {
+        Vec::new()
+    };
+    Facts {
+        imports: facts.imports.clone(),
+        manifest: facts.manifest.clone(),
+        symbols,
+        ..Facts::default()
+    }
 }
 
 fn cycle_finding(cycle: &Cycle<'_>) -> Finding {
