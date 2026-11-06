@@ -276,6 +276,17 @@ unlock broad discovery. Name the
 tools and the order in a dispatch prompt as well. A worker told only to
 navigate the repository defaults to Grep.
 
+The prompt-map hook (`agentless-mcp hook prompt-map`, on `UserPromptSubmit`)
+adds one sentence to the first prompt of a session that names files or
+symbols of the repository: "Repository map (agentless-mcp): for NAMES in this
+task, the files that rank first are FILES." NAMES are the file paths,
+backticked names, CamelCase and snake_case words of the prompt that the map
+resolved. FILES are the first two files of `orient(map)` with those names as
+the focus at file granularity. Read them as the first files to open, not as a
+verdict. The hook speaks at most once per session, and is silent when no name
+resolves or the map takes more than 5 seconds. Its `UserPromptSubmit` block is
+in `contrib/hooks/settings-example.json`.
+
 Calls on one connection may overlap. Every tool answers on a worker thread
 rather than on the event loop, so a cold map or a 30-second `history` does not
 hold up the answers to the calls beside it.

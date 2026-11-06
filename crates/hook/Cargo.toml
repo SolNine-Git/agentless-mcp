@@ -1,6 +1,6 @@
 [package]
 name = "hook"
-description = "The hooks that Claude Code runs around tool calls: the erosion gate before each Write and Edit, with its in-process lint, decision and log record, and the search gate that holds broad text search until a localizing agentless call."
+description = "The hooks that Claude Code runs around tool calls and prompts: the erosion gate before each Write and Edit, with its in-process lint, decision and log record, the search gate that holds broad text search until a localizing agentless call, and the prompt map that names the files that rank first for the names in the first prompt of a session."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

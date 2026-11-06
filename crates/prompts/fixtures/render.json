@@ -1147,6 +1147,10 @@
       },
       "text": "quote: core.py no longer defines quote. Pass a stable id from a map, overview, find, explain or locate answer; history is span-scoped, so a bare name is refused."
     },
+    "hook_usage": {
+      "arguments": {},
+      "text": "hook takes one argument: erosion, gate-check, gate-mark or prompt-map"
+    },
     "lint_no_checks": {
       "arguments": {
         "checks": "arity, complexity_delta"
@@ -1486,6 +1490,13 @@
         "shown": 2
       },
       "text": "12 definitions of run, and 2 are listed: py:a.py::run, py:b.py::run. Pass one as the source."
+    },
+    "prompt_map_context": {
+      "arguments": {
+        "paths": "lib/ansible/plugins/filter/human_to_bytes.yml and lib/ansible/module_utils/common/text/converters.py",
+        "seeds": "human_to_bytes, ignore_errors"
+      },
+      "text": "Repository map (agentless-mcp): for human_to_bytes, ignore_errors in this task, the files that rank first are lib/ansible/plugins/filter/human_to_bytes.yml and lib/ansible/module_utils/common/text/converters.py."
     },
     "refs_absent": {
       "arguments": {

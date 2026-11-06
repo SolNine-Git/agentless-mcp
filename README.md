@@ -593,6 +593,57 @@ shell half of the gate does the work. The `anthropic/alwaysLoad` hint does not
 port -- Codex always defers MCP schemas -- so Codex runs deferred schemas plus
 the gate, which measured indistinguishable from eager on every metric.
 
+### Prompt map (first-prompt hook)
+
+`agentless-mcp hook prompt-map` runs on Claude Code's `UserPromptSubmit`
+event. On the first prompt of a session that names files or symbols of the
+repository, it maps those names and adds one sentence of context, which the
+model reads with the prompt:
+
+```
+Repository map (agentless-mcp): for human_to_bytes, ignore_errors in this task, the files that rank first are lib/ansible/plugins/filter/human_to_bytes.yml and lib/ansible/module_utils/common/text/converters.py.
+```
+
+- **The names.** The paths in the prompt that are files of the repository,
+  then backticked names, then CamelCase and snake_case words of 4 or more
+  characters, at most 12. A leading `/` is read below the root, and a path
+  with an empty, `.` or `..` part is never a name.
+- **The files.** The first 2 files of `map` with those names as the focus, at
+  file granularity, run in the hook's own process under a 5-second deadline.
+  The repository is the git top level of the payload's `cwd`. The sentence
+  shows the first 4 names that the map resolved, and at most 768 bytes.
+- **Once per session.** The hook writes a marker named by the SHA-256 of the
+  session id in `$TMPDIR/agentless_prompt_map/` (`/tmp/agentless_prompt_map/`
+  when `TMPDIR` is unset or empty) before the map runs, so a deadline also
+  uses the session's one try. A prompt with no name writes no marker, so a
+  later prompt of the session can still get the sentence. The directory is
+  trusted on the search gate's rule: a directory, not a symlink, that the user
+  owns and that no group or other user can write. Otherwise the hook stays
+  silent.
+- **Silent, always exit 0.** No name, no name that the map resolves, the
+  deadline, a `cwd` outside git, a malformed payload, or any internal error
+  prints nothing and exits 0. The hook never writes stderr. Claude Code blocks
+  a prompt on exit 2, and it adds any plain stdout of this event to the
+  context.
+- **Log.** With `AGENTLESS_GATE_LOG` set, each run appends one JSON line with
+  `"hook": "prompt-map"`, the event (`emitted` or `silent`), the reason, the
+  names found in the prompt (`seeds`), the files and the map's milliseconds.
+
+Install it with the `UserPromptSubmit` block of
+`contrib/hooks/settings-example.json`, with the absolute path in place of the
+placeholder, as for the gate. The block sets `"timeout": 15`, three times the
+hook's own deadline.
+
+Measured, with the Python prototype of this hook on build 81d5a7e: on 240
+SWE-Explore-Bench tasks outside flat60 (H240), two sessions per task and arm in
+one interleaved window (Claude Code 2.1.318, Sonnet), the hook raised the
+weighted core coverage of the top 10 regions from 0.1186 to 0.1305 (+0.0119,
+95% CI +0.0043 to +0.0199). A placebo copy of the native arm moved it by
+-0.0009 (CI -0.0068 to +0.0053), and the context tokens per session fell
+5.9%. The hook spoke in 341 of the 480 sessions. Coverage is a retrieval
+measure, not a measure of the patch. The record is
+[`docs/analysis/runs/2026-11-05_irp-interleaved-ph2c/result.md`](docs/analysis/runs/2026-11-05_irp-interleaved-ph2c/result.md).
+
 ### Erosion gate (per-edit hook)
 
 `agentless-mcp hook erosion` checks each Claude Code `Write` and `Edit` call

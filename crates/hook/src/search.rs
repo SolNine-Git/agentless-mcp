@@ -2,7 +2,7 @@
 //! agentless call, and gate-mark records that call in a marker file named for the session.
 
 mod check;
-mod log;
+pub(crate) mod log;
 mod mark;
 mod marker;
 mod shell;

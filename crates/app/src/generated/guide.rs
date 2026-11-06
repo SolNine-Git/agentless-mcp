@@ -258,12 +258,25 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         `graph(communities|cycles|diagram|health)` do not\nunlock broad \
         discovery. Name the\ntools and the order in a dispatch prompt \
         as well. A worker told only to\nnavigate the repository \
-        defaults to Grep.\n\nCalls on one connection may overlap. Every \
-        tool answers on a worker thread\nrather than on the event loop, \
-        so a cold map or a 30-second `history` does not\nhold up the \
-        answers to the calls beside it.\n\n### `map` (`orient` \
-        operation `map`) -- where does this live\n\n```\nagentless-mcp \
-        map --focus src/billing/invoice.py --focus quote --max-files \
+        defaults to Grep.\n\nThe prompt-map hook (`agentless-mcp hook \
+        prompt-map`, on `UserPromptSubmit`)\nadds one sentence to the \
+        first prompt of a session that names files or\nsymbols of the \
+        repository: \"Repository map (agentless-mcp): for NAMES in \
+        this\ntask, the files that rank first are FILES.\" NAMES are \
+        the file paths,\nbackticked names, CamelCase and snake_case \
+        words of the prompt that the map\nresolved. FILES are the first \
+        two files of `orient(map)` with those names as\nthe focus at \
+        file granularity. Read them as the first files to open, not as \
+        a\nverdict. The hook speaks at most once per session, and is \
+        silent when no name\nresolves or the map takes more than 5 \
+        seconds. Its `UserPromptSubmit` block is\nin \
+        `contrib/hooks/settings-example.json`.\n\nCalls on one \
+        connection may overlap. Every tool answers on a worker \
+        thread\nrather than on the event loop, so a cold map or a \
+        30-second `history` does not\nhold up the answers to the calls \
+        beside it.\n\n### `map` (`orient` operation `map`) -- where \
+        does this live\n\n```\nagentless-mcp map --focus \
+        src/billing/invoice.py --focus quote --max-files \
         10\n```\n\nRows look like this:\n\n```\nsrc/billing/invoice.py  \
         (rank 0.4865)\n  stable ids: \
         py:src/billing/invoice.py::<QualifiedName>\n  class Invoice  \
@@ -1852,30 +1865,30 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3_599, 4_432),
     ("stable-ids", 4_434, 5_923),
     ("the-two-surfaces", 5_925, 11_608),
-    ("per-tool-usage", 11_610, 102_170),
-    ("claude-code-specifics", 13_226, 15_038),
-    ("map", 15_040, 25_069),
-    ("tree", 25_071, 25_392),
-    ("skeleton", 25_394, 26_759),
-    ("expand", 26_761, 28_734),
-    ("slice", 28_736, 29_573),
-    ("find-symbol", 29_575, 32_260),
-    ("refs", 32_262, 39_999),
-    ("history", 40_001, 42_834),
-    ("explain", 42_836, 44_811),
-    ("path", 44_813, 47_913),
-    ("cycles", 47_915, 49_420),
-    ("communities", 49_422, 51_945),
-    ("diagram", 51_947, 54_861),
-    ("health", 54_863, 61_141),
-    ("html", 61_143, 62_094),
-    ("resolve-locs", 62_096, 62_911),
-    ("capabilities", 62_913, 64_627),
-    ("index", 64_629, 67_370),
-    ("lint", 67_372, 90_970),
-    ("validate-vote", 90_972, 100_569),
-    ("warmup", 100_571, 102_170),
-    ("project-defaults-agentless-mcp-json", 102_172, 106_125),
-    ("token-counting", 106_127, 106_541),
-    ("exit-codes", 106_543, 107_001),
+    ("per-tool-usage", 11_610, 102_897),
+    ("claude-code-specifics", 13_226, 15_765),
+    ("map", 15_767, 25_796),
+    ("tree", 25_798, 26_119),
+    ("skeleton", 26_121, 27_486),
+    ("expand", 27_488, 29_461),
+    ("slice", 29_463, 30_300),
+    ("find-symbol", 30_302, 32_987),
+    ("refs", 32_989, 40_726),
+    ("history", 40_728, 43_561),
+    ("explain", 43_563, 45_538),
+    ("path", 45_540, 48_640),
+    ("cycles", 48_642, 50_147),
+    ("communities", 50_149, 52_672),
+    ("diagram", 52_674, 55_588),
+    ("health", 55_590, 61_868),
+    ("html", 61_870, 62_821),
+    ("resolve-locs", 62_823, 63_638),
+    ("capabilities", 63_640, 65_354),
+    ("index", 65_356, 68_097),
+    ("lint", 68_099, 91_697),
+    ("validate-vote", 91_699, 101_296),
+    ("warmup", 101_298, 102_897),
+    ("project-defaults-agentless-mcp-json", 102_899, 106_852),
+    ("token-counting", 106_854, 107_268),
+    ("exit-codes", 107_270, 107_728),
 ];

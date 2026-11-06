@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 276] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 278] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1048,6 +1048,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 276] = [
     ),
     (
         "messages",
+        "hook_usage",
+        &[],
+        &[Piece::Text(messages::HOOK_USAGE)],
+    ),
+    (
+        "messages",
         "lint_no_checks",
         &["checks"],
         messages::LINT_NO_CHECKS.pieces(),
@@ -1363,6 +1369,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 276] = [
         "path_source_candidates_cut",
         &["name", "shown", "count", "listed"],
         messages::PATH_SOURCE_CANDIDATES_CUT.pieces(),
+    ),
+    (
+        "messages",
+        "prompt_map_context",
+        &["paths", "seeds"],
+        messages::PROMPT_MAP_CONTEXT.pieces(),
     ),
     (
         "messages",

@@ -10,6 +10,47 @@ Each byte count is of the served bytes.
 
 ### Added
 
+- **`agentless-mcp hook prompt-map`, a `UserPromptSubmit` hook that names
+  the files that the map ranks first for the first prompt of a session.**
+  The hook is opt-in: it runs only when the Claude Code settings hold a
+  `UserPromptSubmit` entry for it (`contrib/hooks/settings-example.json` has
+  one, with `"timeout": 15`). On the first prompt that names files or symbols
+  of the repository (the paths that are files, then backticked names, then
+  CamelCase and snake_case words of 4 or more characters, at most 12), it runs
+  `map` on those names at file granularity, in its own process, under a
+  5-second deadline. Then it adds one sentence of context: "Repository map
+  (agentless-mcp): for NAMES in this task, the files that rank first are
+  FILES." The sentence names the first 4 names that the map resolved and the
+  first 2 files, in at most 768 bytes. The hook speaks at most once per
+  session (a marker in `$TMPDIR/agentless_prompt_map/`, with the search gate's
+  trust rule), always exits 0, never writes stderr, and appends one line per
+  run to `AGENTLESS_GATE_LOG`. The `hook` usage line names the four hooks and
+  moves into the prompts data. Design: section D.2 of the PH2 screen.
+  Measured with the Python prototype of this hook on build 81d5a7e, on H240
+  (240 SWE-Explore-Bench tasks outside flat60, two sessions per task and arm
+  in one interleaved window, Claude Code 2.1.318, Sonnet): weighted core
+  coverage of the top 10 regions +0.0119 [+0.0043, +0.0199] (0.1186 to
+  0.1305, +10.0%), the placebo arm -0.0009 [-0.0068, +0.0053], and context
+  tokens per session -5.9% (record:
+  docs/analysis/runs/2026-11-05_irp-interleaved-ph2c/result.md). This build
+  against the prototype, both on this build's map, on 300 synthetic first
+  prompts (H240 and flat60, one new session each): the same event, reason and
+  text on 297. One task (apache__druid-16875) passes the deadline in both. On
+  2 tasks (rubocop__rubocop-13362 and -13503) this build names 2 files where
+  the prototype names 1. The cause is in the prototype: it reads `map --json`,
+  and when the seed `RuboCop` resolves to more than 840 files, the 16,000-token
+  output ceiling cuts `files` to 1. The prototype with build 81d5a7e gives the
+  logged result of the IRP run in 479 of its 480 sessions (the other is a
+  deadline). Against that measured build, the logged result changes on 20 of
+  the 300 tasks and the shown sentence on 12 (10 of them in H240): the Python
+  import fixes (#74) change the second file or the order of the two files on
+  17 Python tasks, and the Rust scope analysis (#70) changes the second file
+  on 1 Rust task. The map of 2 Java tasks now ends in 4.5 to 4.9 s, under the
+  deadline, from the #70 build on. Latency of the hook over the 300 first
+  prompts (warm page cache): median 0.259 s, p95 1.071 s, max 5.049 s, 1
+  deadline. The hook's seeds equal the prototype's on 30,000 of 30,000 random
+  prompts.
+
 - **`lint` gains `cycle_dodge`, an advisory check for an import that a
   function body hides from an import cycle.** It reports an import in a
   Python function body when the file that it imports imports the importing

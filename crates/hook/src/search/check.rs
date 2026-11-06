@@ -92,11 +92,11 @@ fn logged(gate: &Gate<'_>, stdin: &mut dyn Read) -> Result<Verdict, Suppressed> 
     let document = parsed(stdin)?;
     let ts = log::now(gate.clock);
     let Parsed::Value(JsonValue::Object(fields)) = &document else {
-        log::append(gate, &unread_entry(ts))?;
+        log::append(gate.log, &unread_entry(ts))?;
         return Ok(allowed(MALFORMED_PAYLOAD));
     };
     let verdict = decide(gate, fields)?;
-    log::append(gate, &entry(ts, fields, verdict))?;
+    log::append(gate.log, &entry(ts, fields, verdict))?;
     Ok(verdict)
 }
 

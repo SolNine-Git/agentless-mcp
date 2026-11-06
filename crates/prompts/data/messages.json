@@ -97,7 +97,7 @@
   "refs_callers_unlisted": "... {count} more {count:caller|callers} not listed (limit {limit})",
   "refs_candidates_unlisted": "... {count} more {count:candidate|candidates} not listed (limit {limit})",
   "explain_definitions_unlisted": "... {count} more {count:definition|definitions} not listed (limit {limit})",
-  "explain_edges_unlisted":"... {count} more {count:edge|edges} at this tier not listed",
+  "explain_edges_unlisted": "... {count} more {count:edge|edges} at this tier not listed",
   "explain_imports_unlisted": "... {count} more declared {count:import|imports} not listed (limit {limit})",
   "explain_importers_unlisted": "... {count} more {count:importer|importers} not listed (limit {limit})",
   "explain_tie": "ambiguous: {count} definitions match {target} equally; this explains the first in path order. Pass a stable id to explain another.",
@@ -261,5 +261,7 @@
   "config_boundary_globs_dropped": "boundary_globs in {config}: {count} {count:entry is not a repo-relative glob|entries are not repo-relative globs} of at most {chars} characters. {count:It is|They are} ignored.",
   "config_stoplist_dropped": "stoplist in {config}: {count} {count:entry is not a bare name|entries are not bare names} of at most {chars} characters and {count:was|were} dropped",
   "config_unknown_keys_suppressed": "{count} further unknown {count:key|keys} in {config}: warnings suppressed",
-  "gate_deny": "Structural pass first: no agentless call has localized this session yet.\nCall mcp__agentless__orient with operation=\"map\" and focus seeds from the task (file paths or symbol names). Broad Grep, Glob and shell search unlock after that call. A Grep of one existing file runs now.\n"
+  "gate_deny": "Structural pass first: no agentless call has localized this session yet.\nCall mcp__agentless__orient with operation=\"map\" and focus seeds from the task (file paths or symbol names). Broad Grep, Glob and shell search unlock after that call. A Grep of one existing file runs now.\n",
+  "hook_usage": "hook takes one argument: erosion, gate-check, gate-mark or prompt-map",
+  "prompt_map_context": "Repository map (agentless-mcp): for {seeds} in this task, the files that rank first are {paths}."
 }

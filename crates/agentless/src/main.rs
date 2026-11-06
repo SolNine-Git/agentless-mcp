@@ -38,6 +38,7 @@ fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
         [Some("hook"), Some("erosion")] => return erosion(env, services),
         [Some("hook"), Some("gate-check")] => return searched(env),
         [Some("hook"), Some("gate-mark")] => return marked(env),
+        [Some("hook"), Some("prompt-map")] => return prompt_mapped(env, services),
         _ => {}
     }
     if words.first() == Some(&Some("gate-report")) {
@@ -73,6 +74,18 @@ fn marked(env: &EnvConfig) -> u8 {
     keep_panic_lines();
     hook::gate_mark(env, &mut io::stdin().lock());
     0
+}
+
+// The prompt map writes its reply itself. Claude Code reads plain stdout as context on this event,
+// so a panic line must not reach a stream.
+fn prompt_mapped(env: &EnvConfig, services: &Services) -> u8 {
+    keep_panic_lines();
+    hook::prompt_map(
+        env,
+        services,
+        &mut io::stdin().lock(),
+        &mut io::stdout().lock(),
+    )
 }
 
 // The report opens its paths as given, so like the hook it needs no start-up directory.

@@ -1580,6 +1580,10 @@ pub const HISTORY_TARGET_UNRESOLVED: Template<(Text, Text)> = Template::new(&[
     ),
 ]);
 
+/// A text that takes no values.
+pub const HOOK_USAGE: &str = "hook takes one argument: erosion, gate-check, gate-mark or \
+        prompt-map";
+
 /// A template that takes `checks`.
 pub const LINT_NO_CHECKS: Template<Text> = Template::new(&[
     Piece::Text("no check selected. Name at least one of these checks: "),
@@ -2034,6 +2038,15 @@ pub const PATH_SOURCE_CANDIDATES_CUT: Template<(Text, Count, Count, Text)> = Tem
     Piece::Text(" listed: "),
     Piece::Value(3),
     Piece::Text(". Pass one as the source."),
+]);
+
+/// A template that takes (`paths`, `seeds`).
+pub const PROMPT_MAP_CONTEXT: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("Repository map (agentless-mcp): for "),
+    Piece::Value(1),
+    Piece::Text(" in this task, the files that rank first are "),
+    Piece::Value(0),
+    Piece::Text("."),
 ]);
 
 /// A template that takes `target`.

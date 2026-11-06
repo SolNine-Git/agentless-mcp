@@ -67,10 +67,10 @@ fn marked(gate: &Gate<'_>, stdin: &mut dyn Read) -> Result<(), Suppressed> {
         return Err(Suppressed);
     }
     let Some(reason) = unlock_reason(as_text(call.tool), as_text(call.operation)) else {
-        return log::append(gate, &call.entry(gate, CALL_IGNORED, NON_LOCALIZING));
+        return log::append(gate.log, &call.entry(gate, CALL_IGNORED, NON_LOCALIZING));
     };
     marker::write(gate, session, &reason, &log::value(call.tool))?;
-    log::append(gate, &call.entry(gate, STRUCTURAL_CALL, &reason))
+    log::append(gate.log, &call.entry(gate, STRUCTURAL_CALL, &reason))
 }
 
 // The fields of one call that its log line names.
