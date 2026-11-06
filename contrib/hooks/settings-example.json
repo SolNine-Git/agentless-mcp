@@ -31,6 +31,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook prompt-map",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }
