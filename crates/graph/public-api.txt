@@ -649,6 +649,7 @@ pub fn graph::holds_file(&graph::NameIndex<'_>, &str) -> bool
 pub fn graph::import_chain<'g, 'a>(&'g graph::SymbolGraph<'a>, &str, &str, impl core::ops::function::Fn(&'a str, u32) -> bool) -> core::option::Option<alloc::vec::Vec<&'g graph::SymbolEdge<'a>>>
 pub fn graph::import_cycles<'a>(&graph::SymbolGraph<'a>) -> alloc::vec::Vec<graph::Cycle<'a>>
 pub fn graph::in_name_graph(&graph::FileFacts) -> bool
+pub fn graph::is_package_entry(&str) -> bool
 pub fn graph::joins_name_graph(syntax::language::Language) -> bool
 pub fn graph::lookup_target<'a>(&graph::NameIndex<'a>, &graph::Target<'_>) -> graph::Lookup<'a>
 pub fn graph::name_multiplier(&str, &alloc::collections::btree::set::BTreeSet<alloc::string::String>) -> f64

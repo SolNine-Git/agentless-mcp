@@ -9,7 +9,7 @@ use checks::{
     LocalImports, Outcome, Pair, Tree, Unparsed,
 };
 use facts::{Facts, Import, Runs};
-use graph::{FileFacts, Scopes, SymbolGraph, enclosing_symbol, import_chain};
+use graph::{FileFacts, Scopes, SymbolGraph, enclosing_symbol, import_chain, is_package_entry};
 use kernel::{Deadline, Span, checkpoint};
 use syntax::{ImportRule, Language};
 
@@ -67,7 +67,7 @@ pub(crate) fn cycle_dodge(scan: &TreeScan, pairs: &[&Pair]) -> Result<Outcome, E
 // Rust paths resolve through, and, in scope, the symbols that name a statement's function.
 fn import_facts(file: &FileFacts) -> FileFacts {
     let facts = &file.facts;
-    let symbols = if in_dodge_scope(&file.path) {
+    let symbols = if in_dodge_scope(&file.path) || is_package_entry(&file.path) {
         facts.symbols.clone()
     } else {
         Vec::new()
@@ -288,3 +288,6 @@ impl LoadChains for Chains<'_, '_> {
         Ok(found)
     }
 }
+
+#[cfg(test)]
+mod tests;

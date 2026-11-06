@@ -380,6 +380,46 @@ fn a_patch_that_closes_a_rust_module_cycle_through_crate_paths_is_a_new_cycle() 
     assert_eq!(cycles, ["src/a.rs -> src/b.rs -> src/a.rs"]);
 }
 
+// The patched tree's import graph reads a package entry's symbols, as the scan's graph does, so a
+// patch elsewhere keeps the component that the entry's re-bound member closes whole.
+#[test]
+fn a_patch_beside_a_package_entry_that_defines_a_member_gives_no_new_cycle() {
+    let texts: BTreeMap<String, String> = [
+        (
+            "pkg/__init__.py",
+            "from .a import f\n\ndef b():\n    pass\n",
+        ),
+        ("pkg/a.py", "from pkg import b\n\ndef f():\n    pass\n"),
+        ("pkg/b.py", "from .a import f\n"),
+        ("pkg/c.py", "x = 1\n"),
+    ]
+    .into_iter()
+    .map(|(path, text)| (path.to_owned(), text.to_owned()))
+    .collect();
+    let files: Vec<FileFacts> = texts
+        .iter()
+        .map(|(path, text)| scanned(path, text))
+        .collect();
+    let index = NameIndex::build(&files);
+    let scopes = Scopes::build(&files);
+    let resolver = Resolver::new(&index, &scopes);
+    let facts = PatchBaseline::new(&resolver, &texts, DeclaredDependencies::default());
+    let edit = Edit {
+        index: 0,
+        path: "pkg/c.py".to_owned(),
+        search: "x = 1".to_owned(),
+        replace: "x = 2".to_owned(),
+    };
+    let report = lint_with(&[edit], &facts, &|language, source| {
+        syntax::parse(language, source)
+    });
+    let cycles: Vec<&str> = (report.findings.iter())
+        .filter(|finding| finding.check == CHECK_CYCLE_DELTA)
+        .map(|finding| finding.evidence.as_str())
+        .collect();
+    assert!(cycles.is_empty(), "{cycles:?}");
+}
+
 #[test]
 fn a_gap_has_the_shape_of_a_pair_checks_not_checked_row() {
     let pairs = Pair::measure_all(

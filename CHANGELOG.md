@@ -679,11 +679,13 @@ Each byte count is of the served bytes.
 
 ### Fixed
 
-- **Three Python import forms no longer give a false import edge.** Each of
-  the 10 false alarms in 60 blind `cycle_dodge` findings (record:
-  docs/analysis/2026-11-05_cycle-dodge-measurement.md) came from one of them.
-  The import resolver is shared, so the Python import edges of map, refs,
-  explain, cycles, path and `cycle_dodge` change with it.
+- **Three Python import rules remove false import edges, and some true
+  edges of Python 2 code and top-level scripts.** Each of the 10 false
+  alarms in 60 blind `cycle_dodge` findings (record:
+  docs/analysis/2026-11-05_cycle-dodge-measurement.md) came from one of the
+  three forms that the rules fix. The import resolver is shared, so the
+  Python import edges of map, refs, explain, cycles, path and `cycle_dodge`
+  change with it.
   - An `if` block under a name that the file's imports bind to
     TYPE_CHECKING is a TYPE_CHECKING block: `t.TYPE_CHECKING` after `import
     typing as t`, and `Y` after `from typing import TYPE_CHECKING as Y`. Its
@@ -695,11 +697,17 @@ Each byte count is of the served bytes.
     no longer resolves to a file beside the importer: `from math import
     sqrt` in sphinx/util/parallel.py no longer names sphinx/util/math.py. A
     Python file in a directory without `__init__.py` still tries the file
-    beside it first.
+    beside it first. The true edges that this removes, of a Python 2
+    implicit relative import and of a top-level script in a package
+    directory, are a known limit.
   - `from P import N`, where P/N.py or P/N/__init__.py exists, has no edge
     to P/__init__.py when the importing file is inside package P, because
     such a file runs after P/__init__.py has started. An importer outside P
-    keeps that edge, and so does a member that is not a module.
+    keeps that edge, and so does a member that is not a module. So does a
+    member that P/__init__.py binds to another object when it loads: `from
+    .N import N` binds the class, as do a def, a class and an upper-case
+    constant named N, while `from . import N` binds the module. An import in
+    a function or under TYPE_CHECKING binds nothing here.
 
   The facts version goes from 12 to 13, so every tag cache indexes again
   once. The recorded graph corpora `ext_python` and `ext_communities` change:
@@ -735,6 +743,20 @@ Each byte count is of the served bytes.
   snapshot's pygletplot, 1 in a moto ANTLR branch that runs only as a
   top-level module), and for one `from P import N` whose P/__init__.py
   re-binds N to a class (sentence-transformers' `SentenceTransformer`).
+
+  The exception for a re-bound member (a0c7dd2) keeps that edge. It changes
+  no fact, recorded value or golden. Measured with its release build against
+  the deployed build of b3969db (same record): on the 14 U3 copies, the
+  `cycle_dodge` output is byte-equal, so the 10 false alarms stay gone. On
+  Loc-Bench, `ranked_files` change in 5 of 150 seeded and 6 of 150 no-seed
+  instances, each one of the 10 whose checkout holds a re-bound member row;
+  recall@10 does not move, and MAP and nDCG@10 move by at most 0.0003, each
+  95% interval holding 0. The surface diff changes cycles in 5 of 150
+  Loc-Bench answers, each with one more cycle, and map in 7 of 150; no refs
+  or explain answer changes, and no U3 answer changes. In a read sample of
+  20 restored rows, the new answer is right in all 20. Derived: the
+  exception keeps 92 of the 7,856 Loc-Bench rows that d650012 removed, and 3
+  of the 1,317 U3 rows.
 
 - **The not_checked row of `callee_overlap` for a file that does not parse
   names its own check.** It gave the complexity text: "Complexity is

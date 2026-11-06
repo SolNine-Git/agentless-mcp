@@ -6,7 +6,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use facts::Import;
 use syntax::Language;
 
-use crate::imports::{inside_package, resolve_import_target, resolve_imported_submodule};
+use crate::entries::EntryNames;
+use crate::imports::{
+    inside_package, module_object, resolve_import_target, resolve_imported_submodule,
+};
 use crate::paths::PathIndex;
 use crate::rust_paths::RustTree;
 use crate::scan::FileFacts;
@@ -105,15 +108,20 @@ impl<'a> Scopes<'a> {
     #[must_use]
     pub fn build(files: &'a [FileFacts]) -> Scopes<'a> {
         let paths = PathIndex::build(files.iter().map(|file| file.path.as_str()));
+        let entries = EntryNames::build(files, &paths);
+        let repository = Repository {
+            paths: &paths,
+            entries: &entries,
+        };
         let mut rust = RustTree::build(files, &paths);
         let mut per_file: Vec<ImportScope<'a>> = files
             .iter()
-            .map(|file| bind_file(file, &paths, &rust))
+            .map(|file| bind_file(file, &repository, &rust))
             .collect();
         if rust.holds_manifest() {
             for _ in 0..EXPORT_PASSES {
                 rust.exports = exports_of(files, &per_file);
-                rebind_rust(files, &mut per_file, &paths, &rust);
+                rebind_rust(files, &mut per_file, &rust);
             }
         }
         let mut by_path: Vec<(&'a str, usize)> = files
@@ -190,18 +198,30 @@ struct Statement<'a> {
     position: usize,
 }
 
+// What a statement of a file that is not Rust binds against: the scanned paths and the names that
+// each package entry binds.
+struct Repository<'r, 'a> {
+    paths: &'r PathIndex<'a>,
+    entries: &'r EntryNames<'a>,
+}
+
 fn bind_file<'a>(
     file: &'a FileFacts,
-    paths: &PathIndex<'a>,
+    repository: &Repository<'_, 'a>,
     rust: &RustTree<'_, 'a>,
 ) -> ImportScope<'a> {
-    let mut scope = ImportScope::default();
-    if file.language != Language::Rust {
-        for (position, import) in file.facts.imports.iter().enumerate() {
-            scope.bind_statement(&file.path, position, import, paths);
-        }
-        return scope;
+    if file.language == Language::Rust {
+        return bind_rust_file(file, rust);
     }
+    let mut scope = ImportScope::default();
+    for (position, import) in file.facts.imports.iter().enumerate() {
+        scope.bind_statement(&file.path, position, import, repository);
+    }
+    scope
+}
+
+fn bind_rust_file<'a>(file: &'a FileFacts, rust: &RustTree<'_, 'a>) -> ImportScope<'a> {
+    let mut scope = ImportScope::default();
     for (position, import) in file.facts.imports.iter().enumerate() {
         scope.bind_rust_statement(&file.path, position, import, rust);
     }
@@ -212,12 +232,11 @@ fn bind_file<'a>(
 fn rebind_rust<'a>(
     files: &'a [FileFacts],
     per_file: &mut [ImportScope<'a>],
-    paths: &PathIndex<'a>,
     rust: &RustTree<'_, 'a>,
 ) {
     let rebound = files.iter().zip(per_file);
     for (file, scope) in rebound.filter(|(file, _)| file.language == Language::Rust) {
-        *scope = bind_file(file, paths, rust);
+        *scope = bind_rust_file(file, rust);
     }
 }
 
@@ -475,18 +494,20 @@ impl<'a> ImportScope<'a> {
         path: &'a str,
         position: usize,
         import: &'a Import,
-        paths: &PathIndex<'a>,
+        repository: &Repository<'_, 'a>,
     ) {
+        let paths = repository.paths;
         let level = import.relative_level;
         let target = resolve_import_target(path, &import.module, level, paths);
         let relative = import.is_relative || level > 0;
-        let modules: Vec<Option<&'a str>> = import
+        let members: Vec<(&'a str, Option<&'a str>)> = import
             .bound_names()
             .map(|(member, _)| {
-                resolve_imported_submodule(path, &import.module, level, member, paths)
+                let module = resolve_imported_submodule(path, &import.module, level, member, paths);
+                (member, module)
             })
             .collect();
-        if loads_target(path, target, &modules) {
+        if loads_target(path, target, &members, repository.entries) {
             self.statements.push(ResolvedImport {
                 module: Cow::Borrowed(&import.module),
                 line: import.line,
@@ -510,7 +531,7 @@ impl<'a> ImportScope<'a> {
             relative,
             position,
         };
-        for ((member, local), module) in import.bound_names().zip(modules) {
+        for ((member, local), (_, module)) in import.bound_names().zip(members) {
             self.bind_member(&statement, member, local, module);
         }
     }
@@ -549,16 +570,7 @@ impl<'a> ImportScope<'a> {
 
     // Unaliased, `import a.b` binds `a`, the package; aliased, it binds the submodule.
     fn bind_module_object(&mut self, path: &'a str, import: &'a Import, paths: &PathIndex<'a>) {
-        let referenced = if import.alias.is_empty() {
-            import.module.split('.').next().unwrap_or_default()
-        } else {
-            import.module.as_str()
-        };
-        let binding = if import.alias.is_empty() {
-            referenced
-        } else {
-            import.alias.as_str()
-        };
+        let (binding, referenced) = module_object(import);
         if binding.is_empty() {
             return;
         }
@@ -572,11 +584,17 @@ impl<'a> ImportScope<'a> {
     }
 }
 
-// `from P import N` in a module of package P loads only the modules it names, because that module
-// runs after P/__init__.py has started; a member that is not a module reads P/__init__.py.
-fn loads_target(importer: &str, target: Option<&str>, modules: &[Option<&str>]) -> bool {
-    let only_modules = !modules.is_empty() && modules.iter().all(Option::is_some);
-    !only_modules || !target.is_some_and(|target| inside_package(importer, target))
+// A module of package P runs after P/__init__.py has started, so its `from P import N` reads
+// P/__init__.py only when a member N is not a module or P/__init__.py binds N to another object.
+fn loads_target(
+    importer: &str,
+    target: Option<&str>,
+    members: &[(&str, Option<&str>)],
+    entries: &EntryNames<'_>,
+) -> bool {
+    let only_modules = !members.is_empty() && members.iter().all(|(_, module)| module.is_some());
+    let entry = target.filter(|target| inside_package(importer, target));
+    !only_modules || entry.is_none_or(|entry| entries.rebinds(entry, members))
 }
 
 fn dotted(module: &str, member: &str) -> String {
