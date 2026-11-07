@@ -1,6 +1,6 @@
 //! A symbol's card: callers, tests and similar functions from refs, callees from explain, and the
 //! last change from history, or one section in full. Each count is a total that the operation
-//! took before its cut, or a [`Tally::AtLeast`] when the list it counts was cut.
+//! took before its cut, or a [`Tally::Floor`] when the list it counts was cut.
 
 use std::collections::BTreeSet;
 

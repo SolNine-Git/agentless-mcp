@@ -126,7 +126,7 @@ pub enum Tally {
     /// The complete count.
     Exact(usize),
     /// The count of the listed part: the true count is this or more.
-    AtLeast(usize),
+    Floor(usize),
 }
 
 impl Tally {
@@ -135,7 +135,7 @@ impl Tally {
         if whole {
             Tally::Exact(count)
         } else {
-            Tally::AtLeast(count)
+            Tally::Floor(count)
         }
     }
 }

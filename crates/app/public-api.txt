@@ -1167,8 +1167,8 @@ impl core::marker::UnsafeUnpin for app::trace::Section
 impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Section
 impl core::panic::unwind_safe::UnwindSafe for app::trace::Section
 pub enum app::trace::Tally
-pub app::trace::Tally::AtLeast(usize)
 pub app::trace::Tally::Exact(usize)
+pub app::trace::Tally::Floor(usize)
 impl core::clone::Clone for app::trace::Tally
 pub fn app::trace::Tally::clone(&self) -> Self
 impl core::cmp::Eq for app::trace::Tally

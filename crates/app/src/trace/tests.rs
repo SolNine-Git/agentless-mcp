@@ -263,7 +263,7 @@ fn a_count_comes_from_the_complete_list_when_a_tier_passes_the_largest_listing()
     assert!(callers.name_only > crate::ops::limits::MAX_LIMIT);
     assert_eq!(callers.files, 1);
     assert_eq!(callers.tiers, None);
-    assert_eq!(callers.name_only_files, Tally::AtLeast(1));
+    assert_eq!(callers.name_only_files, Tally::Floor(1));
 }
 
 #[test]
