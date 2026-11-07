@@ -1,6 +1,6 @@
 //! The operations layer: the read and write operations, the trace cards and the text search, the
 //! lint pair forms, capabilities, the repository context they read, the clock and token counter
-//! ports, the MCP tool surface table, and the agent guide.
+//! ports, the MCP tool surface table, the hook entry table, and the agent guide.
 
 mod args;
 pub mod bounds;
@@ -24,6 +24,7 @@ mod find;
 mod guide;
 mod health;
 mod history;
+pub mod hooks;
 mod html;
 mod index;
 mod lint;

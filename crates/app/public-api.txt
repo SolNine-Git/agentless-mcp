@@ -25,6 +25,259 @@ pub mod app::bounds
 pub fn app::bounds::at_least(&app::IntArg, usize, &str) -> core::result::Result<usize, app::Error>
 pub fn app::bounds::within(&app::IntArg, usize, usize, &str) -> core::result::Result<usize, app::Error>
 pub fn app::bounds::within_float(f64, f64, f64, &str) -> core::result::Result<f64, app::Error>
+pub mod app::hooks
+pub enum app::hooks::EntryState
+pub app::hooks::EntryState::Current
+pub app::hooks::EntryState::Missing
+pub app::hooks::EntryState::OtherPath(alloc::string::String)
+pub app::hooks::EntryState::Stale(alloc::vec::Vec<app::hooks::Found>)
+impl core::clone::Clone for app::hooks::EntryState
+pub fn app::hooks::EntryState::clone(&self) -> Self
+impl core::cmp::PartialEq for app::hooks::EntryState
+pub fn app::hooks::EntryState::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::EntryState
+pub fn app::hooks::EntryState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::hooks::EntryState
+impl core::marker::Freeze for app::hooks::EntryState
+impl core::marker::Send for app::hooks::EntryState
+impl core::marker::Sync for app::hooks::EntryState
+impl core::marker::Unpin for app::hooks::EntryState
+impl core::marker::UnsafeUnpin for app::hooks::EntryState
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::EntryState
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::EntryState
+pub enum app::hooks::Event
+pub app::hooks::Event::PostToolUse
+pub app::hooks::Event::PreToolUse
+pub app::hooks::Event::SessionStart
+pub app::hooks::Event::SubagentStart
+pub app::hooks::Event::UserPromptSubmit
+impl app::hooks::Event
+pub fn app::hooks::Event::as_str(self) -> &'static str
+impl core::clone::Clone for app::hooks::Event
+pub fn app::hooks::Event::clone(&self) -> Self
+impl core::cmp::Eq for app::hooks::Event
+impl core::cmp::PartialEq for app::hooks::Event
+pub fn app::hooks::Event::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::Event
+pub fn app::hooks::Event::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::hooks::Event
+impl core::marker::StructuralPartialEq for app::hooks::Event
+impl core::marker::Freeze for app::hooks::Event
+impl core::marker::Send for app::hooks::Event
+impl core::marker::Sync for app::hooks::Event
+impl core::marker::Unpin for app::hooks::Event
+impl core::marker::UnsafeUnpin for app::hooks::Event
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Event
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::Event
+pub enum app::hooks::Expected
+pub app::hooks::Expected::Array
+pub app::hooks::Expected::Number
+pub app::hooks::Expected::Object
+pub app::hooks::Expected::Text
+impl core::clone::Clone for app::hooks::Expected
+pub fn app::hooks::Expected::clone(&self) -> Self
+impl core::cmp::Eq for app::hooks::Expected
+impl core::cmp::PartialEq for app::hooks::Expected
+pub fn app::hooks::Expected::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::Expected
+pub fn app::hooks::Expected::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::hooks::Expected
+impl core::marker::StructuralPartialEq for app::hooks::Expected
+impl core::marker::Freeze for app::hooks::Expected
+impl core::marker::Send for app::hooks::Expected
+impl core::marker::Sync for app::hooks::Expected
+impl core::marker::Unpin for app::hooks::Expected
+impl core::marker::UnsafeUnpin for app::hooks::Expected
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Expected
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::Expected
+pub enum app::hooks::Hook
+pub app::hooks::Hook::BriefRecord
+pub app::hooks::Hook::Erosion
+pub app::hooks::Hook::LedgerMark
+pub app::hooks::Hook::LedgerReset
+pub app::hooks::Hook::PromptMap
+pub app::hooks::Hook::ReadCard
+pub app::hooks::Hook::SubagentMap
+impl app::hooks::Hook
+pub const app::hooks::Hook::ALL: [app::hooks::Hook; 7]
+pub fn app::hooks::Hook::deadline(self) -> core::time::Duration
+pub fn app::hooks::Hook::name(self) -> &'static str
+impl core::clone::Clone for app::hooks::Hook
+pub fn app::hooks::Hook::clone(&self) -> Self
+impl core::cmp::Eq for app::hooks::Hook
+impl core::cmp::PartialEq for app::hooks::Hook
+pub fn app::hooks::Hook::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::Hook
+pub fn app::hooks::Hook::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::hooks::Hook
+impl core::marker::StructuralPartialEq for app::hooks::Hook
+impl core::marker::Freeze for app::hooks::Hook
+impl core::marker::Send for app::hooks::Hook
+impl core::marker::Sync for app::hooks::Hook
+impl core::marker::Unpin for app::hooks::Hook
+impl core::marker::UnsafeUnpin for app::hooks::Hook
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Hook
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::Hook
+pub enum app::hooks::Retired
+pub app::hooks::Retired::GateCheck
+pub app::hooks::Retired::GateMark
+impl app::hooks::Retired
+pub const app::hooks::Retired::ALL: [app::hooks::Retired; 2]
+pub fn app::hooks::Retired::name(self) -> &'static str
+impl core::clone::Clone for app::hooks::Retired
+pub fn app::hooks::Retired::clone(&self) -> Self
+impl core::cmp::Eq for app::hooks::Retired
+impl core::cmp::PartialEq for app::hooks::Retired
+pub fn app::hooks::Retired::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::Retired
+pub fn app::hooks::Retired::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::hooks::Retired
+impl core::marker::StructuralPartialEq for app::hooks::Retired
+impl core::marker::Freeze for app::hooks::Retired
+impl core::marker::Send for app::hooks::Retired
+impl core::marker::Sync for app::hooks::Retired
+impl core::marker::Unpin for app::hooks::Retired
+impl core::marker::UnsafeUnpin for app::hooks::Retired
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Retired
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::Retired
+pub struct app::hooks::Entry
+pub app::hooks::Entry::event: app::hooks::Event
+pub app::hooks::Entry::hook: app::hooks::Hook
+pub app::hooks::Entry::matcher: core::option::Option<alloc::string::String>
+pub app::hooks::Entry::timeout: u32
+impl core::clone::Clone for app::hooks::Entry
+pub fn app::hooks::Entry::clone(&self) -> Self
+impl core::cmp::Eq for app::hooks::Entry
+impl core::cmp::PartialEq for app::hooks::Entry
+pub fn app::hooks::Entry::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::Entry
+pub fn app::hooks::Entry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::hooks::Entry
+impl core::marker::Freeze for app::hooks::Entry
+impl core::marker::Send for app::hooks::Entry
+impl core::marker::Sync for app::hooks::Entry
+impl core::marker::Unpin for app::hooks::Entry
+impl core::marker::UnsafeUnpin for app::hooks::Entry
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Entry
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::Entry
+pub struct app::hooks::Found
+pub app::hooks::Found::event: alloc::string::String
+pub app::hooks::Found::matcher: core::option::Option<alloc::string::String>
+pub app::hooks::Found::path: alloc::string::String
+pub app::hooks::Found::timeout: core::option::Option<f64>
+impl core::clone::Clone for app::hooks::Found
+pub fn app::hooks::Found::clone(&self) -> Self
+impl core::cmp::PartialEq for app::hooks::Found
+pub fn app::hooks::Found::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::Found
+pub fn app::hooks::Found::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::hooks::Found
+impl core::marker::Freeze for app::hooks::Found
+impl core::marker::Send for app::hooks::Found
+impl core::marker::Sync for app::hooks::Found
+impl core::marker::Unpin for app::hooks::Found
+impl core::marker::UnsafeUnpin for app::hooks::Found
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Found
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::Found
+pub struct app::hooks::Handler
+pub app::hooks::Handler::command: core::option::Option<alloc::string::String>
+pub app::hooks::Handler::event: alloc::string::String
+pub app::hooks::Handler::kind: core::option::Option<alloc::string::String>
+pub app::hooks::Handler::matcher: core::option::Option<alloc::string::String>
+pub app::hooks::Handler::timeout: core::option::Option<f64>
+impl core::clone::Clone for app::hooks::Handler
+pub fn app::hooks::Handler::clone(&self) -> Self
+impl core::cmp::PartialEq for app::hooks::Handler
+pub fn app::hooks::Handler::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::Handler
+pub fn app::hooks::Handler::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::hooks::Handler
+impl core::marker::Freeze for app::hooks::Handler
+impl core::marker::Send for app::hooks::Handler
+impl core::marker::Sync for app::hooks::Handler
+impl core::marker::Unpin for app::hooks::Handler
+impl core::marker::UnsafeUnpin for app::hooks::Handler
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Handler
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::Handler
+pub struct app::hooks::HookStatus
+pub app::hooks::HookStatus::retired: alloc::vec::Vec<app::hooks::RetiredEntry>
+pub app::hooks::HookStatus::rows: alloc::vec::Vec<app::hooks::RowStatus>
+impl app::hooks::HookStatus
+pub fn app::hooks::HookStatus::is_current(&self) -> bool
+impl core::clone::Clone for app::hooks::HookStatus
+pub fn app::hooks::HookStatus::clone(&self) -> Self
+impl core::cmp::PartialEq for app::hooks::HookStatus
+pub fn app::hooks::HookStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::HookStatus
+pub fn app::hooks::HookStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::hooks::HookStatus
+impl core::marker::Freeze for app::hooks::HookStatus
+impl core::marker::Send for app::hooks::HookStatus
+impl core::marker::Sync for app::hooks::HookStatus
+impl core::marker::Unpin for app::hooks::HookStatus
+impl core::marker::UnsafeUnpin for app::hooks::HookStatus
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::HookStatus
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::HookStatus
+pub struct app::hooks::HooksShape
+pub app::hooks::HooksShape::at: alloc::string::String
+pub app::hooks::HooksShape::expected: app::hooks::Expected
+impl core::clone::Clone for app::hooks::HooksShape
+pub fn app::hooks::HooksShape::clone(&self) -> Self
+impl core::cmp::Eq for app::hooks::HooksShape
+impl core::cmp::PartialEq for app::hooks::HooksShape
+pub fn app::hooks::HooksShape::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::HooksShape
+pub fn app::hooks::HooksShape::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::hooks::HooksShape
+impl core::marker::Freeze for app::hooks::HooksShape
+impl core::marker::Send for app::hooks::HooksShape
+impl core::marker::Sync for app::hooks::HooksShape
+impl core::marker::Unpin for app::hooks::HooksShape
+impl core::marker::UnsafeUnpin for app::hooks::HooksShape
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::HooksShape
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::HooksShape
+pub struct app::hooks::RetiredEntry
+pub app::hooks::RetiredEntry::found: app::hooks::Found
+pub app::hooks::RetiredEntry::hook: app::hooks::Retired
+impl core::clone::Clone for app::hooks::RetiredEntry
+pub fn app::hooks::RetiredEntry::clone(&self) -> Self
+impl core::cmp::PartialEq for app::hooks::RetiredEntry
+pub fn app::hooks::RetiredEntry::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::RetiredEntry
+pub fn app::hooks::RetiredEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::hooks::RetiredEntry
+impl core::marker::Freeze for app::hooks::RetiredEntry
+impl core::marker::Send for app::hooks::RetiredEntry
+impl core::marker::Sync for app::hooks::RetiredEntry
+impl core::marker::Unpin for app::hooks::RetiredEntry
+impl core::marker::UnsafeUnpin for app::hooks::RetiredEntry
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::RetiredEntry
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::RetiredEntry
+pub struct app::hooks::RowStatus
+pub app::hooks::RowStatus::entry: app::hooks::Entry
+pub app::hooks::RowStatus::state: app::hooks::EntryState
+impl core::clone::Clone for app::hooks::RowStatus
+pub fn app::hooks::RowStatus::clone(&self) -> Self
+impl core::cmp::PartialEq for app::hooks::RowStatus
+pub fn app::hooks::RowStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::RowStatus
+pub fn app::hooks::RowStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::hooks::RowStatus
+impl core::marker::Freeze for app::hooks::RowStatus
+impl core::marker::Send for app::hooks::RowStatus
+impl core::marker::Sync for app::hooks::RowStatus
+impl core::marker::Unpin for app::hooks::RowStatus
+impl core::marker::UnsafeUnpin for app::hooks::RowStatus
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::RowStatus
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::RowStatus
+pub const app::hooks::BINARY_NAME: &str
+pub const app::hooks::DEFAULT_SERVER_NAME: &str
+pub const app::hooks::READ_CARD_DEADLINE: core::time::Duration
+pub const app::hooks::TIMEOUT_FACTOR: u32
+pub fn app::hooks::command(&str, app::hooks::Hook) -> alloc::string::String
+pub fn app::hooks::compare(&[app::hooks::Handler], &str, &str) -> app::hooks::HookStatus
+pub fn app::hooks::entries(&str) -> alloc::vec::Vec<app::hooks::Entry>
+pub fn app::hooks::handlers(&json::parse::JsonValue) -> core::result::Result<alloc::vec::Vec<app::hooks::Handler>, app::hooks::HooksShape>
 pub mod app::ops
 pub mod app::ops::limits
 pub const app::ops::limits::DEFAULT_COMMUNITY_LIMIT: usize
