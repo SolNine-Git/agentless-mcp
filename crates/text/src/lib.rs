@@ -22,7 +22,7 @@ pub mod testing;
 
 pub use code_point_string::CodePointString;
 pub use diff::{matching_blocks, unified_diff};
-pub use glob::in_boundary;
+pub use glob::{MAX_BRACE_GLOBS, expand_braces, in_boundary};
 pub use identifier::is_identifier;
 pub use indent::dedent;
 pub use integer::{IntText, convertible_int, int_bytes, int_text};
