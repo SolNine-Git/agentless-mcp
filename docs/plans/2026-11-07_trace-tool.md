@@ -438,10 +438,19 @@ One builder per phase, with a disjoint file set. A phase starts when the API it 
 | P4, hooks and install | `crates/hook/**`, `crates/agentless/src/main.rs`, `crates/agentless/tests/dispatch.rs`, `contrib/hooks/`, `Makefile`, `tests/characterization/goldens/hooks/` | P1, P2 | per hook: payload fixtures and every silent case; the ledger under two processes (one claim); pairing with one, two and no pending records; install run twice is byte-equal; foreign handlers and mixed groups kept; invalid JSON refused; symlink target; atomic write; retired entries removed; `settings-example.json` equals the dry-run golden |
 | P5, docs and page | `README.md`, `crates/app/data/agent-guide.md`, `CHANGELOG.md`, `xtask/src/raw_outputs.rs` | P3, P4 | the guide test; the `raw-outputs` test of section 8 |
 | P6, release gate | none | P5 | the four steps below |
+| P1b, follow-ups | `crates/git/src/**`, `crates/git/public-api.txt`, `crates/app/src/trace/file.rs` | P1 | the file card's last change (`git log -1 -- <path>`), which P1 could not build because the git crate has no function for it; runs beside P2 |
 
 No phase and no test writes the owner's real settings file: the install tests use fixture files, and the first real
-`hook install` runs only on the owner's word. Only P3 and P4 run at the same time, on disjoint sets; a later phase can edit a merged phase's file (P3 edits
-`crates/app/public-api.txt`). `scripts/gate-selftest.sh "$gate"` runs in P2 and P5, which change `xtask/`.
+`hook install` runs only on the owner's word. Only P3 and P4, and P1b and P2, run at the same time, on disjoint
+sets; a later phase can edit a merged phase's file (P3 edits `crates/app/public-api.txt`).
+`scripts/gate-selftest.sh "$gate"` runs in P2 and P5, which change `xtask/`.
+
+P1 as built (03b109a) leaves three items for later phases. (1) A symbol card runs 3 scans (resolution, refs,
+explain) and a file card runs 3 (resolution, explain, cycles), because the explain and refs internals are private.
+P3 measures the card latency with the CLI; a refactor that shares one scan waits for that measurement. (2) The
+last-change thread lets a late `git log -L` run to git's own 30 s limit. (3) A file's imports come from `explain`
+on one of its symbols, so a file with no symbol in the name graph, such as an `__init__.py` with only imports, gets
+no import rows (`Linked::NoAnchor`).
 
 **Release regression gate** (`AGENTS.md`; `docs/analysis/benchmark-methodology.md`, "The release regression gate"):
 
@@ -455,6 +464,24 @@ No phase and no test writes the owner's real settings file: the install tests us
      to verify the `brief-record` and `subagent-map` pairing and the `agent_id` key of `read-card`.
    - **PAID, approval needed:** the trail run, native against the new surface with the hooks, solo and sequential,
      n set by the margin (about 192 instances for 0.019 WCC). It measures an agent that stops before a follow-up.
+
+**Testing before a release.** The owner requires a large amount of testing before a release (2026-11-07). The
+release gate above is the minimum. The full plan, cheapest first:
+
+1. Each phase: unit tests, byte-exact goldens for every answer form, and every gate of `AGENTS.md`. No existing
+   golden changes unless the change is predicted first.
+2. Differential test, free: the Rust `trace` builds the cards for the 299 bench targets of the trace report, and a
+   script compares them row by row with the Python prototype (`/var/tmp/claude-rust-port/trace/scripts/tracecard.py`).
+   Each difference is explained or fixed.
+3. Replay of recorded calls, free: each recorded call to an old tool maps to its `trace` or `search` call. Every fact
+   of the old answer is in the new answer or one `more=` call away.
+4. The release gate above, free.
+5. A review at the end of each phase, sized to the change. The PM asks the owner before a full panel review.
+6. The hooks probe in a sandbox, paid and small, with a separate `CLAUDE_CONFIG_DIR`, never the owner's settings.
+7. A trial in the owner's environment, on the owner's word: `hook install` on the owner's settings, normal work for
+   some days, then the hook log read as counts only.
+8. The trail run, paid, on the owner's approval.
+9. A release candidate first (0.12.0rc1). The final release only on the owner's word.
 
 ## 8. The artifact of raw outputs
 
