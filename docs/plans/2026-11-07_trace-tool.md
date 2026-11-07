@@ -22,6 +22,16 @@ install-hooks`. Each example answer is frozen-CLI 0.11.0rc1 output on this repos
 - **A subagent gets no map.** The prompt-map hook does not fire for a subagent's first prompt (verified
   2026-11-07). Over 1,194 recorded briefs, a brief hook would emit on 784 (66%), and 44% of the files it adds are
   already named in the brief.
+- **Most real searches and many reads go through Bash** (`/var/tmp/claude-rust-port/replay/report.md`). In the
+  owner's main sessions: 0.47 Grep calls against 3.17 Bash searches per session, and Bash reads of 2,277 Claude
+  tokens against Read's 4,762. So `search` competes with Bash grep, and the card hook must serve single-file Bash
+  reads: a Read-only hook misses 1.80 reads per main session and 10.99 per subagent session.
+- **A cleaner pays on search answers, not on reads.** Lossless rules remove 17.7% of the native Grep answer tokens
+  and 0.07% of the Read answer tokens. Root-relative paths in the call inputs explain the forced arm's output
+  saving: 167.5 Claude tokens per session derived, 168.5 measured.
+- **Supply is the cheapest policy.** Replayed on the 300 native sessions at a 450-token card: supply 4.77% of the
+  session price with no denial, the shipped gate 10.6%, an unlock budget 20.6% to 38.3%, a denying file ledger
+  27.1%.
 
 Facts from the Claude Code documentation (`https://code.claude.com/docs/en/<page>`, read 2026-11-07):
 
@@ -35,7 +45,8 @@ Facts from the Claude Code documentation (`https://code.claude.com/docs/en/<page
 | Deny and ask rules apply whatever a hook returns. In plan mode a hook "allow" does not approve a call that is not read-only. | `permissions`, "Precedence among rules, hooks, and mods", "Hook approvals in plan mode" |
 | `updatedToolOutput` "must match the tool's output shape"; for a built-in tool a mismatch "is ignored". The Read shape is not documented. | `hooks`, "PostToolUse decision control" |
 | PostToolUse `additionalContext` goes "alongside the tool result" (order not documented), capped at 10,000 characters. | `hooks`, "PostToolUse decision control", "JSON output" |
-| Edit needs a read in the conversation for older models; `cat`, `sed -n`, `grep` or `rg` of one file counts. An MCP read is not documented. | `tools-reference`, "Edit tool behavior" |
+| Edit needs a read in the conversation for older models; `cat`, `sed -n`, `grep` or `rg` of one file counts. The page names no MCP tool, so an MCP read does not count. | `tools-reference`, "Edit tool behavior" |
+| On macOS, Linux and WSL, Claude Code leaves Glob and Grep out of the default tool set, and Claude searches with `find` and `grep` through Bash. | `tools-reference`, "Glob tool behavior" |
 | Exit 2 blocks only PreToolUse among the events used here. SessionStart matchers: `startup`, `resume`, `clear`, `compact`, `fork`. A handler that two settings files define runs once. | `hooks`, "Exit code 2 behavior per event", "SessionStart", "Hook handler fields" |
 
 Consequence: native Read stays, because an agent that edits needs it. The first-read card uses `additionalContext`,
@@ -163,7 +174,7 @@ files), so the next call is not blind:
 Description (Strict): "Search the text of the repository files, or list files by name. pattern is a regular
 expression in ripgrep syntax. Without pattern, the answer lists the files that files matches. Paths are relative to
 the root. Matches are grouped by file and by enclosing symbol, with its stable id: give the id to trace. Lock,
-generated, vendored and minified files show as count lines. Use search for literals, messages, config keys and
+vendored and minified files show as count lines. Use search for literals, messages, config keys and
 patterns. Use trace for a name that you know." Parameters: `pattern` "A regular expression, matched line by line.
 Omit it to list files." `files` "A glob on repository-relative paths, such as **/*.rs or src/{a,b}/**." `path` "A
 repository-relative file or folder. Default: the root." `ignore_case` "Ignore letter case." `context` "Lines shown
@@ -188,10 +199,17 @@ rest_line  = "... " n " of " n " match lines shown; " n " more files: " path " (
 listing    = "search files=" glob [ " in " path ] ": " n " files" NL { path "  " n " lines" [ "  " n " symbols" ] NL } ;
 ```
 
-Source files print first in path order, then other files. A match outside every symbol has no symbol line. A long
-line is cut and keeps its number: `text...[+1834 chars]`. Identical adjacent lines collapse with `(x<n>)`. A noise
-class (lock, generated, vendored, minified) prints as a count line unless `path` names a file in it. The classes,
-the line cap and the default limit are open values that the replay report sets.
+Source files print first in path order, then other files. A match outside every symbol has no symbol line. A match
+line whose text repeats in 3 or more places prints once, with every location. A noise class (lock, vendored,
+minified) prints as a count line unless `path` names a file in it. A line is cut only in a minified file, and the cut
+keeps its number: `text...[+1834 chars]`. Every other match line prints in full with its own line number.
+
+The replay report sets these rules. Grouping by file and collapsing repeats removed 17.7% of the Grep answer tokens
+and lost nothing that the agent used later. Three candidate rules lost data, so the tool does not apply them:
+- Hiding generated files hid gold files: `rpc/flipt.pb.go`, `sdk/go/evaluation.sdk.gen.go`,
+  `lib/matplotlib/pyplot.py` and `doc/help/settings.asciidoc`.
+- Cutting long lines in code hid identifiers that the agent used later, in 21 of 31 changed answers.
+- Line numbers on every 10th line only hid line numbers that the agent used later, in 535 of 545 answers.
 
 **Content example**, `search(pattern="agentless_prompt_map")` (matches from `rg -n`, symbols from `explain`):
 
@@ -257,7 +275,7 @@ one JSON payload on stdin, never denies a call, never writes stderr, exits 0, an
 
 | Hook | Event, matcher | Input | Output | Deadline | Status |
 |---|---|---|---|---|---|
-| `read-card` | PostToolUse, `Read` | `session_id`, `agent_id`, `tool_input.file_path` | `additionalContext`: the file card | open, 1 to 5 s | new |
+| `read-card` | PostToolUse, `Read|Bash` | `session_id`, `agent_id`, `tool_input.file_path`, or `tool_input.command` for Bash | `additionalContext`: the file card | open, 1 to 5 s | new |
 | `ledger-mark` | PostToolUse, `mcp__<server>__trace` | `session_id`, `agent_id`, `tool_input.target` | none | 2 s | new, replaces `gate-mark` |
 | `brief-record` | PreToolUse, `Agent` | `session_id`, `tool_input.prompt`, `tool_input.subagent_type` | none, no decision | 1 s | new |
 | `subagent-map` | SubagentStart, all types | `session_id`, `agent_id`, `agent_type`, `cwd` | `additionalContext`: one sentence | 5 s | new |
@@ -275,8 +293,10 @@ claim wins, so parallel hooks stay safe. The key holds the content hash, so an e
 next Read gets a new card. Lifetime: the session. The OS temp cleaner removes old entries, and `ledger-reset`
 removes the main context's entries at compaction. Cap: 2,000 entries per context, then silent with `ledger_full`.
 
-**`read-card`.** On a Read of a source file (a code grammar; JSON, YAML, TOML, HCL and SQL do not count), the hook
-hashes the file on disk and claims its ledger entry. A held entry means silent. A new entry renders the file card of
+**`read-card`.** On a Read of a source file (a code grammar; JSON, YAML, TOML, HCL and SQL do not count), or on a
+Bash command that reads one source file, the hook hashes the file on disk and claims its ledger entry. A Bash read is
+one of the read-before-edit views (`cat`, `nl`, `bat`, `head`, `tail`, `sed -n 'X,Yp'`, `grep` or `rg` on one file,
+with no pipe or redirect), found by the shell parser that `gate-check` used. A held entry means silent. A new entry renders the file card of
 2.1 in the hook's process (tag cache, `worker::run` under the deadline) and prints
 `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"File card (agentless-mcp), first read of
 <path> in this context:\n<file card>"}}`. The repository is the git top level of the file, not of `cwd`. The claim
@@ -307,8 +327,8 @@ SessionStart `compact`, because compaction removes the cards from the context; a
 
 **`gate-check`, retired.** It denies Grep, Glob and shell search until a localizing call: the owner decided against
 denial, and the gated arm cost +53.3% for a WCC gain not distinct from zero. `gate_deny`,
-`crates/hook/src/search/{check,shell,stat,marker}.rs`, the `/tmp/agentless_gate` marker and the `localizes` field of
-the surface table go. **`gate-mark`, retired.** It marked a localizing call for `gate-check`; `ledger-mark` records
+`crates/hook/src/search/{check,stat,marker}.rs`, the `/tmp/agentless_gate` marker and the `localizes` field of the
+surface table go. `shell.rs` stays, because `read-card` uses its parser to find a single-file Bash read. **`gate-mark`, retired.** It marked a localizing call for `gate-check`; `ledger-mark` records
 files instead. `hook gate-check` and `hook gate-mark` stay accepted for one release and exit 0 with no output, so a
 stale entry does not break a session; `hook status` reports them as retired.
 
@@ -431,20 +451,19 @@ that commit does not give. The PM publishes the page with the Artifact tool afte
 |---|---|
 | Card level and row caps per section and card kind | TRC report: the level with the lowest expected cost within 1.5 times the minimum card size |
 | `read-card` card cap | the p95 card size at that level, at most 8,000 characters |
-| Search cleaner: noise classes, long-line cap, collapse rule, default `limit` | replay report: keep each rule with zero gold loss |
+| Search: default `limit` and the rule that classes a file as minified | answer sizes on the Loc-Bench checkouts; the replay report set the other rules (2.2) |
 | Listing row counts (lines, symbols) | keep them if the listing's median size grows by at most 50% over a path-only listing on the Loc-Bench checkouts |
-| Ledger key | owner decision (path, content hash); the replay compares the session key, and a high re-card rate after the agent's own edits reopens it |
+| Ledger key | settled: (session, context, path, content hash). Every subagent transcript carries its parent's session id, so the context (`agent_id`) is part of the key. The hash costs +0.15 to +0.18 points of session price over the path alone |
 | `read-card` deadline and timeout | 3 times the p95 card latency on the Loc-Bench checkouts, from 1 s to 5 s; timeout 3 times the deadline |
 | `last change` deadline | 3 times the p95 of `git log -L` for one commit on the Loc-Bench checkouts, at most 2 s |
 | Ambiguous pairing share | the share of the 1,194 recorded briefs launched beside another brief of the same type in one message |
 | Ranked files read for the subagent dedupe | 5, until the replay gives the depth that keeps 2 new files on 90% of briefs |
 | Cycles line for Rust intra-crate cycles | TRC yield of the cycles section on Rust targets |
 | Release version | the owner |
-| Edit after an MCP read | the replay report's documentation fact; Read stays native either way |
 
 Risks:
 
-- **Adoption.** No call is denied, so the agent can keep native Grep over `search`; supply acts only on Read. Only
+- **Adoption.** No call is denied, so the agent can keep Bash grep over `search`; supply acts only on reads. Only
   the paid trail run measures the choice. The place of the card next to the Read result is not documented.
 - **Pairing.** SubagentStart has no brief and no tool-use id: the per-type pairing is an inference until the probe.
 - **Name collisions.** A bare name ranks other definitions of the name (the `owners.rs` example), and `similar`
