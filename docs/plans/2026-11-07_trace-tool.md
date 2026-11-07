@@ -32,6 +32,15 @@ install-hooks`. Each example answer is frozen-CLI 0.11.0rc1 output on this repos
 - **Supply is the cheapest policy.** Replayed on the 300 native sessions at a 450-token card: supply 4.77% of the
   session price with no denial, the shipped gate 10.6%, an unlock budget 20.6% to 38.3%, a denying file ledger
   27.1%.
+- **A card finds as much as the native first answer, with fewer tokens** (`/var/tmp/claude-rust-port/trace/report.md`,
+  299 tasks). For the names of the agent's first Grep, traced in one call, a card with the callers and tests sections
+  (L2) names 37.2% of the gold files in 420 tokens. The native first answer names 37.9% in 531. Adding the callees
+  (L3) gives 39.4% in 524. One name traced alone gives only 29.5% at L3, so the batch form matters.
+- **Most first lookups do not resolve to one definition.** Of the agent's first names, 39% have several definitions,
+  23% have none and 31% have one. The candidates and miss answers carry much of the value, and a miss's usage rows
+  have the highest yield of any section.
+- **The composed card is correct.** 181,256 checks of 108,472 card lines against the source answers found 0
+  disagreements, and a mutation test of the checker caught 825 of 828 planted errors.
 
 Facts from the Claude Code documentation (`https://code.claude.com/docs/en/<page>`, read 2026-11-07):
 
@@ -96,7 +105,19 @@ counts   = n " bound" [ "; " n " name-only in " n " files hidden" ] ;
 
 Binding tiers (`same-file`, `imported`) print first, in full up to the row cap; `unique` and `name-only` print as
 counts. A position is `@line`; verbatim text uses the `N|` gutter (only `more=body`). Every `path @line` row reads
-back as `trace("path:line")`. An empty section prints `<name>: none`. Row caps are open values (section 9).
+back as `trace("path:line")`. An empty section prints `<name>: none`.
+
+**Row caps** (the trace report's level L4). A symbol card shows 3 rows each of callers (binding tiers, tests left
+out), tests, callees and similar, the counts of every tier, the "not resolved" line and the last change. A file card
+shows 8 declarations and 3 rows each of importers, tests and imports, and its cycle membership. A candidates card
+shows 16 definitions. A miss shows 10 usage files. A folder card shows depth 1 and 60 entries; the trace report did
+not measure folders apart, and `more=tree` gives the rest.
+
+The trace report's lowest expected cost is L3, which stops before `similar` and `last change`. L4 costs +45 [-23,
++106] priced tokens more, a difference not distinct from zero, at 636 tokens against 524: inside the owner's
+ceiling of 1.5 times. L4 is the default because its `similar` section serves duplicate avoidance, which the
+benchmark cannot see. In sessions with 16 or more requests after the card, the knee moves down one level (the
+report's sensitivity table). The in-situ log and the trail run can move the default.
 
 **Symbol card**, `trace("rs:crates/hook/src/prompt_map.rs::answer")`, from `explain`, `refs` and `history`:
 
@@ -146,8 +167,9 @@ A file's last change is `git log -1 -- <path>`, which is cheap. A file card has 
 **Folder card**, `trace("crates/hook/src/search")`: `crates/hook/src/search/  7 files, 1185 lines`, then one row
 per entry, such as `  check.rs  212 lines  33 symbols` and `  tests.rs  553 lines  51 symbols`.
 
-**Misses and notes** are ordinary answers (`isError: false`). A miss runs a bounded literal scan (2.2, at most 3
-files), so the next call is not blind:
+**Misses and notes** are ordinary answers (`isError: false`). A miss lists up to 10 files that use the name, from the
+usage files that `find-symbol` reports. With none, a bounded literal scan (2.2) lists at most 3 files. Either way
+the next call is not blind:
 
 | Case | Answer text (real data) |
 |---|---|
@@ -449,8 +471,7 @@ that commit does not give. The PM publishes the page with the Artifact tool afte
 
 | Open value | Rule that sets it |
 |---|---|
-| Card level and row caps per section and card kind | TRC report: the level with the lowest expected cost within 1.5 times the minimum card size |
-| `read-card` card cap | the p95 card size at that level, at most 8,000 characters |
+| `read-card` card cap | set: 1,000 characters. The L4 file card is 366 characters median, 766 p95 and 847 at most over 24 sampled files; the row caps bound the card, and the cap guards against long paths and signatures |
 | Search: default `limit` and the rule that classes a file as minified | answer sizes on the Loc-Bench checkouts; the replay report set the other rules (2.2) |
 | Listing row counts (lines, symbols) | keep them if the listing's median size grows by at most 50% over a path-only listing on the Loc-Bench checkouts |
 | Ledger key | settled: (session, context, path, content hash). Every subagent transcript carries its parent's session id, so the context (`agent_id`) is part of the key. The hash costs +0.15 to +0.18 points of session price over the path alone |
@@ -458,7 +479,7 @@ that commit does not give. The PM publishes the page with the Artifact tool afte
 | `last change` deadline | 3 times the p95 of `git log -L` for one commit on the Loc-Bench checkouts, at most 2 s |
 | Ambiguous pairing share | the share of the 1,194 recorded briefs launched beside another brief of the same type in one message |
 | Ranked files read for the subagent dedupe | 5, until the replay gives the depth that keeps 2 new files on 90% of briefs |
-| Cycles line for Rust intra-crate cycles | TRC yield of the cycles section on Rust targets |
+| Cycles line for Rust intra-crate cycles | the yield of the cycles section on Rust file cards; the trace report gives no per-section yield by language, so P1 measures it on the Loc-Bench checkouts |
 | Release version | the owner |
 
 Risks:
@@ -470,5 +491,9 @@ Risks:
   ranks through name-only callers when no bound caller is shared.
 - **Latency and races.** `git log -L` can take 30 s on a large repository (one commit, under a deadline). Claude
   Code also writes `settings.json`; the atomic write and the retry lower the race. The server reads only `hooks`.
+- **A count can be silently short.** At `--limit` 175 or more, `explain` drops the whole 467-row ambiguous tier of
+  teleport `Forwarder.authenticate`, and only the top-level `truncated` field says so (trace report). `trace` takes
+  each count from the complete list, never from a capped payload. A P1 test pins this on a fixture with a tier
+  larger than the payload ceiling.
 - **Removed MCP views.** `path`, `health`, `communities`, `diagram` and `capabilities` had 0 calls in the
   2026-09-27 hooked arm; the CLI keeps them. `/tmp/agentless_gate` stays on disk, and nothing reads it.
