@@ -173,6 +173,26 @@ pub const prompts::messages::HISTORY_SIGNATURE_CHANGED: prompts::Template<prompt
 pub const prompts::messages::HISTORY_SPAN_BEYOND_HEAD: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::HISTORY_SYMBOL_NOT_IN_HEAD: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::HISTORY_TARGET_UNRESOLVED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::HOOKS_MISSING: prompts::Template<(prompts::Count, prompts::Count, prompts::Text)>
+pub const prompts::messages::HOOKS_NOTE: prompts::Template<prompts::Text>
+pub const prompts::messages::HOOKS_OTHER_PATH: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::HOOKS_RETIRED: prompts::Template<(prompts::Count, prompts::Text)>
+pub const prompts::messages::HOOKS_RETIRED_MORE: prompts::Template<(prompts::Count, prompts::Text)>
+pub const prompts::messages::HOOKS_STALE: prompts::Template<(prompts::Count, prompts::Count, prompts::Text)>
+pub const prompts::messages::HOOKS_STALE_MORE: prompts::Template<(prompts::Count, prompts::Text)>
+pub const prompts::messages::HOOKS_UNREADABLE: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::HOOK_INSTALL_BAD_JSON: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::HOOK_INSTALL_COUNTS: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::HOOK_INSTALL_DRY_RUN: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::HOOK_INSTALL_RACED: prompts::Template<prompts::Text>
+pub const prompts::messages::HOOK_INSTALL_UNCHANGED: prompts::Template<prompts::Text>
+pub const prompts::messages::HOOK_INSTALL_WROTE: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::HOOK_STATUS_CURRENT: prompts::Template<prompts::Text>
+pub const prompts::messages::HOOK_STATUS_MISSING: prompts::Template<prompts::Text>
+pub const prompts::messages::HOOK_STATUS_OTHER_PATH: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::HOOK_STATUS_RETIRED: prompts::Template<prompts::Text>
+pub const prompts::messages::HOOK_STATUS_STALE: prompts::Template<prompts::Text>
+pub const prompts::messages::HOOK_UNINSTALL_REPORT: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::HOOK_USAGE: &str
 pub const prompts::messages::LINT_NO_CHECKS: prompts::Template<prompts::Text>
 pub const prompts::messages::LINT_PATH_NEEDS_AFTER: &str
@@ -197,6 +217,9 @@ pub const prompts::messages::LINT_UNKNOWN_CHECK: prompts::Template<(prompts::Tex
 pub const prompts::messages::LINT_UNKNOWN_SEVERITY: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::LISTED_AND: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::LISTED_OR: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::LISTING_ROW: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::LISTING_ROW_SYMBOLS: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::LISTING_ROW_UNREAD: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::MAP_BUDGET_NONE: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::MAP_COMPANION_UNLISTED: prompts::Template<prompts::Text>
 pub const prompts::messages::MAP_FILE_UNREACHED: prompts::Template<prompts::Count>
@@ -228,6 +251,7 @@ pub const prompts::messages::PATH_NEEDS_ENDPOINTS: prompts::Template<prompts::Te
 pub const prompts::messages::PATH_SOURCE_CANDIDATES: prompts::Template<(prompts::Text, prompts::Count, prompts::Text)>
 pub const prompts::messages::PATH_SOURCE_CANDIDATES_CUT: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Text)>
 pub const prompts::messages::PROMPT_MAP_CONTEXT: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::READ_CARD_CONTEXT: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::REFS_ABSENT: prompts::Template<prompts::Text>
 pub const prompts::messages::REFS_ABSENT_COMPLETE: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::REFS_ABSENT_PARTIAL: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
@@ -246,6 +270,23 @@ pub const prompts::messages::REPO_REFUSED_NO_ROOTS: &str
 pub const prompts::messages::ROOTS_FILE_HINT: prompts::Template<prompts::Text>
 pub const prompts::messages::ROOTS_FILE_UNREADABLE: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::SCAN_SKIPPED_FILES: prompts::Template<(prompts::Count, prompts::Text)>
+pub const prompts::messages::SEARCH_BAD_PATTERN: prompts::Template<(prompts::Text, prompts::Count, prompts::Text)>
+pub const prompts::messages::SEARCH_BAD_PATTERN_NO_COLUMN: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::SEARCH_CUT: prompts::Template<(prompts::Count, prompts::Text)>
+pub const prompts::messages::SEARCH_LISTING: prompts::Template<(prompts::Text, prompts::Count, prompts::Text)>
+pub const prompts::messages::SEARCH_LISTING_REST: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::SEARCH_MORE_FILES: prompts::Template<prompts::Count>
+pub const prompts::messages::SEARCH_NOISE: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Text)>
+pub const prompts::messages::SEARCH_NOTHING_ASKED: &str
+pub const prompts::messages::SEARCH_PATTERN_TOO_BIG: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::SEARCH_REPEAT: prompts::Template<(prompts::Count, prompts::Text)>
+pub const prompts::messages::SEARCH_REST: prompts::Template<(prompts::Count, prompts::Count, prompts::Count, prompts::Text)>
+pub const prompts::messages::SEARCH_SCOPE_FILES: prompts::Template<prompts::Text>
+pub const prompts::messages::SEARCH_SCOPE_PATH: prompts::Template<prompts::Text>
+pub const prompts::messages::SEARCH_SKIPPED: prompts::Template<(prompts::Count, prompts::Text)>
+pub const prompts::messages::SEARCH_SUMMARY: prompts::Template<(prompts::Text, prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::SEARCH_SUMMARY_NONE: prompts::Template<(prompts::Text, prompts::Text, prompts::Count)>
+pub const prompts::messages::SEARCH_WIDE_GLOB: prompts::Template<(prompts::Count, prompts::Text)>
 pub const prompts::messages::SERVER_NO_ROOTS: &str
 pub const prompts::messages::SERVER_ROOT_REQUIRED: prompts::Template<prompts::Text>
 pub const prompts::messages::SLICE_LINES_AND_WHOLE_FILE: &str
@@ -256,6 +297,8 @@ pub const prompts::messages::SLICE_RANGE_REVERSED: prompts::Template<prompts::Te
 pub const prompts::messages::SPAN_DATA_KEY_UNLISTED: prompts::Template<(prompts::Text, prompts::Text, prompts::Count)>
 pub const prompts::messages::SPAN_SYMBOL_UNDEFINED: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::STABLE_IDS_PATTERN: prompts::Template<prompts::Text>
+pub const prompts::messages::SUBAGENT_MAP_CONTEXT: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::SURFACE_REFUSED: &str
 pub const prompts::messages::SURFACE_V1_DEPRECATED: prompts::Template<prompts::Text>
 pub const prompts::messages::TARGET_CANDIDATES: prompts::Template<(prompts::Text, prompts::Count, prompts::Text)>
 pub const prompts::messages::TARGET_CANDIDATES_CUT: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Text)>
@@ -268,6 +311,51 @@ pub const prompts::messages::TARGET_NO_LINE: prompts::Template<(prompts::Text, p
 pub const prompts::messages::TARGET_NO_MATCH: prompts::Template<prompts::Text>
 pub const prompts::messages::TARGET_SPELLED: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::TOOL_TAKES: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::TRACE_AT_LEAST: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_BOUND: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_CANDIDATES: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::TRACE_CYCLES: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::TRACE_CYCLE_MEMBERS: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_DECLARES: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::TRACE_FILE_HEADER: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Count)>
+pub const prompts::messages::TRACE_FOLDER_HEADER: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::TRACE_FOLDER_ROW: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::TRACE_HIDDEN: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_KINDS_HIDDEN: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_LAST_CHANGE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::TRACE_LAST_CHANGE_NOT_READ: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_LAST_CHANGE_UNAVAILABLE: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_LINE_PAST_END: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_LITERAL: prompts::Template<(prompts::Text, prompts::Count, prompts::Text)>
+pub const prompts::messages::TRACE_LITERAL_NONE: &str
+pub const prompts::messages::TRACE_MORE_HINT: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_NAME_ONLY_FILES: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::TRACE_NAME_ONLY_FILES_FLOOR: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::TRACE_NAME_ONLY_HIDDEN: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_NOT_PARSED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::TRACE_NOT_RESOLVED: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_NOT_SCANNED: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_NO_ANCHOR: &str
+pub const prompts::messages::TRACE_NO_GRAMMAR: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::TRACE_NO_GRAMMAR_NAME: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_NO_MATCH: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_NO_SECTION_FILE: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::TRACE_NO_SECTION_FOLDER: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::TRACE_NO_SECTION_SYMBOL: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::TRACE_NO_SYMBOL_AT: &str
+pub const prompts::messages::TRACE_ROWS_UNLISTED: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_ROWS_UNLISTED_FLOOR: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_SAME_CARD: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_SECTION_NONE: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_SECTION_UNREAD: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::TRACE_SIMILAR: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_SIMILAR_NAME_ONLY: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_SIMILAR_ROW: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::TRACE_TARGET: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_TIER_UNCHECKED: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_TREE_UNLISTED: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_UNKNOWN_PATH: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::TRACE_UNKNOWN_PATH_NONE: prompts::Template<prompts::Text>
 pub const prompts::messages::TREE_CHECK_STOPPED: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Count)>
 pub const prompts::messages::TREE_CHECK_STOPPED_EVIDENCE: &str
 pub const prompts::messages::UNKNOWN_TOOL: prompts::Template<prompts::Text>
@@ -317,6 +405,12 @@ pub const prompts::parameter_descriptions::READ_PATH: &str
 pub const prompts::parameter_descriptions::REFERENCE_LIMIT: &str
 pub const prompts::parameter_descriptions::REFERENCE_TARGET: &str
 pub const prompts::parameter_descriptions::REPO_ROOT: &str
+pub const prompts::parameter_descriptions::SEARCH_CONTEXT: &str
+pub const prompts::parameter_descriptions::SEARCH_FILES: &str
+pub const prompts::parameter_descriptions::SEARCH_IGNORE_CASE: &str
+pub const prompts::parameter_descriptions::SEARCH_LIMIT: &str
+pub const prompts::parameter_descriptions::SEARCH_PATH: &str
+pub const prompts::parameter_descriptions::SEARCH_PATTERN: &str
 pub const prompts::parameter_descriptions::SHARED_CALLERS: &str
 pub const prompts::parameter_descriptions::SLICE_LINES: &str
 pub const prompts::parameter_descriptions::STABLE_IDS: &str
@@ -325,6 +419,8 @@ pub const prompts::parameter_descriptions::STRUCTURE_OPERATION: &str
 pub const prompts::parameter_descriptions::SYMBOLS_LIMIT: &str
 pub const prompts::parameter_descriptions::SYMBOLS_OPERATION: &str
 pub const prompts::parameter_descriptions::SYMBOL_KIND: &str
+pub const prompts::parameter_descriptions::TRACE_MORE: &str
+pub const prompts::parameter_descriptions::TRACE_TARGET: &str
 pub const prompts::parameter_descriptions::TREE_DEPTH: &str
 pub const prompts::parameter_descriptions::TREE_MAX_ENTRIES: &str
 pub const prompts::parameter_descriptions::TREE_PATH: &str
@@ -345,7 +441,9 @@ pub const prompts::tool_descriptions::READ: &str
 pub const prompts::tool_descriptions::READ_SLICE: &str
 pub const prompts::tool_descriptions::REPO_MAP: &str
 pub const prompts::tool_descriptions::RESOLVE_LOCATIONS: &str
+pub const prompts::tool_descriptions::SEARCH: &str
 pub const prompts::tool_descriptions::SYMBOLS: &str
+pub const prompts::tool_descriptions::TRACE: &str
 pub enum prompts::Severity
 pub prompts::Severity::Advisory
 pub prompts::Severity::Warning

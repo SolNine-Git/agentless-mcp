@@ -1147,9 +1147,148 @@
       },
       "text": "quote: core.py no longer defines quote. Pass a stable id from a map, overview, find, explain or locate answer; history is span-scoped, so a bare name is refused."
     },
+    "hook_install_bad_json": {
+      "arguments": {
+        "error": "expected value at line 3 column 5",
+        "path": "/home/u/.claude/settings.json"
+      },
+      "text": "/home/u/.claude/settings.json is not valid JSON: expected value at line 3 column 5. hook install wrote nothing."
+    },
+    "hook_install_counts": {
+      "arguments": {
+        "added": 5,
+        "kept": 3,
+        "listed": " (gate-check, gate-mark)",
+        "removed": 2,
+        "replaced": 2
+      },
+      "text": "added 5, replaced 2, removed 2 retired (gate-check, gate-mark), kept 3 other handlers"
+    },
+    "hook_install_dry_run": {
+      "arguments": {
+        "path": "/home/u/.claude/settings.json",
+        "summary": "added 7, replaced 0, removed 0 retired, kept 0 other handlers"
+      },
+      "text": "added 7, replaced 0, removed 0 retired, kept 0 other handlers; --dry-run wrote nothing to /home/u/.claude/settings.json"
+    },
+    "hook_install_raced": {
+      "arguments": {
+        "path": "/home/u/.claude/settings.json"
+      },
+      "text": "/home/u/.claude/settings.json changed twice while hook install wrote it. hook install wrote nothing. Run it again."
+    },
+    "hook_install_unchanged": {
+      "arguments": {
+        "path": "/home/u/.claude/settings.json"
+      },
+      "text": "no change: /home/u/.claude/settings.json holds the current entries"
+    },
+    "hook_install_wrote": {
+      "arguments": {
+        "path": "/home/u/.claude/settings.json",
+        "summary": "added 7, replaced 0, removed 0 retired, kept 0 other handlers"
+      },
+      "text": "added 7, replaced 0, removed 0 retired, kept 0 other handlers; wrote /home/u/.claude/settings.json"
+    },
+    "hook_status_current": {
+      "arguments": {
+        "name": "read-card"
+      },
+      "text": "read-card: current"
+    },
+    "hook_status_missing": {
+      "arguments": {
+        "name": "ledger-reset"
+      },
+      "text": "ledger-reset: missing"
+    },
+    "hook_status_other_path": {
+      "arguments": {
+        "name": "prompt-map",
+        "path": "/x/agentless-mcp"
+      },
+      "text": "prompt-map: runs /x/agentless-mcp, not this binary"
+    },
+    "hook_status_retired": {
+      "arguments": {
+        "name": "gate-check"
+      },
+      "text": "gate-check: retired: hook install removes it"
+    },
+    "hook_status_stale": {
+      "arguments": {
+        "name": "erosion"
+      },
+      "text": "erosion: stale: the entry differs from the table of this binary"
+    },
+    "hook_uninstall_report": {
+      "arguments": {
+        "kept": 3,
+        "path": "/home/u/.claude/settings.json",
+        "removed": 7
+      },
+      "text": "removed 7 agentless handlers, kept 3 other handlers; wrote /home/u/.claude/settings.json"
+    },
     "hook_usage": {
       "arguments": {},
       "text": "hook takes one argument: erosion, gate-check, gate-mark or prompt-map"
+    },
+    "hooks_missing": {
+      "arguments": {
+        "count": 2,
+        "listed": "read-card, ledger-reset",
+        "total": 7
+      },
+      "text": "2 of 7 agentless hook entries are missing (read-card, ledger-reset)"
+    },
+    "hooks_note": {
+      "arguments": {
+        "summary": "2 of 7 agentless hook entries are missing (read-card, ledger-reset) and 1 is retired (gate-check)"
+      },
+      "text": "hooks: 2 of 7 agentless hook entries are missing (read-card, ledger-reset) and 1 is retired (gate-check). Run: agentless-mcp hook install"
+    },
+    "hooks_other_path": {
+      "arguments": {
+        "file": "/y/agentless-mcp",
+        "path": "/x/agentless-mcp"
+      },
+      "text": "hooks run /x/agentless-mcp; this server runs /y/agentless-mcp"
+    },
+    "hooks_retired": {
+      "arguments": {
+        "count": 1,
+        "listed": "gate-check"
+      },
+      "text": "1 agentless hook entry is retired (gate-check)"
+    },
+    "hooks_retired_more": {
+      "arguments": {
+        "count": 1,
+        "listed": "gate-check"
+      },
+      "text": "1 is retired (gate-check)"
+    },
+    "hooks_stale": {
+      "arguments": {
+        "count": 1,
+        "listed": "erosion",
+        "total": 7
+      },
+      "text": "1 of 7 agentless hook entries is stale (erosion)"
+    },
+    "hooks_stale_more": {
+      "arguments": {
+        "count": 1,
+        "listed": "erosion"
+      },
+      "text": "1 is stale (erosion)"
+    },
+    "hooks_unreadable": {
+      "arguments": {
+        "error": "permission denied",
+        "path": "/home/u/.claude/settings.json"
+      },
+      "text": "hooks: /home/u/.claude/settings.json is not readable: permission denied; hook state unknown"
     },
     "lint_no_checks": {
       "arguments": {
@@ -1292,6 +1431,28 @@
         "name": "body"
       },
       "text": "function, file or body"
+    },
+    "listing_row": {
+      "arguments": {
+        "count": 616,
+        "path": "README.md"
+      },
+      "text": "README.md  616 lines"
+    },
+    "listing_row_symbols": {
+      "arguments": {
+        "count": 212,
+        "path": "crates/hook/src/search/check.rs",
+        "total": 33
+      },
+      "text": "crates/hook/src/search/check.rs  212 lines  33 symbols"
+    },
+    "listing_row_unread": {
+      "arguments": {
+        "path": "big.json",
+        "reason": "skipped: 1308730 bytes exceeds the per-file cap of 1000000 bytes"
+      },
+      "text": "big.json  not read: skipped: 1308730 bytes exceeds the per-file cap of 1000000 bytes"
     },
     "map_budget_none": {
       "arguments": {
@@ -1498,6 +1659,13 @@
       },
       "text": "Repository map (agentless-mcp): for human_to_bytes, ignore_errors in this task, the files that rank first are lib/ansible/plugins/filter/human_to_bytes.yml and lib/ansible/module_utils/common/text/converters.py."
     },
+    "read_card_context": {
+      "arguments": {
+        "card": "crates/hook/src/prompt_map.rs  rust  304 lines  ids: rs:crates/hook/src/prompt_map.rs::<QualifiedName>",
+        "path": "crates/hook/src/prompt_map.rs"
+      },
+      "text": "File card (agentless-mcp), first read of crates/hook/src/prompt_map.rs in this context:\ncrates/hook/src/prompt_map.rs  rust  304 lines  ids: rs:crates/hook/src/prompt_map.rs::<QualifiedName>"
+    },
     "refs_absent": {
       "arguments": {
         "target": "py:pkg/lib.py::target"
@@ -1623,6 +1791,128 @@
       },
       "text": "// warning: 2 files were skipped and are absent from this answer: huge.py (skipped: 1040000 bytes exceeds the per-file cap of 1000000 bytes). A symbol in a skipped file reads as missing here even though it may exist in the repository."
     },
+    "search_bad_pattern": {
+      "arguments": {
+        "count": 4,
+        "pattern": "foo\\(",
+        "reason": "unclosed group"
+      },
+      "text": "pattern is not a valid regular expression: unclosed group at column 4. To match the text, pass pattern=\"foo\\(\""
+    },
+    "search_bad_pattern_no_column": {
+      "arguments": {
+        "pattern": "",
+        "reason": "the pattern is empty"
+      },
+      "text": "pattern is not a valid regular expression: the pattern is empty. To match the text, pass pattern=\"\""
+    },
+    "search_cut": {
+      "arguments": {
+        "chars": 1834,
+        "text": "!function(e){"
+      },
+      "text": "!function(e){...[+1834 chars]"
+    },
+    "search_listing": {
+      "arguments": {
+        "count": 7,
+        "glob": "crates/hook/src/search/*.rs",
+        "query": ""
+      },
+      "text": "search files=crates/hook/src/search/*.rs: 7 files"
+    },
+    "search_listing_rest": {
+      "arguments": {
+        "shown": 100,
+        "total": 1110
+      },
+      "text": "... 100 of 1110 files shown: raise limit for more."
+    },
+    "search_more_files": {
+      "arguments": {
+        "count": 4
+      },
+      "text": "4 more files"
+    },
+    "search_noise": {
+      "arguments": {
+        "count": 25,
+        "kind": "lock",
+        "listed": "Cargo.lock (25)",
+        "total": 1
+      },
+      "text": "+ 25 matches in 1 lock file: Cargo.lock (25). path=<file> shows them."
+    },
+    "search_nothing_asked": {
+      "arguments": {},
+      "text": "search needs pattern, files or both."
+    },
+    "search_pattern_too_big": {
+      "arguments": {
+        "limit": 10485760,
+        "pattern": "a\\{1000\\}"
+      },
+      "text": "pattern is not a valid regular expression: it compiles to more than 10485760 bytes. To match the text, pass pattern=\"a\\{1000\\}\""
+    },
+    "search_repeat": {
+      "arguments": {
+        "count": 3,
+        "listed": "core.py @1, tests/test_core.py @1, user.py @1"
+      },
+      "text": "same line in 3 places: core.py @1, tests/test_core.py @1, user.py @1"
+    },
+    "search_rest": {
+      "arguments": {
+        "count": 2,
+        "listed": "a.py (30), b.py (10)",
+        "shown": 100,
+        "total": 140
+      },
+      "text": "... 100 of 140 match lines shown; 2 more files: a.py (30), b.py (10)"
+    },
+    "search_scope_files": {
+      "arguments": {
+        "glob": "**/*.rs"
+      },
+      "text": " files=**/*.rs"
+    },
+    "search_scope_path": {
+      "arguments": {
+        "path": "crates/hook"
+      },
+      "text": " in crates/hook"
+    },
+    "search_skipped": {
+      "arguments": {
+        "count": 1,
+        "listed": "big.json (skipped: 1308730 bytes exceeds the per-file cap of 1000000 bytes)"
+      },
+      "text": "// warning: 1 file was not searched: big.json (skipped: 1308730 bytes exceeds the per-file cap of 1000000 bytes)"
+    },
+    "search_summary": {
+      "arguments": {
+        "count": 4,
+        "pattern": "agentless_prompt_map",
+        "query": "",
+        "total": 4
+      },
+      "text": "search /agentless_prompt_map/: 4 matches in 4 files"
+    },
+    "search_summary_none": {
+      "arguments": {
+        "pattern": "zz_no_such_text",
+        "query": "",
+        "total": 1110
+      },
+      "text": "search /zz_no_such_text/: 0 matches in 1110 files searched."
+    },
+    "search_wide_glob": {
+      "arguments": {
+        "glob": "src/a/b",
+        "limit": 256
+      },
+      "text": "files expands to more than 256 globs: src/a/b. Use fewer brace groups."
+    },
     "server_no_roots": {
       "arguments": {},
       "text": "no repositories are served: this server was started with no roots. Roots come from --root DIR flags and from --roots-from FILE, which lists one repository path per line. A root advertised by the client can only select among the roots the server is configured with; it cannot add one."
@@ -1686,6 +1976,17 @@
         "pattern": "py:src/app/svc.py::<QualifiedName>"
       },
       "text": "stable ids: py:src/app/svc.py::<QualifiedName>"
+    },
+    "subagent_map_context": {
+      "arguments": {
+        "paths": "crates/graph/src/owners.rs and crates/app/src/lib.rs",
+        "seeds": "claim"
+      },
+      "text": "Repository map (agentless-mcp): for claim in this brief, the files that rank first and that the brief does not name are crates/graph/src/owners.rs and crates/app/src/lib.rs."
+    },
+    "surface_refused": {
+      "arguments": {},
+      "text": "--surface is no longer served: this release publishes trace and search only. Drop --surface."
     },
     "surface_v1_deprecated": {
       "arguments": {
@@ -1768,6 +2069,293 @@
         "tool": "history"
       },
       "text": "history takes target, repo_root, limit and budget."
+    },
+    "trace_at_least": {
+      "arguments": {
+        "count": 3
+      },
+      "text": "at least 3"
+    },
+    "trace_bound": {
+      "arguments": {
+        "count": 3
+      },
+      "text": "3 bound"
+    },
+    "trace_candidates": {
+      "arguments": {
+        "count": 14,
+        "target": "answer"
+      },
+      "text": "answer: 14 definitions. Trace one by its id."
+    },
+    "trace_cycle_members": {
+      "arguments": {
+        "listed": "crates/hook/src/worker.rs, crates/hook/src/text.rs"
+      },
+      "text": "also in this cycle: crates/hook/src/worker.rs, crates/hook/src/text.rs"
+    },
+    "trace_cycles": {
+      "arguments": {
+        "count": 1,
+        "total": 27
+      },
+      "text": "in 1 import cycle of 27 files"
+    },
+    "trace_declares": {
+      "arguments": {
+        "count": 42,
+        "kinds": "14 functions, 2 classes, 1 type alias, 25 constants"
+      },
+      "text": "42 (14 functions, 2 classes, 1 type alias, 25 constants)"
+    },
+    "trace_file_header": {
+      "arguments": {
+        "count": 304,
+        "language": "rust",
+        "path": "crates/hook/src/prompt_map.rs",
+        "pattern": "rs:crates/hook/src/prompt_map.rs::<QualifiedName>"
+      },
+      "text": "crates/hook/src/prompt_map.rs  rust  304 lines  ids: rs:crates/hook/src/prompt_map.rs::<QualifiedName>"
+    },
+    "trace_folder_header": {
+      "arguments": {
+        "count": 7,
+        "path": "crates/hook/src/search",
+        "total": 1185
+      },
+      "text": "crates/hook/src/search/  7 files, 1185 lines"
+    },
+    "trace_folder_row": {
+      "arguments": {
+        "count": 2,
+        "path": "deep"
+      },
+      "text": "deep/  2 files"
+    },
+    "trace_hidden": {
+      "arguments": {
+        "count": 9
+      },
+      "text": "9 hidden"
+    },
+    "trace_kinds_hidden": {
+      "arguments": {
+        "kinds": "25 constants"
+      },
+      "text": "25 constants hidden"
+    },
+    "trace_last_change": {
+      "arguments": {
+        "date": "2026-11-05",
+        "sha": "de91a250",
+        "subject": "Add the prompt-map hook: the map's first files for a first prompt"
+      },
+      "text": "last change: de91a250 2026-11-05 Add the prompt-map hook: the map's first files for a first prompt"
+    },
+    "trace_last_change_not_read": {
+      "arguments": {
+        "count": 2
+      },
+      "text": "last change: not read in 2 s"
+    },
+    "trace_last_change_unavailable": {
+      "arguments": {
+        "reason": "history needs git: not a git repository"
+      },
+      "text": "last change: not read: history needs git: not a git repository"
+    },
+    "trace_line_past_end": {
+      "arguments": {
+        "count": 9
+      },
+      "text": ": the file has 9 lines."
+    },
+    "trace_literal": {
+      "arguments": {
+        "count": 1,
+        "listed": "crates/mcp/fixtures/calls.json @4",
+        "pattern": "zz_no_such"
+      },
+      "text": "It occurs as text in 1 file: crates/mcp/fixtures/calls.json @4. search(pattern=\"zz_no_such\") lists every match."
+    },
+    "trace_literal_none": {
+      "arguments": {},
+      "text": "No file holds it as text."
+    },
+    "trace_more_hint": {
+      "arguments": {
+        "name": "callers"
+      },
+      "text": "(more=callers)"
+    },
+    "trace_name_only_files": {
+      "arguments": {
+        "count": 253,
+        "total": 35
+      },
+      "text": "253 name-only in 35 files hidden"
+    },
+    "trace_name_only_files_floor": {
+      "arguments": {
+        "count": 600,
+        "total": 1
+      },
+      "text": "600 name-only in at least 1 files hidden"
+    },
+    "trace_name_only_hidden": {
+      "arguments": {
+        "count": 3
+      },
+      "text": "3 name-only hidden"
+    },
+    "trace_no_anchor": {
+      "arguments": {},
+      "text": "no symbol of this file joins the name graph"
+    },
+    "trace_no_grammar": {
+      "arguments": {
+        "kind": ".md",
+        "path": "README.md"
+      },
+      "text": "README.md: no grammar reads .md files. Read it or search it."
+    },
+    "trace_no_grammar_name": {
+      "arguments": {
+        "path": "Makefile"
+      },
+      "text": "Makefile: no grammar reads this file. Read it or search it."
+    },
+    "trace_no_match": {
+      "arguments": {
+        "target": "zz_no_such"
+      },
+      "text": "no symbol, file or folder matches zz_no_such."
+    },
+    "trace_no_section_file": {
+      "arguments": {
+        "listed": "declares, imports, importers, tests, cycles",
+        "name": "callers"
+      },
+      "text": "more=callers does not apply to a file card. File sections: declares, imports, importers, tests, cycles."
+    },
+    "trace_no_section_folder": {
+      "arguments": {
+        "listed": "tree",
+        "name": "callers"
+      },
+      "text": "more=callers does not apply to a folder card. Folder sections: tree."
+    },
+    "trace_no_section_symbol": {
+      "arguments": {
+        "listed": "callers, callees, tests, similar, history, body",
+        "name": "declares"
+      },
+      "text": "more=declares does not apply to a symbol card. Symbol sections: callers, callees, tests, similar, history, body."
+    },
+    "trace_no_symbol_at": {
+      "arguments": {},
+      "text": "; this is the file card."
+    },
+    "trace_not_parsed": {
+      "arguments": {
+        "path": "crates/checks/fixtures/seeded.json",
+        "reason": "skipped: 1308730 bytes exceeds the per-file cap of 1000000 bytes"
+      },
+      "text": "crates/checks/fixtures/seeded.json is not parsed: skipped: 1308730 bytes exceeds the per-file cap of 1000000 bytes. Read it or search it."
+    },
+    "trace_not_resolved": {
+      "arguments": {
+        "count": 2
+      },
+      "text": "not resolved: the scan skipped 2 code files, so a caller can be missing"
+    },
+    "trace_not_scanned": {
+      "arguments": {
+        "path": ".agentless-mcp.json"
+      },
+      "text": ".agentless-mcp.json: the scan does not read this file. Read it or search it."
+    },
+    "trace_rows_unlisted": {
+      "arguments": {
+        "count": 11
+      },
+      "text": "... 11 more"
+    },
+    "trace_rows_unlisted_floor": {
+      "arguments": {
+        "count": 2
+      },
+      "text": "... at least 2 more"
+    },
+    "trace_same_card": {
+      "arguments": {
+        "count": 1
+      },
+      "text": "same card as target 1"
+    },
+    "trace_section_none": {
+      "arguments": {
+        "name": "tests"
+      },
+      "text": "tests: none"
+    },
+    "trace_section_unread": {
+      "arguments": {
+        "name": "imports",
+        "reason": "no symbol of this file joins the name graph"
+      },
+      "text": "imports: not read: no symbol of this file joins the name graph"
+    },
+    "trace_similar": {
+      "arguments": {
+        "count": 12
+      },
+      "text": "12 candidates"
+    },
+    "trace_similar_name_only": {
+      "arguments": {
+        "count": 321
+      },
+      "text": "321 candidates, ranked by name-only callers; hidden"
+    },
+    "trace_similar_row": {
+      "arguments": {
+        "count": 2,
+        "target": "[py:pricing.py::PriceBook.quote] @46"
+      },
+      "text": "[py:pricing.py::PriceBook.quote] @46  2 shared callers"
+    },
+    "trace_target": {
+      "arguments": {
+        "target": "pricing.py"
+      },
+      "text": "target: pricing.py"
+    },
+    "trace_tier_unchecked": {
+      "arguments": {
+        "name": "imported"
+      },
+      "text": "imported, locals not checked"
+    },
+    "trace_tree_unlisted": {
+      "arguments": {
+        "count": 40
+      },
+      "text": "... 40 more: trace a subfolder for the rest"
+    },
+    "trace_unknown_path": {
+      "arguments": {
+        "path": "jobs.py",
+        "paths": "pkg/jobs.py"
+      },
+      "text": "no file or folder jobs.py in the repository. Paths that end the same way: pkg/jobs.py."
+    },
+    "trace_unknown_path_none": {
+      "arguments": {
+        "path": "src/nowhere.py"
+      },
+      "text": "no file or folder src/nowhere.py in the repository."
     },
     "tree_check_stopped": {
       "arguments": {

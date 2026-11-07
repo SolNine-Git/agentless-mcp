@@ -570,6 +570,202 @@
       },
       "one": "1 file spells orderPinnedTopics in code, and no file declares it. Grep finds every spelling.",
       "many": "2 files spell orderPinnedTopics in code, and no file declares it. Grep finds every spelling."
+    },
+    "trace_name_only_files": {
+      "arguments": {
+        "count": 253
+      },
+      "one": "253 name-only in 1 file hidden",
+      "many": "253 name-only in 2 files hidden"
+    },
+    "trace_similar": {
+      "arguments": {},
+      "one": "1 candidate",
+      "many": "2 candidates"
+    },
+    "trace_similar_name_only": {
+      "arguments": {},
+      "one": "1 candidate, ranked by name-only callers; hidden",
+      "many": "2 candidates, ranked by name-only callers; hidden"
+    },
+    "trace_similar_row": {
+      "arguments": {
+        "target": "[py:pricing.py::PriceBook.quote] @46"
+      },
+      "one": "[py:pricing.py::PriceBook.quote] @46  1 shared caller",
+      "many": "[py:pricing.py::PriceBook.quote] @46  2 shared callers"
+    },
+    "trace_not_resolved": {
+      "arguments": {},
+      "one": "not resolved: the scan skipped 1 code file, so a caller can be missing",
+      "many": "not resolved: the scan skipped 2 code files, so a caller can be missing"
+    },
+    "trace_file_header": {
+      "arguments": {
+        "path": "crates/hook/src/prompt_map.rs",
+        "language": "rust",
+        "pattern": "rs:crates/hook/src/prompt_map.rs::<QualifiedName>"
+      },
+      "one": "crates/hook/src/prompt_map.rs  rust  1 line  ids: rs:crates/hook/src/prompt_map.rs::<QualifiedName>",
+      "many": "crates/hook/src/prompt_map.rs  rust  2 lines  ids: rs:crates/hook/src/prompt_map.rs::<QualifiedName>"
+    },
+    "trace_cycles": {
+      "arguments": {},
+      "one": "in 1 import cycle of 1 file",
+      "many": "in 2 import cycles of 2 files"
+    },
+    "trace_folder_header": {
+      "arguments": {
+        "path": "crates/hook/src/search"
+      },
+      "one": "crates/hook/src/search/  1 file, 1 line",
+      "many": "crates/hook/src/search/  2 files, 2 lines"
+    },
+    "trace_folder_row": {
+      "arguments": {
+        "path": "deep"
+      },
+      "one": "deep/  1 file",
+      "many": "deep/  2 files"
+    },
+    "listing_row": {
+      "arguments": {
+        "path": "README.md"
+      },
+      "one": "README.md  1 line",
+      "many": "README.md  2 lines"
+    },
+    "listing_row_symbols": {
+      "arguments": {
+        "path": "crates/hook/src/search/check.rs"
+      },
+      "one": "crates/hook/src/search/check.rs  1 line  1 symbol",
+      "many": "crates/hook/src/search/check.rs  2 lines  2 symbols"
+    },
+    "trace_literal": {
+      "arguments": {
+        "listed": "crates/mcp/fixtures/calls.json @4",
+        "pattern": "zz_no_such"
+      },
+      "one": "It occurs as text in 1 file: crates/mcp/fixtures/calls.json @4. search(pattern=\"zz_no_such\") lists every match.",
+      "many": "It occurs as text in 2 files: crates/mcp/fixtures/calls.json @4. search(pattern=\"zz_no_such\") lists every match."
+    },
+    "trace_line_past_end": {
+      "arguments": {},
+      "one": ": the file has 1 line.",
+      "many": ": the file has 2 lines."
+    },
+    "search_summary": {
+      "arguments": {
+        "pattern": "agentless_prompt_map",
+        "query": ""
+      },
+      "one": "search /agentless_prompt_map/: 1 match in 1 file",
+      "many": "search /agentless_prompt_map/: 2 matches in 2 files"
+    },
+    "search_summary_none": {
+      "arguments": {
+        "pattern": "zz_no_such_text",
+        "query": ""
+      },
+      "one": "search /zz_no_such_text/: 0 matches in 1 file searched.",
+      "many": "search /zz_no_such_text/: 0 matches in 2 files searched."
+    },
+    "search_listing": {
+      "arguments": {
+        "glob": "crates/hook/src/search/*.rs",
+        "query": ""
+      },
+      "one": "search files=crates/hook/src/search/*.rs: 1 file",
+      "many": "search files=crates/hook/src/search/*.rs: 2 files"
+    },
+    "search_cut": {
+      "arguments": {
+        "text": "!function(e){"
+      },
+      "one": "!function(e){...[+1 char]",
+      "many": "!function(e){...[+2 chars]"
+    },
+    "search_noise": {
+      "arguments": {
+        "kind": "lock",
+        "listed": "Cargo.lock (25)"
+      },
+      "one": "+ 1 match in 1 lock file: Cargo.lock (25). path=<file> shows them.",
+      "many": "+ 2 matches in 2 lock files: Cargo.lock (25). path=<file> shows them."
+    },
+    "search_rest": {
+      "arguments": {
+        "shown": 100,
+        "total": 140,
+        "listed": "a.py (30), b.py (10)"
+      },
+      "one": "... 100 of 140 match lines shown; 1 more file: a.py (30), b.py (10)",
+      "many": "... 100 of 140 match lines shown; 2 more files: a.py (30), b.py (10)"
+    },
+    "search_more_files": {
+      "arguments": {},
+      "one": "1 more file",
+      "many": "2 more files"
+    },
+    "search_skipped": {
+      "arguments": {
+        "listed": "big.json (skipped: 1308730 bytes exceeds the per-file cap of 1000000 bytes)"
+      },
+      "one": "// warning: 1 file was not searched: big.json (skipped: 1308730 bytes exceeds the per-file cap of 1000000 bytes)",
+      "many": "// warning: 2 files were not searched: big.json (skipped: 1308730 bytes exceeds the per-file cap of 1000000 bytes)"
+    },
+    "hook_install_counts": {
+      "arguments": {
+        "added": 5,
+        "replaced": 2,
+        "removed": 2,
+        "listed": " (gate-check, gate-mark)"
+      },
+      "one": "added 5, replaced 2, removed 2 retired (gate-check, gate-mark), kept 1 other handler",
+      "many": "added 5, replaced 2, removed 2 retired (gate-check, gate-mark), kept 2 other handlers"
+    },
+    "hook_uninstall_report": {
+      "arguments": {
+        "path": "/home/u/.claude/settings.json"
+      },
+      "one": "removed 1 agentless handler, kept 1 other handler; wrote /home/u/.claude/settings.json",
+      "many": "removed 2 agentless handlers, kept 2 other handlers; wrote /home/u/.claude/settings.json"
+    },
+    "hooks_missing": {
+      "arguments": {
+        "listed": "read-card, ledger-reset"
+      },
+      "one": "1 of 1 agentless hook entry is missing (read-card, ledger-reset)",
+      "many": "2 of 2 agentless hook entries are missing (read-card, ledger-reset)"
+    },
+    "hooks_stale": {
+      "arguments": {
+        "listed": "erosion"
+      },
+      "one": "1 of 1 agentless hook entry is stale (erosion)",
+      "many": "2 of 2 agentless hook entries are stale (erosion)"
+    },
+    "hooks_stale_more": {
+      "arguments": {
+        "listed": "erosion"
+      },
+      "one": "1 is stale (erosion)",
+      "many": "2 are stale (erosion)"
+    },
+    "hooks_retired": {
+      "arguments": {
+        "listed": "gate-check"
+      },
+      "one": "1 agentless hook entry is retired (gate-check)",
+      "many": "2 agentless hook entries are retired (gate-check)"
+    },
+    "hooks_retired_more": {
+      "arguments": {
+        "listed": "gate-check"
+      },
+      "one": "1 is retired (gate-check)",
+      "many": "2 are retired (gate-check)"
     }
   }
 }

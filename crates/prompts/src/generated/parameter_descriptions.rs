@@ -137,6 +137,26 @@ pub const REFERENCE_TARGET: &str = "Stable id, path::name, path:line, qualified 
 pub const REPO_ROOT: &str = "Absolute path of one of the server's roots. Omit it to use the root \
         that holds the launch directory. A refusal lists the roots.";
 
+/// The parameter description keyed `search_context`.
+pub const SEARCH_CONTEXT: &str = "Lines shown before and after each match. Default 0.";
+
+/// The parameter description keyed `search_files`.
+pub const SEARCH_FILES: &str = "A glob on repository-relative paths, such as **/*.rs or \
+        src/{a,b}/**.";
+
+/// The parameter description keyed `search_ignore_case`.
+pub const SEARCH_IGNORE_CASE: &str = "Ignore letter case.";
+
+/// The parameter description keyed `search_limit`.
+pub const SEARCH_LIMIT: &str = "Maximum match lines or file rows. Default 100.";
+
+/// The parameter description keyed `search_path`.
+pub const SEARCH_PATH: &str = "A repository-relative file or folder. Default: the root.";
+
+/// The parameter description keyed `search_pattern`.
+pub const SEARCH_PATTERN: &str = "A regular expression, matched line by line. Omit it to list \
+        files.";
+
 /// The parameter description keyed `shared_callers`.
 pub const SHARED_CALLERS: &str = "Rank symbols whose callers overlap the target's instead: the \
         does-a-utility-already-exist check.";
@@ -167,6 +187,12 @@ pub const SYMBOLS_LIMIT: &str = "Maximum rows: find and explain default 20, expa
 
 /// The parameter description keyed `symbols_operation`.
 pub const SYMBOLS_OPERATION: &str = "The tool description says what each one requires.";
+
+/// The parameter description keyed `trace_more`.
+pub const TRACE_MORE: &str = "One section to show in full.";
+
+/// The parameter description keyed `trace_target`.
+pub const TRACE_TARGET: &str = "A name, a path, path:line or a stable id. A list traces each one.";
 
 /// The parameter description keyed `tree_depth`.
 pub const TREE_DEPTH: &str = "Directory levels below the tree root.";
