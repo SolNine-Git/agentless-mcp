@@ -9,7 +9,6 @@ mod copies;
 mod dodges;
 mod error;
 mod finding;
-mod globs;
 mod index;
 mod matching;
 mod observed;

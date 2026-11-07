@@ -3,10 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use metrics::{Block, COMPLEXITY_REASONS, Unmeasurable};
 use serde_json::{Map, Value, json};
 use syntax::{Language, Unparsable};
+use text::in_boundary;
 use text::testing::document;
 
 use crate::finding::{Finding, PairFinding, Severity, sorted};
-use crate::globs::in_boundary;
 use crate::pair::side_reason;
 use crate::{
     CloneIndex, Error, IndexedFiles, Observed, Outcome, Pair, SideError, SideText, TextPair,

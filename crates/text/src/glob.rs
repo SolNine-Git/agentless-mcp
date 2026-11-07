@@ -2,7 +2,9 @@
 
 const GLOBSTAR: &str = "**";
 
-pub(crate) fn in_boundary(path: &str, globs: &[String]) -> bool {
+/// Returns true when one of `globs` matches `path` in the boundary glob dialect.
+#[must_use]
+pub fn in_boundary(path: &str, globs: &[String]) -> bool {
     let segments: Vec<&str> = path.split('/').collect();
     globs.iter().any(|glob| {
         let elements: Vec<&str> = glob.split('/').collect();
