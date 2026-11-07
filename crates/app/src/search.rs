@@ -16,12 +16,13 @@ use regex::Regex;
 
 use crate::bounds::within;
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
-use files::{Selected, in_scope, walked_files};
+use files::in_scope;
 use lines::{FileHits, hits_in};
 use shape::{Shaped, owner_blocks, shaped};
 
 pub(crate) use files::file_row;
 pub use files::{FileRow, Measure, is_source_path};
+pub(crate) use files::{Selected, walked_files};
 pub use noise::{
     MINIFIED_KEEP_CHARS, MINIFIED_LONGEST_LINE_BYTES, MINIFIED_MEAN_LINE_BYTES, NoiseClass,
 };
@@ -356,6 +357,31 @@ fn owned(reading: &Reading<'_>, shaped: Shaped) -> Noted<Matches> {
         },
         diagnostics,
     }
+}
+
+// The first match line of each file that spells `literal`, in the answer's file order, cut at
+// `cap`, and how many files spell it. Trace's miss reads it.
+pub(crate) fn literal_files(
+    services: &Services,
+    reading: &Reading<'_>,
+    literal: &str,
+    cap: usize,
+) -> Noted<Result<(Vec<Place>, usize), Error>> {
+    let regex = match Regex::new(&regex::escape(literal)) {
+        Ok(regex) => regex,
+        Err(error) => {
+            let message = format!("{literal}: {error}");
+            return Noted::new(Err(kernel::Error::OperationFailed(message).into()));
+        }
+    };
+    let walked = walked_files(services, &reading.repo.root);
+    walked.map(|files| {
+        let files = files?;
+        let scoped = in_scope(&files, &Selected::Root, None);
+        let read = read_hits(reading, &scoped, &regex, 0)?;
+        let total = read.hits.len();
+        Ok((shape::first_places(read.hits, cap), total))
+    })
 }
 
 #[cfg(test)]

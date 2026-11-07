@@ -1,5 +1,6 @@
 use super::{
-    Matches, Measure, NoiseClass, PatternFault, Place, SearchError, SearchRequest, Searched, search,
+    Matches, Measure, NoiseClass, PatternFault, Place, SearchError, SearchRequest, Searched,
+    literal_files, search,
 };
 use crate::IntArg;
 use crate::endpoints::scanned::Scanned;
@@ -291,4 +292,20 @@ fn ignore_case_matches_in_any_case_and_no_match_counts_the_files_searched() {
     assert_eq!(matches(&CODE_AND_DOC, &asked).searched, 3);
     asked.ignore_case = true;
     assert_eq!(matches(&CODE_AND_DOC, &asked).files, 3);
+}
+
+#[test]
+fn the_literal_scan_names_the_first_line_of_each_file_up_to_the_cap() {
+    let files = [
+        ("b.md", "zz.no(such\n"),
+        ("a.py", "x = 1\ny = 'zz.no(such'\n"),
+        ("c.txt", "zz.no(such\n"),
+    ];
+    let scanned = Scanned::new(&files);
+    let found = literal_files(&scanned.services, &scanned.reading(), "zz.no(such", 2);
+    let (places, total) = found.value.unwrap_or_else(|error| panic!("{error}"));
+    let places: Vec<(&str, u32)> = (places.iter())
+        .map(|place| (place.path.as_str(), place.line))
+        .collect();
+    assert_eq!((places, total), (vec![("a.py", 2), ("b.md", 1)], 3));
 }

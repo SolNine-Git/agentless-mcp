@@ -717,6 +717,565 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Tool
 impl core::panic::unwind_safe::UnwindSafe for app::surface::Tool
 pub static app::surface::TOOLS: [&app::surface::Tool; 7]
 pub fn app::surface::tool_entry(&app::surface::Tool, app::surface::RootCount) -> json::parse::JsonValue
+pub mod app::trace
+pub enum app::trace::Card
+pub app::trace::Card::Candidates(app::trace::CandidatesTrace)
+pub app::trace::Card::File(alloc::boxed::Box<app::trace::FileTrace>)
+pub app::trace::Card::Folder(app::trace::FolderTrace)
+pub app::trace::Card::Miss(app::trace::Miss)
+pub app::trace::Card::Symbol(alloc::boxed::Box<app::trace::SymbolTrace>)
+impl app::trace::Card
+pub fn app::trace::Card::kind(&self) -> app::trace::CardKind
+impl core::clone::Clone for app::trace::Card
+pub fn app::trace::Card::clone(&self) -> Self
+impl core::cmp::PartialEq for app::trace::Card
+pub fn app::trace::Card::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Card
+pub fn app::trace::Card::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Card
+impl core::marker::Freeze for app::trace::Card
+impl core::marker::Send for app::trace::Card
+impl core::marker::Sync for app::trace::Card
+impl core::marker::Unpin for app::trace::Card
+impl core::marker::UnsafeUnpin for app::trace::Card
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Card
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Card
+pub enum app::trace::CardKind
+pub app::trace::CardKind::Candidates
+pub app::trace::CardKind::File
+pub app::trace::CardKind::Folder
+pub app::trace::CardKind::Miss
+pub app::trace::CardKind::Symbol
+impl app::trace::CardKind
+pub fn app::trace::CardKind::as_str(self) -> &'static str
+pub fn app::trace::CardKind::sections(self) -> &'static [app::trace::Section]
+impl core::clone::Clone for app::trace::CardKind
+pub fn app::trace::CardKind::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::CardKind
+impl core::cmp::PartialEq for app::trace::CardKind
+pub fn app::trace::CardKind::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::CardKind
+pub fn app::trace::CardKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::trace::CardKind
+impl core::marker::StructuralPartialEq for app::trace::CardKind
+impl core::marker::Freeze for app::trace::CardKind
+impl core::marker::Send for app::trace::CardKind
+impl core::marker::Sync for app::trace::CardKind
+impl core::marker::Unpin for app::trace::CardKind
+impl core::marker::UnsafeUnpin for app::trace::CardKind
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::CardKind
+impl core::panic::unwind_safe::UnwindSafe for app::trace::CardKind
+pub enum app::trace::Change
+pub app::trace::Change::Commit(app::HistoryEntry)
+pub app::trace::Change::NotRead
+pub app::trace::Change::NotRead::seconds: u64
+pub app::trace::Change::Unavailable(alloc::string::String)
+impl core::clone::Clone for app::trace::Change
+pub fn app::trace::Change::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::Change
+impl core::cmp::PartialEq for app::trace::Change
+pub fn app::trace::Change::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Change
+pub fn app::trace::Change::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Change
+impl core::marker::Freeze for app::trace::Change
+impl core::marker::Send for app::trace::Change
+impl core::marker::Sync for app::trace::Change
+impl core::marker::Unpin for app::trace::Change
+impl core::marker::UnsafeUnpin for app::trace::Change
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Change
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Change
+pub enum app::trace::FolderEntry
+pub app::trace::FolderEntry::File
+pub app::trace::FolderEntry::File::depth: usize
+pub app::trace::FolderEntry::File::row: app::search::FileRow
+pub app::trace::FolderEntry::Folder
+pub app::trace::FolderEntry::Folder::depth: usize
+pub app::trace::FolderEntry::Folder::files: usize
+pub app::trace::FolderEntry::Folder::path: alloc::string::String
+impl core::clone::Clone for app::trace::FolderEntry
+pub fn app::trace::FolderEntry::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::FolderEntry
+impl core::cmp::PartialEq for app::trace::FolderEntry
+pub fn app::trace::FolderEntry::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::FolderEntry
+pub fn app::trace::FolderEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::FolderEntry
+impl core::marker::Freeze for app::trace::FolderEntry
+impl core::marker::Send for app::trace::FolderEntry
+impl core::marker::Sync for app::trace::FolderEntry
+impl core::marker::Unpin for app::trace::FolderEntry
+impl core::marker::UnsafeUnpin for app::trace::FolderEntry
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::FolderEntry
+impl core::panic::unwind_safe::UnwindSafe for app::trace::FolderEntry
+pub enum app::trace::Linked<T>
+pub app::trace::Linked::Found(T)
+pub app::trace::Linked::NoAnchor
+impl<T: core::clone::Clone> core::clone::Clone for app::trace::Linked<T>
+pub fn app::trace::Linked<T>::clone(&self) -> Self
+impl<T: core::cmp::Eq> core::cmp::Eq for app::trace::Linked<T>
+impl<T: core::cmp::PartialEq> core::cmp::PartialEq for app::trace::Linked<T>
+pub fn app::trace::Linked<T>::eq(&self, &Self) -> bool
+impl<T: core::cmp::PartialEq> core::marker::StructuralPartialEq for app::trace::Linked<T>
+impl<T: core::fmt::Debug> core::fmt::Debug for app::trace::Linked<T>
+pub fn app::trace::Linked<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::marker::Freeze for app::trace::Linked<T> where T: core::marker::Freeze
+impl<T> core::marker::Send for app::trace::Linked<T> where T: core::marker::Send
+impl<T> core::marker::Sync for app::trace::Linked<T> where T: core::marker::Sync
+impl<T> core::marker::Unpin for app::trace::Linked<T> where T: core::marker::Unpin
+impl<T> core::marker::UnsafeUnpin for app::trace::Linked<T> where T: core::marker::UnsafeUnpin
+impl<T> core::panic::unwind_safe::RefUnwindSafe for app::trace::Linked<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for app::trace::Linked<T> where T: core::panic::unwind_safe::UnwindSafe
+pub enum app::trace::Miss
+pub app::trace::Miss::LinePastEnd
+pub app::trace::Miss::LinePastEnd::line: u32
+pub app::trace::Miss::LinePastEnd::lines: u32
+pub app::trace::Miss::LinePastEnd::path: alloc::string::String
+pub app::trace::Miss::NoGrammar
+pub app::trace::Miss::NoGrammar::path: alloc::string::String
+pub app::trace::Miss::NotParsed
+pub app::trace::Miss::NotParsed::path: alloc::string::String
+pub app::trace::Miss::NotParsed::reason: alloc::string::String
+pub app::trace::Miss::NotScanned
+pub app::trace::Miss::NotScanned::path: alloc::string::String
+pub app::trace::Miss::Nothing
+pub app::trace::Miss::Nothing::literal: core::option::Option<(alloc::vec::Vec<app::search::Place>, usize)>
+pub app::trace::Miss::Nothing::name: alloc::string::String
+pub app::trace::Miss::Nothing::usage: core::option::Option<app::Usage>
+pub app::trace::Miss::UnknownPath
+pub app::trace::Miss::UnknownPath::endings: alloc::vec::Vec<alloc::string::String>
+pub app::trace::Miss::UnknownPath::path: alloc::string::String
+impl core::clone::Clone for app::trace::Miss
+pub fn app::trace::Miss::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::Miss
+impl core::cmp::PartialEq for app::trace::Miss
+pub fn app::trace::Miss::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Miss
+pub fn app::trace::Miss::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Miss
+impl core::marker::Freeze for app::trace::Miss
+impl core::marker::Send for app::trace::Miss
+impl core::marker::Sync for app::trace::Miss
+impl core::marker::Unpin for app::trace::Miss
+impl core::marker::UnsafeUnpin for app::trace::Miss
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Miss
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Miss
+pub enum app::trace::Outcome
+pub app::trace::Outcome::Card(app::trace::Card)
+pub app::trace::Outcome::NoSection
+pub app::trace::Outcome::NoSection::kind: app::trace::CardKind
+pub app::trace::Outcome::NoSection::section: app::trace::Section
+pub app::trace::Outcome::Same(usize)
+impl core::clone::Clone for app::trace::Outcome
+pub fn app::trace::Outcome::clone(&self) -> Self
+impl core::cmp::PartialEq for app::trace::Outcome
+pub fn app::trace::Outcome::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Outcome
+pub fn app::trace::Outcome::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Outcome
+impl core::marker::Freeze for app::trace::Outcome
+impl core::marker::Send for app::trace::Outcome
+impl core::marker::Sync for app::trace::Outcome
+impl core::marker::Unpin for app::trace::Outcome
+impl core::marker::UnsafeUnpin for app::trace::Outcome
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Outcome
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Outcome
+pub enum app::trace::Section
+pub app::trace::Section::Body
+pub app::trace::Section::Callees
+pub app::trace::Section::Callers
+pub app::trace::Section::Candidates
+pub app::trace::Section::Cycles
+pub app::trace::Section::Declares
+pub app::trace::Section::History
+pub app::trace::Section::Importers
+pub app::trace::Section::Imports
+pub app::trace::Section::Similar
+pub app::trace::Section::Tests
+pub app::trace::Section::Tree
+impl app::trace::Section
+pub const app::trace::Section::ALL: [app::trace::Section; 12]
+pub fn app::trace::Section::as_str(self) -> &'static str
+pub fn app::trace::Section::from_name(&str) -> core::option::Option<app::trace::Section>
+impl core::clone::Clone for app::trace::Section
+pub fn app::trace::Section::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::Section
+impl core::cmp::PartialEq for app::trace::Section
+pub fn app::trace::Section::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Section
+pub fn app::trace::Section::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::trace::Section
+impl core::marker::StructuralPartialEq for app::trace::Section
+impl core::marker::Freeze for app::trace::Section
+impl core::marker::Send for app::trace::Section
+impl core::marker::Sync for app::trace::Section
+impl core::marker::Unpin for app::trace::Section
+impl core::marker::UnsafeUnpin for app::trace::Section
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Section
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Section
+pub enum app::trace::Tally
+pub app::trace::Tally::AtLeast(usize)
+pub app::trace::Tally::Exact(usize)
+impl core::clone::Clone for app::trace::Tally
+pub fn app::trace::Tally::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::Tally
+impl core::cmp::PartialEq for app::trace::Tally
+pub fn app::trace::Tally::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Tally
+pub fn app::trace::Tally::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::trace::Tally
+impl core::marker::StructuralPartialEq for app::trace::Tally
+impl core::marker::Freeze for app::trace::Tally
+impl core::marker::Send for app::trace::Tally
+impl core::marker::Sync for app::trace::Tally
+impl core::marker::Unpin for app::trace::Tally
+impl core::marker::UnsafeUnpin for app::trace::Tally
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Tally
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Tally
+pub struct app::trace::Callees
+pub app::trace::Callees::rows: alloc::vec::Vec<app::trace::EdgeGroup>
+pub app::trace::Callees::rows_total: app::trace::Tally
+pub app::trace::Callees::tiers: alloc::vec::Vec<app::trace::TierTotal>
+impl core::clone::Clone for app::trace::Callees
+pub fn app::trace::Callees::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::Callees
+impl core::cmp::PartialEq for app::trace::Callees
+pub fn app::trace::Callees::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Callees
+pub fn app::trace::Callees::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Callees
+impl core::marker::Freeze for app::trace::Callees
+impl core::marker::Send for app::trace::Callees
+impl core::marker::Sync for app::trace::Callees
+impl core::marker::Unpin for app::trace::Callees
+impl core::marker::UnsafeUnpin for app::trace::Callees
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Callees
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Callees
+pub struct app::trace::Callers
+pub app::trace::Callers::bound: usize
+pub app::trace::Callers::coverage: app::Coverage
+pub app::trace::Callers::files: usize
+pub app::trace::Callers::name_only: usize
+pub app::trace::Callers::name_only_files: app::trace::Tally
+pub app::trace::Callers::rows: alloc::vec::Vec<app::RefGroup>
+pub app::trace::Callers::rows_total: app::trace::Tally
+pub app::trace::Callers::tiers: core::option::Option<alloc::vec::Vec<app::trace::TierSites>>
+impl core::clone::Clone for app::trace::Callers
+pub fn app::trace::Callers::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::Callers
+impl core::cmp::PartialEq for app::trace::Callers
+pub fn app::trace::Callers::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Callers
+pub fn app::trace::Callers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Callers
+impl core::marker::Freeze for app::trace::Callers
+impl core::marker::Send for app::trace::Callers
+impl core::marker::Sync for app::trace::Callers
+impl core::marker::Unpin for app::trace::Callers
+impl core::marker::UnsafeUnpin for app::trace::Callers
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Callers
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Callers
+pub struct app::trace::CandidatesTrace
+pub app::trace::CandidatesTrace::rows: alloc::vec::Vec<app::SymbolCard>
+pub app::trace::CandidatesTrace::total: usize
+impl core::clone::Clone for app::trace::CandidatesTrace
+pub fn app::trace::CandidatesTrace::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::CandidatesTrace
+impl core::cmp::PartialEq for app::trace::CandidatesTrace
+pub fn app::trace::CandidatesTrace::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::CandidatesTrace
+pub fn app::trace::CandidatesTrace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::CandidatesTrace
+impl core::marker::Freeze for app::trace::CandidatesTrace
+impl core::marker::Send for app::trace::CandidatesTrace
+impl core::marker::Sync for app::trace::CandidatesTrace
+impl core::marker::Unpin for app::trace::CandidatesTrace
+impl core::marker::UnsafeUnpin for app::trace::CandidatesTrace
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::CandidatesTrace
+impl core::panic::unwind_safe::UnwindSafe for app::trace::CandidatesTrace
+pub struct app::trace::Cycles
+pub app::trace::Cycles::rows: alloc::vec::Vec<app::CycleRow>
+pub app::trace::Cycles::total: app::trace::Tally
+impl core::clone::Clone for app::trace::Cycles
+pub fn app::trace::Cycles::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::Cycles
+impl core::cmp::PartialEq for app::trace::Cycles
+pub fn app::trace::Cycles::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Cycles
+pub fn app::trace::Cycles::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Cycles
+impl core::marker::Freeze for app::trace::Cycles
+impl core::marker::Send for app::trace::Cycles
+impl core::marker::Sync for app::trace::Cycles
+impl core::marker::Unpin for app::trace::Cycles
+impl core::marker::UnsafeUnpin for app::trace::Cycles
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Cycles
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Cycles
+pub struct app::trace::Declares
+pub app::trace::Declares::kinds: alloc::vec::Vec<(&'static str, usize)>
+pub app::trace::Declares::rows: alloc::vec::Vec<app::SymbolCard>
+pub app::trace::Declares::total: usize
+impl core::clone::Clone for app::trace::Declares
+pub fn app::trace::Declares::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::Declares
+impl core::cmp::PartialEq for app::trace::Declares
+pub fn app::trace::Declares::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Declares
+pub fn app::trace::Declares::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Declares
+impl core::marker::Freeze for app::trace::Declares
+impl core::marker::Send for app::trace::Declares
+impl core::marker::Sync for app::trace::Declares
+impl core::marker::Unpin for app::trace::Declares
+impl core::marker::UnsafeUnpin for app::trace::Declares
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Declares
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Declares
+pub struct app::trace::EdgeGroup
+pub app::trace::EdgeGroup::edges: alloc::vec::Vec<app::EdgeRow>
+pub app::trace::EdgeGroup::path: alloc::string::String
+pub app::trace::EdgeGroup::tier: &'static str
+impl core::clone::Clone for app::trace::EdgeGroup
+pub fn app::trace::EdgeGroup::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::EdgeGroup
+impl core::cmp::PartialEq for app::trace::EdgeGroup
+pub fn app::trace::EdgeGroup::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::EdgeGroup
+pub fn app::trace::EdgeGroup::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::EdgeGroup
+impl core::marker::Freeze for app::trace::EdgeGroup
+impl core::marker::Send for app::trace::EdgeGroup
+impl core::marker::Sync for app::trace::EdgeGroup
+impl core::marker::Unpin for app::trace::EdgeGroup
+impl core::marker::UnsafeUnpin for app::trace::EdgeGroup
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::EdgeGroup
+impl core::panic::unwind_safe::UnwindSafe for app::trace::EdgeGroup
+pub struct app::trace::FileLinks
+pub app::trace::FileLinks::rows: alloc::vec::Vec<app::search::Place>
+pub app::trace::FileLinks::total: app::trace::Tally
+impl core::clone::Clone for app::trace::FileLinks
+pub fn app::trace::FileLinks::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::FileLinks
+impl core::cmp::PartialEq for app::trace::FileLinks
+pub fn app::trace::FileLinks::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::FileLinks
+pub fn app::trace::FileLinks::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::FileLinks
+impl core::marker::Freeze for app::trace::FileLinks
+impl core::marker::Send for app::trace::FileLinks
+impl core::marker::Sync for app::trace::FileLinks
+impl core::marker::Unpin for app::trace::FileLinks
+impl core::marker::UnsafeUnpin for app::trace::FileLinks
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::FileLinks
+impl core::panic::unwind_safe::UnwindSafe for app::trace::FileLinks
+pub struct app::trace::FileTrace
+pub app::trace::FileTrace::cycles: core::option::Option<app::trace::Cycles>
+pub app::trace::FileTrace::declares: core::option::Option<app::trace::Declares>
+pub app::trace::FileTrace::id_prefix: &'static str
+pub app::trace::FileTrace::importers: core::option::Option<app::trace::Linked<app::trace::FileLinks>>
+pub app::trace::FileTrace::imports: core::option::Option<app::trace::Linked<app::trace::FileLinks>>
+pub app::trace::FileTrace::language: &'static str
+pub app::trace::FileTrace::lines: u32
+pub app::trace::FileTrace::no_symbol_at: core::option::Option<u32>
+pub app::trace::FileTrace::path: alloc::string::String
+pub app::trace::FileTrace::tests: core::option::Option<app::trace::Linked<app::trace::FileLinks>>
+impl core::clone::Clone for app::trace::FileTrace
+pub fn app::trace::FileTrace::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::FileTrace
+impl core::cmp::PartialEq for app::trace::FileTrace
+pub fn app::trace::FileTrace::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::FileTrace
+pub fn app::trace::FileTrace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::FileTrace
+impl core::marker::Freeze for app::trace::FileTrace
+impl core::marker::Send for app::trace::FileTrace
+impl core::marker::Sync for app::trace::FileTrace
+impl core::marker::Unpin for app::trace::FileTrace
+impl core::marker::UnsafeUnpin for app::trace::FileTrace
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::FileTrace
+impl core::panic::unwind_safe::UnwindSafe for app::trace::FileTrace
+pub struct app::trace::FolderTrace
+pub app::trace::FolderTrace::depth: usize
+pub app::trace::FolderTrace::entries: alloc::vec::Vec<app::trace::FolderEntry>
+pub app::trace::FolderTrace::files: usize
+pub app::trace::FolderTrace::lines: u64
+pub app::trace::FolderTrace::path: alloc::string::String
+pub app::trace::FolderTrace::total: usize
+impl core::clone::Clone for app::trace::FolderTrace
+pub fn app::trace::FolderTrace::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::FolderTrace
+impl core::cmp::PartialEq for app::trace::FolderTrace
+pub fn app::trace::FolderTrace::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::FolderTrace
+pub fn app::trace::FolderTrace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::FolderTrace
+impl core::marker::Freeze for app::trace::FolderTrace
+impl core::marker::Send for app::trace::FolderTrace
+impl core::marker::Sync for app::trace::FolderTrace
+impl core::marker::Unpin for app::trace::FolderTrace
+impl core::marker::UnsafeUnpin for app::trace::FolderTrace
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::FolderTrace
+impl core::panic::unwind_safe::UnwindSafe for app::trace::FolderTrace
+pub struct app::trace::Similar
+pub app::trace::Similar::bound_total: app::trace::Tally
+pub app::trace::Similar::rows: alloc::vec::Vec<app::SharedCaller>
+pub app::trace::Similar::total: usize
+impl core::clone::Clone for app::trace::Similar
+pub fn app::trace::Similar::clone(&self) -> Self
+impl core::cmp::PartialEq for app::trace::Similar
+pub fn app::trace::Similar::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Similar
+pub fn app::trace::Similar::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Similar
+impl core::marker::Freeze for app::trace::Similar
+impl core::marker::Send for app::trace::Similar
+impl core::marker::Sync for app::trace::Similar
+impl core::marker::Unpin for app::trace::Similar
+impl core::marker::UnsafeUnpin for app::trace::Similar
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Similar
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Similar
+pub struct app::trace::SymbolTrace
+pub app::trace::SymbolTrace::body: core::option::Option<core::result::Result<app::SymbolCard, alloc::string::String>>
+pub app::trace::SymbolTrace::callees: core::option::Option<app::trace::Callees>
+pub app::trace::SymbolTrace::callers: core::option::Option<app::trace::Callers>
+pub app::trace::SymbolTrace::card: app::SymbolCard
+pub app::trace::SymbolTrace::change: core::option::Option<app::trace::Change>
+pub app::trace::SymbolTrace::history: core::option::Option<core::result::Result<app::HistoryResult, alloc::string::String>>
+pub app::trace::SymbolTrace::similar: core::option::Option<app::trace::Similar>
+pub app::trace::SymbolTrace::tests: core::option::Option<app::trace::Tests>
+impl core::clone::Clone for app::trace::SymbolTrace
+pub fn app::trace::SymbolTrace::clone(&self) -> Self
+impl core::cmp::PartialEq for app::trace::SymbolTrace
+pub fn app::trace::SymbolTrace::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::SymbolTrace
+pub fn app::trace::SymbolTrace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::SymbolTrace
+impl core::marker::Freeze for app::trace::SymbolTrace
+impl core::marker::Send for app::trace::SymbolTrace
+impl core::marker::Sync for app::trace::SymbolTrace
+impl core::marker::Unpin for app::trace::SymbolTrace
+impl core::marker::UnsafeUnpin for app::trace::SymbolTrace
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::SymbolTrace
+impl core::panic::unwind_safe::UnwindSafe for app::trace::SymbolTrace
+pub struct app::trace::Tests
+pub app::trace::Tests::rows: alloc::vec::Vec<app::RefGroup>
+pub app::trace::Tests::total: app::trace::Tally
+impl core::clone::Clone for app::trace::Tests
+pub fn app::trace::Tests::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::Tests
+impl core::cmp::PartialEq for app::trace::Tests
+pub fn app::trace::Tests::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Tests
+pub fn app::trace::Tests::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Tests
+impl core::marker::Freeze for app::trace::Tests
+impl core::marker::Send for app::trace::Tests
+impl core::marker::Sync for app::trace::Tests
+impl core::marker::Unpin for app::trace::Tests
+impl core::marker::UnsafeUnpin for app::trace::Tests
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Tests
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Tests
+pub struct app::trace::TierSites
+pub app::trace::TierSites::files: usize
+pub app::trace::TierSites::sites: usize
+pub app::trace::TierSites::tier: &'static str
+impl core::clone::Clone for app::trace::TierSites
+pub fn app::trace::TierSites::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::TierSites
+impl core::cmp::PartialEq for app::trace::TierSites
+pub fn app::trace::TierSites::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::TierSites
+pub fn app::trace::TierSites::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::TierSites
+impl core::marker::Freeze for app::trace::TierSites
+impl core::marker::Send for app::trace::TierSites
+impl core::marker::Sync for app::trace::TierSites
+impl core::marker::Unpin for app::trace::TierSites
+impl core::marker::UnsafeUnpin for app::trace::TierSites
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::TierSites
+impl core::panic::unwind_safe::UnwindSafe for app::trace::TierSites
+pub struct app::trace::TierTotal
+pub app::trace::TierTotal::tier: &'static str
+pub app::trace::TierTotal::total: usize
+impl core::clone::Clone for app::trace::TierTotal
+pub fn app::trace::TierTotal::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::TierTotal
+impl core::cmp::PartialEq for app::trace::TierTotal
+pub fn app::trace::TierTotal::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::TierTotal
+pub fn app::trace::TierTotal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::TierTotal
+impl core::marker::Freeze for app::trace::TierTotal
+impl core::marker::Send for app::trace::TierTotal
+impl core::marker::Sync for app::trace::TierTotal
+impl core::marker::Unpin for app::trace::TierTotal
+impl core::marker::UnsafeUnpin for app::trace::TierTotal
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::TierTotal
+impl core::panic::unwind_safe::UnwindSafe for app::trace::TierTotal
+pub struct app::trace::Trace
+pub app::trace::Trace::cards: alloc::vec::Vec<app::trace::Traced>
+impl core::clone::Clone for app::trace::Trace
+pub fn app::trace::Trace::clone(&self) -> Self
+impl core::cmp::PartialEq for app::trace::Trace
+pub fn app::trace::Trace::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Trace
+pub fn app::trace::Trace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Trace
+impl core::marker::Freeze for app::trace::Trace
+impl core::marker::Send for app::trace::Trace
+impl core::marker::Sync for app::trace::Trace
+impl core::marker::Unpin for app::trace::Trace
+impl core::marker::UnsafeUnpin for app::trace::Trace
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Trace
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Trace
+pub struct app::trace::TraceRequest
+pub app::trace::TraceRequest::more: core::option::Option<app::trace::Section>
+pub app::trace::TraceRequest::targets: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for app::trace::TraceRequest
+pub fn app::trace::TraceRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::TraceRequest
+impl core::cmp::PartialEq for app::trace::TraceRequest
+pub fn app::trace::TraceRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::TraceRequest
+pub fn app::trace::TraceRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::TraceRequest
+impl core::marker::Freeze for app::trace::TraceRequest
+impl core::marker::Send for app::trace::TraceRequest
+impl core::marker::Sync for app::trace::TraceRequest
+impl core::marker::Unpin for app::trace::TraceRequest
+impl core::marker::UnsafeUnpin for app::trace::TraceRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::TraceRequest
+impl core::panic::unwind_safe::UnwindSafe for app::trace::TraceRequest
+pub struct app::trace::Traced
+pub app::trace::Traced::outcome: app::trace::Outcome
+pub app::trace::Traced::target: alloc::string::String
+impl core::clone::Clone for app::trace::Traced
+pub fn app::trace::Traced::clone(&self) -> Self
+impl core::cmp::PartialEq for app::trace::Traced
+pub fn app::trace::Traced::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Traced
+pub fn app::trace::Traced::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Traced
+impl core::marker::Freeze for app::trace::Traced
+impl core::marker::Send for app::trace::Traced
+impl core::marker::Sync for app::trace::Traced
+impl core::marker::Unpin for app::trace::Traced
+impl core::marker::UnsafeUnpin for app::trace::Traced
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Traced
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Traced
+pub const app::trace::CANDIDATE_ROWS: usize
+pub const app::trace::FILE_CYCLES: usize
+pub const app::trace::FILE_DECLARATIONS: usize
+pub const app::trace::FILE_ROWS: usize
+pub const app::trace::FOLDER_DEPTH: usize
+pub const app::trace::FOLDER_ENTRIES: usize
+pub const app::trace::LAST_CHANGE_DEADLINE: core::time::Duration
+pub const app::trace::MAX_TARGETS: usize
+pub const app::trace::MISS_LITERAL_FILES: usize
+pub const app::trace::MISS_USAGE_FILES: usize
+pub const app::trace::MORE_TREE_DEPTH: usize
+pub const app::trace::MORE_TREE_ENTRIES: usize
+pub const app::trace::SYMBOL_ROWS: usize
+pub fn app::trace::trace(&app::Services, &app::Reading<'_>, &app::trace::TraceRequest) -> app::Noted<core::result::Result<app::trace::Trace, app::Error>>
 pub enum app::After
 pub app::After::File(std::path::PathBuf)
 pub app::After::Text(alloc::string::String)

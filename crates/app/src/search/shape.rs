@@ -198,3 +198,22 @@ fn owner(language: Language, path: &str, symbols: &[Symbol], line: u32) -> Optio
         end_line: symbol.end_line,
     })
 }
+
+// The first match line of each of the first `cap` files, in answer order.
+pub(super) fn first_places(files: Vec<FileHits>, cap: usize) -> Vec<Place> {
+    let first = |file: &FileHits| {
+        file.lines
+            .iter()
+            .find(|line| line.matched)
+            .map(|line| line.number)
+    };
+    (ordered(files).iter())
+        .filter_map(|file| {
+            first(file).map(|line| Place {
+                path: file.path.clone(),
+                line,
+            })
+        })
+        .take(cap)
+        .collect()
+}
