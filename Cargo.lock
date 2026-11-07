@@ -55,6 +55,7 @@ dependencies = [
  "patch",
  "patchcheck",
  "prompts",
+ "regex",
  "serde",
  "serde_json",
  "sha2",

@@ -23,6 +23,7 @@ metrics = { path = "../metrics" }
 patch = { path = "../patch" }
 patchcheck = { path = "../patchcheck" }
 prompts = { path = "../prompts" }
+regex = "1.13.1"
 serde.workspace = true
 sha2.workspace = true
 store = { path = "../store" }

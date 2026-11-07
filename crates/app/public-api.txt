@@ -199,6 +199,370 @@ pub static app::ops::SLICE: app::ops::Op
 pub static app::ops::TREE: app::ops::Op
 pub static app::ops::WARMUP: app::ops::Op
 pub fn app::ops::op(&str) -> core::option::Option<&'static app::ops::Op>
+pub mod app::search
+pub enum app::search::Measure
+pub app::search::Measure::Counted
+pub app::search::Measure::Counted::lines: u32
+pub app::search::Measure::Counted::symbols: core::option::Option<usize>
+pub app::search::Measure::Unread(alloc::string::String)
+impl core::clone::Clone for app::search::Measure
+pub fn app::search::Measure::clone(&self) -> Self
+impl core::cmp::Eq for app::search::Measure
+impl core::cmp::PartialEq for app::search::Measure
+pub fn app::search::Measure::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::Measure
+pub fn app::search::Measure::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::Measure
+impl core::marker::Freeze for app::search::Measure
+impl core::marker::Send for app::search::Measure
+impl core::marker::Sync for app::search::Measure
+impl core::marker::Unpin for app::search::Measure
+impl core::marker::UnsafeUnpin for app::search::Measure
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::Measure
+impl core::panic::unwind_safe::UnwindSafe for app::search::Measure
+pub enum app::search::NoiseClass
+pub app::search::NoiseClass::Lock
+pub app::search::NoiseClass::Minified
+pub app::search::NoiseClass::Vendored
+impl app::search::NoiseClass
+pub fn app::search::NoiseClass::as_str(self) -> &'static str
+impl core::clone::Clone for app::search::NoiseClass
+pub fn app::search::NoiseClass::clone(&self) -> Self
+impl core::cmp::Eq for app::search::NoiseClass
+impl core::cmp::Ord for app::search::NoiseClass
+pub fn app::search::NoiseClass::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for app::search::NoiseClass
+pub fn app::search::NoiseClass::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for app::search::NoiseClass
+pub fn app::search::NoiseClass::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for app::search::NoiseClass
+pub fn app::search::NoiseClass::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::search::NoiseClass
+impl core::marker::StructuralPartialEq for app::search::NoiseClass
+impl core::marker::Freeze for app::search::NoiseClass
+impl core::marker::Send for app::search::NoiseClass
+impl core::marker::Sync for app::search::NoiseClass
+impl core::marker::Unpin for app::search::NoiseClass
+impl core::marker::UnsafeUnpin for app::search::NoiseClass
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::NoiseClass
+impl core::panic::unwind_safe::UnwindSafe for app::search::NoiseClass
+pub enum app::search::PatternFault
+pub app::search::PatternFault::Other(alloc::string::String)
+pub app::search::PatternFault::Syntax
+pub app::search::PatternFault::Syntax::column: core::option::Option<usize>
+pub app::search::PatternFault::Syntax::reason: alloc::string::String
+pub app::search::PatternFault::TooBig
+pub app::search::PatternFault::TooBig::limit: usize
+impl core::clone::Clone for app::search::PatternFault
+pub fn app::search::PatternFault::clone(&self) -> Self
+impl core::cmp::Eq for app::search::PatternFault
+impl core::cmp::PartialEq for app::search::PatternFault
+pub fn app::search::PatternFault::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::PatternFault
+pub fn app::search::PatternFault::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::PatternFault
+impl core::marker::Freeze for app::search::PatternFault
+impl core::marker::Send for app::search::PatternFault
+impl core::marker::Sync for app::search::PatternFault
+impl core::marker::Unpin for app::search::PatternFault
+impl core::marker::UnsafeUnpin for app::search::PatternFault
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::PatternFault
+impl core::panic::unwind_safe::UnwindSafe for app::search::PatternFault
+pub enum app::search::SearchError
+pub app::search::SearchError::NothingAsked
+pub app::search::SearchError::Pattern(app::search::PatternError)
+pub app::search::SearchError::Refused(app::Error)
+pub app::search::SearchError::UnknownPath
+pub app::search::SearchError::UnknownPath::path: alloc::string::String
+pub app::search::SearchError::WideGlob
+pub app::search::SearchError::WideGlob::glob: alloc::string::String
+impl core::fmt::Debug for app::search::SearchError
+pub fn app::search::SearchError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::search::SearchError
+impl core::marker::Send for app::search::SearchError
+impl core::marker::Sync for app::search::SearchError
+impl core::marker::Unpin for app::search::SearchError
+impl core::marker::UnsafeUnpin for app::search::SearchError
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::SearchError
+impl core::panic::unwind_safe::UnwindSafe for app::search::SearchError
+pub enum app::search::Searched
+pub app::search::Searched::Listing(app::search::Listing)
+pub app::search::Searched::Matches(app::search::Matches)
+impl core::clone::Clone for app::search::Searched
+pub fn app::search::Searched::clone(&self) -> Self
+impl core::cmp::Eq for app::search::Searched
+impl core::cmp::PartialEq for app::search::Searched
+pub fn app::search::Searched::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::Searched
+pub fn app::search::Searched::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::Searched
+impl core::marker::Freeze for app::search::Searched
+impl core::marker::Send for app::search::Searched
+impl core::marker::Sync for app::search::Searched
+impl core::marker::Unpin for app::search::Searched
+impl core::marker::UnsafeUnpin for app::search::Searched
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::Searched
+impl core::panic::unwind_safe::UnwindSafe for app::search::Searched
+pub struct app::search::Block
+pub app::search::Block::lines: alloc::vec::Vec<app::search::Line>
+pub app::search::Block::owner: core::option::Option<app::search::Owner>
+impl core::clone::Clone for app::search::Block
+pub fn app::search::Block::clone(&self) -> Self
+impl core::cmp::Eq for app::search::Block
+impl core::cmp::PartialEq for app::search::Block
+pub fn app::search::Block::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::Block
+pub fn app::search::Block::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::Block
+impl core::marker::Freeze for app::search::Block
+impl core::marker::Send for app::search::Block
+impl core::marker::Sync for app::search::Block
+impl core::marker::Unpin for app::search::Block
+impl core::marker::UnsafeUnpin for app::search::Block
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::Block
+impl core::panic::unwind_safe::UnwindSafe for app::search::Block
+pub struct app::search::FileCount
+pub app::search::FileCount::count: usize
+pub app::search::FileCount::path: alloc::string::String
+impl core::clone::Clone for app::search::FileCount
+pub fn app::search::FileCount::clone(&self) -> Self
+impl core::cmp::Eq for app::search::FileCount
+impl core::cmp::PartialEq for app::search::FileCount
+pub fn app::search::FileCount::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::FileCount
+pub fn app::search::FileCount::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::FileCount
+impl core::marker::Freeze for app::search::FileCount
+impl core::marker::Send for app::search::FileCount
+impl core::marker::Sync for app::search::FileCount
+impl core::marker::Unpin for app::search::FileCount
+impl core::marker::UnsafeUnpin for app::search::FileCount
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::FileCount
+impl core::panic::unwind_safe::UnwindSafe for app::search::FileCount
+pub struct app::search::FileMatches
+pub app::search::FileMatches::blocks: alloc::vec::Vec<app::search::Block>
+pub app::search::FileMatches::path: alloc::string::String
+impl core::clone::Clone for app::search::FileMatches
+pub fn app::search::FileMatches::clone(&self) -> Self
+impl core::cmp::Eq for app::search::FileMatches
+impl core::cmp::PartialEq for app::search::FileMatches
+pub fn app::search::FileMatches::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::FileMatches
+pub fn app::search::FileMatches::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::FileMatches
+impl core::marker::Freeze for app::search::FileMatches
+impl core::marker::Send for app::search::FileMatches
+impl core::marker::Sync for app::search::FileMatches
+impl core::marker::Unpin for app::search::FileMatches
+impl core::marker::UnsafeUnpin for app::search::FileMatches
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::FileMatches
+impl core::panic::unwind_safe::UnwindSafe for app::search::FileMatches
+pub struct app::search::FileRow
+pub app::search::FileRow::measure: app::search::Measure
+pub app::search::FileRow::path: alloc::string::String
+impl core::clone::Clone for app::search::FileRow
+pub fn app::search::FileRow::clone(&self) -> Self
+impl core::cmp::Eq for app::search::FileRow
+impl core::cmp::PartialEq for app::search::FileRow
+pub fn app::search::FileRow::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::FileRow
+pub fn app::search::FileRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::FileRow
+impl core::marker::Freeze for app::search::FileRow
+impl core::marker::Send for app::search::FileRow
+impl core::marker::Sync for app::search::FileRow
+impl core::marker::Unpin for app::search::FileRow
+impl core::marker::UnsafeUnpin for app::search::FileRow
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::FileRow
+impl core::panic::unwind_safe::UnwindSafe for app::search::FileRow
+pub struct app::search::Line
+pub app::search::Line::cut: core::option::Option<usize>
+pub app::search::Line::matched: bool
+pub app::search::Line::number: u32
+pub app::search::Line::text: alloc::string::String
+impl core::clone::Clone for app::search::Line
+pub fn app::search::Line::clone(&self) -> Self
+impl core::cmp::Eq for app::search::Line
+impl core::cmp::PartialEq for app::search::Line
+pub fn app::search::Line::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::Line
+pub fn app::search::Line::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::Line
+impl core::marker::Freeze for app::search::Line
+impl core::marker::Send for app::search::Line
+impl core::marker::Sync for app::search::Line
+impl core::marker::Unpin for app::search::Line
+impl core::marker::UnsafeUnpin for app::search::Line
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::Line
+impl core::panic::unwind_safe::UnwindSafe for app::search::Line
+pub struct app::search::Listing
+pub app::search::Listing::files: usize
+pub app::search::Listing::rows: alloc::vec::Vec<app::search::FileRow>
+impl core::clone::Clone for app::search::Listing
+pub fn app::search::Listing::clone(&self) -> Self
+impl core::cmp::Eq for app::search::Listing
+impl core::cmp::PartialEq for app::search::Listing
+pub fn app::search::Listing::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::Listing
+pub fn app::search::Listing::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::Listing
+impl core::marker::Freeze for app::search::Listing
+impl core::marker::Send for app::search::Listing
+impl core::marker::Sync for app::search::Listing
+impl core::marker::Unpin for app::search::Listing
+impl core::marker::UnsafeUnpin for app::search::Listing
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::Listing
+impl core::panic::unwind_safe::UnwindSafe for app::search::Listing
+pub struct app::search::Matches
+pub app::search::Matches::files: usize
+pub app::search::Matches::groups: alloc::vec::Vec<app::search::FileMatches>
+pub app::search::Matches::matches: usize
+pub app::search::Matches::noise: alloc::vec::Vec<app::search::Noise>
+pub app::search::Matches::repeats: alloc::vec::Vec<app::search::Repeat>
+pub app::search::Matches::rest: alloc::vec::Vec<app::search::FileCount>
+pub app::search::Matches::searched: usize
+pub app::search::Matches::shown: usize
+pub app::search::Matches::skipped: alloc::vec::Vec<app::Skipped>
+impl core::clone::Clone for app::search::Matches
+pub fn app::search::Matches::clone(&self) -> Self
+impl core::cmp::Eq for app::search::Matches
+impl core::cmp::PartialEq for app::search::Matches
+pub fn app::search::Matches::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::Matches
+pub fn app::search::Matches::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::Matches
+impl core::marker::Freeze for app::search::Matches
+impl core::marker::Send for app::search::Matches
+impl core::marker::Sync for app::search::Matches
+impl core::marker::Unpin for app::search::Matches
+impl core::marker::UnsafeUnpin for app::search::Matches
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::Matches
+impl core::panic::unwind_safe::UnwindSafe for app::search::Matches
+pub struct app::search::Noise
+pub app::search::Noise::class: app::search::NoiseClass
+pub app::search::Noise::files: alloc::vec::Vec<app::search::FileCount>
+pub app::search::Noise::matches: usize
+impl core::clone::Clone for app::search::Noise
+pub fn app::search::Noise::clone(&self) -> Self
+impl core::cmp::Eq for app::search::Noise
+impl core::cmp::PartialEq for app::search::Noise
+pub fn app::search::Noise::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::Noise
+pub fn app::search::Noise::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::Noise
+impl core::marker::Freeze for app::search::Noise
+impl core::marker::Send for app::search::Noise
+impl core::marker::Sync for app::search::Noise
+impl core::marker::Unpin for app::search::Noise
+impl core::marker::UnsafeUnpin for app::search::Noise
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::Noise
+impl core::panic::unwind_safe::UnwindSafe for app::search::Noise
+pub struct app::search::Owner
+pub app::search::Owner::end_line: u32
+pub app::search::Owner::qualname: alloc::string::String
+pub app::search::Owner::stable_id: alloc::string::String
+pub app::search::Owner::start_line: u32
+impl core::clone::Clone for app::search::Owner
+pub fn app::search::Owner::clone(&self) -> Self
+impl core::cmp::Eq for app::search::Owner
+impl core::cmp::PartialEq for app::search::Owner
+pub fn app::search::Owner::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::Owner
+pub fn app::search::Owner::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::Owner
+impl core::marker::Freeze for app::search::Owner
+impl core::marker::Send for app::search::Owner
+impl core::marker::Sync for app::search::Owner
+impl core::marker::Unpin for app::search::Owner
+impl core::marker::UnsafeUnpin for app::search::Owner
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::Owner
+impl core::panic::unwind_safe::UnwindSafe for app::search::Owner
+pub struct app::search::PatternError
+pub app::search::PatternError::escaped: alloc::string::String
+pub app::search::PatternError::fault: app::search::PatternFault
+pub app::search::PatternError::pattern: alloc::string::String
+impl core::clone::Clone for app::search::PatternError
+pub fn app::search::PatternError::clone(&self) -> Self
+impl core::cmp::Eq for app::search::PatternError
+impl core::cmp::PartialEq for app::search::PatternError
+pub fn app::search::PatternError::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::PatternError
+pub fn app::search::PatternError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::PatternError
+impl core::marker::Freeze for app::search::PatternError
+impl core::marker::Send for app::search::PatternError
+impl core::marker::Sync for app::search::PatternError
+impl core::marker::Unpin for app::search::PatternError
+impl core::marker::UnsafeUnpin for app::search::PatternError
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::PatternError
+impl core::panic::unwind_safe::UnwindSafe for app::search::PatternError
+pub struct app::search::Place
+pub app::search::Place::line: u32
+pub app::search::Place::path: alloc::string::String
+impl core::clone::Clone for app::search::Place
+pub fn app::search::Place::clone(&self) -> Self
+impl core::cmp::Eq for app::search::Place
+impl core::cmp::PartialEq for app::search::Place
+pub fn app::search::Place::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::Place
+pub fn app::search::Place::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::Place
+impl core::marker::Freeze for app::search::Place
+impl core::marker::Send for app::search::Place
+impl core::marker::Sync for app::search::Place
+impl core::marker::Unpin for app::search::Place
+impl core::marker::UnsafeUnpin for app::search::Place
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::Place
+impl core::panic::unwind_safe::UnwindSafe for app::search::Place
+pub struct app::search::Repeat
+pub app::search::Repeat::places: alloc::vec::Vec<app::search::Place>
+pub app::search::Repeat::text: alloc::string::String
+impl core::clone::Clone for app::search::Repeat
+pub fn app::search::Repeat::clone(&self) -> Self
+impl core::cmp::Eq for app::search::Repeat
+impl core::cmp::PartialEq for app::search::Repeat
+pub fn app::search::Repeat::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::Repeat
+pub fn app::search::Repeat::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::Repeat
+impl core::marker::Freeze for app::search::Repeat
+impl core::marker::Send for app::search::Repeat
+impl core::marker::Sync for app::search::Repeat
+impl core::marker::Unpin for app::search::Repeat
+impl core::marker::UnsafeUnpin for app::search::Repeat
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::Repeat
+impl core::panic::unwind_safe::UnwindSafe for app::search::Repeat
+pub struct app::search::SearchRequest
+pub app::search::SearchRequest::context: app::IntArg
+pub app::search::SearchRequest::files: core::option::Option<alloc::string::String>
+pub app::search::SearchRequest::ignore_case: bool
+pub app::search::SearchRequest::limit: app::IntArg
+pub app::search::SearchRequest::path: core::option::Option<alloc::string::String>
+pub app::search::SearchRequest::pattern: core::option::Option<alloc::string::String>
+impl core::clone::Clone for app::search::SearchRequest
+pub fn app::search::SearchRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::search::SearchRequest
+impl core::cmp::PartialEq for app::search::SearchRequest
+pub fn app::search::SearchRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::search::SearchRequest
+pub fn app::search::SearchRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::search::SearchRequest
+impl core::marker::Freeze for app::search::SearchRequest
+impl core::marker::Send for app::search::SearchRequest
+impl core::marker::Sync for app::search::SearchRequest
+impl core::marker::Unpin for app::search::SearchRequest
+impl core::marker::UnsafeUnpin for app::search::SearchRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::search::SearchRequest
+impl core::panic::unwind_safe::UnwindSafe for app::search::SearchRequest
+pub const app::search::DEFAULT_SEARCH_LIMIT: usize
+pub const app::search::MAX_SEARCH_CONTEXT: usize
+pub const app::search::MAX_SEARCH_LIMIT: usize
+pub const app::search::MINIFIED_KEEP_CHARS: usize
+pub const app::search::MINIFIED_LONGEST_LINE_BYTES: usize
+pub const app::search::MINIFIED_MEAN_LINE_BYTES: usize
+pub const app::search::REPEAT_PLACES: usize
+pub fn app::search::is_source_path(&str) -> bool
+pub fn app::search::search(&app::Services, &app::Reading<'_>, &app::search::SearchRequest) -> app::Noted<core::result::Result<app::search::Searched, app::search::SearchError>>
 pub mod app::surface
 pub enum app::surface::Calls
 pub app::surface::Calls::Operations(&'static [app::surface::Operation])

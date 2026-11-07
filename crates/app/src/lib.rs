@@ -1,6 +1,6 @@
-//! The operations layer: the read and write operations, the lint pair forms, capabilities, the
-//! repository context they read, the clock and token counter ports, the MCP tool surface table,
-//! and the agent guide.
+//! The operations layer: the read and write operations, the text search, the lint pair forms,
+//! capabilities, the repository context they read, the clock and token counter ports, the MCP tool
+//! surface table, and the agent guide.
 
 mod args;
 pub mod bounds;
@@ -45,6 +45,7 @@ mod rows;
 mod rowtext;
 mod scan;
 mod scope;
+pub mod search;
 mod span;
 pub mod surface;
 mod symbol_graph;
