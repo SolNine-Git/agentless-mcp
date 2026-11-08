@@ -1527,7 +1527,7 @@ test paths, because test code is maintained code.
 |---|---|---|
 | `undeclared_imports` | warning | the patch imports a top-level package that is in neither the declared dependencies, nor the standard library, nor already imported somewhere in the repository (the slopsquatting check) |
 | `shadowing` | warning | the patch adds a module-level `def`/`class` whose name already lives in that file, other than the symbol it is replacing |
-| `near_duplicates` | advisory | an introduced function's body normalises to the same token stream as an existing one — "you already have this at file:line" |
+| `near_duplicates` | advisory | an introduced function's body is the same as an existing one token for token, with comments and indentation left out — "you already have this at file:line" |
 | `dangling_references` | warning | the patch calls a name, or inherits from a base, that nothing in the repository defines, the patch does not define, and which is no builtin or stdlib module; existing names within two edits are offered as near misses |
 | `dangling_callers` | warning | the patch removes or renames a symbol that files it does not touch still reference, listed with `file:line` |
 | `arity` | advisory | a call in new code cannot fit the signature of the single, undecorated, strongly-resolved function it names |

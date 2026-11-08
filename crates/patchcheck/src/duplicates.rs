@@ -100,8 +100,9 @@ fn duplicate_finding(fragment: &Fragment<'_>, symbol: &Symbol, sites: &[&Site<'_
         check: CHECK_NEAR_DUPLICATES,
         severity: Severity::Advisory,
         message: format!(
-            "the body the patch gives {} normalises to the same token stream \
-             as {} existing definition(s); you may already have this",
+            "the body the patch gives {} is the same as the body of {} existing \
+             definition(s) token for token, with comments and indentation left out; you may \
+             already have this",
             quoted(&symbol.name),
             sites.len()
         ),

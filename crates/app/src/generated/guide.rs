@@ -1382,74 +1382,75 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         `shadowing` | warning | the patch adds a module-level \
         `def`/`class` whose name already lives in that file, other than \
         the symbol it is replacing |\n| `near_duplicates` | advisory | \
-        an introduced function's body normalises to the same token \
-        stream as an existing one \u{2014} \"you already have this at \
-        file:line\" |\n| `dangling_references` | warning | the patch \
-        calls a name, or inherits from a base, that nothing in the \
-        repository defines, the patch does not define, and which is no \
-        builtin or stdlib module; existing names within two edits are \
-        offered as near misses |\n| `dangling_callers` | warning | the \
-        patch removes or renames a symbol that files it does not touch \
-        still reference, listed with `file:line` |\n| `arity` | \
-        advisory | a call in new code cannot fit the signature of the \
-        single, undecorated, strongly-resolved function it names |\n| \
-        `cycle_delta` | warning | an import cycle exists after the \
-        patch and did not before it, rendered as the chain that closes \
-        |\n| `complexity_delta` | warning | a function above the \
-        complexity threshold grows, a function crosses the threshold, \
-        or a new function arrives above it. In the hook form, a \
-        function moved from another file also counts as new. The \
-        threshold is 10 unless `complexity_threshold` in \
-        `.agentless-mcp.json` sets it. Complexity counts decision \
-        points the way scb-check does. Functions are paired by body, \
-        then by name, then by rank among functions that share a name, \
-        so a rename or a reordering is not a finding |\n| `clone_delta` \
-        | advisory | the change adds a block of three or more source \
-        lines and 40 or more tokens that has a copy elsewhere in the \
-        repository once names, literals, comments, and docstrings are \
-        ignored (a Type-2 clone). A block is a function, loop, branch, \
-        or try statement. A copy moved to another file, or renamed in \
-        place, is not a finding. One finding covers a copied function \
-        and the copied blocks inside it |\n| `callee_overlap` | \
-        advisory | a function that the change adds or rewrites calls at \
-        least 80% of the three or more functions that an existing \
-        function calls, and does not call that function. Only `--since` \
-        runs it. A function moved to another file or renamed without \
-        other change is not a finding |\n| `reuse_candidates` | \
-        advisory | a function that the change adds calls and reads \
-        mostly the same names as an existing function of the same \
-        language: an IDF-weighted Jaccard score of 0.3 or more over the \
-        names in call and field position. A row names a candidate to \
-        read, not a verdict. Only `--only reuse_candidates` runs it \
-        |\n| `contract_drift` | warning | the change adds a silent \
-        default or a swallowed error to a boundary module, a file that \
-        `boundary_globs` in `.agentless-mcp.json` matches. Each hit is \
-        keyed by its rule, the function that holds it, and its text. A \
-        hit the code already had is not a finding, and a renamed \
-        function keeps its hits, as does a function moved to another \
-        file of the same candidate. A hit that moves into another \
-        function is a finding |\n\n**`contract_drift` matches syntax, \
-        not types or data flow.** Each rule is a\ntree-sitter query, \
-        and the rule id names the syntax it matches. An empty value\nis \
-        matched by its exact text, so `[ ]` with a space is not `[]`. \
-        An empty body\nholds no statement, or one comment and no \
-        statement. Only the edited files\nthat match `boundary_globs` \
-        are checked. The rules:\n\n| Language | Rule | Matches \
-        |\n|---|---|---|\n| python | `get-default-empty` | `x.get(k, \
-        d)` where `d` is `[]`, `{}`, `\"\"`, `''`, or `0` |\n| python | \
-        `or-empty-default` | `x or []`, `x or {}` |\n| python | \
-        `getattr-default` | `getattr(o, name, default)` |\n| python | \
-        `except-return-default` | `return None`, `False`, `0`, `[]`, or \
-        `{}` directly in an `except` block |\n| python | `except-pass` \
-        | an `except` block that holds only `pass` |\n| javascript, \
-        typescript, tsx | `nullish-empty-default` | `x ?? []`, `x ?? \
-        {}` |\n| javascript, typescript, tsx | `or-empty-default` | `x \
-        \\|\\| []`, `x \\|\\| {}` |\n| javascript, typescript, tsx | \
-        `catch-return-default` | `return null`, `undefined`, `false`, \
-        `0`, `[]`, or `{}` directly in a `catch` block |\n| javascript, \
-        typescript, tsx | `catch-empty` | a `catch` with an empty body \
-        |\n| go | `err-check-returns-nil` | a `return` whose last value \
-        is `nil`, directly in `if err != nil { ... }` |\n| rust | \
+        an introduced function's body is the same as an existing one \
+        token for token, with comments and indentation left out \
+        \u{2014} \"you already have this at file:line\" |\n| \
+        `dangling_references` | warning | the patch calls a name, or \
+        inherits from a base, that nothing in the repository defines, \
+        the patch does not define, and which is no builtin or stdlib \
+        module; existing names within two edits are offered as near \
+        misses |\n| `dangling_callers` | warning | the patch removes or \
+        renames a symbol that files it does not touch still reference, \
+        listed with `file:line` |\n| `arity` | advisory | a call in new \
+        code cannot fit the signature of the single, undecorated, \
+        strongly-resolved function it names |\n| `cycle_delta` | \
+        warning | an import cycle exists after the patch and did not \
+        before it, rendered as the chain that closes |\n| \
+        `complexity_delta` | warning | a function above the complexity \
+        threshold grows, a function crosses the threshold, or a new \
+        function arrives above it. In the hook form, a function moved \
+        from another file also counts as new. The threshold is 10 \
+        unless `complexity_threshold` in `.agentless-mcp.json` sets it. \
+        Complexity counts decision points the way scb-check does. \
+        Functions are paired by body, then by name, then by rank among \
+        functions that share a name, so a rename or a reordering is not \
+        a finding |\n| `clone_delta` | advisory | the change adds a \
+        block of three or more source lines and 40 or more tokens that \
+        has a copy elsewhere in the repository once names, literals, \
+        comments, and docstrings are ignored (a Type-2 clone). A block \
+        is a function, loop, branch, or try statement. A copy moved to \
+        another file, or renamed in place, is not a finding. One \
+        finding covers a copied function and the copied blocks inside \
+        it |\n| `callee_overlap` | advisory | a function that the \
+        change adds or rewrites calls at least 80% of the three or more \
+        functions that an existing function calls, and does not call \
+        that function. Only `--since` runs it. A function moved to \
+        another file or renamed without other change is not a finding \
+        |\n| `reuse_candidates` | advisory | a function that the change \
+        adds calls and reads mostly the same names as an existing \
+        function of the same language: an IDF-weighted Jaccard score of \
+        0.3 or more over the names in call and field position. A row \
+        names a candidate to read, not a verdict. Only `--only \
+        reuse_candidates` runs it |\n| `contract_drift` | warning | the \
+        change adds a silent default or a swallowed error to a boundary \
+        module, a file that `boundary_globs` in `.agentless-mcp.json` \
+        matches. Each hit is keyed by its rule, the function that holds \
+        it, and its text. A hit the code already had is not a finding, \
+        and a renamed function keeps its hits, as does a function moved \
+        to another file of the same candidate. A hit that moves into \
+        another function is a finding |\n\n**`contract_drift` matches \
+        syntax, not types or data flow.** Each rule is a\ntree-sitter \
+        query, and the rule id names the syntax it matches. An empty \
+        value\nis matched by its exact text, so `[ ]` with a space is \
+        not `[]`. An empty body\nholds no statement, or one comment and \
+        no statement. Only the edited files\nthat match \
+        `boundary_globs` are checked. The rules:\n\n| Language | Rule | \
+        Matches |\n|---|---|---|\n| python | `get-default-empty` | \
+        `x.get(k, d)` where `d` is `[]`, `{}`, `\"\"`, `''`, or `0` \
+        |\n| python | `or-empty-default` | `x or []`, `x or {}` |\n| \
+        python | `getattr-default` | `getattr(o, name, default)` |\n| \
+        python | `except-return-default` | `return None`, `False`, `0`, \
+        `[]`, or `{}` directly in an `except` block |\n| python | \
+        `except-pass` | an `except` block that holds only `pass` |\n| \
+        javascript, typescript, tsx | `nullish-empty-default` | `x ?? \
+        []`, `x ?? {}` |\n| javascript, typescript, tsx | \
+        `or-empty-default` | `x \\|\\| []`, `x \\|\\| {}` |\n| \
+        javascript, typescript, tsx | `catch-return-default` | `return \
+        null`, `undefined`, `false`, `0`, `[]`, or `{}` directly in a \
+        `catch` block |\n| javascript, typescript, tsx | `catch-empty` \
+        | a `catch` with an empty body |\n| go | \
+        `err-check-returns-nil` | a `return` whose last value is `nil`, \
+        directly in `if err != nil { ... }` |\n| rust | \
         `unwrap-or-default` | `.unwrap_or_default()` |\n| rust | \
         `unwrap-or-empty` | `.unwrap_or(d)` where `d` is `vec![]`, \
         `Vec::new()`, `String::new()`, another std collection's \
@@ -1910,7 +1911,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3_599, 4_432),
     ("stable-ids", 4_434, 5_923),
     ("the-two-surfaces", 5_925, 11_608),
-    ("per-tool-usage", 11_610, 105_581),
+    ("per-tool-usage", 11_610, 105_613),
     ("claude-code-specifics", 13_226, 15_765),
     ("map", 15_767, 25_796),
     ("tree", 25_798, 26_119),
@@ -1930,10 +1931,10 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("resolve-locs", 62_823, 63_638),
     ("capabilities", 63_640, 65_354),
     ("index", 65_356, 68_097),
-    ("lint", 68_099, 94_381),
-    ("validate-vote", 94_383, 103_980),
-    ("warmup", 103_982, 105_581),
-    ("project-defaults-agentless-mcp-json", 105_583, 109_536),
-    ("token-counting", 109_538, 109_952),
-    ("exit-codes", 109_954, 110_412),
+    ("lint", 68_099, 94_413),
+    ("validate-vote", 94_415, 104_012),
+    ("warmup", 104_014, 105_613),
+    ("project-defaults-agentless-mcp-json", 105_615, 109_568),
+    ("token-counting", 109_570, 109_984),
+    ("exit-codes", 109_986, 110_444),
 ];

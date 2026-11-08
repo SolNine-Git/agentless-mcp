@@ -194,6 +194,17 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **The `near_duplicates` message says what the check matches.** It said
+  that the body "normalises to the same token stream" as an existing one, but
+  the check compares the body as written, with comments and indentation left
+  out, so a renamed local stops it. It now reads "is the same as the body of N
+  existing definition(s) token for token, with comments and indentation left
+  out", and so does the guide's table row. The changed recorded values: 6 in
+  `crates/patchcheck/fixtures/lint.json`, 3 in
+  `crates/app/fixtures/write/lint.json`, and the guide row in
+  `crates/app/fixtures/guide/guide.json` and
+  `crates/cli/fixtures/read/scenarios.json`.
+
 - **The default symbol card of `trace` no longer shows `similar`.** The
   symbols that share callers with the target are a list of co-used names, not
   of duplicates: 0 of 15 sampled function rows of the default card are
