@@ -14,7 +14,7 @@ use super::{CardKind, MISS_LITERAL_FILES, Miss};
 use crate::endpoints::{BindingStatus, Scope, TARGET_WORDING, bind};
 use crate::map::focus_resolution;
 use crate::ops::limits::MAX_LIMIT;
-use crate::scan::{RepoFacts, over_scan};
+use crate::scan::RepoFacts;
 use crate::search::{SearchError, Selected, literal_files};
 use crate::{Error, FindRequest, IntArg, Noted, Reading, Services, SymbolCard, find, symbol_card};
 
@@ -59,28 +59,26 @@ pub(super) enum Missed {
     Name { name: String, literal: String },
 }
 
-// One scan resolves every target of the call.
+// The call's one scan and its name index resolve every target of the call.
 pub(super) fn resolved(
-    services: &Services,
     reading: &Reading<'_>,
+    facts: &RepoFacts,
+    index: &NameIndex<'_>,
     files: &[RepoFile],
     targets: &[String],
-) -> Noted<Result<Vec<Resolved>, Error>> {
+) -> Vec<Resolved> {
     let walked = Walked::new(files);
-    over_scan(services, reading, |facts| {
-        let index = NameIndex::build(&facts.files);
-        let scope = Scope {
-            index: &index,
-            skipped: &facts.skipped,
-            root: &reading.repo.root,
-        };
-        let resolver = Resolver {
-            scope: &scope,
-            walked: &walked,
-            facts,
-        };
-        Ok(targets.iter().map(|target| resolver.one(target)).collect())
-    })
+    let scope = Scope {
+        index,
+        skipped: &facts.skipped,
+        root: &reading.repo.root,
+    };
+    let resolver = Resolver {
+        scope: &scope,
+        walked: &walked,
+        facts,
+    };
+    targets.iter().map(|target| resolver.one(target)).collect()
 }
 
 // The walked paths: every file the walk lists, which the scan may not read.

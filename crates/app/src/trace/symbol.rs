@@ -11,11 +11,13 @@ use super::{
     Callees, Callers, EdgeGroup, LAST_CHANGE_DEADLINE, LISTING_LIMIT, SYMBOL_ROWS, Section,
     Similar, SimilarRow, SymbolTrace, Tally, Tests, TierSites, TierTotal, cap,
 };
+use crate::explain::explain_in;
 use crate::ops::limits::{DEFAULT_HISTORY_BUDGET, DEFAULT_HISTORY_LIMIT};
+use crate::symbol_graph::CallGraph;
 use crate::{
     Error, ExpandRequest, ExplainRequest, Explanation, HistoryRequest, HistoryResult, IntArg,
     Noted, Reading, RefGroup, RefsRequest, RefsResult, Services, SharedCaller, SymbolCard,
-    TierGroup, expand, explain, history, is_test_path, refs,
+    TierGroup, expand, history, is_test_path, refs,
 };
 
 // The sections that a default card holds and that `more` can also name alone.
@@ -29,12 +31,14 @@ const DEFAULT_SECTIONS: [Section; 4] = [
 pub(super) fn symbol_trace(
     services: &Services,
     reading: &Reading<'_>,
+    graph: &CallGraph<'_>,
     card: SymbolCard,
     more: Option<Section>,
 ) -> Noted<Result<SymbolTrace, Error>> {
     let sections = Sections {
         services,
         reading,
+        graph,
         id: card.stable_id.clone(),
         more,
     };
@@ -53,14 +57,15 @@ pub(super) fn symbol_trace(
     traced.then_ok(|traced| sections.with_git(traced))
 }
 
-struct Sections<'s, 'r> {
+struct Sections<'s, 'r, 'g> {
     services: &'s Services,
     reading: &'s Reading<'r>,
+    graph: &'s CallGraph<'g>,
     id: String,
     more: Option<Section>,
 }
 
-impl Sections<'_, '_> {
+impl Sections<'_, '_, '_> {
     fn wants(&self, section: Section) -> bool {
         match self.more {
             None => DEFAULT_SECTIONS.contains(&section),
@@ -98,7 +103,7 @@ impl Sections<'_, '_> {
             target: self.id.clone(),
             limit: IntArg::from_usize(LISTING_LIMIT),
         };
-        let explained = explain(self.services, self.reading, &request);
+        let explained = explain_in(self.reading, &request, self.graph);
         explained.map_ok(|explained| SymbolTrace {
             callees: Some(callees(&explained, self.more)),
             ..traced

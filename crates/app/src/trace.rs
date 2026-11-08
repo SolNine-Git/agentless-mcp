@@ -11,10 +11,13 @@ mod symbol;
 use std::time::Duration;
 
 use git::RepoFile;
+use graph::NameIndex;
 
 use crate::bounds::within;
 use crate::ops::limits::{FIND_USAGE_FILES, MAX_LIMIT};
+use crate::scan::over_scan;
 use crate::search::{FileRow, Place, walked_files};
+use crate::symbol_graph::{CallGraph, with_call_graph};
 use crate::{
     CycleRow, EdgeRow, Error, HistoryEntry, HistoryResult, IntArg, Noted, Reading, RefGroup,
     Services, SharedCaller, SymbolCard, Usage,
@@ -464,20 +467,38 @@ pub fn trace(
     let walked = walked_files(services, &reading.repo.root);
     let mut diagnostics = walked.diagnostics;
     let value = walked.value.and_then(|files| {
-        let resolved = resolve::resolved(services, reading, &files, &request.targets);
-        diagnostics.extend(resolved.diagnostics);
-        let traced = carded(services, reading, &files, request, resolved.value?);
+        let scanned = over_scan(services, reading, |facts| {
+            let index = NameIndex::build(&facts.files);
+            let resolved = resolve::resolved(reading, facts, &index, &files, &request.targets);
+            Ok(with_call_graph(facts, &index, reading.deadline, |graph| {
+                let call = Call {
+                    services,
+                    reading,
+                    files: &files,
+                    graph,
+                };
+                carded(&call, request, resolved)
+            }))
+        });
+        diagnostics.extend(scanned.diagnostics);
+        let traced = scanned.value?;
         diagnostics.extend(traced.diagnostics);
         traced.value.map(|cards| Trace { cards })
     });
     Noted { value, diagnostics }
 }
 
+// What every card of one call reads: the walk, and the scan's one name index and graph.
+struct Call<'c, 'r, 'g> {
+    services: &'c Services,
+    reading: &'c Reading<'r>,
+    files: &'c [RepoFile],
+    graph: &'c CallGraph<'g>,
+}
+
 // Each target's outcome in request order: a repeat shares the card of its first copy.
 fn carded(
-    services: &Services,
-    reading: &Reading<'_>,
-    files: &[RepoFile],
+    call: &Call<'_, '_, '_>,
     request: &TraceRequest,
     resolved: Vec<Resolved>,
 ) -> Noted<Result<Vec<Traced>, Error>> {
@@ -486,7 +507,7 @@ fn carded(
         let first = request.targets[..at].iter().position(|seen| seen == target);
         let outcome = match first {
             Some(first) => Noted::new(Ok(Outcome::Same(first))),
-            None => outcome(services, reading, files, resolved, request.more),
+            None => outcome(call, resolved, request.more),
         };
         noted.diagnostics.extend(outcome.diagnostics);
         match outcome.value {
@@ -503,12 +524,16 @@ fn carded(
 // A candidates card and a miss show themselves whatever `more` names; a symbol, file or folder
 // card that does not hold the section says so.
 fn outcome(
-    services: &Services,
-    reading: &Reading<'_>,
-    files: &[RepoFile],
+    call: &Call<'_, '_, '_>,
     resolved: Resolved,
     more: Option<Section>,
 ) -> Noted<Result<Outcome, Error>> {
+    let Call {
+        services,
+        reading,
+        files,
+        graph,
+    } = *call;
     let kind = resolved.kind();
     let absent = more.filter(|section| !kind.sections().contains(section));
     if let Some(section) = absent
@@ -517,9 +542,9 @@ fn outcome(
         return Noted::new(Ok(Outcome::NoSection { section, kind }));
     }
     let card = match resolved {
-        Resolved::Symbol(card) => symbol::symbol_trace(services, reading, card, more)
+        Resolved::Symbol(card) => symbol::symbol_trace(services, reading, graph, card, more)
             .map(|traced| traced.map(|traced| Card::Symbol(Box::new(traced)))),
-        Resolved::File(found) => file::file_trace(services, reading, &found, more)
+        Resolved::File(found) => file::file_trace(services, reading, graph, &found, more)
             .map(|traced| traced.map(|traced| Card::File(Box::new(traced)))),
         Resolved::Folder(path) => {
             file::folder_trace(reading, files, &path, more).map(|traced| Ok(Card::Folder(traced)))

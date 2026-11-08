@@ -1,7 +1,7 @@
 //! One symbol's card: where it is defined, what it touches and what touches it, each side
 //! grouped by evidence tier, and the imports of its file.
 
-use graph::{Definition, SymbolEdge, SymbolGraph, Tier};
+use graph::{Definition, NameIndex, SymbolEdge, SymbolGraph, Tier};
 use kernel::Bounded;
 use prompts::messages::DATA_KEY_NO_FAN_IN;
 
@@ -13,7 +13,7 @@ use crate::endpoints::{
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::over_scan;
 use crate::span::{Missed, SymbolSpan, data_key_span};
-use crate::symbol_graph::{tier_at, verbs, with_resolved};
+use crate::symbol_graph::{CallGraph, tier_at, verbs, with_call_graph};
 use crate::{
     Error, IntArg, Noted, RationaleNode, Reading, Services, Skipped, SymbolCard, rationale_nodes,
     symbol_card,
@@ -111,6 +111,33 @@ pub fn explain(
     reading: &Reading<'_>,
     request: &ExplainRequest,
 ) -> Noted<Result<Explanation, Error>> {
+    with_limit(reading, request, |limit| {
+        over_scan(services, reading, |facts| {
+            let index = NameIndex::build(&facts.files);
+            with_call_graph(facts, &index, reading.deadline, |graph| {
+                over_graph(reading, graph, &request.target, limit)
+            })
+        })
+    })
+}
+
+// Explains `request` over the graph that one trace call builds once for all its cards.
+pub(crate) fn explain_in(
+    reading: &Reading<'_>,
+    request: &ExplainRequest,
+    graph: &CallGraph<'_>,
+) -> Noted<Result<Explanation, Error>> {
+    with_limit(reading, request, |limit| {
+        Noted::new(over_graph(reading, graph, &request.target, limit))
+    })
+}
+
+// A refused limit and a data key need no graph; any other request gets its limit to `explained`.
+fn with_limit(
+    reading: &Reading<'_>,
+    request: &ExplainRequest,
+    explained: impl FnOnce(usize) -> Noted<Result<Explanation, Error>>,
+) -> Noted<Result<Explanation, Error>> {
     let limit = match within(&request.limit, 1, MAX_LIMIT, "limit") {
         Ok(limit) => limit,
         Err(error) => return Noted::new(Err(error)),
@@ -119,21 +146,28 @@ pub fn explain(
     if let Some(found) = data_key_span(reading, target) {
         return found.map(|span| Ok(keyed(target, span)));
     }
-    over_scan(services, reading, |facts| {
-        with_resolved(&facts.files, reading.deadline, |index, graph| {
-            let scope = Scope {
-                index,
-                skipped: &facts.skipped,
-                root: &reading.repo.root,
-            };
-            let explained = explanation(&scope, graph, target, limit);
-            let coverage = Coverage::of(&explained.binding, &facts.skipped);
-            Ok(Explanation {
-                coverage,
-                skipped: facts.skipped.clone(),
-                ..explained
-            })
-        })
+    explained(limit)
+}
+
+fn over_graph(
+    reading: &Reading<'_>,
+    graph: &CallGraph<'_>,
+    target: &str,
+    limit: usize,
+) -> Result<Explanation, Error> {
+    let built = graph.graph()?;
+    let skipped = &graph.facts.skipped;
+    let scope = Scope {
+        index: graph.index,
+        skipped,
+        root: &reading.repo.root,
+    };
+    let explained = explanation(&scope, built, target, limit);
+    let coverage = Coverage::of(&explained.binding, skipped);
+    Ok(Explanation {
+        coverage,
+        skipped: skipped.clone(),
+        ..explained
     })
 }
 
