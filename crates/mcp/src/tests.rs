@@ -1,6 +1,7 @@
 mod autoindex;
 mod deadline;
 mod drain;
+mod graphs;
 mod http;
 mod notes;
 mod restart;
