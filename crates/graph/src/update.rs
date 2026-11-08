@@ -5,6 +5,7 @@ use facts::Import;
 use syntax::Language;
 
 use crate::affected::Affected;
+use crate::ambiguous::AmbiguousDegrees;
 use crate::names::NameIndex;
 use crate::resolver::Resolver;
 use crate::rust_paths::is_manifest;
@@ -17,6 +18,7 @@ pub struct KeptParts<'p, 's> {
     pub index: Option<&'p mut NameIndex<'s>>,
     pub scopes: Option<&'p mut Scopes<'s>>,
     pub graph: Option<&'p mut SymbolGraph<'s>>,
+    pub degrees: Option<&'p mut AmbiguousDegrees>,
 }
 
 /// What an update resolved again: the files whose every site it resolved, and the sites.
@@ -56,8 +58,10 @@ pub fn update<'s>(
         index,
         scopes,
         graph,
+        degrees,
     } = parts;
-    if graph.is_some() && (index.is_none() || scopes.is_none()) {
+    let graphed = index.is_some() && scopes.is_some();
+    if (graph.is_some() && !graphed) || (degrees.is_some() && graph.is_none()) {
         return Err(Rebuild::Unbuilt);
     }
     let index = index.map(|index| {
@@ -79,8 +83,13 @@ pub fn update<'s>(
         files: affected.whole.len(),
         sites: relinked.sites(),
     };
+    let names = relinked.names();
+    let tally = degrees.map(|degrees| (graph.degrees_of(names.iter().copied()), degrees));
     graph.relink(relinked, before, &affected);
     graph.recount(scopes, &rebound);
+    if let Some((old, degrees)) = tally {
+        degrees.replace(&old, &graph.degrees_of(names.iter().copied()));
+    }
     Ok(work)
 }
 

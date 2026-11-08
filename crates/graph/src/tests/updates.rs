@@ -116,11 +116,13 @@ fn run(case: &Case) {
     let mut index = NameIndex::build(&lists[0]);
     let mut scopes = Scopes::build(&lists[0]);
     let mut graph = SymbolGraph::build(&Resolver::new(&index, &scopes), None).expect("no deadline");
+    let mut degrees = graph.ambiguous_degrees();
     for (step, pair) in lists.windows(2).enumerate() {
         let parts = KeptParts {
             index: Some(&mut index),
             scopes: Some(&mut scopes),
             graph: Some(&mut graph),
+            degrees: Some(&mut degrees),
         };
         let updated = update(parts, &pair[0], &pair[1]);
         let last = step + 1 == case.steps.len();
@@ -140,6 +142,7 @@ fn run(case: &Case) {
             index: Some(&index),
             scopes: Some(&scopes),
             graph: Some(&graph),
+            degrees: Some(&degrees),
             ..Parts::default()
         });
         let label = format!("{}: step {step}", case.name);

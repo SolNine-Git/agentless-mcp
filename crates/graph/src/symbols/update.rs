@@ -33,10 +33,15 @@ pub(crate) struct Relinked<'n, 'a> {
     chosen: BTreeMap<&'a str, Chosen<'a>>,
 }
 
-impl Relinked<'_, '_> {
+impl<'a> Relinked<'_, 'a> {
     // How many references and bases the update resolved again.
     pub(crate) fn sites(&self) -> usize {
         self.parts.sites
+    }
+
+    // The names whose ambiguous references or candidates the update changes.
+    pub(crate) fn names(&self) -> Vec<&'a str> {
+        self.chosen.keys().copied().collect()
     }
 }
 
