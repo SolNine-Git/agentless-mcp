@@ -1,0 +1,5089 @@
+{
+ "ids": {
+  "P001": [
+   [
+    "crates/cli/src/args/declared.rs",
+    116,
+    132
+   ],
+   [
+    "crates/json/src/float.rs",
+    16,
+    51
+   ]
+  ],
+  "P002": [
+   [
+    "crates/cli/src/commands.rs",
+    203,
+    217
+   ],
+   [
+    "crates/cli/src/gate_report.rs",
+    91,
+    104
+   ]
+  ],
+  "P003": [
+   [
+    "crates/cli/src/gate_report.rs",
+    91,
+    104
+   ],
+   [
+    "crates/cli/src/server_args.rs",
+    219,
+    234
+   ]
+  ],
+  "P004": [
+   [
+    "crates/patchcheck/src/arity.rs",
+    17,
+    39
+   ],
+   [
+    "crates/patchcheck/src/callers.rs",
+    14,
+    53
+   ]
+  ],
+  "P005": [
+   [
+    "crates/io/src/read.rs",
+    234,
+    246
+   ],
+   [
+    "crates/text/src/code_point_string.rs",
+    157,
+    165
+   ]
+  ],
+  "P006": [
+   [
+    "crates/hook/src/report/field.rs",
+    30,
+    44
+   ],
+   [
+    "crates/hook/src/search.rs",
+    90,
+    95
+   ]
+  ],
+  "P007": [
+   [
+    "crates/facts/src/extract/generic_walker.rs",
+    112,
+    126
+   ],
+   [
+    "crates/facts/src/extract/rust_items.rs",
+    100,
+    114
+   ]
+  ],
+  "P008": [
+   [
+    "crates/app/src/lint/candidates.rs",
+    145,
+    154
+   ],
+   [
+    "crates/app/src/pairs.rs",
+    164,
+    174
+   ]
+  ],
+  "P009": [
+   [
+    "crates/app/src/health/complexity.rs",
+    222,
+    236
+   ],
+   [
+    "xtask/src/erosion.rs",
+    418,
+    426
+   ]
+  ],
+  "P010": [
+   [
+    "crates/io/src/append.rs",
+    26,
+    31
+   ],
+   [
+    "crates/io/src/warning.rs",
+    38,
+    48
+   ]
+  ],
+  "P011": [
+   [
+    "crates/app/src/capabilities.rs",
+    221,
+    250
+   ],
+   [
+    "crates/mcp/src/answer/shared.rs",
+    33,
+    47
+   ]
+  ],
+  "P012": [
+   [
+    "crates/app/src/validate/plan.rs",
+    102,
+    122
+   ],
+   [
+    "crates/cli/src/patches.rs",
+    185,
+    198
+   ]
+  ],
+  "P013": [
+   [
+    "crates/cli/src/read.rs",
+    55,
+    62
+   ],
+   [
+    "crates/cli/src/validate.rs",
+    18,
+    45
+   ]
+  ],
+  "P014": [
+   [
+    "crates/app/src/validate/built.rs",
+    55,
+    76
+   ],
+   [
+    "crates/app/src/validate/records.rs",
+    356,
+    363
+   ]
+  ],
+  "P015": [
+   [
+    "crates/app/src/expand.rs",
+    210,
+    228
+   ],
+   [
+    "crates/app/src/history.rs",
+    430,
+    451
+   ]
+  ],
+  "P016": [
+   [
+    "crates/hook/src/call.rs",
+    70,
+    76
+   ],
+   [
+    "crates/kernel/src/deadline.rs",
+    152,
+    167
+   ]
+  ],
+  "P017": [
+   [
+    "crates/app/src/patches.rs",
+    46,
+    70
+   ],
+   [
+    "crates/patchcheck/src/cycles.rs",
+    16,
+    55
+   ]
+  ],
+  "P018": [
+   [
+    "crates/io/src/runner.rs",
+    404,
+    409
+   ],
+   [
+    "xtask/src/process.rs",
+    241,
+    253
+   ]
+  ],
+  "P019": [
+   [
+    "crates/app/src/endpoints/scanned.rs",
+    19,
+    36
+   ],
+   [
+    "crates/app/src/scan.rs",
+    55,
+    64
+   ]
+  ],
+  "P020": [
+   [
+    "xtask/src/ground_truth/coverage.rs",
+    16,
+    40
+   ],
+   [
+    "xtask/src/ground_truth/dep_info.rs",
+    90,
+    107
+   ]
+  ],
+  "P021": [
+   [
+    "crates/git/src/walk.rs",
+    226,
+    248
+   ],
+   [
+    "crates/io/src/walk.rs",
+    110,
+    132
+   ]
+  ],
+  "P022": [
+   [
+    "crates/io/src/append.rs",
+    94,
+    102
+   ],
+   [
+    "crates/io/src/files.rs",
+    369,
+    376
+   ]
+  ],
+  "P023": [
+   [
+    "crates/git/src/testing.rs",
+    85,
+    98
+   ],
+   [
+    "crates/io/src/testing.rs",
+    212,
+    227
+   ]
+  ],
+  "P024": [
+   [
+    "crates/app/src/validate.rs",
+    150,
+    161
+   ],
+   [
+    "crates/cli/src/validate.rs",
+    113,
+    125
+   ]
+  ],
+  "P025": [
+   [
+    "crates/facts/src/extract/generic_walker.rs",
+    144,
+    155
+   ],
+   [
+    "crates/syntax/src/rules.rs",
+    87,
+    98
+   ]
+  ],
+  "P026": [
+   [
+    "crates/app/src/map.rs",
+    123,
+    140
+   ],
+   [
+    "crates/app/src/map/body.rs",
+    25,
+    83
+   ]
+  ],
+  "P027": [
+   [
+    "crates/hook/src/report/log.rs",
+    111,
+    118
+   ],
+   [
+    "crates/store/src/value.rs",
+    106,
+    114
+   ]
+  ],
+  "P028": [
+   [
+    "crates/cli/src/lib.rs",
+    39,
+    47
+   ],
+   [
+    "crates/cli/src/read.rs",
+    55,
+    62
+   ]
+  ],
+  "P029": [
+   [
+    "crates/facts/src/extract/generic_walker.rs",
+    82,
+    92
+   ],
+   [
+    "crates/facts/src/extract/lua_assignments.rs",
+    122,
+    142
+   ]
+  ],
+  "P030": [
+   [
+    "crates/app/src/lint/candidates/inputs.rs",
+    82,
+    90
+   ],
+   [
+    "crates/app/src/patches/sources.rs",
+    52,
+    69
+   ]
+  ],
+  "P031": [
+   [
+    "crates/app/src/patches/sources.rs",
+    52,
+    69
+   ],
+   [
+    "crates/app/src/proposed.rs",
+    61,
+    67
+   ]
+  ],
+  "P032": [
+   [
+    "crates/facts/src/extract/c_declarators.rs",
+    34,
+    53
+   ],
+   [
+    "crates/facts/src/extract/python_definitions.rs",
+    69,
+    84
+   ]
+  ],
+  "P033": [
+   [
+    "crates/io/src/contain.rs",
+    26,
+    36
+   ],
+   [
+    "crates/io/src/walk.rs",
+    110,
+    132
+   ]
+  ],
+  "P034": [
+   [
+    "crates/syntax/src/cursor.rs",
+    36,
+    42
+   ],
+   [
+    "crates/syntax/src/parsed.rs",
+    228,
+    234
+   ]
+  ],
+  "P035": [
+   [
+    "crates/facts/src/extract/generic_walker.rs",
+    16,
+    37
+   ],
+   [
+    "crates/facts/src/extract/python_definitions.rs",
+    69,
+    84
+   ]
+  ],
+  "P036": [
+   [
+    "crates/render/src/tree.rs",
+    18,
+    26
+   ],
+   [
+    "crates/render/src/views.rs",
+    20,
+    30
+   ]
+  ],
+  "P037": [
+   [
+    "crates/syntax/src/query.rs",
+    143,
+    152
+   ],
+   [
+    "crates/syntax/src/query_tests.rs",
+    136,
+    145
+   ]
+  ],
+  "P038": [
+   [
+    "crates/app/src/repo.rs",
+    54,
+    59
+   ],
+   [
+    "crates/cli/src/steps.rs",
+    179,
+    194
+   ]
+  ],
+  "P039": [
+   [
+    "crates/git/src/history.rs",
+    207,
+    224
+   ],
+   [
+    "xtask/src/erosion.rs",
+    289,
+    305
+   ]
+  ],
+  "P040": [
+   [
+    "crates/io/src/files.rs",
+    258,
+    275
+   ],
+   [
+    "crates/io/src/owner.rs",
+    41,
+    48
+   ]
+  ],
+  "P041": [
+   [
+    "crates/io/src/files.rs",
+    258,
+    275
+   ],
+   [
+    "crates/io/src/owner.rs",
+    61,
+    74
+   ]
+  ],
+  "P042": [
+   [
+    "crates/patchcheck/src/duplicates.rs",
+    30,
+    54
+   ],
+   [
+    "crates/patchcheck/src/undeclared.rs",
+    17,
+    41
+   ]
+  ],
+  "P043": [
+   [
+    "crates/io/src/contain.rs",
+    26,
+    36
+   ],
+   [
+    "crates/mcp/src/roots.rs",
+    59,
+    66
+   ]
+  ],
+  "P044": [
+   [
+    "crates/checks/src/clone.rs",
+    196,
+    204
+   ],
+   [
+    "crates/checks/src/contract.rs",
+    57,
+    71
+   ]
+  ],
+  "P045": [
+   [
+    "crates/io/src/runner.rs",
+    102,
+    111
+   ],
+   [
+    "crates/io/src/testrun.rs",
+    288,
+    312
+   ]
+  ],
+  "P046": [
+   [
+    "crates/cli/src/read/refs.rs",
+    8,
+    25
+   ],
+   [
+    "crates/mcp/src/answer/shared.rs",
+    11,
+    19
+   ]
+  ],
+  "P047": [
+   [
+    "crates/app/src/capabilities.rs",
+    306,
+    319
+   ],
+   [
+    "crates/syntax/src/table_tests.rs",
+    148,
+    155
+   ]
+  ],
+  "P048": [
+   [
+    "crates/facts/src/extract.rs",
+    65,
+    79
+   ],
+   [
+    "crates/facts/src/stable_id.rs",
+    197,
+    211
+   ]
+  ],
+  "P049": [
+   [
+    "crates/patchcheck/src/lexer.rs",
+    331,
+    343
+   ],
+   [
+    "xtask/src/tokens.rs",
+    232,
+    243
+   ]
+  ],
+  "P050": [
+   [
+    "xtask/src/erosion.rs",
+    60,
+    80
+   ],
+   [
+    "xtask/src/policy.rs",
+    65,
+    73
+   ]
+  ],
+  "P051": [
+   [
+    "crates/hook/src/gate.rs",
+    187,
+    207
+   ],
+   [
+    "crates/hook/src/worker.rs",
+    47,
+    71
+   ]
+  ],
+  "P052": [
+   [
+    "crates/graph/src/flood.rs",
+    74,
+    92
+   ],
+   [
+    "crates/graph/src/path.rs",
+    142,
+    160
+   ]
+  ],
+  "P053": [
+   [
+    "crates/hook/src/search/check.rs",
+    125,
+    136
+   ],
+   [
+    "crates/hook/src/search/mark.rs",
+    85,
+    97
+   ]
+  ],
+  "P054": [
+   [
+    "crates/cli/src/read.rs",
+    174,
+    197
+   ],
+   [
+    "crates/mcp/src/answer.rs",
+    29,
+    36
+   ]
+  ],
+  "P055": [
+   [
+    "crates/json/src/parse.rs",
+    192,
+    204
+   ],
+   [
+    "xtask/src/generate/rules.rs",
+    23,
+    45
+   ]
+  ],
+  "P056": [
+   [
+    "crates/patch/src/apply.rs",
+    97,
+    115
+   ],
+   [
+    "crates/render/src/history.rs",
+    98,
+    119
+   ]
+  ],
+  "P057": [
+   [
+    "crates/app/src/map/companions.rs",
+    165,
+    198
+   ],
+   [
+    "crates/patchcheck/src/callers.rs",
+    56,
+    67
+   ]
+  ],
+  "P058": [
+   [
+    "crates/app/src/expand.rs",
+    76,
+    91
+   ],
+   [
+    "crates/cli/src/read/symbols.rs",
+    46,
+    69
+   ]
+  ],
+  "P059": [
+   [
+    "crates/cli/src/read.rs",
+    98,
+    103
+   ],
+   [
+    "crates/mcp/src/arguments.rs",
+    44,
+    49
+   ]
+  ],
+  "P060": [
+   [
+    "crates/io/src/read.rs",
+    71,
+    76
+   ],
+   [
+    "crates/store/src/reader.rs",
+    77,
+    82
+   ]
+  ],
+  "P061": [
+   [
+    "crates/io/src/runner.rs",
+    268,
+    299
+   ],
+   [
+    "xtask/src/process.rs",
+    174,
+    187
+   ]
+  ],
+  "P062": [
+   [
+    "crates/facts/src/skeleton.rs",
+    179,
+    198
+   ],
+   [
+    "crates/metrics/src/clones.rs",
+    155,
+    176
+   ]
+  ],
+  "P063": [
+   [
+    "crates/cli/src/server_args.rs",
+    274,
+    292
+   ],
+   [
+    "crates/mcp/src/roots.rs",
+    197,
+    209
+   ]
+  ],
+  "P064": [
+   [
+    "crates/store/src/open.rs",
+    65,
+    85
+   ],
+   [
+    "crates/store/src/reader.rs",
+    176,
+    186
+   ]
+  ],
+  "P065": [
+   [
+    "crates/graph/src/paths.rs",
+    12,
+    35
+   ],
+   [
+    "crates/io/src/cache.rs",
+    92,
+    100
+   ]
+  ],
+  "P066": [
+   [
+    "crates/io/src/files.rs",
+    327,
+    339
+   ],
+   [
+    "crates/io/src/owner.rs",
+    61,
+    74
+   ]
+  ],
+  "P067": [
+   [
+    "crates/facts/src/extract.rs",
+    128,
+    136
+   ],
+   [
+    "crates/facts/src/values.rs",
+    284,
+    300
+   ]
+  ],
+  "P068": [
+   [
+    "crates/app/src/validate/baseline.rs",
+    123,
+    143
+   ],
+   [
+    "crates/app/src/validate/warnings.rs",
+    100,
+    107
+   ]
+  ],
+  "P069": [
+   [
+    "crates/app/src/validate/records.rs",
+    391,
+    413
+   ],
+   [
+    "crates/render/src/history.rs",
+    98,
+    119
+   ]
+  ],
+  "P070": [
+   [
+    "crates/patchcheck/src/duplicates.rs",
+    30,
+    54
+   ],
+   [
+    "crates/patchcheck/src/shadowing.rs",
+    13,
+    35
+   ]
+  ],
+  "P071": [
+   [
+    "crates/io/src/testrun.rs",
+    593,
+    623
+   ],
+   [
+    "crates/io/src/warning.rs",
+    191,
+    203
+   ]
+  ],
+  "P072": [
+   [
+    "crates/app/src/history.rs",
+    134,
+    149
+   ],
+   [
+    "crates/render/src/history.rs",
+    148,
+    160
+   ]
+  ],
+  "P073": [
+   [
+    "crates/git/src/run.rs",
+    205,
+    231
+   ],
+   [
+    "crates/git/src/toplevel.rs",
+    61,
+    78
+   ]
+  ],
+  "P074": [
+   [
+    "crates/app/src/index.rs",
+    52,
+    81
+   ],
+   [
+    "crates/app/src/tags.rs",
+    322,
+    335
+   ]
+  ],
+  "P075": [
+   [
+    "crates/app/src/diagram.rs",
+    104,
+    136
+   ],
+   [
+    "crates/cli/src/read/diagram.rs",
+    15,
+    44
+   ]
+  ],
+  "P076": [
+   [
+    "crates/git/src/walk.rs",
+    252,
+    260
+   ],
+   [
+    "crates/mcp/src/failure.rs",
+    13,
+    18
+   ]
+  ],
+  "P077": [
+   [
+    "crates/app/src/capabilities.rs",
+    103,
+    111
+   ],
+   [
+    "crates/io/src/testrun.rs",
+    563,
+    570
+   ]
+  ],
+  "P078": [
+   [
+    "crates/cli/src/read.rs",
+    55,
+    62
+   ],
+   [
+    "crates/cli/src/steps.rs",
+    26,
+    46
+   ]
+  ],
+  "P079": [
+   [
+    "crates/app/src/history.rs",
+    268,
+    276
+   ],
+   [
+    "crates/app/src/revision.rs",
+    73,
+    91
+   ]
+  ],
+  "P080": [
+   [
+    "crates/app/src/lint/candidates/selection.rs",
+    25,
+    30
+   ],
+   [
+    "crates/cli/src/commands.rs",
+    287,
+    298
+   ]
+  ],
+  "P081": [
+   [
+    "crates/app/src/cards.rs",
+    58,
+    77
+   ],
+   [
+    "crates/render/src/symbols.rs",
+    189,
+    206
+   ]
+  ],
+  "P082": [
+   [
+    "crates/io/src/lock.rs",
+    51,
+    57
+   ],
+   [
+    "crates/io/src/testrun.rs",
+    574,
+    589
+   ]
+  ],
+  "P083": [
+   [
+    "crates/git/src/worktree.rs",
+    439,
+    448
+   ],
+   [
+    "crates/io/src/read.rs",
+    27,
+    35
+   ]
+  ],
+  "P084": [
+   [
+    "crates/io/src/runner.rs",
+    203,
+    229
+   ],
+   [
+    "xtask/src/process.rs",
+    92,
+    104
+   ]
+  ],
+  "P085": [
+   [
+    "xtask/src/sources.rs",
+    473,
+    507
+   ],
+   [
+    "xtask/src/tool_config.rs",
+    262,
+    291
+   ]
+  ],
+  "P086": [
+   [
+    "crates/facts/src/extract/c_includes.rs",
+    15,
+    22
+   ],
+   [
+    "crates/facts/src/extract/rust_uses.rs",
+    13,
+    24
+   ]
+  ],
+  "P087": [
+   [
+    "crates/app/src/patches/reports.rs",
+    67,
+    75
+   ],
+   [
+    "crates/app/src/validate/records.rs",
+    344,
+    352
+   ]
+  ],
+  "P088": [
+   [
+    "crates/app/src/lint/candidates/selection.rs",
+    32,
+    46
+   ],
+   [
+    "crates/app/src/registry.rs",
+    119,
+    129
+   ]
+  ],
+  "P089": [
+   [
+    "crates/git/src/walk.rs",
+    252,
+    260
+   ],
+   [
+    "crates/io/src/walk.rs",
+    138,
+    143
+   ]
+  ],
+  "P090": [
+   [
+    "crates/facts/src/extract/generic_walker.rs",
+    144,
+    155
+   ],
+   [
+    "crates/syntax/src/rules.rs",
+    159,
+    175
+   ]
+  ],
+  "P091": [
+   [
+    "crates/cli/src/steps.rs",
+    89,
+    105
+   ],
+   [
+    "crates/mcp/src/answer/shared.rs",
+    33,
+    47
+   ]
+  ],
+  "P092": [
+   [
+    "crates/app/src/capabilities.rs",
+    103,
+    111
+   ],
+   [
+    "crates/io/src/warning.rs",
+    38,
+    48
+   ]
+  ],
+  "P093": [
+   [
+    "crates/app/src/scan.rs",
+    219,
+    238
+   ],
+   [
+    "crates/app/src/span.rs",
+    112,
+    139
+   ]
+  ],
+  "P094": [
+   [
+    "crates/app/src/capabilities.rs",
+    396,
+    403
+   ],
+   [
+    "crates/json/src/write.rs",
+    220,
+    235
+   ]
+  ],
+  "P095": [
+   [
+    "crates/app/src/pairs.rs",
+    176,
+    188
+   ],
+   [
+    "crates/store/src/lookup.rs",
+    66,
+    84
+   ]
+  ],
+  "P096": [
+   [
+    "crates/app/src/repo.rs",
+    68,
+    80
+   ],
+   [
+    "crates/cli/src/steps.rs",
+    179,
+    194
+   ]
+  ],
+  "P097": [
+   [
+    "crates/facts/src/extract/generic_imports.rs",
+    68,
+    86
+   ],
+   [
+    "crates/facts/src/extract/python_scopes.rs",
+    390,
+    410
+   ]
+  ],
+  "P098": [
+   [
+    "xtask/src/ground_truth/lints.rs",
+    242,
+    256
+   ],
+   [
+    "xtask/src/lint_tables.rs",
+    194,
+    201
+   ]
+  ],
+  "P099": [
+   [
+    "crates/app/src/health/complexity.rs",
+    273,
+    284
+   ],
+   [
+    "crates/render/src/health.rs",
+    231,
+    246
+   ]
+  ],
+  "P100": [
+   [
+    "crates/store/src/freshness.rs",
+    55,
+    62
+   ],
+   [
+    "crates/store/src/writer.rs",
+    149,
+    155
+   ]
+  ],
+  "P101": [
+   [
+    "crates/patchcheck/src/arity.rs",
+    17,
+    39
+   ],
+   [
+    "crates/patchcheck/src/dangling.rs",
+    29,
+    63
+   ]
+  ],
+  "P102": [
+   [
+    "crates/io/src/cache.rs",
+    103,
+    115
+   ],
+   [
+    "crates/store/src/sweep.rs",
+    56,
+    74
+   ]
+  ],
+  "P103": [
+   [
+    "crates/mcp/src/answer/orient.rs",
+    18,
+    47
+   ],
+   [
+    "crates/mcp/src/answer/read.rs",
+    15,
+    35
+   ]
+  ],
+  "P104": [
+   [
+    "crates/hook/src/payload.rs",
+    146,
+    151
+   ],
+   [
+    "crates/hook/src/search.rs",
+    83,
+    88
+   ]
+  ],
+  "P105": [
+   [
+    "crates/app/src/tags.rs",
+    72,
+    80
+   ],
+   [
+    "crates/store/src/reader.rs",
+    57,
+    74
+   ]
+  ],
+  "P106": [
+   [
+    "crates/app/src/health/complexity.rs",
+    222,
+    236
+   ],
+   [
+    "crates/render/src/health.rs",
+    162,
+    191
+   ]
+  ],
+  "P107": [
+   [
+    "xtask/src/erosion.rs",
+    460,
+    499
+   ],
+   [
+    "xtask/src/policy.rs",
+    734,
+    755
+   ]
+  ],
+  "P108": [
+   [
+    "crates/json/src/parse.rs",
+    277,
+    282
+   ],
+   [
+    "crates/mcp/src/validate/repr.rs",
+    37,
+    54
+   ]
+  ],
+  "P109": [
+   [
+    "crates/app/src/lint.rs",
+    91,
+    109
+   ],
+   [
+    "crates/app/src/lint/candidates.rs",
+    75,
+    113
+   ]
+  ],
+  "P110": [
+   [
+    "crates/cli/src/validate.rs",
+    18,
+    45
+   ],
+   [
+    "crates/cli/src/vote.rs",
+    19,
+    47
+   ]
+  ],
+  "P111": [
+   [
+    "crates/git/src/testing.rs",
+    115,
+    120
+   ],
+   [
+    "xtask/src/repo.rs",
+    162,
+    169
+   ]
+  ],
+  "P112": [
+   [
+    "crates/app/src/refs/sites.rs",
+    17,
+    50
+   ],
+   [
+    "crates/render/src/refs.rs",
+    278,
+    291
+   ]
+  ],
+  "P113": [
+   [
+    "crates/patch/src/blocks.rs",
+    204,
+    212
+   ],
+   [
+    "crates/patch/src/unidiff.rs",
+    190,
+    198
+   ]
+  ],
+  "P114": [
+   [
+    "crates/facts/src/extract/generic_imports.rs",
+    22,
+    36
+   ],
+   [
+    "crates/facts/src/extract/rust_uses.rs",
+    13,
+    24
+   ]
+  ],
+  "P115": [
+   [
+    "crates/graph/src/imports.rs",
+    60,
+    82
+   ],
+   [
+    "crates/graph/src/resolver.rs",
+    115,
+    139
+   ]
+  ],
+  "P116": [
+   [
+    "crates/hook/src/edit.rs",
+    74,
+    100
+   ],
+   [
+    "crates/hook/src/payload.rs",
+    119,
+    129
+   ]
+  ],
+  "P117": [
+   [
+    "crates/git/src/run.rs",
+    233,
+    249
+   ],
+   [
+    "crates/git/src/worktree.rs",
+    292,
+    310
+   ]
+  ],
+  "P118": [
+   [
+    "crates/cli/src/args/parse.rs",
+    250,
+    255
+   ],
+   [
+    "crates/prompts/src/template.rs",
+    129,
+    137
+   ]
+  ],
+  "P119": [
+   [
+    "crates/facts/src/extract/python_definitions.rs",
+    324,
+    331
+   ],
+   [
+    "crates/facts/src/extract/rust_items.rs",
+    116,
+    123
+   ]
+  ],
+  "P120": [
+   [
+    "crates/app/src/views.rs",
+    118,
+    141
+   ],
+   [
+    "crates/cli/src/read/views.rs",
+    78,
+    108
+   ]
+  ],
+  "P121": [
+   [
+    "crates/git/src/run.rs",
+    183,
+    195
+   ],
+   [
+    "crates/git/src/walk.rs",
+    199,
+    222
+   ]
+  ],
+  "P122": [
+   [
+    "crates/patchcheck/src/callers.rs",
+    14,
+    53
+   ],
+   [
+    "crates/patchcheck/src/shadowing.rs",
+    13,
+    35
+   ]
+  ],
+  "P123": [
+   [
+    "crates/facts/src/extract.rs",
+    114,
+    125
+   ],
+   [
+    "crates/facts/src/extract/python_imports.rs",
+    36,
+    47
+   ]
+  ],
+  "P124": [
+   [
+    "crates/io/src/runner.rs",
+    315,
+    320
+   ],
+   [
+    "xtask/src/process.rs",
+    118,
+    131
+   ]
+  ],
+  "P125": [
+   [
+    "crates/git/src/run.rs",
+    183,
+    195
+   ],
+   [
+    "crates/git/src/worktree.rs",
+    492,
+    532
+   ]
+  ],
+  "P126": [
+   [
+    "crates/cli/src/lint.rs",
+    110,
+    129
+   ],
+   [
+    "crates/cli/src/patches.rs",
+    141,
+    158
+   ]
+  ],
+  "P127": [
+   [
+    "xtask/src/lint_tables.rs",
+    158,
+    174
+   ],
+   [
+    "xtask/src/sources.rs",
+    206,
+    224
+   ]
+  ],
+  "P128": [
+   [
+    "crates/io/src/append.rs",
+    26,
+    31
+   ],
+   [
+    "crates/io/src/read.rs",
+    102,
+    108
+   ]
+  ],
+  "P129": [
+   [
+    "crates/app/src/env.rs",
+    35,
+    40
+   ],
+   [
+    "crates/io/src/oserror.rs",
+    81,
+    87
+   ]
+  ],
+  "P130": [
+   [
+    "xtask/src/public_api.rs",
+    58,
+    73
+   ],
+   [
+    "xtask/src/sources.rs",
+    387,
+    406
+   ]
+  ],
+  "P131": [
+   [
+    "crates/patchcheck/src/dangling.rs",
+    29,
+    63
+   ],
+   [
+    "crates/patchcheck/src/duplicates.rs",
+    30,
+    54
+   ]
+  ],
+  "P132": [
+   [
+    "crates/app/src/capabilities.rs",
+    103,
+    111
+   ],
+   [
+    "crates/io/src/read.rs",
+    102,
+    108
+   ]
+  ],
+  "P133": [
+   [
+    "crates/render/src/history.rs",
+    47,
+    71
+   ],
+   [
+    "crates/render/src/map.rs",
+    52,
+    78
+   ]
+  ],
+  "P134": [
+   [
+    "crates/app/src/lint/candidates/inputs.rs",
+    82,
+    90
+   ],
+   [
+    "crates/hook/src/destination.rs",
+    124,
+    150
+   ]
+  ],
+  "P135": [
+   [
+    "crates/git/src/walk.rs",
+    226,
+    248
+   ],
+   [
+    "crates/io/src/walk.rs",
+    60,
+    76
+   ]
+  ],
+  "P136": [
+   [
+    "crates/hook/src/report/classify.rs",
+    171,
+    177
+   ],
+   [
+    "crates/hook/src/report/log.rs",
+    319,
+    327
+   ]
+  ],
+  "P137": [
+   [
+    "crates/patch/src/natural.rs",
+    122,
+    133
+   ],
+   [
+    "crates/text/src/word.rs",
+    214,
+    223
+   ]
+  ],
+  "P138": [
+   [
+    "crates/app/src/explain.rs",
+    258,
+    282
+   ],
+   [
+    "crates/graph/src/symbols.rs",
+    257,
+    264
+   ]
+  ],
+  "P139": [
+   [
+    "crates/app/src/views.rs",
+    153,
+    175
+   ],
+   [
+    "crates/app/src/views/locations.rs",
+    99,
+    121
+   ]
+  ],
+  "P140": [
+   [
+    "crates/patch/src/unidiff.rs",
+    231,
+    261
+   ],
+   [
+    "crates/patch/src/unidiff/hunks.rs",
+    28,
+    71
+   ]
+  ],
+  "P141": [
+   [
+    "crates/app/src/views.rs",
+    240,
+    259
+   ],
+   [
+    "crates/store/src/source.rs",
+    64,
+    76
+   ]
+  ],
+  "P142": [
+   [
+    "crates/facts/src/extract/c_declarators.rs",
+    65,
+    82
+   ],
+   [
+    "crates/facts/src/extract/generic_walker.rs",
+    72,
+    80
+   ]
+  ],
+  "P143": [
+   [
+    "crates/patch/src/apply.rs",
+    64,
+    72
+   ],
+   [
+    "crates/render/src/history.rs",
+    98,
+    119
+   ]
+  ],
+  "P144": [
+   [
+    "crates/app/src/health.rs",
+    277,
+    305
+   ],
+   [
+    "crates/render/src/health.rs",
+    142,
+    160
+   ]
+  ],
+  "P145": [
+   [
+    "crates/mcp/src/answer/orient.rs",
+    18,
+    47
+   ],
+   [
+    "crates/mcp/src/answer/symbols.rs",
+    15,
+    49
+   ]
+  ],
+  "P146": [
+   [
+    "crates/io/src/files.rs",
+    396,
+    406
+   ],
+   [
+    "crates/io/src/testing.rs",
+    338,
+    360
+   ]
+  ],
+  "P147": [
+   [
+    "crates/io/src/cache.rs",
+    103,
+    115
+   ],
+   [
+    "crates/text/src/whitespace.rs",
+    78,
+    88
+   ]
+  ],
+  "P148": [
+   [
+    "crates/syntax/src/spec.rs",
+    178,
+    191
+   ],
+   [
+    "xtask/src/generate/syntax.rs",
+    502,
+    518
+   ]
+  ],
+  "P149": [
+   [
+    "crates/syntax/src/extraction.rs",
+    140,
+    161
+   ],
+   [
+    "crates/syntax/src/spec.rs",
+    178,
+    191
+   ]
+  ],
+  "P150": [
+   [
+    "crates/git/src/walk.rs",
+    252,
+    260
+   ],
+   [
+    "crates/git/src/worktree.rs",
+    550,
+    555
+   ]
+  ],
+  "P151": [
+   [
+    "crates/git/src/run.rs",
+    183,
+    195
+   ],
+   [
+    "crates/git/src/worktree.rs",
+    452,
+    462
+   ]
+  ],
+  "P152": [
+   [
+    "crates/app/src/patches.rs",
+    131,
+    142
+   ],
+   [
+    "xtask/src/ground_truth/dep_info.rs",
+    79,
+    87
+   ]
+  ],
+  "P153": [
+   [
+    "crates/hook/src/testing.rs",
+    134,
+    141
+   ],
+   [
+    "xtask/src/repo.rs",
+    172,
+    180
+   ]
+  ],
+  "P154": [
+   [
+    "crates/app/src/validate.rs",
+    261,
+    288
+   ],
+   [
+    "crates/io/src/testrun.rs",
+    178,
+    215
+   ]
+  ],
+  "P155": [
+   [
+    "xtask/src/sources.rs",
+    510,
+    530
+   ],
+   [
+    "xtask/src/tool_config.rs",
+    390,
+    395
+   ]
+  ],
+  "P156": [
+   [
+    "crates/app/src/lint/candidates/tree.rs",
+    102,
+    126
+   ],
+   [
+    "crates/app/src/revision.rs",
+    221,
+    246
+   ]
+  ],
+  "P157": [
+   [
+    "crates/git/src/history.rs",
+    239,
+    246
+   ],
+   [
+    "crates/git/src/snapshot.rs",
+    117,
+    129
+   ]
+  ],
+  "P158": [
+   [
+    "crates/app/src/diagram.rs",
+    299,
+    307
+   ],
+   [
+    "crates/cli/src/args/wrap.rs",
+    8,
+    14
+   ]
+  ],
+  "P159": [
+   [
+    "crates/cli/src/gate_report.rs",
+    60,
+    89
+   ],
+   [
+    "crates/cli/src/server_args.rs",
+    130,
+    188
+   ]
+  ],
+  "P160": [
+   [
+    "crates/patch/src/natural.rs",
+    97,
+    107
+   ],
+   [
+    "crates/patchcheck/src/manifest.rs",
+    237,
+    251
+   ]
+  ],
+  "P161": [
+   [
+    "crates/io/src/lock.rs",
+    51,
+    57
+   ],
+   [
+    "crates/io/src/txn.rs",
+    372,
+    403
+   ]
+  ],
+  "P162": [
+   [
+    "crates/cli/src/steps.rs",
+    228,
+    234
+   ],
+   [
+    "crates/store/src/value.rs",
+    134,
+    144
+   ]
+  ],
+  "P163": [
+   [
+    "crates/git/src/walk.rs",
+    132,
+    152
+   ],
+   [
+    "crates/io/src/walk.rs",
+    167,
+    190
+   ]
+  ],
+  "P164": [
+   [
+    "crates/app/src/testing.rs",
+    140,
+    159
+   ],
+   [
+    "crates/git/src/recipe.rs",
+    59,
+    80
+   ]
+  ],
+  "P165": [
+   [
+    "crates/render/src/explain.rs",
+    212,
+    226
+   ],
+   [
+    "crates/render/src/refs.rs",
+    278,
+    291
+   ]
+  ],
+  "P166": [
+   [
+    "xtask/src/lint_tables.rs",
+    458,
+    464
+   ],
+   [
+    "xtask/src/workspace.rs",
+    304,
+    317
+   ]
+  ],
+  "P167": [
+   [
+    "crates/app/src/revision.rs",
+    249,
+    256
+   ],
+   [
+    "crates/git/src/history.rs",
+    239,
+    246
+   ]
+  ],
+  "P168": [
+   [
+    "crates/patchcheck/src/cycles.rs",
+    16,
+    55
+   ],
+   [
+    "crates/patchcheck/src/duplicates.rs",
+    30,
+    54
+   ]
+  ],
+  "P169": [
+   [
+    "crates/io/src/testing.rs",
+    236,
+    263
+   ],
+   [
+    "xtask/src/repo.rs",
+    172,
+    180
+   ]
+  ],
+  "P170": [
+   [
+    "crates/syntax/src/stream_tests.rs",
+    32,
+    51
+   ],
+   [
+    "crates/syntax/src/table_tests.rs",
+    62,
+    88
+   ]
+  ],
+  "P171": [
+   [
+    "crates/io/src/runner.rs",
+    361,
+    367
+   ],
+   [
+    "xtask/src/process.rs",
+    262,
+    267
+   ]
+  ],
+  "P172": [
+   [
+    "crates/app/src/file_graph.rs",
+    58,
+    73
+   ],
+   [
+    "crates/graph/src/files.rs",
+    48,
+    73
+   ]
+  ],
+  "P173": [
+   [
+    "crates/store/src/open.rs",
+    108,
+    116
+   ],
+   [
+    "crates/store/src/reader.rs",
+    159,
+    165
+   ]
+  ],
+  "P174": [
+   [
+    "crates/json/src/float.rs",
+    238,
+    245
+   ],
+   [
+    "crates/json/src/write.rs",
+    405,
+    413
+   ]
+  ],
+  "P175": [
+   [
+    "crates/app/src/validate/built.rs",
+    55,
+    76
+   ],
+   [
+    "crates/app/src/validate/evaluate.rs",
+    208,
+    234
+   ]
+  ],
+  "P176": [
+   [
+    "crates/text/src/diff.rs",
+    360,
+    370
+   ],
+   [
+    "crates/text/src/testing.rs",
+    82,
+    92
+   ]
+  ],
+  "P177": [
+   [
+    "crates/render/src/communities.rs",
+    147,
+    172
+   ],
+   [
+    "crates/render/src/health.rs",
+    332,
+    342
+   ]
+  ],
+  "P178": [
+   [
+    "crates/io/src/config.rs",
+    293,
+    299
+   ],
+   [
+    "crates/json/src/parse.rs",
+    637,
+    642
+   ]
+  ],
+  "P179": [
+   [
+    "crates/app/src/index.rs",
+    32,
+    44
+   ],
+   [
+    "crates/cli/src/read/index.rs",
+    12,
+    40
+   ]
+  ],
+  "P180": [
+   [
+    "crates/mcp/src/validate/coerce.rs",
+    146,
+    154
+   ],
+   [
+    "crates/store/src/value.rs",
+    116,
+    131
+   ]
+  ],
+  "P181": [
+   [
+    "crates/io/src/contain.rs",
+    183,
+    188
+   ],
+   [
+    "crates/text/src/posix_path.rs",
+    25,
+    31
+   ]
+  ],
+  "P182": [
+   [
+    "crates/io/src/read.rs",
+    133,
+    143
+   ],
+   [
+    "crates/store/src/value.rs",
+    106,
+    114
+   ]
+  ],
+  "P183": [
+   [
+    "crates/io/src/keys.rs",
+    124,
+    135
+   ],
+   [
+    "crates/mcp/src/validate/coerce.rs",
+    84,
+    94
+   ]
+  ],
+  "P184": [
+   [
+    "crates/cli/src/lint.rs",
+    43,
+    49
+   ],
+   [
+    "crates/cli/src/validate.rs",
+    18,
+    45
+   ]
+  ],
+  "P185": [
+   [
+    "crates/io/src/read.rs",
+    102,
+    108
+   ],
+   [
+    "crates/mcp/src/roots.rs",
+    59,
+    66
+   ]
+  ],
+  "P186": [
+   [
+    "crates/app/src/validate/baseline.rs",
+    246,
+    253
+   ],
+   [
+    "crates/app/src/validate/evaluate.rs",
+    182,
+    205
+   ]
+  ],
+  "P187": [
+   [
+    "crates/kernel/src/deadline.rs",
+    44,
+    53
+   ],
+   [
+    "crates/mcp/src/dispatch.rs",
+    86,
+    94
+   ]
+  ],
+  "P188": [
+   [
+    "crates/git/src/testing.rs",
+    85,
+    98
+   ],
+   [
+    "crates/hook/src/testing.rs",
+    119,
+    127
+   ]
+  ],
+  "P189": [
+   [
+    "crates/cli/src/caller.rs",
+    12,
+    17
+   ],
+   [
+    "crates/mcp/src/roots.rs",
+    102,
+    125
+   ]
+  ],
+  "P190": [
+   [
+    "crates/app/src/map.rs",
+    123,
+    140
+   ],
+   [
+    "crates/app/src/scan.rs",
+    69,
+    76
+   ]
+  ],
+  "P191": [
+   [
+    "crates/facts/src/skeleton.rs",
+    206,
+    215
+   ],
+   [
+    "crates/metrics/src/clones.rs",
+    155,
+    176
+   ]
+  ],
+  "P192": [
+   [
+    "crates/hook/src/destination.rs",
+    17,
+    25
+   ],
+   [
+    "crates/io/src/contain.rs",
+    54,
+    77
+   ]
+  ],
+  "P193": [
+   [
+    "crates/facts/src/extract/generic_walker.rs",
+    128,
+    141
+   ],
+   [
+    "crates/facts/src/extract/python_definitions.rs",
+    207,
+    236
+   ]
+  ],
+  "P194": [
+   [
+    "xtask/src/ground_truth/dep_info.rs",
+    32,
+    39
+   ],
+   [
+    "xtask/src/tool_config.rs",
+    89,
+    99
+   ]
+  ],
+  "P195": [
+   [
+    "crates/patchcheck/src/lexer.rs",
+    91,
+    98
+   ],
+   [
+    "crates/syntax/src/flat.rs",
+    150,
+    158
+   ]
+  ],
+  "P196": [
+   [
+    "xtask/src/lint_tables.rs",
+    415,
+    455
+   ],
+   [
+    "xtask/src/sources.rs",
+    558,
+    590
+   ]
+  ],
+  "P197": [
+   [
+    "crates/app/src/map/focus.rs",
+    49,
+    57
+   ],
+   [
+    "crates/facts/src/spelling.rs",
+    11,
+    17
+   ]
+  ],
+  "P198": [
+   [
+    "crates/json/src/parse.rs",
+    572,
+    582
+   ],
+   [
+    "crates/metrics/src/tokenize.rs",
+    395,
+    409
+   ]
+  ],
+  "P199": [
+   [
+    "crates/app/src/map/churn.rs",
+    41,
+    47
+   ],
+   [
+    "crates/hook/src/record.rs",
+    273,
+    282
+   ]
+  ],
+  "P200": [
+   [
+    "crates/text/src/identifier.rs",
+    314,
+    319
+   ],
+   [
+    "crates/text/src/integer.rs",
+    87,
+    93
+   ]
+  ],
+  "P201": [
+   [
+    "crates/io/src/contain.rs",
+    26,
+    36
+   ],
+   [
+    "crates/io/src/warning.rs",
+    78,
+    101
+   ]
+  ],
+  "P202": [
+   [
+    "crates/app/src/patches.rs",
+    163,
+    176
+   ],
+   [
+    "crates/patch/src/apply.rs",
+    122,
+    143
+   ]
+  ],
+  "P203": [
+   [
+    "crates/hook/src/record.rs",
+    262,
+    269
+   ],
+   [
+    "crates/hook/src/verdict.rs",
+    85,
+    103
+   ]
+  ],
+  "P204": [
+   [
+    "crates/cli/src/steps.rs",
+    26,
+    46
+   ],
+   [
+    "crates/cli/src/validate.rs",
+    18,
+    45
+   ]
+  ],
+  "P205": [
+   [
+    "xtask/src/sources.rs",
+    346,
+    373
+   ],
+   [
+    "xtask/src/tokens.rs",
+    900,
+    911
+   ]
+  ],
+  "P206": [
+   [
+    "crates/io/src/testrun.rs",
+    563,
+    570
+   ],
+   [
+    "crates/io/src/warning.rs",
+    38,
+    48
+   ]
+  ],
+  "P207": [
+   [
+    "crates/app/src/explain.rs",
+    229,
+    238
+   ],
+   [
+    "crates/render/src/explain.rs",
+    212,
+    226
+   ]
+  ],
+  "P208": [
+   [
+    "crates/app/src/find.rs",
+    53,
+    70
+   ],
+   [
+    "crates/cli/src/read/symbols.rs",
+    11,
+    34
+   ]
+  ],
+  "P209": [
+   [
+    "crates/facts/src/extract.rs",
+    65,
+    79
+   ],
+   [
+    "crates/facts/src/extract/lua_assignments.rs",
+    122,
+    142
+   ]
+  ],
+  "P210": [
+   [
+    "crates/cli/src/args/parse.rs",
+    250,
+    255
+   ],
+   [
+    "crates/mcp/src/arguments.rs",
+    88,
+    97
+   ]
+  ],
+  "P211": [
+   [
+    "crates/io/src/read.rs",
+    27,
+    35
+   ],
+   [
+    "crates/mcp/src/roots.rs",
+    59,
+    66
+   ]
+  ],
+  "P212": [
+   [
+    "crates/git/src/walk.rs",
+    263,
+    271
+   ],
+   [
+    "crates/io/src/walk.rs",
+    193,
+    201
+   ]
+  ],
+  "P213": [
+   [
+    "xtask/src/ground_truth.rs",
+    130,
+    158
+   ],
+   [
+    "xtask/src/ground_truth/cargo_clippy.rs",
+    194,
+    206
+   ]
+  ],
+  "P214": [
+   [
+    "crates/facts/src/extract/c_declarators.rs",
+    55,
+    63
+   ],
+   [
+    "crates/facts/src/extract/data_languages.rs",
+    151,
+    172
+   ]
+  ],
+  "P215": [
+   [
+    "crates/facts/src/extract/python_imports.rs",
+    36,
+    47
+   ],
+   [
+    "crates/facts/src/extract/rust_uses.rs",
+    13,
+    24
+   ]
+  ],
+  "P216": [
+   [
+    "crates/cli/src/lint.rs",
+    43,
+    49
+   ],
+   [
+    "crates/cli/src/read.rs",
+    55,
+    62
+   ]
+  ],
+  "P217": [
+   [
+    "crates/store/src/value.rs",
+    161,
+    178
+   ],
+   [
+    "crates/text/src/code_point_string.rs",
+    102,
+    114
+   ]
+  ],
+  "P218": [
+   [
+    "crates/io/src/lock.rs",
+    130,
+    137
+   ],
+   [
+    "crates/store/src/writer.rs",
+    117,
+    125
+   ]
+  ],
+  "P219": [
+   [
+    "crates/app/src/map/pack.rs",
+    176,
+    186
+   ],
+   [
+    "crates/render/src/map.rs",
+    239,
+    247
+   ]
+  ],
+  "P220": [
+   [
+    "xtask/src/layers.rs",
+    15,
+    27
+   ],
+   [
+    "xtask/src/suppressions.rs",
+    41,
+    53
+   ]
+  ],
+  "P221": [
+   [
+    "crates/app/src/patches.rs",
+    145,
+    160
+   ],
+   [
+    "crates/hook/src/destination.rs",
+    108,
+    121
+   ]
+  ],
+  "P222": [
+   [
+    "crates/patch/src/apply.rs",
+    64,
+    72
+   ],
+   [
+    "crates/patch/src/vote.rs",
+    111,
+    122
+   ]
+  ],
+  "P223": [
+   [
+    "crates/app/src/views.rs",
+    193,
+    198
+   ],
+   [
+    "crates/facts/src/locs.rs",
+    102,
+    111
+   ]
+  ],
+  "P224": [
+   [
+    "crates/app/src/history.rs",
+    226,
+    265
+   ],
+   [
+    "crates/render/src/history.rs",
+    47,
+    71
+   ]
+  ],
+  "P225": [
+   [
+    "crates/cli/src/steps.rs",
+    228,
+    234
+   ],
+   [
+    "crates/mcp/src/validate/coerce.rs",
+    157,
+    167
+   ]
+  ],
+  "P226": [
+   [
+    "crates/facts/src/extract/c_declarators.rs",
+    34,
+    53
+   ],
+   [
+    "crates/facts/src/extract/generic_walker.rs",
+    16,
+    37
+   ]
+  ],
+  "P227": [
+   [
+    "crates/app/src/health.rs",
+    124,
+    162
+   ],
+   [
+    "crates/render/src/health.rs",
+    62,
+    92
+   ]
+  ],
+  "P228": [
+   [
+    "crates/cli/src/read/symbols.rs",
+    46,
+    69
+   ],
+   [
+    "crates/mcp/src/answer/symbols.rs",
+    63,
+    72
+   ]
+  ],
+  "P229": [
+   [
+    "crates/metrics/src/kinds.rs",
+    11,
+    17
+   ],
+   [
+    "crates/syntax/src/stream.rs",
+    52,
+    57
+   ]
+  ],
+  "P230": [
+   [
+    "crates/patchcheck/src/callers.rs",
+    14,
+    53
+   ],
+   [
+    "crates/patchcheck/src/duplicates.rs",
+    30,
+    54
+   ]
+  ],
+  "P231": [
+   [
+    "crates/hook/src/call.rs",
+    35,
+    44
+   ],
+   [
+    "crates/hook/src/report/csv.rs",
+    337,
+    352
+   ]
+  ],
+  "P232": [
+   [
+    "crates/app/src/patches/reports.rs",
+    79,
+    93
+   ],
+   [
+    "crates/patch/src/apply.rs",
+    97,
+    115
+   ]
+  ],
+  "P233": [
+   [
+    "xtask/src/ground_truth.rs",
+    211,
+    220
+   ],
+   [
+    "xtask/src/ground_truth/cargo_clippy.rs",
+    235,
+    241
+   ]
+  ],
+  "P234": [
+   [
+    "crates/checks/src/contract.rs",
+    152,
+    157
+   ],
+   [
+    "crates/checks/src/rules.rs",
+    64,
+    85
+   ]
+  ],
+  "P235": [
+   [
+    "crates/app/src/patches.rs",
+    198,
+    224
+   ],
+   [
+    "crates/app/src/validate/evaluate.rs",
+    121,
+    152
+   ]
+  ],
+  "P236": [
+   [
+    "crates/cli/src/exit.rs",
+    27,
+    38
+   ],
+   [
+    "crates/mcp/src/failure.rs",
+    13,
+    18
+   ]
+  ],
+  "P237": [
+   [
+    "xtask/src/ground_truth/coverage.rs",
+    16,
+    40
+   ],
+   [
+    "xtask/src/suppressions.rs",
+    155,
+    175
+   ]
+  ],
+  "P238": [
+   [
+    "crates/app/src/lint/candidates/inputs.rs",
+    27,
+    54
+   ],
+   [
+    "crates/app/src/validate/candidates.rs",
+    22,
+    55
+   ]
+  ],
+  "P239": [
+   [
+    "crates/app/src/pairs.rs",
+    192,
+    199
+   ],
+   [
+    "crates/checks/src/pair.rs",
+    137,
+    143
+   ]
+  ],
+  "P240": [
+   [
+    "crates/git/src/walk.rs",
+    373,
+    422
+   ],
+   [
+    "crates/io/src/walk.rs",
+    251,
+    263
+   ]
+  ],
+  "P241": [
+   [
+    "crates/app/src/lint/candidates.rs",
+    196,
+    212
+   ],
+   [
+    "crates/app/src/lint/candidates/tree.rs",
+    102,
+    126
+   ]
+  ],
+  "P242": [
+   [
+    "crates/patch/src/delta.rs",
+    28,
+    59
+   ],
+   [
+    "crates/patch/src/keys.rs",
+    30,
+    39
+   ]
+  ],
+  "P243": [
+   [
+    "crates/git/src/worktree.rs",
+    492,
+    532
+   ],
+   [
+    "crates/io/src/warning.rs",
+    78,
+    101
+   ]
+  ],
+  "P244": [
+   [
+    "crates/hook/src/payload.rs",
+    63,
+    77
+   ],
+   [
+    "crates/hook/src/report/log.rs",
+    190,
+    204
+   ]
+  ],
+  "P245": [
+   [
+    "crates/io/src/files.rs",
+    101,
+    110
+   ],
+   [
+    "crates/io/src/testing.rs",
+    72,
+    80
+   ]
+  ],
+  "P246": [
+   [
+    "crates/app/src/warmup.rs",
+    71,
+    92
+   ],
+   [
+    "crates/cli/src/read/tools.rs",
+    25,
+    46
+   ]
+  ],
+  "P247": [
+   [
+    "crates/cli/src/read/history.rs",
+    8,
+    25
+   ],
+   [
+    "crates/mcp/src/answer/shared.rs",
+    21,
+    29
+   ]
+  ],
+  "P248": [
+   [
+    "crates/io/src/read.rs",
+    27,
+    35
+   ],
+   [
+    "crates/io/src/warning.rs",
+    78,
+    101
+   ]
+  ],
+  "P249": [
+   [
+    "crates/facts/src/extract/c_declarators.rs",
+    65,
+    82
+   ],
+   [
+    "crates/facts/src/extract/lua_assignments.rs",
+    122,
+    142
+   ]
+  ],
+  "P250": [
+   [
+    "crates/io/src/txn.rs",
+    372,
+    403
+   ],
+   [
+    "crates/io/src/warning.rs",
+    38,
+    48
+   ]
+  ],
+  "P251": [
+   [
+    "crates/io/src/files.rs",
+    187,
+    207
+   ],
+   [
+    "crates/io/src/testing.rs",
+    338,
+    360
+   ]
+  ],
+  "P252": [
+   [
+    "crates/app/src/capabilities.rs",
+    294,
+    304
+   ],
+   [
+    "crates/render/src/capabilities.rs",
+    129,
+    135
+   ]
+  ],
+  "P253": [
+   [
+    "crates/app/src/views.rs",
+    104,
+    112
+   ],
+   [
+    "crates/render/src/views.rs",
+    129,
+    137
+   ]
+  ],
+  "P254": [
+   [
+    "xtask/src/sources.rs",
+    136,
+    141
+   ],
+   [
+    "xtask/src/tool_config.rs",
+    390,
+    395
+   ]
+  ],
+  "P255": [
+   [
+    "crates/io/src/config.rs",
+    313,
+    323
+   ],
+   [
+    "crates/io/src/contain.rs",
+    229,
+    238
+   ]
+  ],
+  "P256": [
+   [
+    "crates/git/src/snapshot.rs",
+    139,
+    144
+   ],
+   [
+    "crates/hook/src/destination.rs",
+    85,
+    91
+   ]
+  ],
+  "P257": [
+   [
+    "crates/graph/src/files.rs",
+    48,
+    73
+   ],
+   [
+    "crates/graph/src/names.rs",
+    100,
+    124
+   ]
+  ],
+  "P258": [
+   [
+    "crates/store/src/error.rs",
+    107,
+    115
+   ],
+   [
+    "crates/store/src/value.rs",
+    27,
+    36
+   ]
+  ],
+  "P259": [
+   [
+    "crates/hook/src/call.rs",
+    106,
+    130
+   ],
+   [
+    "crates/hook/src/search/log.rs",
+    42,
+    47
+   ]
+  ],
+  "P260": [
+   [
+    "xtask/src/generate/descriptions.rs",
+    31,
+    40
+   ],
+   [
+    "xtask/src/generate/templates.rs",
+    284,
+    292
+   ]
+  ],
+  "P261": [
+   [
+    "crates/patchcheck/src/duplicates.rs",
+    56,
+    74
+   ],
+   [
+    "crates/patchcheck/src/fragment.rs",
+    223,
+    244
+   ]
+  ],
+  "P262": [
+   [
+    "crates/app/src/validate/records.rs",
+    391,
+    413
+   ],
+   [
+    "crates/patch/src/vote.rs",
+    111,
+    122
+   ]
+  ],
+  "P263": [
+   [
+    "xtask/src/ground_truth.rs",
+    223,
+    239
+   ],
+   [
+    "xtask/src/sources.rs",
+    558,
+    590
+   ]
+  ],
+  "P264": [
+   [
+    "crates/app/src/endpoints.rs",
+    8,
+    18
+   ],
+   [
+    "crates/graph/src/resolver.rs",
+    320,
+    340
+   ]
+  ],
+  "P265": [
+   [
+    "crates/app/src/health.rs",
+    212,
+    234
+   ],
+   [
+    "crates/graph/src/ambiguous.rs",
+    99,
+    122
+   ]
+  ],
+  "P266": [
+   [
+    "crates/graph/src/ambiguous.rs",
+    85,
+    95
+   ],
+   [
+    "crates/graph/src/symbols.rs",
+    283,
+    288
+   ]
+  ],
+  "P267": [
+   [
+    "crates/patch/src/blocks.rs",
+    102,
+    131
+   ],
+   [
+    "crates/patch/src/unidiff/hunks.rs",
+    88,
+    121
+   ]
+  ],
+  "P268": [
+   [
+    "crates/cli/src/read/map.rs",
+    13,
+    42
+   ],
+   [
+    "crates/mcp/src/answer/orient.rs",
+    50,
+    73
+   ]
+  ],
+  "P269": [
+   [
+    "crates/patchcheck/src/dangling.rs",
+    29,
+    63
+   ],
+   [
+    "crates/patchcheck/src/shadowing.rs",
+    13,
+    35
+   ]
+  ],
+  "P270": [
+   [
+    "crates/app/src/path.rs",
+    77,
+    102
+   ],
+   [
+    "crates/cli/src/read/graph.rs",
+    40,
+    70
+   ]
+  ],
+  "P271": [
+   [
+    "crates/checks/src/copies.rs",
+    233,
+    245
+   ],
+   [
+    "crates/cli/src/read/diagram.rs",
+    111,
+    135
+   ]
+  ],
+  "P272": [
+   [
+    "crates/app/src/explain.rs",
+    96,
+    111
+   ],
+   [
+    "crates/cli/src/read/graph.rs",
+    14,
+    37
+   ]
+  ],
+  "P273": [
+   [
+    "xtask/src/generate/guide.rs",
+    248,
+    255
+   ],
+   [
+    "xtask/src/generate/rules.rs",
+    136,
+    143
+   ]
+  ],
+  "P274": [
+   [
+    "crates/graph/src/names.rs",
+    100,
+    124
+   ],
+   [
+    "crates/graph/src/scopes.rs",
+    73,
+    87
+   ]
+  ],
+  "P275": [
+   [
+    "crates/patchcheck/src/dangling.rs",
+    29,
+    63
+   ],
+   [
+    "crates/patchcheck/src/undeclared.rs",
+    17,
+    41
+   ]
+  ],
+  "P276": [
+   [
+    "crates/hook/src/report/classify.rs",
+    77,
+    92
+   ],
+   [
+    "crates/hook/src/verdict.rs",
+    37,
+    62
+   ]
+  ],
+  "P277": [
+   [
+    "crates/facts/src/extract.rs",
+    38,
+    49
+   ],
+   [
+    "crates/facts/src/extract/generic_walker.rs",
+    16,
+    37
+   ]
+  ],
+  "P278": [
+   [
+    "xtask/src/layers.rs",
+    15,
+    27
+   ],
+   [
+    "xtask/src/lint_tables.rs",
+    37,
+    55
+   ]
+  ],
+  "P279": [
+   [
+    "crates/checks/src/clone.rs",
+    74,
+    119
+   ],
+   [
+    "crates/hook/src/report/log.rs",
+    286,
+    305
+   ]
+  ],
+  "P280": [
+   [
+    "crates/store/src/reader.rs",
+    85,
+    112
+   ],
+   [
+    "crates/store/src/writer.rs",
+    129,
+    145
+   ]
+  ],
+  "P281": [
+   [
+    "crates/app/src/patches.rs",
+    198,
+    224
+   ],
+   [
+    "crates/app/src/validate.rs",
+    236,
+    249
+   ]
+  ],
+  "P282": [
+   [
+    "crates/git/src/walk.rs",
+    199,
+    222
+   ],
+   [
+    "crates/git/src/worktree.rs",
+    452,
+    462
+   ]
+  ],
+  "P283": [
+   [
+    "crates/patch/src/unidiff.rs",
+    200,
+    228
+   ],
+   [
+    "crates/patch/src/unidiff/hunks.rs",
+    28,
+    71
+   ]
+  ],
+  "P284": [
+   [
+    "crates/facts/src/extract/require_and_source.rs",
+    19,
+    29
+   ],
+   [
+    "crates/facts/src/extract/rust_uses.rs",
+    13,
+    24
+   ]
+  ],
+  "P285": [
+   [
+    "crates/json/src/parse.rs",
+    594,
+    612
+   ],
+   [
+    "crates/mcp/src/validate/repr.rs",
+    37,
+    54
+   ]
+  ],
+  "P286": [
+   [
+    "crates/app/src/cycles.rs",
+    55,
+    71
+   ],
+   [
+    "crates/render/src/cycles.rs",
+    21,
+    46
+   ]
+  ],
+  "P287": [
+   [
+    "crates/app/src/history.rs",
+    387,
+    409
+   ],
+   [
+    "crates/render/src/history.rs",
+    148,
+    160
+   ]
+  ],
+  "P288": [
+   [
+    "crates/app/src/health/complexity.rs",
+    238,
+    256
+   ],
+   [
+    "crates/render/src/health.rs",
+    210,
+    229
+   ]
+  ],
+  "P289": [
+   [
+    "crates/facts/src/skeleton.rs",
+    245,
+    253
+   ],
+   [
+    "crates/metrics/src/tokenize.rs",
+    279,
+    299
+   ]
+  ],
+  "P290": [
+   [
+    "crates/git/src/walk.rs",
+    199,
+    222
+   ],
+   [
+    "crates/io/src/warning.rs",
+    78,
+    101
+   ]
+  ],
+  "P291": [
+   [
+    "xtask/src/sources.rs",
+    113,
+    132
+   ],
+   [
+    "xtask/src/tool_config.rs",
+    116,
+    154
+   ]
+  ],
+  "P292": [
+   [
+    "crates/json/src/parse.rs",
+    409,
+    436
+   ],
+   [
+    "crates/metrics/src/tokenize.rs",
+    361,
+    380
+   ]
+  ],
+  "P293": [
+   [
+    "xtask/src/erosion.rs",
+    140,
+    150
+   ],
+   [
+    "xtask/src/repo.rs",
+    104,
+    121
+   ]
+  ],
+  "P294": [
+   [
+    "xtask/src/layers.rs",
+    147,
+    160
+   ],
+   [
+    "xtask/src/sources.rs",
+    432,
+    439
+   ]
+  ],
+  "P295": [
+   [
+    "crates/patchcheck/src/lexer.rs",
+    91,
+    98
+   ],
+   [
+    "xtask/src/generate/guide.rs",
+    93,
+    102
+   ]
+  ],
+  "P296": [
+   [
+    "xtask/src/ground_truth/dep_info.rs",
+    90,
+    107
+   ],
+   [
+    "xtask/src/sources.rs",
+    143,
+    182
+   ]
+  ],
+  "P297": [
+   [
+    "crates/io/src/files.rs",
+    302,
+    309
+   ],
+   [
+    "crates/io/src/random.rs",
+    112,
+    119
+   ]
+  ],
+  "P298": [
+   [
+    "xtask/src/ground_truth.rs",
+    32,
+    47
+   ],
+   [
+    "xtask/src/tool_config.rs",
+    49,
+    83
+   ]
+  ],
+  "P299": [
+   [
+    "crates/render/src/capabilities.rs",
+    146,
+    158
+   ],
+   [
+    "xtask/src/generate/syntax.rs",
+    425,
+    453
+   ]
+  ],
+  "P300": [
+   [
+    "xtask/src/layers.rs",
+    100,
+    115
+   ],
+   [
+    "xtask/src/public_api.rs",
+    58,
+    73
+   ]
+  ],
+  "P301": [
+   [
+    "crates/patch/src/unidiff.rs",
+    135,
+    147
+   ],
+   [
+    "crates/patch/src/unidiff/hunks.rs",
+    73,
+    81
+   ]
+  ],
+  "P302": [
+   [
+    "crates/cli/src/args.rs",
+    183,
+    188
+   ],
+   [
+    "crates/json/src/parse.rs",
+    53,
+    58
+   ]
+  ],
+  "P303": [
+   [
+    "crates/io/src/runner.rs",
+    412,
+    418
+   ],
+   [
+    "xtask/src/process.rs",
+    291,
+    306
+   ]
+  ],
+  "P304": [
+   [
+    "crates/json/src/float.rs",
+    224,
+    235
+   ],
+   [
+    "crates/json/src/write.rs",
+    442,
+    451
+   ]
+  ],
+  "P305": [
+   [
+    "crates/app/src/verdicts.rs",
+    178,
+    187
+   ],
+   [
+    "crates/hook/src/payload.rs",
+    146,
+    151
+   ]
+  ],
+  "P306": [
+   [
+    "crates/app/src/lint.rs",
+    170,
+    181
+   ],
+   [
+    "crates/hook/src/gate.rs",
+    187,
+    207
+   ]
+  ],
+  "P307": [
+   [
+    "crates/io/src/files.rs",
+    187,
+    207
+   ],
+   [
+    "crates/io/src/replace.rs",
+    66,
+    79
+   ]
+  ],
+  "P308": [
+   [
+    "packaging/check_wheel.py",
+    103,
+    114
+   ],
+   [
+    "scripts/hook_latency.py",
+    174,
+    208
+   ]
+  ],
+  "P309": [
+   [
+    "crates/facts/src/extract/c_declarators.rs",
+    65,
+    82
+   ],
+   [
+    "crates/facts/src/extract/generic_walker.rs",
+    82,
+    92
+   ]
+  ],
+  "P310": [
+   [
+    "crates/patchcheck/src/arity.rs",
+    17,
+    39
+   ],
+   [
+    "crates/patchcheck/src/shadowing.rs",
+    13,
+    35
+   ]
+  ],
+  "P311": [
+   [
+    "crates/patchcheck/src/arity.rs",
+    17,
+    39
+   ],
+   [
+    "crates/patchcheck/src/duplicates.rs",
+    30,
+    54
+   ]
+  ],
+  "P312": [
+   [
+    "xtask/src/generate/literal.rs",
+    31,
+    46
+   ],
+   [
+    "xtask/src/ground_truth/dep_info.rs",
+    138,
+    151
+   ]
+  ],
+  "P313": [
+   [
+    "crates/hook/src/record.rs",
+    71,
+    79
+   ],
+   [
+    "crates/store/src/value.rs",
+    73,
+    81
+   ]
+  ],
+  "P314": [
+   [
+    "crates/app/src/cycles.rs",
+    55,
+    71
+   ],
+   [
+    "crates/render/src/cycles.rs",
+    139,
+    155
+   ]
+  ],
+  "P315": [
+   [
+    "crates/app/src/html.rs",
+    74,
+    94
+   ],
+   [
+    "crates/cli/src/read/html.rs",
+    17,
+    42
+   ]
+  ],
+  "P316": [
+   [
+    "crates/agentless/src/main.rs",
+    79,
+    92
+   ],
+   [
+    "crates/hook/src/report.rs",
+    48,
+    74
+   ]
+  ],
+  "P317": [
+   [
+    "xtask/src/ground_truth.rs",
+    51,
+    61
+   ],
+   [
+    "xtask/src/main.rs",
+    113,
+    119
+   ]
+  ],
+  "P318": [
+   [
+    "crates/kernel/src/deadline.rs",
+    119,
+    126
+   ],
+   [
+    "crates/render/src/receipt.rs",
+    116,
+    127
+   ]
+  ],
+  "P319": [
+   [
+    "crates/app/src/revision.rs",
+    99,
+    114
+   ],
+   [
+    "crates/git/src/changes.rs",
+    102,
+    107
+   ]
+  ],
+  "P320": [
+   [
+    "crates/git/src/walk.rs",
+    199,
+    222
+   ],
+   [
+    "crates/git/src/worktree.rs",
+    492,
+    532
+   ]
+  ],
+  "P321": [
+   [
+    "crates/io/src/append.rs",
+    26,
+    31
+   ],
+   [
+    "crates/io/src/read.rs",
+    27,
+    35
+   ]
+  ],
+  "P322": [
+   [
+    "crates/agentless/src/door.rs",
+    13,
+    28
+   ],
+   [
+    "crates/agentless/src/main.rs",
+    17,
+    32
+   ]
+  ],
+  "P323": [
+   [
+    "crates/app/src/capabilities.rs",
+    294,
+    304
+   ],
+   [
+    "crates/render/src/capabilities.rs",
+    118,
+    126
+   ]
+  ],
+  "P324": [
+   [
+    "crates/mcp/src/http.rs",
+    96,
+    142
+   ],
+   [
+    "crates/mcp/src/serve.rs",
+    61,
+    88
+   ]
+  ],
+  "P325": [
+   [
+    "crates/app/src/file_graph.rs",
+    19,
+    30
+   ],
+   [
+    "crates/app/src/symbol_graph.rs",
+    10,
+    20
+   ]
+  ],
+  "P326": [
+   [
+    "crates/hook/src/search.rs",
+    102,
+    107
+   ],
+   [
+    "crates/mcp/src/arguments.rs",
+    37,
+    42
+   ]
+  ],
+  "P327": [
+   [
+    "xtask/src/generate/rules.rs",
+    97,
+    102
+   ],
+   [
+    "xtask/src/generate/templates.rs",
+    73,
+    81
+   ]
+  ],
+  "P328": [
+   [
+    "crates/facts/src/extract/rationales.rs",
+    46,
+    55
+   ],
+   [
+    "crates/graph/src/owners.rs",
+    8,
+    16
+   ]
+  ],
+  "P329": [
+   [
+    "crates/app/src/validate/warnings.rs",
+    10,
+    21
+   ],
+   [
+    "crates/hook/src/modes.rs",
+    68,
+    80
+   ]
+  ],
+  "P330": [
+   [
+    "xtask/src/sources.rs",
+    603,
+    613
+   ],
+   [
+    "xtask/src/tokens.rs",
+    1012,
+    1022
+   ]
+  ]
+ },
+ "region": {
+  "P001": "C",
+  "P002": "JCB",
+  "P003": "J",
+  "P004": "JC",
+  "P005": "B",
+  "P006": "C",
+  "P007": "J",
+  "P008": "JCB",
+  "P009": "J",
+  "P010": "C",
+  "P011": "C",
+  "P012": "JB",
+  "P013": "C",
+  "P014": "J",
+  "P015": "CB",
+  "P016": "JCB",
+  "P017": "J",
+  "P018": "JB",
+  "P019": "C",
+  "P020": "CB",
+  "P021": "JCB",
+  "P022": "J",
+  "P023": "JC",
+  "P024": "J",
+  "P025": "JCB",
+  "P026": "B",
+  "P027": "J",
+  "P028": "C",
+  "P029": "JC",
+  "P030": "JC",
+  "P031": "J",
+  "P032": "JCB",
+  "P033": "CB",
+  "P034": "JCB",
+  "P035": "JC",
+  "P036": "CB",
+  "P037": "J",
+  "P038": "JC",
+  "P039": "JB",
+  "P040": "J",
+  "P041": "JB",
+  "P042": "CB",
+  "P043": "CB",
+  "P044": "C",
+  "P045": "JC",
+  "P046": "JC",
+  "P047": "JB",
+  "P048": "J",
+  "P049": "J",
+  "P050": "JCB",
+  "P051": "J",
+  "P052": "JCB",
+  "P053": "JCB",
+  "P054": "C",
+  "P055": "J",
+  "P056": "JC",
+  "P057": "J",
+  "P058": "C",
+  "P059": "JCB",
+  "P060": "JCB",
+  "P061": "J",
+  "P062": "B",
+  "P063": "J",
+  "P064": "C",
+  "P065": "J",
+  "P066": "J",
+  "P067": "J",
+  "P068": "J",
+  "P069": "C",
+  "P070": "JCB",
+  "P071": "C",
+  "P072": "J",
+  "P073": "JB",
+  "P074": "J",
+  "P075": "JCB",
+  "P076": "C",
+  "P077": "C",
+  "P078": "C",
+  "P079": "J",
+  "P080": "J",
+  "P081": "JCB",
+  "P082": "C",
+  "P083": "C",
+  "P084": "J",
+  "P085": "JCB",
+  "P086": "J",
+  "P087": "CB",
+  "P088": "JC",
+  "P089": "JCB",
+  "P090": "J",
+  "P091": "J",
+  "P092": "CB",
+  "P093": "J",
+  "P094": "J",
+  "P095": "C",
+  "P096": "J",
+  "P097": "J",
+  "P098": "J",
+  "P099": "JCB",
+  "P100": "C",
+  "P101": "JCB",
+  "P102": "B",
+  "P103": "C",
+  "P104": "J",
+  "P105": "J",
+  "P106": "J",
+  "P107": "J",
+  "P108": "J",
+  "P109": "JCB",
+  "P110": "C",
+  "P111": "C",
+  "P112": "J",
+  "P113": "JCB",
+  "P114": "JCB",
+  "P115": "JC",
+  "P116": "J",
+  "P117": "J",
+  "P118": "C",
+  "P119": "JCB",
+  "P120": "JC",
+  "P121": "C",
+  "P122": "JCB",
+  "P123": "JC",
+  "P124": "J",
+  "P125": "C",
+  "P126": "JCB",
+  "P127": "JB",
+  "P128": "CB",
+  "P129": "J",
+  "P130": "JC",
+  "P131": "C",
+  "P132": "C",
+  "P133": "C",
+  "P134": "J",
+  "P135": "B",
+  "P136": "J",
+  "P137": "JB",
+  "P138": "J",
+  "P139": "JC",
+  "P140": "J",
+  "P141": "JC",
+  "P142": "JCB",
+  "P143": "C",
+  "P144": "JC",
+  "P145": "CB",
+  "P146": "B",
+  "P147": "JCB",
+  "P148": "J",
+  "P149": "CB",
+  "P150": "C",
+  "P151": "J",
+  "P152": "JC",
+  "P153": "JC",
+  "P154": "JB",
+  "P155": "B",
+  "P156": "C",
+  "P157": "J",
+  "P158": "J",
+  "P159": "CB",
+  "P160": "JCB",
+  "P161": "C",
+  "P162": "JB",
+  "P163": "JCB",
+  "P164": "J",
+  "P165": "CB",
+  "P166": "J",
+  "P167": "JB",
+  "P168": "CB",
+  "P169": "JB",
+  "P170": "B",
+  "P171": "JCB",
+  "P172": "JC",
+  "P173": "JB",
+  "P174": "JCB",
+  "P175": "C",
+  "P176": "JCB",
+  "P177": "C",
+  "P178": "JC",
+  "P179": "JC",
+  "P180": "J",
+  "P181": "J",
+  "P182": "J",
+  "P183": "J",
+  "P184": "C",
+  "P185": "J",
+  "P186": "J",
+  "P187": "JC",
+  "P188": "JB",
+  "P189": "JC",
+  "P190": "J",
+  "P191": "JC",
+  "P192": "JCB",
+  "P193": "JC",
+  "P194": "J",
+  "P195": "JCB",
+  "P196": "JC",
+  "P197": "J",
+  "P198": "JB",
+  "P199": "JB",
+  "P200": "JC",
+  "P201": "C",
+  "P202": "JC",
+  "P203": "JCB",
+  "P204": "C",
+  "P205": "J",
+  "P206": "CB",
+  "P207": "J",
+  "P208": "JC",
+  "P209": "JB",
+  "P210": "J",
+  "P211": "JCB",
+  "P212": "JCB",
+  "P213": "J",
+  "P214": "J",
+  "P215": "B",
+  "P216": "C",
+  "P217": "JCB",
+  "P218": "J",
+  "P219": "JC",
+  "P220": "JB",
+  "P221": "JB",
+  "P222": "C",
+  "P223": "JB",
+  "P224": "J",
+  "P225": "J",
+  "P226": "JC",
+  "P227": "J",
+  "P228": "J",
+  "P229": "CB",
+  "P230": "JCB",
+  "P231": "C",
+  "P232": "CB",
+  "P233": "JCB",
+  "P234": "JC",
+  "P235": "J",
+  "P236": "J",
+  "P237": "J",
+  "P238": "JCB",
+  "P239": "JCB",
+  "P240": "J",
+  "P241": "J",
+  "P242": "J",
+  "P243": "B",
+  "P244": "J",
+  "P245": "J",
+  "P246": "JC",
+  "P247": "JC",
+  "P248": "JC",
+  "P249": "C",
+  "P250": "C",
+  "P251": "J",
+  "P252": "J",
+  "P253": "J",
+  "P254": "J",
+  "P255": "C",
+  "P256": "JCB",
+  "P257": "J",
+  "P258": "C",
+  "P259": "J",
+  "P260": "JCB",
+  "P261": "JB",
+  "P262": "C",
+  "P263": "JB",
+  "P264": "JB",
+  "P265": "JB",
+  "P266": "C",
+  "P267": "J",
+  "P268": "JC",
+  "P269": "CB",
+  "P270": "C",
+  "P271": "J",
+  "P272": "JC",
+  "P273": "C",
+  "P274": "JC",
+  "P275": "JCB",
+  "P276": "C",
+  "P277": "JB",
+  "P278": "JCB",
+  "P279": "C",
+  "P280": "B",
+  "P281": "C",
+  "P282": "CB",
+  "P283": "JCB",
+  "P284": "C",
+  "P285": "C",
+  "P286": "J",
+  "P287": "JCB",
+  "P288": "J",
+  "P289": "JC",
+  "P290": "B",
+  "P291": "JCB",
+  "P292": "JCB",
+  "P293": "J",
+  "P294": "JB",
+  "P295": "JB",
+  "P296": "J",
+  "P297": "JB",
+  "P298": "JCB",
+  "P299": "J",
+  "P300": "CB",
+  "P301": "JB",
+  "P302": "J",
+  "P303": "JB",
+  "P304": "C",
+  "P305": "JCB",
+  "P306": "C",
+  "P307": "B",
+  "P308": "JC",
+  "P309": "J",
+  "P310": "C",
+  "P311": "JCB",
+  "P312": "JCB",
+  "P313": "C",
+  "P314": "J",
+  "P315": "CB",
+  "P316": "JC",
+  "P317": "J",
+  "P318": "C",
+  "P319": "JCB",
+  "P320": "CB",
+  "P321": "JB",
+  "P322": "C",
+  "P323": "B",
+  "P324": "J",
+  "P325": "C",
+  "P326": "JC",
+  "P327": "JC",
+  "P328": "JCB",
+  "P329": "J",
+  "P330": "JCB"
+ },
+ "sampled": [
+  "P001",
+  "P002",
+  "P003",
+  "P004",
+  "P005",
+  "P006",
+  "P007",
+  "P008",
+  "P009",
+  "P010",
+  "P011",
+  "P012",
+  "P013",
+  "P014",
+  "P015",
+  "P016",
+  "P018",
+  "P019",
+  "P020",
+  "P021",
+  "P022",
+  "P023",
+  "P024",
+  "P025",
+  "P026",
+  "P027",
+  "P028",
+  "P029",
+  "P030",
+  "P031",
+  "P032",
+  "P033",
+  "P034",
+  "P035",
+  "P036",
+  "P037",
+  "P038",
+  "P039",
+  "P040",
+  "P041",
+  "P042",
+  "P043",
+  "P044",
+  "P045",
+  "P046",
+  "P047",
+  "P048",
+  "P051",
+  "P052",
+  "P053",
+  "P054",
+  "P055",
+  "P056",
+  "P057",
+  "P058",
+  "P059",
+  "P060",
+  "P061",
+  "P062",
+  "P063",
+  "P064",
+  "P065",
+  "P066",
+  "P068",
+  "P069",
+  "P070",
+  "P071",
+  "P072",
+  "P073",
+  "P074",
+  "P075",
+  "P076",
+  "P077",
+  "P078",
+  "P079",
+  "P080",
+  "P081",
+  "P082",
+  "P083",
+  "P084",
+  "P085",
+  "P086",
+  "P087",
+  "P089",
+  "P090",
+  "P091",
+  "P092",
+  "P093",
+  "P094",
+  "P095",
+  "P096",
+  "P097",
+  "P098",
+  "P100",
+  "P101",
+  "P102",
+  "P103",
+  "P105",
+  "P106",
+  "P107",
+  "P109",
+  "P110",
+  "P111",
+  "P112",
+  "P113",
+  "P114",
+  "P115",
+  "P116",
+  "P117",
+  "P118",
+  "P119",
+  "P121",
+  "P122",
+  "P123",
+  "P124",
+  "P125",
+  "P127",
+  "P128",
+  "P129",
+  "P130",
+  "P131",
+  "P132",
+  "P133",
+  "P134",
+  "P135",
+  "P136",
+  "P137",
+  "P139",
+  "P140",
+  "P141",
+  "P142",
+  "P143",
+  "P144",
+  "P145",
+  "P146",
+  "P147",
+  "P149",
+  "P150",
+  "P151",
+  "P152",
+  "P153",
+  "P154",
+  "P155",
+  "P156",
+  "P157",
+  "P158",
+  "P159",
+  "P160",
+  "P162",
+  "P163",
+  "P164",
+  "P165",
+  "P166",
+  "P167",
+  "P168",
+  "P169",
+  "P170",
+  "P171",
+  "P172",
+  "P173",
+  "P175",
+  "P176",
+  "P177",
+  "P178",
+  "P179",
+  "P180",
+  "P181",
+  "P182",
+  "P183",
+  "P184",
+  "P185",
+  "P186",
+  "P188",
+  "P189",
+  "P190",
+  "P191",
+  "P192",
+  "P193",
+  "P194",
+  "P196",
+  "P197",
+  "P198",
+  "P199",
+  "P200",
+  "P201",
+  "P202",
+  "P203",
+  "P204",
+  "P205",
+  "P206",
+  "P207",
+  "P208",
+  "P209",
+  "P210",
+  "P211",
+  "P212",
+  "P213",
+  "P214",
+  "P215",
+  "P216",
+  "P217",
+  "P219",
+  "P220",
+  "P222",
+  "P223",
+  "P224",
+  "P225",
+  "P226",
+  "P227",
+  "P229",
+  "P230",
+  "P231",
+  "P232",
+  "P233",
+  "P234",
+  "P235",
+  "P236",
+  "P238",
+  "P239",
+  "P240",
+  "P241",
+  "P242",
+  "P243",
+  "P245",
+  "P246",
+  "P247",
+  "P248",
+  "P249",
+  "P250",
+  "P251",
+  "P252",
+  "P253",
+  "P254",
+  "P255",
+  "P256",
+  "P257",
+  "P258",
+  "P259",
+  "P260",
+  "P261",
+  "P262",
+  "P263",
+  "P264",
+  "P265",
+  "P266",
+  "P267",
+  "P268",
+  "P269",
+  "P270",
+  "P271",
+  "P272",
+  "P273",
+  "P274",
+  "P275",
+  "P276",
+  "P277",
+  "P278",
+  "P279",
+  "P280",
+  "P281",
+  "P282",
+  "P283",
+  "P284",
+  "P285",
+  "P286",
+  "P287",
+  "P288",
+  "P289",
+  "P290",
+  "P291",
+  "P292",
+  "P293",
+  "P294",
+  "P295",
+  "P296",
+  "P297",
+  "P298",
+  "P299",
+  "P300",
+  "P301",
+  "P302",
+  "P303",
+  "P304",
+  "P305",
+  "P306",
+  "P307",
+  "P308",
+  "P309",
+  "P310",
+  "P311",
+  "P312",
+  "P313",
+  "P314",
+  "P315",
+  "P317",
+  "P318",
+  "P319",
+  "P320",
+  "P321",
+  "P322",
+  "P323",
+  "P324",
+  "P325",
+  "P326",
+  "P327",
+  "P329"
+ ],
+ "mine": {
+  "P104": "related",
+  "P138": "unrelated",
+  "P228": "related",
+  "P040": "related",
+  "P066": "related",
+  "P088": "related",
+  "P074": "unrelated",
+  "P142": "duplicate",
+  "P264": "related",
+  "P283": "related",
+  "P148": "related",
+  "P218": "unrelated",
+  "P031": "duplicate",
+  "P004": "related",
+  "P130": "duplicate",
+  "P067": "unrelated",
+  "P089": "related",
+  "P181": "related",
+  "P328": "duplicate",
+  "P221": "duplicate",
+  "P195": "related",
+  "P237": "related",
+  "P022": "related",
+  "P017": "related",
+  "P108": "related",
+  "P051": "related",
+  "P226": "related",
+  "P244": "related",
+  "P049": "related",
+  "P025": "related",
+  "P330": "related",
+  "P315": "related",
+  "P161": "related",
+  "P120": "related",
+  "P270": "related",
+  "P187": "related",
+  "P325": "related",
+  "P126": "related",
+  "P304": "related",
+  "P176": "related",
+  "P168": "related",
+  "P159": "related",
+  "P189": "related",
+  "P196": "related",
+  "P174": "related",
+  "P085": "related",
+  "P056": "related",
+  "P052": "related",
+  "P184": "related",
+  "P233": "related",
+  "P258": "related",
+  "P099": "related",
+  "P152": "related",
+  "P109": "duplicate",
+  "P050": "related",
+  "P298": "related",
+  "P316": "related",
+  "P092": "related",
+  "P310": "related"
+ },
+ "double": [
+  "P026",
+  "P027",
+  "P053",
+  "P062",
+  "P070",
+  "P072",
+  "P080",
+  "P089",
+  "P100",
+  "P109",
+  "P112",
+  "P123",
+  "P128",
+  "P145",
+  "P148",
+  "P150",
+  "P156",
+  "P173",
+  "P199",
+  "P220",
+  "P223",
+  "P231",
+  "P234",
+  "P235",
+  "P257",
+  "P275",
+  "P293",
+  "P299",
+  "P312",
+  "P320"
+ ],
+ "batches": [
+  [
+   "P109",
+   "P067",
+   "P253",
+   "P091",
+   "P103",
+   "P133",
+   "P085",
+   "P229",
+   "P319",
+   "P169",
+   "P043",
+   "P001",
+   "P072",
+   "P307",
+   "P007",
+   "P187",
+   "P073",
+   "P259",
+   "P157",
+   "P139",
+   "P265",
+   "P031",
+   "P061",
+   "P037",
+   "P320",
+   "P289",
+   "P121",
+   "P325",
+   "P150",
+   "P241",
+   "P079",
+   "P013",
+   "P163",
+   "P199",
+   "P097",
+   "P271",
+   "P301",
+   "P313",
+   "P295",
+   "P181",
+   "P127",
+   "P145",
+   "P205",
+   "P235",
+   "P193",
+   "P223",
+   "P217",
+   "P283",
+   "P293",
+   "P019",
+   "P055",
+   "P025",
+   "P211",
+   "P115",
+   "P247",
+   "P151",
+   "P049",
+   "P277",
+   "P175"
+  ],
+  [
+   "P260",
+   "P089",
+   "P212",
+   "P038",
+   "P254",
+   "P128",
+   "P122",
+   "P230",
+   "P314",
+   "P182",
+   "P092",
+   "P272",
+   "P278",
+   "P296",
+   "P053",
+   "P284",
+   "P056",
+   "P044",
+   "P302",
+   "P223",
+   "P014",
+   "P100",
+   "P062",
+   "P080",
+   "P248",
+   "P068",
+   "P050",
+   "P158",
+   "P008",
+   "P188",
+   "P320",
+   "P098",
+   "P173",
+   "P134",
+   "P110",
+   "P032",
+   "P326",
+   "P152",
+   "P206",
+   "P146",
+   "P074",
+   "P170",
+   "P308",
+   "P236",
+   "P026",
+   "P140",
+   "P218",
+   "P020",
+   "P164",
+   "P290",
+   "P299",
+   "P224",
+   "P266",
+   "P116",
+   "P086",
+   "P194",
+   "P200",
+   "P242",
+   "P104",
+   "P156",
+   "P176",
+   "P002"
+  ],
+  [
+   "P225",
+   "P070",
+   "P201",
+   "P099",
+   "P327",
+   "P075",
+   "P231",
+   "P063",
+   "P303",
+   "P165",
+   "P153",
+   "P039",
+   "P177",
+   "P171",
+   "P081",
+   "P189",
+   "P117",
+   "P087",
+   "P249",
+   "P309",
+   "P123",
+   "P183",
+   "P148",
+   "P279",
+   "P129",
+   "P033",
+   "P207",
+   "P195",
+   "P159",
+   "P027",
+   "P026",
+   "P021",
+   "P135",
+   "P273",
+   "P234",
+   "P003",
+   "P321",
+   "P069",
+   "P111",
+   "P147",
+   "P291",
+   "P057",
+   "P243",
+   "P267",
+   "P045",
+   "P297",
+   "P261",
+   "P237",
+   "P315",
+   "P213",
+   "P141",
+   "P093",
+   "P051",
+   "P009",
+   "P105",
+   "P220",
+   "P255",
+   "P015",
+   "P219",
+   "P285"
+  ],
+  [
+   "P166",
+   "P082",
+   "P214",
+   "P312",
+   "P178",
+   "P286",
+   "P088",
+   "P202",
+   "P220",
+   "P298",
+   "P310",
+   "P142",
+   "P226",
+   "P130",
+   "P256",
+   "P106",
+   "P274",
+   "P316",
+   "P184",
+   "P052",
+   "P268",
+   "P196",
+   "P257",
+   "P244",
+   "P022",
+   "P070",
+   "P322",
+   "P080",
+   "P034",
+   "P100",
+   "P028",
+   "P094",
+   "P190",
+   "P154",
+   "P124",
+   "P058",
+   "P004",
+   "P232",
+   "P304",
+   "P040",
+   "P148",
+   "P250",
+   "P016",
+   "P280",
+   "P328",
+   "P046",
+   "P076",
+   "P118",
+   "P262",
+   "P208",
+   "P064",
+   "P172",
+   "P292",
+   "P160",
+   "P238",
+   "P136",
+   "P010",
+   "P112"
+  ],
+  [
+   "P155",
+   "P123",
+   "P239",
+   "P199",
+   "P221",
+   "P125",
+   "P149",
+   "P017",
+   "P231",
+   "P112",
+   "P059",
+   "P191",
+   "P245",
+   "P179",
+   "P083",
+   "P131",
+   "P173",
+   "P005",
+   "P143",
+   "P101",
+   "P197",
+   "P269",
+   "P233",
+   "P235",
+   "P203",
+   "P071",
+   "P107",
+   "P053",
+   "P257",
+   "P287",
+   "P011",
+   "P095",
+   "P029",
+   "P329",
+   "P128",
+   "P263",
+   "P047",
+   "P215",
+   "P323",
+   "P023",
+   "P161",
+   "P137",
+   "P227",
+   "P089",
+   "P209",
+   "P027",
+   "P317",
+   "P065",
+   "P275",
+   "P119",
+   "P299",
+   "P077",
+   "P145",
+   "P185",
+   "P281",
+   "P311",
+   "P293",
+   "P305",
+   "P035",
+   "P041",
+   "P113",
+   "P167",
+   "P251"
+  ],
+  [
+   "P204",
+   "P246",
+   "P180",
+   "P294",
+   "P258",
+   "P096",
+   "P276",
+   "P198",
+   "P222",
+   "P324",
+   "P144",
+   "P024",
+   "P030",
+   "P062",
+   "P318",
+   "P048",
+   "P126",
+   "P252",
+   "P060",
+   "P108",
+   "P018",
+   "P084",
+   "P210",
+   "P102",
+   "P036",
+   "P162",
+   "P090",
+   "P054",
+   "P192",
+   "P132",
+   "P282",
+   "P120",
+   "P042",
+   "P288",
+   "P138",
+   "P300",
+   "P264",
+   "P012",
+   "P270",
+   "P072",
+   "P330",
+   "P275",
+   "P150",
+   "P174",
+   "P234",
+   "P240",
+   "P306",
+   "P078",
+   "P312",
+   "P109",
+   "P066",
+   "P228",
+   "P114",
+   "P168",
+   "P156",
+   "P186",
+   "P006",
+   "P216"
+  ]
+ ],
+ "quota": {
+  "J": 90,
+  "C": 60,
+  "B": 14,
+  "JC": 40,
+  "JB": 30,
+  "CB": 22,
+  "JCB": 50
+ },
+ "region_sizes": {
+  "J": 279,
+  "C": 107,
+  "B": 14,
+  "JC": 65,
+  "JB": 45,
+  "CB": 22,
+  "JCB": 97
+ }
+}
