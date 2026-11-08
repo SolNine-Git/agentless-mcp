@@ -33,12 +33,13 @@ pub(crate) struct RepoFacts {
 }
 
 // The facts of a call's scan, which a server keeps for the next call of the root: the files with
-// facts, and the row key of each file that came with no warning.
+// facts, each shared with the scans that read it, and the row key of each file that came with no
+// warning.
 #[derive(Default)]
 pub(crate) struct KeptFacts {
-    pub(crate) files: Arc<Vec<FileFacts>>,
+    pub(crate) files: Arc<Vec<Arc<FileFacts>>>,
     keys: Vec<Option<RowKey>>,
-    positions: HashMap<String, usize>,
+    positions: Arc<HashMap<String, usize>>,
 }
 
 impl KeptFacts {
@@ -53,7 +54,7 @@ impl KeptFacts {
 // key to keep them by, which a warning leaves out.
 enum Fresh {
     Kept(usize),
-    Read(Box<FileFacts>, Option<RowKey>),
+    Read(Arc<FileFacts>, Option<RowKey>),
 }
 
 // The kept facts after a scan, and the files it passed over, or the stop of the call.
@@ -161,28 +162,34 @@ fn rescan_with(
         }
         let Served { value, warning } = file_facts(text, facts_of);
         let key = warning.is_none().then_some(key);
-        let value = value.map(|facts| Fresh::Read(Box::new(facts), key));
+        let value = value.map(|facts| Fresh::Read(Arc::new(facts), key));
         Served { value, warning }
     };
     let scanned = scan_values(root, files, threads(), &fresh, deadline);
     scanned.map(|scanned| scanned.map(|(fresh, skipped)| (kept_after(kept, fresh), skipped)))
 }
 
-// The kept facts after a scan: `kept` itself when the scan took every file from it in place.
+// The kept facts after a scan: `kept` itself when the scan took every file from it in place. A
+// kept file's facts are shared, not copied, and the same paths in the same order share positions.
 fn kept_after(kept: &Arc<KeptFacts>, fresh: Vec<Fresh>) -> Arc<KeptFacts> {
     let in_place = |(at, file): (usize, &Fresh)| matches!(file, Fresh::Kept(from) if *from == at);
     if fresh.len() == kept.files.len() && fresh.iter().enumerate().all(in_place) {
         return Arc::clone(kept);
     }
-    let (files, keys): (Vec<FileFacts>, Vec<Option<RowKey>>) = (fresh.into_iter())
+    let (files, keys): (Vec<Arc<FileFacts>>, Vec<Option<RowKey>>) = (fresh.into_iter())
         .map(|file| match file {
-            Fresh::Kept(at) => (kept.files[at].clone(), kept.keys[at]),
-            Fresh::Read(facts, key) => (*facts, key),
+            Fresh::Kept(at) => (Arc::clone(&kept.files[at]), kept.keys[at]),
+            Fresh::Read(facts, key) => (facts, key),
         })
         .unzip();
-    let positions = (files.iter().enumerate())
-        .map(|(at, file)| (file.path.clone(), at))
-        .collect();
+    let same_paths = files.len() == kept.files.len()
+        && (files.iter().zip(kept.files.iter())).all(|(file, held)| file.path == held.path);
+    let positions = if same_paths {
+        Arc::clone(&kept.positions)
+    } else {
+        let positions = (files.iter().enumerate()).map(|(at, file)| (file.path.clone(), at));
+        Arc::new(positions.collect())
+    };
     Arc::new(KeptFacts {
         files: Arc::new(files),
         keys,

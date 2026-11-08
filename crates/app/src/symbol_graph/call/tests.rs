@@ -173,3 +173,18 @@ fn a_changed_scan_starts_one_build() {
     assert_eq!(held.kind(&scanned, "pkg/report.py"), CardKind::File);
     assert_eq!(held.parts(), [2; 8]);
 }
+
+#[test]
+fn an_edit_that_changes_no_fact_keeps_the_graph() {
+    let scanned = Scanned::new(&LINKED);
+    let held = Held::new();
+    assert_eq!(held.kind(&scanned, "pkg/report.py"), CardKind::File);
+    held.prebuilt();
+    let edited = scanned.reading().repo.root.join("pkg/money.py");
+    let text = "def format_money(amount):\n    return str((amount))\n\n\ndef unused_helper():\n    \
+                return 1\n";
+    io::write_file(&edited, text.as_bytes())
+        .unwrap_or_else(|error| panic!("{}: {error}", edited.display()));
+    assert_eq!(held.kind(&scanned, "render"), CardKind::Symbol);
+    assert_eq!(held.parts(), [1; 8]);
+}

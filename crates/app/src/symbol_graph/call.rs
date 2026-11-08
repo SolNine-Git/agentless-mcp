@@ -34,7 +34,7 @@ const COMPARED_FILES: usize = 64;
 // One call's scan: the files with facts, which a kept graph shares, the files passed over, and the
 // warnings that each operation over the scan reports, as a scan of its own would give them.
 pub(crate) struct CallScan {
-    pub(crate) files: Arc<Vec<FileFacts>>,
+    pub(crate) files: Arc<Vec<Arc<FileFacts>>>,
     pub(crate) skipped: Vec<Skipped>,
     pub(crate) warnings: Vec<String>,
 }
@@ -49,7 +49,7 @@ pub(crate) fn over_call_scan<T>(
     let warnings = loaded.diagnostics.clone();
     let scanned = loaded.map(|facts| {
         facts.map(|facts| CallScan {
-            files: Arc::new(facts.files),
+            files: Arc::new(shared(facts.files)),
             skipped: facts.skipped,
             warnings,
         })
@@ -82,7 +82,8 @@ pub(crate) fn over_walked_scan<T>(
         }
         Keeping::Own | Keeping::Thread(_) => {
             let scanned = scan_walked(root, files, source, deadline);
-            scanned.map(|scanned| scanned.map(|facts| (Arc::new(facts.files), facts.skipped)))
+            let shared = |facts: RepoFacts| (Arc::new(shared(facts.files)), facts.skipped);
+            scanned.map(|scanned| scanned.map(shared))
         }
     };
     let mut diagnostics = warnings.to_vec();
@@ -97,6 +98,10 @@ pub(crate) fn over_walked_scan<T>(
             warnings,
         });
     Noted { value, diagnostics }.then_ok(|scan| answered_over(scan, answer))
+}
+
+fn shared(files: Vec<FileFacts>) -> Vec<Arc<FileFacts>> {
+    files.into_iter().map(Arc::new).collect()
 }
 
 // Who builds the graph that a call graph answers over.
@@ -114,15 +119,16 @@ pub(crate) enum Keeping<'a> {
 // needs one builds it, and every later answer of the call reads the same one.
 #[derive(Clone, Copy)]
 pub(crate) struct CallGraph<'a> {
-    files: &'a Arc<Vec<FileFacts>>,
+    files: &'a Arc<Vec<Arc<FileFacts>>>,
+    // The facts side by side, which every part borrows, copied at the first build of a part.
+    built_over: &'a OnceLock<Vec<FileFacts>>,
     built: &'a Built<'a>,
     deadline: Option<&'a Deadline>,
     keeping: Keeping<'a>,
 }
 
-// What a call graph builds from its files, and what it reads from them once: the aliases of the
-// resolver, the ambiguous degrees of the graph, and the import cycles. Each borrows the files, and
-// a lock holds each, so a graph thread and its prebuild share them and build each once.
+// What a call graph builds from its files. A lock holds each part, so that a graph thread and its
+// prebuild share them and build each once.
 #[derive(Default)]
 struct Built<'a> {
     index: OnceLock<NameIndex<'a>>,
@@ -137,14 +143,16 @@ struct Built<'a> {
 
 // Gives `answer` the call graph of `files`, which builds nothing until an answer needs it.
 pub(crate) fn with_call_graph<T>(
-    files: &Arc<Vec<FileFacts>>,
+    files: &Arc<Vec<Arc<FileFacts>>>,
     deadline: Option<&Deadline>,
     keeping: Keeping<'_>,
     answer: impl FnOnce(&CallGraph<'_>) -> T,
 ) -> T {
+    let built_over = OnceLock::new();
     let built = Built::default();
     answer(&CallGraph {
         files,
+        built_over: &built_over,
         built: &built,
         deadline,
         keeping,
@@ -173,8 +181,14 @@ impl<'a> CallGraph<'a> {
         noted.map(|()| awaited(&replied, self.deadline).map_err(Error::from)?)
     }
 
-    pub(crate) fn files(&self) -> &'a [FileFacts] {
+    pub(crate) fn files(&self) -> &'a [Arc<FileFacts>] {
         self.files
+    }
+
+    fn built_over(&self) -> &'a [FileFacts] {
+        let files = self.files;
+        self.built_over
+            .get_or_init(|| files.iter().map(|file| FileFacts::clone(file)).collect())
     }
 
     // The call's deadline, or none on a graph thread, where the waiting call checks it.
@@ -183,18 +197,16 @@ impl<'a> CallGraph<'a> {
     }
 
     pub(crate) fn index(&self) -> &'a NameIndex<'a> {
-        let files = self.files;
         self.built.index.get_or_init(|| {
             self.counted(|counts| &counts.indexes);
-            NameIndex::build(files)
+            NameIndex::build(self.built_over())
         })
     }
 
     pub(crate) fn scopes(&self) -> &'a Scopes<'a> {
-        let files = self.files;
         self.built.scopes.get_or_init(|| {
             self.counted(|counts| &counts.scopes);
-            Scopes::build(files)
+            Scopes::build(self.built_over())
         })
     }
 
@@ -481,7 +493,7 @@ impl KeptGraphs {
 
     // Starts the build of the graph of `files` on the graph thread of `root`, unless the thread
     // has started it. A refused thread refuses the call's next job too, which reports it.
-    fn prebuild(&self, root: &Path, files: &Arc<Vec<FileFacts>>) {
+    fn prebuild(&self, root: &Path, files: &Arc<Vec<Arc<FileFacts>>>) {
         let job = Job {
             files: Arc::clone(files),
             asked: Asked::Build,
@@ -523,7 +535,7 @@ type Work = Box<dyn FnOnce(&CallGraph<'_>) + Send>;
 // One question for a root's graph: the scan that the call read, and what the call asks of its
 // graph.
 struct Job {
-    files: Arc<Vec<FileFacts>>,
+    files: Arc<Vec<Arc<FileFacts>>>,
     asked: Asked,
 }
 
@@ -539,7 +551,7 @@ type Replied<R> = Receiver<thread::Result<Result<R, Error>>>;
 
 impl Job {
     fn new<R: Send + 'static>(
-        files: Arc<Vec<FileFacts>>,
+        files: Arc<Vec<Arc<FileFacts>>>,
         work: impl FnOnce(&CallGraph<'_>) -> Result<R, Error> + Send + 'static,
     ) -> (Job, Replied<R>) {
         let (reply, replied) = mpsc::channel();
@@ -605,9 +617,8 @@ fn next_job(jobs: &Receiver<Job>, kept: &Weak<Kept>) -> Option<Job> {
     }
 }
 
-// Answers the first job and each later job whose scan is the same over one graph, and returns
-// the first job whose scan differs. No deadline: a call that stops leaves its build to the next.
-// The first build job starts the prebuild on a helper, which a later scan waits for.
+// Answers each job of the first job's scan over one graph, and returns the first job of another
+// scan. The first build job starts the prebuild on a helper, which a later scan waits for.
 fn held(first: Job, jobs: &Receiver<Job>, builds: &Counts, kept: &Weak<Kept>) -> Option<Job> {
     let files = Arc::clone(&first.files);
     with_call_graph(&files, None, Keeping::Thread(builds), |graph| {
@@ -631,7 +642,7 @@ fn held(first: Job, jobs: &Receiver<Job>, builds: &Counts, kept: &Weak<Kept>) ->
 struct Scan<'s> {
     jobs: &'s Receiver<Job>,
     kept: &'s Weak<Kept>,
-    files: &'s Arc<Vec<FileFacts>>,
+    files: &'s Arc<Vec<Arc<FileFacts>>>,
 }
 
 impl Scan<'_> {
@@ -641,7 +652,7 @@ impl Scan<'_> {
         let mut job = first;
         // The scan of the last call that matched, so its other jobs skip the compare. A weak
         // handle keeps the allocation, so no later scan reuses its address.
-        let mut matched: Weak<Vec<FileFacts>> = Weak::new();
+        let mut matched: Weak<Vec<Arc<FileFacts>>> = Weak::new();
         loop {
             match job.asked {
                 Asked::Work(work) => work(graph),
@@ -658,15 +669,20 @@ impl Scan<'_> {
     }
 }
 
-// Two scans with the same facts for every file, compared on the scan threads.
-fn same_scan(left: &[FileFacts], right: &[FileFacts]) -> bool {
+// Two scans with the same facts for every file. A file whose facts both scans share is the same,
+// and the scan threads compare the others.
+fn same_scan(left: &[Arc<FileFacts>], right: &[Arc<FileFacts>]) -> bool {
     if left.len() != right.len() {
         return false;
     }
-    let starts: Vec<usize> = (0..left.len()).step_by(COMPARED_FILES).collect();
-    let same = map_in_order(&starts, threads(), |&start| {
-        let end = (start + COMPARED_FILES).min(left.len());
-        left[start..end] == right[start..end]
+    let pairs = left.iter().zip(right);
+    let differing: Vec<(&Arc<FileFacts>, &Arc<FileFacts>)> = (pairs)
+        .filter(|(left, right)| !Arc::ptr_eq(left, right))
+        .collect();
+    let chunks: Vec<&[(&Arc<FileFacts>, &Arc<FileFacts>)]> =
+        differing.chunks(COMPARED_FILES).collect();
+    let same = map_in_order(&chunks, threads(), |chunk| {
+        chunk.iter().all(|(left, right)| ***left == ***right)
     });
     same.into_iter().all(|same| same)
 }

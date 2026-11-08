@@ -4,6 +4,7 @@
 
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Arc;
 
 use git::RepoFile;
 use graph::{FileFacts, joins_name_graph};
@@ -111,6 +112,7 @@ fn found(call: &Call<'_, '_, '_>, named: &[Named]) -> Result<Vec<Found>, Error> 
         .map(|named| Literal::new(&named.literal))
         .collect();
     let code: Vec<&FileFacts> = (call.scan.files.iter())
+        .map(|file| &**file)
         .filter(|file| joins_name_graph(file.language))
         .collect();
     let mut hits: Vec<Vec<FileHits>> = named.iter().map(|_| Vec::new()).collect();
@@ -200,7 +202,7 @@ fn held(hits: &mut [Vec<FileHits>], file_hits: Vec<Option<FileHits>>) {
 // Each scanned file as the usage rule reads it, in scan order. A code file that could not be read
 // again is left out, as the scan of a find of its own leaves it out.
 fn views<'f>(
-    files: &'f [FileFacts],
+    files: &'f [Arc<FileFacts>],
     spelled: &'f [Option<Vec<Option<Spelling>>>],
 ) -> Vec<Spelled<'f>> {
     let mut code = spelled.iter();

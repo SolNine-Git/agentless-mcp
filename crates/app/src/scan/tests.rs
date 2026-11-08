@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use facts::Facts;
 use git::{RepoFile, Snapshot};
+use graph::FileFacts;
 use kernel::Stopped;
 use store::{FactSource, FileText, Served};
 use syntax::Unparsable;
@@ -153,7 +154,16 @@ fn a_rescan_asks_the_source_only_for_the_files_whose_text_changed() {
     let third = rescanned(&sandbox, &files, &counting, &first);
     assert_eq!(asked_paths(), ["m03.py"]);
     let read = scan(sandbox.path(), &files, 4, &parsed, None).value;
-    assert_eq!(*third.files, read.expect("no deadline stops it").files);
+    let read = read.expect("no deadline stops it").files;
+    let kept: Vec<&FileFacts> = third.files.iter().map(|file| &**file).collect();
+    assert_eq!(kept, read.iter().collect::<Vec<_>>());
+    let shared = (third.files.iter().zip(first.files.iter()))
+        .map(|(file, held)| (file.path.as_str(), Arc::ptr_eq(file, held)));
+    let unchanged = |(path, _): &(&str, bool)| *path != "m03.py";
+    assert!(
+        shared.filter(unchanged).all(|(_, same)| same),
+        "a rescan shares the facts of each file it did not read"
+    );
     assert!(Arc::ptr_eq(
         &rescanned(&sandbox, &files, &counting, &third),
         &third
