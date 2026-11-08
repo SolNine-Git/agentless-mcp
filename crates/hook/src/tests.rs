@@ -1,7 +1,9 @@
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use app::Services;
+use app::hooks::{Hook, Retired};
 use kernel::Clock;
+use prompts::messages::HOOK_USAGE;
 
 use crate::testing::Sandbox;
 use crate::{Output, erosion_with, watched};
@@ -46,4 +48,14 @@ fn a_sigterm_watch_that_fails_is_named_first_on_stderr() {
     let note = "erosion gate cannot watch SIGTERM: Too many open files (os error 24)\n";
     assert_eq!(output.stderr, format!("{note}the gate's own line\n"));
     assert_eq!(output.code, 0);
+}
+
+#[test]
+fn the_hook_usage_names_every_current_hook_and_each_retired_one() {
+    let current = Hook::ALL.map(Hook::name);
+    let retired = Retired::ALL.map(Retired::name);
+    for name in current.into_iter().chain(retired) {
+        assert!(HOOK_USAGE.contains(name), "{name}: {HOOK_USAGE}");
+    }
+    assert!(HOOK_USAGE.contains("exits 0"), "{HOOK_USAGE}");
 }

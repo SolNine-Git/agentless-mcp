@@ -256,7 +256,7 @@
   "config_boundary_globs_dropped": "boundary_globs in {config}: {count} {count:entry is not a repo-relative glob|entries are not repo-relative globs} of at most {chars} characters. {count:It is|They are} ignored.",
   "config_stoplist_dropped": "stoplist in {config}: {count} {count:entry is not a bare name|entries are not bare names} of at most {chars} characters and {count:was|were} dropped",
   "config_unknown_keys_suppressed": "{count} further unknown {count:key|keys} in {config}: warnings suppressed",
-  "hook_usage": "hook takes one argument: erosion, gate-check, gate-mark or prompt-map",
+  "hook_usage": "hook takes one hook name: read-card, ledger-mark, brief-record, subagent-map, prompt-map, erosion or ledger-reset. hook install, hook status and hook uninstall manage the hook entries of a settings file. gate-check and gate-mark are retired: each still exits 0 with no output.",
   "prompt_map_context": "Repository map (agentless-mcp): for {seeds} in this task, the files that rank first are {paths}.",
   "trace_target": "target: {target}",
   "trace_target_count": "target holds {count} targets, but trace takes {minimum} to {maximum} targets.",

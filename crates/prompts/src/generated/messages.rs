@@ -1687,8 +1687,11 @@ pub const HOOK_UNINSTALL_REPORT: Template<(Text, Count, Count)> = Template::new(
 ]);
 
 /// A text that takes no values.
-pub const HOOK_USAGE: &str = "hook takes one argument: erosion, gate-check, gate-mark or \
-        prompt-map";
+pub const HOOK_USAGE: &str = "hook takes one hook name: read-card, ledger-mark, brief-record, \
+        subagent-map, prompt-map, erosion or ledger-reset. hook \
+        install, hook status and hook uninstall manage the hook entries \
+        of a settings file. gate-check and gate-mark are retired: each \
+        still exits 0 with no output.";
 
 /// A template that takes (`count`, `total`, `listed`).
 pub const HOOKS_MISSING: Template<(Count, Count, Text)> = Template::new(&[

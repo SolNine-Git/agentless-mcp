@@ -1245,7 +1245,7 @@
     },
     "hook_usage": {
       "arguments": {},
-      "text": "hook takes one argument: erosion, gate-check, gate-mark or prompt-map"
+      "text": "hook takes one hook name: read-card, ledger-mark, brief-record, subagent-map, prompt-map, erosion or ledger-reset. hook install, hook status and hook uninstall manage the hook entries of a settings file. gate-check and gate-mark are retired: each still exits 0 with no output."
     },
     "hooks_missing": {
       "arguments": {

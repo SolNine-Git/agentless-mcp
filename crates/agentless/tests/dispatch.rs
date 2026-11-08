@@ -12,8 +12,11 @@ use io::testing::{Identity, Tree};
 
 const BINARY: &str = env!("CARGO_BIN_EXE_agentless-mcp");
 const DEADLINE: Duration = Duration::from_secs(30);
-const HOOK_REFUSAL: &str =
-    "agentless-mcp: hook takes one argument: erosion, gate-check, gate-mark or prompt-map\n";
+const HOOK_REFUSAL: &str = "agentless-mcp: hook takes one hook name: read-card, ledger-mark, \
+                            brief-record, subagent-map, prompt-map, erosion or ledger-reset. hook \
+                            install, hook status and hook uninstall manage the hook entries of a \
+                            settings file. gate-check and gate-mark are retired: each still exits \
+                            0 with no output.\n";
 const GATE_LOG: &str = "AGENTLESS_GATE_LOG";
 // The shell enters `gone`, removes it, and then becomes the hook, so the hook starts there.
 const IN_REMOVED_DIRECTORY: &str = r#"cd gone && rmdir "$PWD" && exec "$0" hook "$1""#;
