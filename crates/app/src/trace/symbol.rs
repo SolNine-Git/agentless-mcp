@@ -29,7 +29,7 @@ const DEFAULT_SECTIONS: [Section; 4] = [
 ];
 
 pub(super) fn symbol_trace(
-    call: &Call<'_, '_, '_>,
+    call: &Call<'_, '_, '_, '_>,
     card: SymbolCard,
     more: Option<Section>,
 ) -> Noted<Result<SymbolTrace, Error>> {
@@ -53,13 +53,13 @@ pub(super) fn symbol_trace(
     traced.then_ok(|traced| sections.with_git(traced))
 }
 
-struct Sections<'s, 'c, 'r, 'g> {
-    call: &'s Call<'c, 'r, 'g>,
+struct Sections<'s, 'c, 'r, 'g, 'f> {
+    call: &'s Call<'c, 'r, 'g, 'f>,
     id: String,
     more: Option<Section>,
 }
 
-impl Sections<'_, '_, '_, '_> {
+impl Sections<'_, '_, '_, '_, '_> {
     fn wants(&self, section: Section) -> bool {
         match self.more {
             None => DEFAULT_SECTIONS.contains(&section),

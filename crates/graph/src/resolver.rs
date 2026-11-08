@@ -115,10 +115,11 @@ struct Kept {
 // Each key with every qualifier it was resolved under, and what it resolved to.
 type Memo = HashMap<Key, Vec<(Box<str>, Option<Kept>)>>;
 
-/// Resolves names against one scan's name index and import scopes.
-pub struct Resolver<'a> {
-    index: &'a NameIndex<'a>,
-    scopes: &'a Scopes<'a>,
+/// Resolves names against one scan's name index and import scopes, which it borrows for `'r`; what
+/// it resolves to lives as long as the scan, `'a`.
+pub struct Resolver<'r, 'a> {
+    index: &'r NameIndex<'a>,
+    scopes: &'r Scopes<'a>,
     candidates: Vec<Candidates<'a>>,
     // The index and the scopes never change, so a key and qualifier resolve once for the life of
     // the resolver. A lock, not a cell, keeps the resolver `Sync` for the types that hold it.
@@ -126,14 +127,14 @@ pub struct Resolver<'a> {
     walks: AtomicUsize,
 }
 
-impl<'a> Resolver<'a> {
+impl<'r, 'a> Resolver<'r, 'a> {
     /// Build the resolver; `index` and `scopes` must come from the same scanned files.
     ///
     /// # Panics
     ///
     /// Panics when `index` and `scopes` were built from different file slices.
     #[must_use]
-    pub fn new(index: &'a NameIndex<'a>, scopes: &'a Scopes<'a>) -> Resolver<'a> {
+    pub fn new(index: &'r NameIndex<'a>, scopes: &'r Scopes<'a>) -> Resolver<'r, 'a> {
         assert!(
             std::ptr::eq(index.files(), scopes.files()),
             "the name index and the import scopes come from different scans"
@@ -158,13 +159,13 @@ impl<'a> Resolver<'a> {
 
     /// Return the name index the resolver reads.
     #[must_use]
-    pub fn index(&self) -> &'a NameIndex<'a> {
+    pub fn index(&self) -> &'r NameIndex<'a> {
         self.index
     }
 
     /// Return the import scopes the resolver reads.
     #[must_use]
-    pub fn scopes(&self) -> &'a Scopes<'a> {
+    pub fn scopes(&self) -> &'r Scopes<'a> {
         self.scopes
     }
 
@@ -233,11 +234,11 @@ impl<'a> Resolver<'a> {
 
     /// Return each identifier occurrence in `file` that binds a definition, with its resolution;
     /// `names`, when given, keeps only the occurrences of those names.
-    pub fn resolved_sites<'r>(
-        &'r self,
+    pub fn resolved_sites<'s>(
+        &'s self,
         file: &'a FileFacts,
-        names: Option<&'r BTreeSet<&str>>,
-    ) -> impl Iterator<Item = (&'a Ref, Resolution<'a>)> + 'r {
+        names: Option<&'s BTreeSet<&str>>,
+    ) -> impl Iterator<Item = (&'a Ref, Resolution<'a>)> + 's {
         let declared = Declared::of(&file.facts.symbols, &file.facts.refs);
         let at = self.scopes.position(&file.path);
         file.facts.refs.iter().filter_map(move |reference| {

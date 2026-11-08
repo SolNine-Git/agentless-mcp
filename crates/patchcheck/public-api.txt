@@ -47,7 +47,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for patchcheck::ManifestParse
 impl core::panic::unwind_safe::UnwindSafe for patchcheck::ManifestParse
 pub struct patchcheck::PatchBaseline<'a>
 impl<'a> patchcheck::PatchBaseline<'a>
-pub fn patchcheck::PatchBaseline<'a>::new(&'a graph::resolver::Resolver<'a>, &'a alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, patchcheck::DeclaredDependencies) -> patchcheck::PatchBaseline<'a>
+pub fn patchcheck::PatchBaseline<'a>::new(&'a graph::resolver::Resolver<'a, 'a>, &'a alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, patchcheck::DeclaredDependencies) -> patchcheck::PatchBaseline<'a>
 impl<'a> !core::marker::Freeze for patchcheck::PatchBaseline<'a>
 impl<'a> core::marker::Send for patchcheck::PatchBaseline<'a>
 impl<'a> core::marker::Sync for patchcheck::PatchBaseline<'a>

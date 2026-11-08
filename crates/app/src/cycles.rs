@@ -57,7 +57,7 @@ pub fn cycles(
 // The warnings of the call's scan come first, as the scan of `cycles` gives them.
 pub(crate) fn cycles_in(
     request: &CyclesRequest,
-    graph: &CallGraph<'_>,
+    graph: &CallGraph<'_, '_>,
     scan: &CallScan,
 ) -> Noted<Result<Bounded<CycleRow>, Error>> {
     let limit = match within(&request.limit, 1, MAX_LIMIT, "limit") {

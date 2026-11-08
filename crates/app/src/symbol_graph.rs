@@ -4,6 +4,7 @@
 
 mod call;
 mod retention;
+mod store;
 
 use graph::{FileFacts, NameIndex, Relation, Resolver, Scopes, SymbolGraph, Tier};
 use kernel::Deadline;

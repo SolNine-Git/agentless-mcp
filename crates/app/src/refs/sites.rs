@@ -20,7 +20,7 @@ pub(super) type LineTiers<'a> = HashMap<&'a str, BTreeMap<u32, Tier>>;
 pub(super) fn site_tiers<'a>(
     sites: &[Site<'a>],
     names: &BTreeMap<&str, BTreeSet<&str>>,
-    resolver: &Resolver<'a>,
+    resolver: &Resolver<'_, 'a>,
     target_ids: &BTreeSet<String>,
 ) -> LineTiers<'a> {
     let mut tiers: LineTiers<'a> = HashMap::new();
@@ -96,7 +96,7 @@ fn file_group(file: &FileFacts, tier: Tier, sites: Vec<RefSite>) -> RefGroup {
 fn line_tiers(
     file: &FileFacts,
     names: &BTreeSet<&str>,
-    resolver: &Resolver<'_>,
+    resolver: &Resolver<'_, '_>,
     target_ids: &BTreeSet<String>,
 ) -> BTreeMap<u32, Tier> {
     let mut bound = resolver.resolved_sites(file, Some(names)).peekable();
@@ -118,7 +118,7 @@ fn site_tier(
     reference: &Ref,
     path: &str,
     resolution: Option<Resolution<'_>>,
-    resolver: &Resolver<'_>,
+    resolver: &Resolver<'_, '_>,
     target_ids: &BTreeSet<String>,
 ) -> Tier {
     let named = matches!(reference.role, Role::Import | Role::ModuleQualifier);

@@ -60,7 +60,7 @@ impl Misses {
     // walk's when the text was searched.
     pub(super) fn card(
         &mut self,
-        call: &Call<'_, '_, '_>,
+        call: &Call<'_, '_, '_, '_>,
         missed: Missed,
     ) -> Noted<Result<Miss, Error>> {
         let (name, literal) = match missed {
@@ -102,7 +102,7 @@ type CodeRead = Option<(Vec<Option<Spelling>>, Vec<Option<FileHits>>)>;
 
 // The scan's code files are read for the words of every name and the text of every target. Only
 // a name with no usage file makes the other walked files read, for its text alone.
-fn found(call: &Call<'_, '_, '_>, named: &[Named]) -> Result<Vec<Found>, Error> {
+fn found(call: &Call<'_, '_, '_, '_>, named: &[Named]) -> Result<Vec<Found>, Error> {
     let queries: Vec<Option<UsageQuery<'_>>> = (named.iter())
         .map(|named| UsageQuery::of(&named.name))
         .collect();
@@ -146,7 +146,7 @@ fn found(call: &Call<'_, '_, '_>, named: &[Named]) -> Result<Vec<Found>, Error> 
 // Where each code file spells the words, or `None` for a file that can no longer be read; the
 // hits of each literal go to `hits`.
 fn read_code_files(
-    call: &Call<'_, '_, '_>,
+    call: &Call<'_, '_, '_, '_>,
     code: &[&FileFacts],
     words: &[&str],
     literals: &[Result<Literal, Error>],
@@ -171,7 +171,7 @@ fn read_code_files(
 
 // The hits of each wanted literal in the walked files that the scan did not read as code.
 fn read_other_files(
-    call: &Call<'_, '_, '_>,
+    call: &Call<'_, '_, '_, '_>,
     code: &[&FileFacts],
     literals: &[Result<Literal, Error>],
     wanted: &[bool],

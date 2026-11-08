@@ -20,7 +20,7 @@ pub(crate) struct Parts<'p, 'a> {
     pub(crate) files: &'a [&'a FileFacts],
     pub(crate) index: &'p NameIndex<'a>,
     pub(crate) scopes: &'p Scopes<'a>,
-    pub(crate) resolver: &'p Resolver<'p>,
+    pub(crate) resolver: &'p Resolver<'p, 'a>,
     pub(crate) aliases: &'p Aliases<'a>,
     pub(crate) graph: &'p SymbolGraph<'a>,
     pub(crate) degrees: &'p AmbiguousDegrees,

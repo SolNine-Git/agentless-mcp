@@ -28,7 +28,7 @@ use kernel::Bounded;
 const CONSTANT: &str = "constant";
 
 pub(super) fn file_trace(
-    call: &Call<'_, '_, '_>,
+    call: &Call<'_, '_, '_, '_>,
     found: &FoundFile,
     more: Option<Section>,
 ) -> Noted<Result<FileTrace, Error>> {
@@ -74,7 +74,7 @@ fn bare(found: &FoundFile, lines: u32, more: Option<Section>) -> FileTrace {
 }
 
 fn with_cycles(
-    call: &Call<'_, '_, '_>,
+    call: &Call<'_, '_, '_, '_>,
     traced: FileTrace,
     more: Option<Section>,
 ) -> Noted<Result<FileTrace, Error>> {
@@ -136,7 +136,7 @@ impl Links {
 }
 
 fn links(
-    call: &Call<'_, '_, '_>,
+    call: &Call<'_, '_, '_, '_>,
     found: &FoundFile,
     more: Option<Section>,
 ) -> Noted<Result<Links, Error>> {

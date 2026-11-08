@@ -64,7 +64,7 @@ pub(super) enum Missed {
 pub(super) fn resolved(
     reading: &Reading<'_>,
     scan: &CallScan,
-    graph: &CallGraph<'_>,
+    graph: &CallGraph<'_, '_>,
     walk: &[RepoFile],
     targets: &[String],
 ) -> Noted<Result<Vec<Resolved>, Error>> {

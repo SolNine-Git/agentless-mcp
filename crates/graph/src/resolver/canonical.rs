@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 use super::Resolver;
 
-impl Resolver<'_> {
+impl Resolver<'_, '_> {
     // The candidates of each defined name, in name order, with their path groups.
     pub(crate) fn canonical(&self) -> Value {
         let mut rows: Vec<(&str, Value)> = (self.candidates.iter())

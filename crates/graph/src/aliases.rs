@@ -15,7 +15,7 @@ pub struct Aliases<'a> {
 impl<'a> Aliases<'a> {
     /// Follow every member binding of every file through [`Resolver::through_imports`].
     #[must_use]
-    pub fn build(resolver: &Resolver<'a>) -> Aliases<'a> {
+    pub fn build(resolver: &Resolver<'_, 'a>) -> Aliases<'a> {
         let bindings = (resolver.scopes().iter())
             .flat_map(|(path, scope)| scope.member_names().map(move |local| (path, local)));
         let mut aliases = Aliases {

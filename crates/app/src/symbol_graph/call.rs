@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 use std::thread;
@@ -21,6 +21,7 @@ use graph::{
 use kernel::{Clock, Deadline, Stopped, checkpoint};
 
 use super::retention::{Called, RETAINED};
+use super::store::Scan;
 use crate::detached::{answered_over, drop_detached};
 use crate::parallel::{map_in_order, threads};
 use crate::scan::{KeptFacts, RepoFacts, Skipped, rescan, scan_walked};
@@ -115,29 +116,30 @@ pub(crate) enum Keeping<'a> {
     Thread(&'a Counts),
 }
 
-// The name index, import scopes, resolver and resolved graph of one scan. The first answer that
-// needs one builds it, and every later answer of the call reads the same one.
+// The name index, import scopes, resolver and resolved graph of one scan, whose facts live for
+// `'s`. The first answer that needs one builds it, and every later answer reads the same one.
 #[derive(Clone, Copy)]
-pub(crate) struct CallGraph<'a> {
-    files: &'a Arc<Vec<Arc<FileFacts>>>,
-    listed: &'a [&'a FileFacts],
-    built: &'a Built<'a>,
-    deadline: Option<&'a Deadline>,
-    keeping: Keeping<'a>,
+pub(crate) struct CallGraph<'f, 's> {
+    files: &'f Arc<Vec<Arc<FileFacts>>>,
+    listed: &'s [&'s FileFacts],
+    built: &'f Built<'s>,
+    // The resolver borrows the index and the scopes, so it lives in the frame of one scan.
+    resolver: &'f OnceLock<Resolver<'f, 's>>,
+    deadline: Option<&'f Deadline>,
+    keeping: Keeping<'f>,
 }
 
-// What a call graph builds from its files. A lock holds each part, so that a graph thread and its
-// prebuild share them and build each once.
+// The parts of a call graph that borrow only its scan's facts. A lock holds each part, so that a
+// graph thread and its prebuild share them and build each once.
 #[derive(Default)]
-struct Built<'a> {
-    index: OnceLock<NameIndex<'a>>,
-    scopes: OnceLock<Scopes<'a>>,
-    resolver: OnceLock<Resolver<'a>>,
-    aliases: OnceLock<Aliases<'a>>,
-    graph: OnceLock<Result<SymbolGraph<'a>, Stopped>>,
+struct Built<'s> {
+    index: OnceLock<NameIndex<'s>>,
+    scopes: OnceLock<Scopes<'s>>,
+    aliases: OnceLock<Aliases<'s>>,
+    graph: OnceLock<Result<SymbolGraph<'s>, Stopped>>,
     degrees: OnceLock<AmbiguousDegrees>,
-    imports: OnceLock<SymbolGraph<'a>>,
-    cycles: OnceLock<Vec<Cycle<'a>>>,
+    imports: OnceLock<SymbolGraph<'s>>,
+    cycles: OnceLock<Vec<Cycle<'s>>>,
 }
 
 // Gives `answer` the call graph of `files`, which builds nothing until an answer needs it.
@@ -145,25 +147,27 @@ pub(crate) fn with_call_graph<T>(
     files: &Arc<Vec<Arc<FileFacts>>>,
     deadline: Option<&Deadline>,
     keeping: Keeping<'_>,
-    answer: impl FnOnce(&CallGraph<'_>) -> T,
+    answer: impl FnOnce(&CallGraph<'_, '_>) -> T,
 ) -> T {
     let listed: Vec<&FileFacts> = files.iter().map(|file| &**file).collect();
     let built = Built::default();
+    let resolver = OnceLock::new();
     answer(&CallGraph {
         files,
         listed: &listed,
         built: &built,
+        resolver: &resolver,
         deadline,
         keeping,
     })
 }
 
-impl<'a> CallGraph<'a> {
+impl<'f, 's> CallGraph<'f, 's> {
     // `work` on the root's graph thread when the server keeps the graph, else on this call's own
     // graph. A thread that the system refuses leaves the work to the call, with the reason.
     pub(crate) fn over<R: Send + 'static>(
         &self,
-        work: impl FnOnce(&CallGraph<'_>) -> Result<R, Error> + Send + 'static,
+        work: impl FnOnce(&CallGraph<'_, '_>) -> Result<R, Error> + Send + 'static,
     ) -> Noted<Result<R, Error>> {
         let Keeping::Server(graphs, root) = self.keeping else {
             return Noted::new(work(self));
@@ -180,37 +184,37 @@ impl<'a> CallGraph<'a> {
         noted.map(|()| awaited(&replied, self.deadline).map_err(Error::from)?)
     }
 
-    pub(crate) fn files(&self) -> &'a [&'a FileFacts] {
+    pub(crate) fn files(&self) -> &'s [&'s FileFacts] {
         self.listed
     }
 
     // The call's deadline, or none on a graph thread, where the waiting call checks it.
-    pub(crate) fn deadline(&self) -> Option<&'a Deadline> {
+    pub(crate) fn deadline(&self) -> Option<&'f Deadline> {
         self.deadline
     }
 
-    pub(crate) fn index(&self) -> &'a NameIndex<'a> {
+    pub(crate) fn index(&self) -> &'f NameIndex<'s> {
         self.built.index.get_or_init(|| {
             self.counted(|counts| &counts.indexes);
             NameIndex::build(self.listed)
         })
     }
 
-    pub(crate) fn scopes(&self) -> &'a Scopes<'a> {
+    pub(crate) fn scopes(&self) -> &'f Scopes<'s> {
         self.built.scopes.get_or_init(|| {
             self.counted(|counts| &counts.scopes);
             Scopes::build(self.listed)
         })
     }
 
-    pub(crate) fn resolver(&self) -> &'a Resolver<'a> {
-        self.built.resolver.get_or_init(|| {
+    pub(crate) fn resolver(&self) -> &'f Resolver<'f, 's> {
+        self.resolver.get_or_init(|| {
             self.counted(|counts| &counts.resolvers);
             Resolver::new(self.index(), self.scopes())
         })
     }
 
-    pub(crate) fn aliases(&self) -> &'a Aliases<'a> {
+    pub(crate) fn aliases(&self) -> &'f Aliases<'s> {
         (self.built.aliases).get_or_init(|| {
             self.counted(|counts| &counts.aliases);
             Aliases::build(self.resolver())
@@ -218,7 +222,7 @@ impl<'a> CallGraph<'a> {
     }
 
     // A stopped build stops every later answer too, as the deadline it ran under has passed.
-    pub(crate) fn graph(&self) -> Result<&'a SymbolGraph<'a>, Error> {
+    pub(crate) fn graph(&self) -> Result<&'f SymbolGraph<'s>, Error> {
         let built = self.built.graph.get_or_init(|| {
             self.counted(|counts| &counts.graphs);
             SymbolGraph::build(self.resolver(), self.deadline)
@@ -226,7 +230,7 @@ impl<'a> CallGraph<'a> {
         built.as_ref().map_err(|stopped| Error::from(*stopped))
     }
 
-    pub(crate) fn degrees(&self) -> Result<&'a AmbiguousDegrees, Error> {
+    pub(crate) fn degrees(&self) -> Result<&'f AmbiguousDegrees, Error> {
         let graph = self.graph()?;
         Ok(self.built.degrees.get_or_init(|| {
             self.counted(|counts| &counts.degrees);
@@ -235,14 +239,14 @@ impl<'a> CallGraph<'a> {
     }
 
     // The module-level import edges alone, which resolve no reference.
-    pub(crate) fn imports(&self) -> &'a SymbolGraph<'a> {
+    pub(crate) fn imports(&self) -> &'f SymbolGraph<'s> {
         (self.built.imports).get_or_init(|| {
             self.counted(|counts| &counts.imports);
             SymbolGraph::imports(self.scopes())
         })
     }
 
-    pub(crate) fn cycles(&self) -> &'a [Cycle<'a>] {
+    pub(crate) fn cycles(&self) -> &'f [Cycle<'s>] {
         (self.built.cycles).get_or_init(|| {
             self.counted(|counts| &counts.cycles);
             import_cycles(self.imports())
@@ -289,8 +293,20 @@ pub(crate) struct Counts {
     degrees: AtomicUsize,
     imports: AtomicUsize,
     cycles: AtomicUsize,
+    // The scans that arrived while the prebuild of the scan before them still ran.
+    waits: AtomicUsize,
     #[cfg(test)]
     gate: Option<Gate>,
+}
+
+// A scan that arrives while the prebuild runs waits for it, and a test hears of the wait.
+fn waited(counts: &Counts) {
+    counts.waits.fetch_add(1, Ordering::Relaxed);
+    #[cfg(test)]
+    if let Some(gate) = &counts.gate {
+        let waiting = gate.waiting.lock().unwrap_or_else(PoisonError::into_inner);
+        let _unheard = waiting.send(());
+    }
 }
 
 #[cfg(not(test))]
@@ -316,12 +332,13 @@ fn gated(counts: &Counts, build: impl FnOnce()) {
 }
 
 // What holds back a test's prebuild: one message on `open` starts one prebuild, and the prebuild
-// sends one message on `done`.
+// sends one message on `done`. A scan that waits for a prebuild sends one message on `waiting`.
 #[cfg(test)]
 #[derive(Debug)]
 pub(crate) struct Gate {
     pub(crate) open: Mutex<Receiver<()>>,
     pub(crate) done: Mutex<Sender<()>>,
+    pub(crate) waiting: Mutex<Sender<()>>,
 }
 
 /// The facts, name index and resolved graph of the roots that a server called last, kept between
@@ -523,7 +540,7 @@ impl KeptGraphs {
 }
 
 // The work of a job: it answers over a call graph and sends the answer back.
-type Work = Box<dyn FnOnce(&CallGraph<'_>) + Send>;
+type Work = Box<dyn FnOnce(&CallGraph<'_, '_>) + Send>;
 
 // One question for a root's graph: the scan that the call read, and what the call asks of its
 // graph.
@@ -545,10 +562,10 @@ type Replied<R> = Receiver<thread::Result<Result<R, Error>>>;
 impl Job {
     fn new<R: Send + 'static>(
         files: Arc<Vec<Arc<FileFacts>>>,
-        work: impl FnOnce(&CallGraph<'_>) -> Result<R, Error> + Send + 'static,
+        work: impl FnOnce(&CallGraph<'_, '_>) -> Result<R, Error> + Send + 'static,
     ) -> (Job, Replied<R>) {
         let (reply, replied) = mpsc::channel();
-        let work = Box::new(move |graph: &CallGraph<'_>| {
+        let work = Box::new(move |graph: &CallGraph<'_, '_>| {
             let answered = panic::catch_unwind(AssertUnwindSafe(|| work(graph)));
             // A call that stopped has left, and nobody waits for its answer.
             drop(reply.send(answered));
@@ -558,7 +575,7 @@ impl Job {
     }
 
     // A build that the call runs over its own graph is left to the call's work.
-    fn run(self, graph: &CallGraph<'_>) {
+    fn run(self, graph: &CallGraph<'_, '_>) {
         if let Asked::Work(work) = self.asked {
             work(graph);
         }
@@ -592,9 +609,14 @@ fn started(builds: &Arc<Counts>, kept: Weak<Kept>) -> std::io::Result<Sender<Job
 
 // The thread of one root: the jobs in order, until the server drops its end of the channel.
 fn served(jobs: &Receiver<Job>, builds: &Counts, kept: &Weak<Kept>) {
+    let thread = Jobs {
+        queue: jobs,
+        kept,
+        builds,
+    };
     let mut next = next_job(jobs, kept);
     while let Some(job) = next {
-        next = held(job, jobs, builds, kept);
+        next = thread.kept_state(job);
     }
 }
 
@@ -610,38 +632,61 @@ fn next_job(jobs: &Receiver<Job>, kept: &Weak<Kept>) -> Option<Job> {
     }
 }
 
-// Answers each job of the first job's scan over one graph, and returns the first job of another
-// scan. The first build job starts the prebuild on a helper, which a later scan waits for.
-fn held(first: Job, jobs: &Receiver<Job>, builds: &Counts, kept: &Weak<Kept>) -> Option<Job> {
-    let files = Arc::clone(&first.files);
-    with_call_graph(&files, None, Keeping::Thread(builds), |graph| {
-        let prebuild = || gated(builds, || graph.prebuild());
+// The jobs of a graph thread, the weak handle that it sweeps the idle roots through, and the
+// counts that it adds to.
+struct Jobs<'j> {
+    queue: &'j Receiver<Job>,
+    kept: &'j Weak<Kept>,
+    builds: &'j Counts,
+}
+
+impl Jobs<'_> {
+    // One kept state: the scans that its parts borrow, declared first so that they drop last, and
+    // the parts. Returns the first job that the state does not answer.
+    fn kept_state(&self, first: Job) -> Option<Job> {
+        let scan = Scan::new(&first.files);
+        let built = Built::default();
+        self.scanned(first, &scan, &built)
+    }
+
+    // Answers each job of the first job's scan over `built`, and returns the first job of another
+    // scan. The first build job starts the prebuild on a helper, which a later scan waits for.
+    fn scanned<'s>(&self, first: Job, scan: &'s Scan<'s>, built: &Built<'s>) -> Option<Job> {
+        let resolver = OnceLock::new();
+        let graph = CallGraph {
+            files: scan.files(),
+            listed: scan.listed(),
+            built,
+            resolver: &resolver,
+            deadline: None,
+            keeping: Keeping::Thread(self.builds),
+        };
+        let finished = AtomicBool::new(false);
+        let prebuild = || {
+            gated(self.builds, || graph.prebuild());
+            finished.store(true, Ordering::Release);
+        };
         thread::scope(|scope| {
             let mut prebuilding = None;
-            let mut build = || {
+            let mut start = || {
                 prebuilding.get_or_insert_with(|| io::spawn_or_run(scope, &prebuild));
             };
-            let scan = Scan {
-                jobs,
-                kept,
-                files: &files,
-            };
-            scan.served(first, graph, &mut build)
+            let next = self.served(first, &graph, &mut start);
+            if next.is_some() && prebuilding.is_some() && !finished.load(Ordering::Acquire) {
+                waited(self.builds);
+            }
+            next
         })
-    })
-}
+    }
 
-// The jobs of one scan, and the weak handle that a graph thread sweeps the idle roots through.
-struct Scan<'s> {
-    jobs: &'s Receiver<Job>,
-    kept: &'s Weak<Kept>,
-    files: &'s Arc<Vec<Arc<FileFacts>>>,
-}
-
-impl Scan<'_> {
     // Runs `first` and each later job whose scan is the same, and returns the first job of
     // another scan.
-    fn served(&self, first: Job, graph: &CallGraph<'_>, build: &mut dyn FnMut()) -> Option<Job> {
+    fn served(
+        &self,
+        first: Job,
+        graph: &CallGraph<'_, '_>,
+        start: &mut dyn FnMut(),
+    ) -> Option<Job> {
         let mut job = first;
         // The scan of the last call that matched, so its other jobs skip the compare. A weak
         // handle keeps the allocation, so no later scan reuses its address.
@@ -649,12 +694,12 @@ impl Scan<'_> {
         loop {
             match job.asked {
                 Asked::Work(work) => work(graph),
-                Asked::Build => build(),
+                Asked::Build => start(),
             }
-            job = next_job(self.jobs, self.kept)?;
-            let known = Arc::ptr_eq(&job.files, self.files)
+            job = next_job(self.queue, self.kept)?;
+            let known = Arc::ptr_eq(&job.files, graph.files)
                 || std::ptr::eq(matched.as_ptr(), Arc::as_ptr(&job.files));
-            if !known && !same_scan(&job.files, self.files) {
+            if !known && !same_scan(&job.files, graph.files) {
                 return Some(job);
             }
             matched = Arc::downgrade(&job.files);

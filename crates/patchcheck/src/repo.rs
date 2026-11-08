@@ -13,7 +13,7 @@ use crate::manifest::DeclaredDependencies;
 /// dependencies. The files are the resolver's own scan, so the two cannot disagree; the body
 /// index of `near_duplicates` is built on first use and kept for every later patch.
 pub struct PatchBaseline<'a> {
-    resolver: &'a Resolver<'a>,
+    resolver: &'a Resolver<'a, 'a>,
     files: BTreeMap<&'a str, &'a FileFacts>,
     texts: &'a BTreeMap<String, String>,
     dependencies: DeclaredDependencies,
@@ -24,7 +24,7 @@ impl<'a> PatchBaseline<'a> {
     /// Return the facts of the resolver's scan with `texts` by path and `dependencies`.
     #[must_use]
     pub fn new(
-        resolver: &'a Resolver<'a>,
+        resolver: &'a Resolver<'a, 'a>,
         texts: &'a BTreeMap<String, String>,
         dependencies: DeclaredDependencies,
     ) -> PatchBaseline<'a> {
@@ -43,7 +43,7 @@ impl<'a> PatchBaseline<'a> {
         }
     }
 
-    pub(crate) fn resolver(&self) -> &'a Resolver<'a> {
+    pub(crate) fn resolver(&self) -> &'a Resolver<'a, 'a> {
         self.resolver
     }
 

@@ -123,7 +123,7 @@ pub fn explain(
 pub(crate) fn explain_in(
     reading: &Reading<'_>,
     request: &ExplainRequest,
-    graph: &CallGraph<'_>,
+    graph: &CallGraph<'_, '_>,
     skipped: &[Skipped],
 ) -> Noted<Result<Explanation, Error>> {
     with_limit(reading, request, |limit| {
@@ -139,7 +139,7 @@ pub(crate) type FileImports = (Bounded<ImportRow>, Bounded<ImportRow>);
 pub(crate) fn file_imports_in(
     reading: &Reading<'_>,
     request: &ExplainRequest,
-    graph: &CallGraph<'_>,
+    graph: &CallGraph<'_, '_>,
     skipped: &[Skipped],
 ) -> Noted<Result<FileImports, Error>> {
     let keyed = |explained: Explanation| (explained.imports_out, explained.imports_in);
@@ -191,7 +191,7 @@ fn limited<T>(
 // The work owns what it reads, as a kept graph answers it on the root's graph thread.
 fn graph_explained(
     reading: &Reading<'_>,
-    graph: &CallGraph<'_>,
+    graph: &CallGraph<'_, '_>,
     skipped: &[Skipped],
     target: &str,
     limit: usize,
@@ -218,7 +218,7 @@ fn graph_explained(
 // The graph is built before the target binds, so a stopped build stops every explain.
 fn explanation(
     scope: &Scope<'_, '_>,
-    call: &CallGraph<'_>,
+    call: &CallGraph<'_, '_>,
     target: &str,
     limit: usize,
 ) -> Result<Explanation, Error> {

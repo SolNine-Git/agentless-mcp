@@ -206,7 +206,7 @@ fn scanned(
 pub(crate) fn refs_in(
     reading: &Reading<'_>,
     request: &RefsRequest,
-    graph: &CallGraph<'_>,
+    graph: &CallGraph<'_, '_>,
     scan: &CallScan,
 ) -> Noted<Result<RefsResult, Error>> {
     with_limit(reading, request, |limit| {
@@ -252,7 +252,7 @@ fn with_limit(
 // What one fan-in reads: the resolver and the aliases of the scan, the files it passed over, the
 // repository's root and stoplist, and the deadline.
 struct FanIn<'f, 'a> {
-    resolver: &'f Resolver<'a>,
+    resolver: &'f Resolver<'f, 'a>,
     aliases: &'f Aliases<'a>,
     skipped: &'f [Skipped],
     root: &'f Path,

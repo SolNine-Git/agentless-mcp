@@ -69,42 +69,37 @@ fn a_server_drops_the_state_of_a_root_after_the_idle_time_with_no_call() {
     assert_eq!(graphs.kept_roots(), [early]);
 }
 
-// A server's state whose prebuilds wait for `open`, and send on `done` when they finish.
+// A server's state whose prebuilds wait for `open`, and send on `done` when they finish. A scan
+// that waits for a prebuild sends on `waiting`.
 struct Held {
     graphs: KeptGraphs,
     open: Sender<()>,
     done: Receiver<()>,
+    waiting: Receiver<()>,
 }
 
 impl Held {
     fn new() -> Held {
         let (open, opened) = mpsc::channel();
         let (finished, done) = mpsc::channel();
+        let (waits, waiting) = mpsc::channel();
         let gate = Gate {
             open: Mutex::new(opened),
             done: Mutex::new(finished),
+            waiting: Mutex::new(waits),
         };
         let clock = Arc::new(PinnedClock::at(SystemTime::UNIX_EPOCH));
         let graphs = KeptGraphs::gated(clock, gate);
-        Held { graphs, open, done }
+        Held {
+            graphs,
+            open,
+            done,
+            waiting,
+        }
     }
 
     fn kind(&self, scanned: &Scanned, target: &str) -> CardKind {
-        let request = TraceRequest {
-            targets: vec![target.to_owned()],
-            more: None,
-        };
-        let traced = trace_kept(
-            &scanned.services,
-            &scanned.reading(),
-            &request,
-            &self.graphs,
-        );
-        let mut trace = traced.value.unwrap_or_else(|error| panic!("{error}"));
-        match trace.cards.remove(0).outcome {
-            Outcome::Card(card) => card.kind(),
-            other => panic!("{target}: a card, got {other:?}"),
-        }
+        kind(&self.graphs, scanned, target)
     }
 
     // Lets one prebuild run, and waits until it is done.
@@ -130,6 +125,20 @@ impl Held {
             &counts.cycles,
         ]
         .map(|count| count.load(Ordering::Relaxed))
+    }
+}
+
+// The kind of the card of `target`, traced over the kept graphs.
+fn kind(graphs: &KeptGraphs, scanned: &Scanned, target: &str) -> CardKind {
+    let request = TraceRequest {
+        targets: vec![target.to_owned()],
+        more: None,
+    };
+    let traced = trace_kept(&scanned.services, &scanned.reading(), &request, graphs);
+    let mut trace = traced.value.unwrap_or_else(|error| panic!("{error}"));
+    match trace.cards.remove(0).outcome {
+        Outcome::Card(card) => card.kind(),
+        other => panic!("{target}: a card, got {other:?}"),
     }
 }
 
@@ -187,4 +196,27 @@ fn an_edit_that_changes_no_fact_keeps_the_graph() {
         .unwrap_or_else(|error| panic!("{}: {error}", edited.display()));
     assert_eq!(held.kind(&scanned, "render"), CardKind::Symbol);
     assert_eq!(held.parts(), [1; 8]);
+}
+
+#[test]
+fn a_scan_that_arrives_while_the_prebuild_runs_waits_for_it() {
+    let scanned = Scanned::new(&LINKED);
+    let held = Held::new();
+    assert_eq!(held.kind(&scanned, "pkg/report.py"), CardKind::File);
+    let edited = scanned.reading().repo.root.join("pkg/money.py");
+    let text = "def format_money(amount):\n    return amount\n\n\ndef added():\n    return 2\n";
+    io::write_file(&edited, text.as_bytes())
+        .unwrap_or_else(|error| panic!("{}: {error}", edited.display()));
+    let graphs = &held.graphs;
+    std::thread::scope(|scope| {
+        let call = scope.spawn(|| kind(graphs, &scanned, "pkg/report.py"));
+        held.waiting
+            .recv()
+            .expect("the new scan waits for the running prebuild");
+        held.prebuilt();
+        assert_eq!(call.join().ok(), Some(CardKind::File));
+    });
+    held.prebuilt();
+    assert_eq!(held.graphs.builds.waits.load(Ordering::Relaxed), 1);
+    assert_eq!(held.kind(&scanned, "added"), CardKind::Symbol);
 }

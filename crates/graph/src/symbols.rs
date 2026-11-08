@@ -237,7 +237,7 @@ impl<'a> SymbolGraph<'a> {
     ///
     /// Returns the [`Stopped`] of the first check that stops the call.
     pub fn build(
-        resolver: &Resolver<'a>,
+        resolver: &Resolver<'_, 'a>,
         deadline: Option<&Deadline>,
     ) -> Result<SymbolGraph<'a>, Stopped> {
         let scopes = resolver.scopes();
@@ -439,7 +439,7 @@ impl<'n, 'a> Parts<'n, 'a> {
     // Reference links first, then base-class links, as the candidate order depends on it.
     fn symbol_links(
         &mut self,
-        resolver: &Resolver<'a>,
+        resolver: &Resolver<'_, 'a>,
         position: usize,
         deadline: Option<&Deadline>,
     ) -> Result<(), Stopped> {
@@ -542,7 +542,7 @@ impl<'n, 'a> Parts<'n, 'a> {
 
 // Each (symbol, base name, resolution) of the file's declared base classes, in declaration order.
 fn inheritance<'a>(
-    resolver: &Resolver<'a>,
+    resolver: &Resolver<'_, 'a>,
     file: &'a FileFacts,
 ) -> Vec<(usize, &'a str, Resolution<'a>)> {
     let bases = file

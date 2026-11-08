@@ -514,18 +514,18 @@ fn traced(
 
 // What every card of one call reads: the walk and its warnings, the scan, and the scan's one name
 // index and graph.
-struct Call<'c, 'r, 'g> {
+struct Call<'c, 'r, 'g, 's> {
     services: &'c Services,
     reading: &'c Reading<'r>,
     files: &'c [RepoFile],
     walk_warnings: &'c [String],
     scan: &'c CallScan,
-    graph: &'c CallGraph<'g>,
+    graph: &'c CallGraph<'g, 's>,
 }
 
 // Each target's outcome in request order: a repeat shares the card of its first copy.
 fn carded(
-    call: &Call<'_, '_, '_>,
+    call: &Call<'_, '_, '_, '_>,
     request: &TraceRequest,
     resolved: Vec<Resolved>,
 ) -> Noted<Result<Vec<Traced>, Error>> {
@@ -552,7 +552,7 @@ fn carded(
 // A candidates card and a miss show themselves whatever `more` names; a symbol, file or folder
 // card that does not hold the section says so.
 fn outcome(
-    call: &Call<'_, '_, '_>,
+    call: &Call<'_, '_, '_, '_>,
     resolved: Resolved,
     more: Option<Section>,
     misses: &mut Misses,
