@@ -485,29 +485,43 @@ fn traced(
     if let Err(error) = within(&count, 1, MAX_TARGETS, "target") {
         return Noted::new(Err(error));
     }
-    let walked = walked_files(services, &reading.repo.root);
-    let warnings = walked.diagnostics;
-    let mut diagnostics = warnings.clone();
     let keeping = kept.map_or(Keeping::Own, |kept| {
         Keeping::Server(kept, reading.repo.root.as_path())
     });
+    let traced = over_call(services, reading, keeping, |call| {
+        let resolved =
+            resolve::resolved(reading, call.scan, call.graph, call.files, &request.targets);
+        resolved.then_ok(|resolved| carded(call, request, resolved))
+    });
+    traced.map_ok(|cards| Trace { cards })
+}
+
+// The walk, the call's one scan and the scan's graph, then `work` over them. The walk's warnings
+// come with either outcome.
+fn over_call<T>(
+    services: &Services,
+    reading: &Reading<'_>,
+    keeping: Keeping<'_>,
+    work: impl FnOnce(&Call<'_, '_, '_, '_>) -> Noted<Result<T, Error>>,
+) -> Noted<Result<T, Error>> {
+    let walked = walked_files(services, &reading.repo.root);
+    let warnings = walked.diagnostics;
+    let mut diagnostics = warnings.clone();
     let value = walked.value.and_then(|files| {
-        let traced = over_walked_scan(reading, &files, &warnings, keeping, |scan| {
+        let worked = over_walked_scan(reading, &files, &warnings, keeping, |scan| {
             with_call_graph(&scan.files, reading.deadline, keeping, |graph| {
-                let resolved = resolve::resolved(reading, scan, graph, &files, &request.targets);
-                let call = Call {
+                work(&Call {
                     services,
                     reading,
                     files: &files,
                     walk_warnings: &warnings,
                     scan,
                     graph,
-                };
-                resolved.then_ok(|resolved| carded(&call, request, resolved))
+                })
             })
         });
-        diagnostics.extend(traced.diagnostics);
-        traced.value.map(|cards| Trace { cards })
+        diagnostics.extend(worked.diagnostics);
+        worked.value
     });
     Noted { value, diagnostics }
 }
