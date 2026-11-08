@@ -679,6 +679,8 @@ Each byte count is of the served bytes.
 
 ### Fixed
 
+- **history and churn now pass each path to git as a literal pathspec, so a
+  path with a glob character matches only itself.**
 - **Three Python import rules remove false import edges, and some true
   edges of Python 2 code and top-level scripts.** Each of the 10 false
   alarms in 60 blind `cycle_dodge` findings (record:
