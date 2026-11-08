@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::ffi::OsString;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use app::EnvConfig;
@@ -275,6 +276,26 @@ fn the_write_is_atomic_and_the_first_backup_stays() {
         .join("config/settings.json.agentless-backup");
     assert_eq!(text(&backup), "{\"model\": \"opus\"}");
     assert!(text(&rig.settings()).contains("\"matcher\": \"mcp__other__trace\""));
+}
+
+// Design rule 4: the write keeps the mode of the file it replaces, and a new file gets 0600.
+#[test]
+fn install_and_uninstall_keep_the_files_mode_and_a_new_file_gets_0600() {
+    let mode = |rig: &Rig| {
+        let metadata = std::fs::metadata(rig.settings()).expect("the settings file");
+        metadata.permissions().mode() & 0o777
+    };
+    let fresh = Rig::new();
+    drop(fresh.install(&[]));
+    assert_eq!(mode(&fresh), 0o600);
+
+    let rig = Rig::new();
+    rig.put_settings("{\"model\": \"opus\"}");
+    rig.sandbox.set_mode("config/settings.json", 0o640);
+    drop(rig.install(&[]));
+    assert_eq!(mode(&rig), 0o640);
+    drop(rig.uninstall(&[]));
+    assert_eq!(mode(&rig), 0o640);
 }
 
 #[test]

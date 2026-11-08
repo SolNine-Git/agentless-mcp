@@ -1,5 +1,5 @@
-//! The settings file on disk: the read, the first backup, and the atomic write, which retries once
-//! when the file changed between the read and the rename.
+//! The settings file on disk: the read, the first backup, and the atomic write, which keeps the
+//! file's mode and retries once when the file changed between the read and the rename.
 
 use std::fs;
 use std::io::{Error, ErrorKind, Result as IoResult};
@@ -59,7 +59,7 @@ pub(crate) fn written<T, R>(
             continue;
         }
         backed_up(target, before.as_deref())?;
-        io::replace_file(target, text.as_bytes()).map_err(failed)?;
+        io::replace_file_keeping_mode(target, text.as_bytes()).map_err(failed)?;
         return Ok((Written::Wrote, report));
     }
 }
