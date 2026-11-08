@@ -6,6 +6,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
+use facts::Ref;
 use kernel::{Deadline, Stopped, checkpoint};
 
 use crate::names::Definition;
@@ -411,6 +412,14 @@ impl<'a> Nodes<'a> {
     }
 }
 
+// The occurrences of one file that an update links again: the references at `places`, ascending,
+// and the bases of `names`, the names of those references.
+#[derive(Default)]
+pub(crate) struct Wanted<'a> {
+    pub(crate) names: BTreeSet<&'a str>,
+    pub(crate) places: Vec<usize>,
+}
+
 // One occurrence that a resolution links from: its endpoint, name, relation and place.
 struct Link<'a> {
     source: Endpoint<'a>,
@@ -483,18 +492,42 @@ impl<'n, 'a> Parts<'n, 'a> {
     }
 
     // Reference links first, then base-class links, as the candidate order depends on it. Only
-    // the occurrences of `names`, when given, are linked.
+    // the occurrences that `wanted` names, when given, are linked.
     pub(crate) fn symbol_links(
         &mut self,
         resolver: &Resolver<'_, 'a>,
         position: usize,
-        names: Option<&BTreeSet<&str>>,
+        wanted: Option<&Wanted<'_>>,
+        deadline: Option<&Deadline>,
+    ) -> Result<(), Stopped> {
+        let file = self.nodes.files[position];
+        let refs = &file.facts.refs;
+        match wanted {
+            None => self.reference_links(resolver, position, refs.iter().enumerate(), deadline)?,
+            Some(wanted) => {
+                let places = wanted.places.iter().map(|&place| (place, &refs[place]));
+                self.reference_links(resolver, position, places, deadline)?;
+            }
+        }
+        self.base_links(
+            resolver,
+            position,
+            wanted.map(|wanted| &wanted.names),
+            deadline,
+        )
+    }
+
+    fn reference_links(
+        &mut self,
+        resolver: &Resolver<'_, 'a>,
+        position: usize,
+        refs: impl Iterator<Item = (usize, &'a Ref)>,
         deadline: Option<&Deadline>,
     ) -> Result<(), Stopped> {
         let nodes = self.nodes;
         let file = nodes.files[position];
         let owners = LineOwners::build(&file.facts.symbols);
-        for (place, reference, resolution) in resolver.attempted_sites(file, names) {
+        for (place, reference, resolution) in resolver.attempted(file, refs) {
             self.sites += 1;
             let Some(resolution) = resolution else {
                 continue;
@@ -512,6 +545,18 @@ impl<'n, 'a> Parts<'n, 'a> {
             };
             self.link(link, &resolution);
         }
+        Ok(())
+    }
+
+    fn base_links(
+        &mut self,
+        resolver: &Resolver<'_, 'a>,
+        position: usize,
+        names: Option<&BTreeSet<&str>>,
+        deadline: Option<&Deadline>,
+    ) -> Result<(), Stopped> {
+        let nodes = self.nodes;
+        let file = nodes.files[position];
         let after_refs = file.facts.refs.len();
         for (place, symbol, name) in bases(file) {
             if names.is_some_and(|names| !names.contains(name)) {

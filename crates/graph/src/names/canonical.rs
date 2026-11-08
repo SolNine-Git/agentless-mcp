@@ -54,7 +54,7 @@ impl<'a> NameIndex<'a> {
                     name,
                     definitions,
                     sites,
-                    entry.site_files,
+                    entry.site_places,
                     entry.defining,
                     entry.referencing,
                     entry.spelling,

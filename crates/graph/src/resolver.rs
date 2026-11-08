@@ -240,23 +240,25 @@ impl<'r, 'a> Resolver<'r, 'a> {
         file: &'a FileFacts,
         names: Option<&'s BTreeSet<&str>>,
     ) -> impl Iterator<Item = (&'a Ref, Resolution<'a>)> + 's {
-        let attempted = self.attempted_sites(file, names);
+        let refs = file.facts.refs.iter().enumerate();
+        let wanted = refs.filter(move |(_, reference)| {
+            names.is_none_or(|names| names.contains(reference.name.as_str()))
+        });
+        let attempted = self.attempted(file, wanted);
         attempted.filter_map(|(_, reference, found)| Some((reference, found?)))
     }
 
-    // Each occurrence that the resolver tries to bind, with its place in the file's references and
-    // what it binds, if anything.
-    pub(crate) fn attempted_sites<'s>(
+    // Each of `refs`, the file's references with their places, that the resolver tries to bind,
+    // with what it binds, if anything. Only a symbol's name line decides a declaring spelling.
+    pub(crate) fn attempted<'s>(
         &'s self,
         file: &'a FileFacts,
-        names: Option<&'s BTreeSet<&str>>,
+        refs: impl Iterator<Item = (usize, &'a Ref)> + 's,
     ) -> impl Iterator<Item = (usize, &'a Ref, Option<Resolution<'a>>)> + 's {
-        let declared = Declared::of(&file.facts.symbols, &file.facts.refs);
+        let declared = Declared::of(&file.facts.symbols, &[]);
         let at = self.scopes.position(&file.path);
-        let refs = file.facts.refs.iter().enumerate();
         refs.filter_map(move |(place, reference)| {
-            let wanted = names.is_none_or(|names| names.contains(reference.name.as_str()));
-            if !wanted || !reference.is_resolvable() || declared.declares(reference) {
+            if !reference.is_resolvable() || declared.declares(reference) {
                 return None;
             }
             let found = self.resolve_site(reference, &file.path, at);

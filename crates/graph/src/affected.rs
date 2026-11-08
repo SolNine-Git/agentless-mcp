@@ -72,7 +72,7 @@ impl<'s> Affected<'s> {
             .iter()
             .map(|&at| files[at].facts.refs.len())
             .sum();
-        let named = self.names.iter().flat_map(|name| index.sites_at(name));
+        let named = self.names.iter().flat_map(|name| index.places(name));
         let outside = named.filter(|(at, _)| !self.whole.contains(at)).count();
         let total: usize = files.iter().map(|file| file.facts.refs.len()).sum();
         (whole + outside) * 100 > percent * total

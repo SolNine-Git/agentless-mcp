@@ -79,8 +79,9 @@ impl<'a> Site<'a> {
 struct NameEntry<'a> {
     definitions: Vec<Definition<'a>>,
     sites: Vec<Site<'a>>,
-    // The scan position of each site's file, beside `sites`.
-    site_files: Vec<usize>,
+    // The scan position of each site's file and the site's place in the file's references, beside
+    // `sites`.
+    site_places: Vec<(u32, u32)>,
     defining: Vec<&'a str>,
     candidates: Candidates<'a>,
     referencing: u32,
@@ -181,10 +182,11 @@ impl<'a> NameIndex<'a> {
         (!entry.definitions.is_empty()).then_some(&entry.candidates)
     }
 
-    // Each site of `name` with the scan position of its file, in scan order.
-    pub(crate) fn sites_at(&self, name: &str) -> impl Iterator<Item = (usize, &Site<'a>)> + '_ {
-        let files = self.listed(name, |entry| &entry.site_files);
-        files.iter().copied().zip(self.sites(name))
+    // The scan position of each site's file and the site's place among the file's references, in
+    // scan order.
+    pub(crate) fn places(&self, name: &str) -> impl Iterator<Item = (usize, usize)> + '_ {
+        let places = self.listed(name, |entry| &entry.site_places).iter();
+        places.map(|&(file, place)| (file as usize, place as usize))
     }
 
     fn listed<'s, T>(&'s self, name: &str, pick: impl Fn(&'s NameEntry<'a>) -> &'s [T]) -> &'s [T] {
@@ -209,10 +211,10 @@ impl<'a> NameIndex<'a> {
             let definition = Definition::new(self.files, file_index, symbol_index);
             self.entry_mut(&symbol.name).definitions.push(definition);
         }
-        for reference in &file.facts.refs {
+        for (place, reference) in file.facts.refs.iter().enumerate() {
             let entry = self.entry_mut(&reference.name);
             entry.sites.push(Site { file, reference });
-            entry.site_files.push(file_index);
+            entry.site_places.push(placed(file_index, place));
             count_file(&mut entry.spelling, &mut entry.last_spelling, file_index);
             if reference.is_reference() {
                 count_file(
@@ -285,8 +287,12 @@ impl<'a> NameEntry<'a> {
     }
 
     fn replace_sites(&mut self, at: usize, rows: &Rows<'a>, name: &str) {
-        let start = self.site_files.partition_point(|file| *file < at);
-        let end = self.site_files.partition_point(|file| *file <= at);
+        let start = self
+            .site_places
+            .partition_point(|(file, _)| (*file as usize) < at);
+        let end = self
+            .site_places
+            .partition_point(|(file, _)| *file as usize <= at);
         let sites: Vec<Site<'a>> = match (rows.file, rows.refs.get(name)) {
             (Some(file), Some(refs)) => (refs.iter())
                 .map(|&reference| Site {
@@ -296,9 +302,10 @@ impl<'a> NameEntry<'a> {
                 .collect(),
             _ => Vec::new(),
         };
-        let count = sites.len();
+        let places = rows.refs.get(name).into_iter().flatten();
+        let places: Vec<(u32, u32)> = places.map(|&place| placed(at, place)).collect();
         self.sites.splice(start..end, sites);
-        (self.site_files).splice(start..end, std::iter::repeat_n(at, count));
+        self.site_places.splice(start..end, places);
     }
 }
 
@@ -344,6 +351,12 @@ impl<'a> Rows<'a> {
     fn spells(&self, name: &str) -> (bool, bool) {
         (self.refs.contains_key(name), self.referenced.contains(name))
     }
+}
+
+fn placed(file: usize, place: usize) -> (u32, u32) {
+    let narrow =
+        |at: usize| u32::try_from(at).expect("a scan holds fewer than 2^32 files and refs");
+    (narrow(file), narrow(place))
 }
 
 // A file's spellings arrive together, so a new file index is a new distinct file.

@@ -1,22 +1,24 @@
 //! The update of a kept symbol graph: the links of each occurrence that an update resolves again
 //! take the place of its old links, and every list keeps the order that a full build gives it.
 
-use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
-use facts::StableId;
+use facts::{StableId, Symbol};
 
-use super::{AmbiguousReference, Endpoint, Met, Nodes, Parts, Relation, SymbolEdge, SymbolGraph};
+use super::{
+    AmbiguousReference, Endpoint, Met, Nodes, Parts, Relation, SymbolEdge, SymbolGraph, Wanted,
+};
 use crate::affected::Affected;
 use crate::lists::{interleaved, merged};
 use crate::names::NameIndex;
+use crate::owners::LineOwners;
 use crate::resolver::Resolver;
 use crate::scan::{FileFacts, in_name_graph};
 use crate::scopes::{ImportScope, Scopes};
 use crate::unresolved::{repository_segments, unresolved_rows};
 
-// The occurrences of one file that an update links again: all of them, or those of some names.
-type Wanted<'a> = Option<BTreeSet<&'a str>>;
+// The occurrences of one file that an update links again: all of them, or some.
+type Linked<'a> = Option<Wanted<'a>>;
 
 // The candidates that an update gives a name: a new first meeting, none, or the kept ones.
 enum Chosen<'a> {
@@ -234,15 +236,20 @@ impl<'a> SymbolGraph<'a> {
         &self,
         index: &NameIndex<'a>,
         affected: &Affected<'a>,
-    ) -> BTreeMap<usize, Wanted<'a>> {
-        let mut touched: BTreeMap<usize, Wanted<'a>> =
+    ) -> BTreeMap<usize, Linked<'a>> {
+        let mut touched: BTreeMap<usize, Linked<'a>> =
             affected.whole.iter().map(|&at| (at, None)).collect();
         for &name in &affected.names {
-            let spelled = index.sites_at(name).map(|(at, _)| at);
-            let based = self.bases.get(name).into_iter().flatten().copied();
-            for at in spelled.chain(based) {
-                wants(&mut touched, at, name);
+            for (at, place) in index.places(name) {
+                wants(&mut touched, at, name, Some(place));
             }
+            for &at in self.bases.get(name).into_iter().flatten() {
+                wants(&mut touched, at, name, None);
+            }
+        }
+        for wanted in touched.values_mut().flatten() {
+            wanted.places.sort_unstable();
+            wanted.places.dedup();
         }
         touched
     }
@@ -252,12 +259,13 @@ impl<'a> SymbolGraph<'a> {
     fn removed(
         &self,
         before: &[&'a FileFacts],
-        touched: &BTreeMap<usize, Wanted<'a>>,
+        touched: &BTreeMap<usize, Linked<'a>>,
     ) -> (Vec<usize>, Vec<usize>) {
         let (mut edges, mut ambiguous) = (Vec::new(), Vec::new());
         for (&at, wanted) in touched {
-            for node in source_nodes(before[at]) {
-                self.made(&node, wanted.as_ref(), &mut edges, &mut ambiguous);
+            let names = wanted.as_ref().map(|wanted| &wanted.names);
+            for node in source_nodes(before[at], wanted.as_ref()) {
+                self.made(&node, names, &mut edges, &mut ambiguous);
             }
         }
         for list in [&mut edges, &mut ambiguous] {
@@ -329,8 +337,12 @@ impl<'a> SymbolGraph<'a> {
         let files = held.filter_map(|&at| scopes.position(self.ambiguous[at].source.path()));
         let first = files.filter(|at| !affected.whole.contains(at)).min()?;
         let mut parts = Parts::new(nodes);
-        let names = BTreeSet::from([name]);
-        let linked = parts.symbol_links(resolver, first, Some(&names), None);
+        let places = resolver.index().places(name).filter(|(at, _)| *at == first);
+        let wanted = Wanted {
+            names: BTreeSet::from([name]),
+            places: places.map(|(_, place)| place).collect(),
+        };
+        let linked = parts.symbol_links(resolver, first, Some(&wanted), None);
         linked.expect("an update has no deadline");
         let at = *parts.candidate_names.get(name)?;
         Some((parts.met[at], parts.candidates.swap_remove(at).1))
@@ -487,17 +499,18 @@ impl<'a> SymbolGraph<'a> {
     }
 }
 
-// Marks the occurrences of `name` in the file at `at` for linking again, unless the whole file is.
-fn wants<'a>(touched: &mut BTreeMap<usize, Wanted<'a>>, at: usize, name: &'a str) {
-    match touched.entry(at) {
-        Entry::Vacant(free) => {
-            free.insert(Some(BTreeSet::from([name])));
-        }
-        Entry::Occupied(mut held) => {
-            if let Some(names) = held.get_mut() {
-                names.insert(name);
-            }
-        }
+// Marks the bases of `name` in the file at `at` for linking again, and the reference at `place`,
+// unless the whole file is.
+fn wants<'a>(
+    touched: &mut BTreeMap<usize, Linked<'a>>,
+    at: usize,
+    name: &'a str,
+    place: Option<usize>,
+) {
+    let held = touched.entry(at).or_insert_with(|| Some(Wanted::default()));
+    if let Some(wanted) = held {
+        wanted.names.insert(name);
+        wanted.places.extend(place);
     }
 }
 
@@ -506,7 +519,7 @@ fn linked<'a>(
     parts: &mut Parts<'_, 'a>,
     resolver: &Resolver<'_, 'a>,
     at: usize,
-    wanted: Option<&BTreeSet<&str>>,
+    wanted: Option<&Wanted<'_>>,
     affected: &Affected<'a>,
 ) {
     if wanted.is_none() {
@@ -522,19 +535,39 @@ fn linked<'a>(
     linked.expect("an update has no deadline");
 }
 
-// The nodes that a file's links start at: the file, and each of its symbols.
-fn source_nodes(file: &FileFacts) -> Vec<String> {
+// The nodes that the links of a file's `wanted` occurrences start at: the file, and each symbol
+// that owns one of the references or names one of the bases.
+fn source_nodes(file: &FileFacts, wanted: Option<&Wanted<'_>>) -> Vec<String> {
     let mut nodes = vec![file.path.clone()];
-    if in_name_graph(file) {
-        let ids = file.facts.symbols.iter();
-        nodes.extend(ids.map(|symbol| StableId::of(file.language, &file.path, symbol).to_string()));
+    if !in_name_graph(file) {
+        return nodes;
     }
+    let symbols = &file.facts.symbols;
+    let starting: BTreeSet<usize> = match wanted {
+        None => (0..symbols.len()).collect(),
+        Some(wanted) => {
+            let owners = LineOwners::build(symbols);
+            let refs = wanted.places.iter().map(|&place| &file.facts.refs[place]);
+            let owning = refs.filter_map(|reference| owners.owner_position(reference.line));
+            let names = |symbol: &Symbol| {
+                let bases = symbol.bases.iter().map(|base| facts::base_name(base));
+                bases.into_iter().any(|base| wanted.names.contains(base))
+            };
+            let basing = (symbols.iter().enumerate()).filter(|(_, symbol)| names(symbol));
+            owning.chain(basing.map(|(at, _)| at)).collect()
+        }
+    };
+    let id = |at: usize| StableId::of(file.language, &file.path, &symbols[at]).to_string();
+    nodes.extend(starting.into_iter().map(id));
     nodes
 }
 
 // The positions of the items of `held`, sorted by `key` first, whose key is `node`.
 fn run<T>(held: &[T], key: impl Fn(&T) -> &str, node: &str) -> std::ops::Range<usize> {
     let start = held.partition_point(|item| key(item) < node);
-    let end = held.partition_point(|item| key(item) <= node);
-    start..end
+    let length = held[start..]
+        .iter()
+        .take_while(|item| key(item) == node)
+        .count();
+    start..start + length
 }
