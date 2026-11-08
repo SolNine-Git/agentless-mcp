@@ -7,8 +7,15 @@ use serde_json::{Value, json};
 
 use super::NameIndex;
 
-impl NameIndex<'_> {
-    // Each name that a file spells, in name order, with its lists and counts. A definition or a
+impl<'a> NameIndex<'a> {
+    // Each name that a file spells, in name order.
+    pub(crate) fn names(&self) -> Vec<&'a str> {
+        let mut names: Vec<&'a str> = self.positions.keys().copied().collect();
+        names.sort_unstable();
+        names
+    }
+
+    // Each name that a file spells, in name order, with its lists, counts and candidate order. A definition or a
     // site must point at the facts of its file in the index's own scan.
     pub(crate) fn canonical(&self) -> Value {
         let at: HashMap<&str, usize> = (self.files.iter().enumerate())
@@ -40,13 +47,19 @@ impl NameIndex<'_> {
                         json!([site.path(), reference.line, role, reference.qualifier])
                     })
                     .collect();
+                let ordered: Vec<Value> = (entry.candidates.ordered.iter())
+                    .map(|definition| json!([definition.path(), definition.position().1]))
+                    .collect();
                 json!([
                     name,
                     definitions,
                     sites,
+                    entry.site_files,
                     entry.defining,
                     entry.referencing,
-                    entry.spelling
+                    entry.spelling,
+                    ordered,
+                    entry.candidates.groups
                 ])
             })
             .collect();

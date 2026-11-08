@@ -1,9 +1,10 @@
 //! The name index: where each name is defined and where it is spelled, across one scan.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use facts::{Ref, StableId, Symbol};
 
+use crate::candidates::Candidates;
 use crate::scan::{FileFacts, in_name_graph};
 
 const NOISE_NAME_LENGTH: usize = 2;
@@ -78,7 +79,10 @@ impl<'a> Site<'a> {
 struct NameEntry<'a> {
     definitions: Vec<Definition<'a>>,
     sites: Vec<Site<'a>>,
+    // The scan position of each site's file, beside `sites`.
+    site_files: Vec<usize>,
     defining: Vec<&'a str>,
+    candidates: Candidates<'a>,
     referencing: u32,
     spelling: u32,
     last_referencing: Option<usize>,
@@ -88,8 +92,8 @@ struct NameEntry<'a> {
 /// Name-keyed definitions and spellings across the name-graph files of one scan.
 pub struct NameIndex<'a> {
     files: &'a [&'a FileFacts],
-    names: Vec<&'a str>,
-    // Lookup only: every order the index gives out comes from `names`.
+    // Lookup only: every order the index gives out comes from the lists of an entry. A name that
+    // no file spells after an update leaves the map, and its entry stays empty.
     positions: HashMap<&'a str, usize>,
     entries: Vec<NameEntry<'a>>,
 }
@@ -107,7 +111,6 @@ impl<'a> NameIndex<'a> {
         let mut index = NameIndex {
             files,
             entries: names.iter().map(|_| NameEntry::default()).collect(),
-            names,
             positions,
         };
         for (file_index, file) in files.iter().copied().enumerate() {
@@ -119,6 +122,7 @@ impl<'a> NameIndex<'a> {
             entry.defining = entry.definitions.iter().map(Definition::path).collect();
             entry.defining.sort_unstable();
             entry.defining.dedup();
+            entry.candidates = Candidates::of(&entry.definitions);
         }
         index
     }
@@ -171,12 +175,10 @@ impl<'a> NameIndex<'a> {
         self.positions.get(name).copied()
     }
 
-    pub(crate) fn definitions_at(&self, position: usize) -> &[Definition<'a>] {
-        &self.entries[position].definitions
-    }
-
-    pub(crate) fn name_count(&self) -> usize {
-        self.names.len()
+    // The definitions of `name` in candidate order, or none for a name that nothing defines.
+    pub(crate) fn candidates(&self, name: &str) -> Option<&Candidates<'a>> {
+        let entry = &self.entries[self.position(name)?];
+        (!entry.definitions.is_empty()).then_some(&entry.candidates)
     }
 
     fn listed<'s, T>(&'s self, name: &str, pick: impl Fn(&'s NameEntry<'a>) -> &'s [T]) -> &'s [T] {
@@ -204,6 +206,7 @@ impl<'a> NameIndex<'a> {
         for reference in &file.facts.refs {
             let entry = self.entry_mut(&reference.name);
             entry.sites.push(Site { file, reference });
+            entry.site_files.push(file_index);
             count_file(&mut entry.spelling, &mut entry.last_spelling, file_index);
             if reference.is_reference() {
                 count_file(
@@ -213,6 +216,127 @@ impl<'a> NameIndex<'a> {
                 );
             }
         }
+    }
+
+    // Reads `files`, the same paths in the same order as the index's scan, and replaces the rows
+    // of the file at each `changed` position with its facts there.
+    pub(crate) fn update(&mut self, files: &'a [&'a FileFacts], changed: &[usize]) {
+        let before = self.files;
+        self.files = files;
+        for &at in changed {
+            self.replace_file(at, before[at], files[at]);
+        }
+    }
+
+    fn replace_file(&mut self, at: usize, old: &'a FileFacts, new: &'a FileFacts) {
+        let (old, new) = (Rows::of(old), Rows::of(new));
+        let names: BTreeSet<&'a str> = old.names().chain(new.names()).collect();
+        for name in names {
+            let position = self.position(name).unwrap_or_else(|| self.added(name));
+            let definitions: Vec<Definition<'a>> = (new.symbols.get(name).into_iter().flatten())
+                .map(|&symbol| Definition::new(self.files, at, symbol))
+                .collect();
+            let entry = &mut self.entries[position];
+            entry.replace_definitions(at, definitions);
+            entry.replace_sites(at, &new, name);
+            let (was, is) = (old.spells(name), new.spells(name));
+            entry.spelling = entry.spelling + u32::from(is.0) - u32::from(was.0);
+            entry.referencing = entry.referencing + u32::from(is.1) - u32::from(was.1);
+            if entry.definitions.is_empty() && entry.sites.is_empty() {
+                self.positions.remove(name);
+            }
+        }
+    }
+
+    // A name that no file spelled gets a new entry; the positions of the others stay.
+    fn added(&mut self, name: &'a str) -> usize {
+        self.entries.push(NameEntry::default());
+        self.positions.insert(name, self.entries.len() - 1);
+        self.entries.len() - 1
+    }
+}
+
+impl<'a> NameEntry<'a> {
+    fn replace_definitions(&mut self, at: usize, definitions: Vec<Definition<'a>>) {
+        let start = (self.definitions).partition_point(|held| held.file_index < at);
+        let end = (self.definitions).partition_point(|held| held.file_index <= at);
+        let (was, is) = (start < end, !definitions.is_empty());
+        let path = match (definitions.first(), self.definitions.get(start)) {
+            (Some(definition), _) => definition.path(),
+            (None, Some(held)) if was => held.path(),
+            _ => return,
+        };
+        self.candidates.replace(path, &definitions);
+        self.definitions.splice(start..end, definitions);
+        let held = self.defining.binary_search(&path);
+        match (was, is, held) {
+            (true, false, Ok(found)) => {
+                self.defining.remove(found);
+            }
+            (false, true, Err(free)) => self.defining.insert(free, path),
+            _ => {}
+        }
+    }
+
+    fn replace_sites(&mut self, at: usize, rows: &Rows<'a>, name: &str) {
+        let start = self.site_files.partition_point(|file| *file < at);
+        let end = self.site_files.partition_point(|file| *file <= at);
+        let sites: Vec<Site<'a>> = match (rows.file, rows.refs.get(name)) {
+            (Some(file), Some(refs)) => (refs.iter())
+                .map(|&reference| Site {
+                    file,
+                    reference: &file.facts.refs[reference],
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        let count = sites.len();
+        self.sites.splice(start..end, sites);
+        (self.site_files).splice(start..end, std::iter::repeat_n(at, count));
+    }
+}
+
+// One name-graph file's symbols and refs by name, each in file order.
+#[derive(Default)]
+struct Rows<'a> {
+    file: Option<&'a FileFacts>,
+    symbols: BTreeMap<&'a str, Vec<usize>>,
+    refs: BTreeMap<&'a str, Vec<usize>>,
+    referenced: BTreeSet<&'a str>,
+}
+
+impl<'a> Rows<'a> {
+    fn of(file: &'a FileFacts) -> Rows<'a> {
+        let mut rows = Rows::default();
+        if !in_name_graph(file) {
+            return rows;
+        }
+        rows.file = Some(file);
+        for (at, symbol) in file.facts.symbols.iter().enumerate() {
+            rows.symbols
+                .entry(symbol.name.as_str())
+                .or_default()
+                .push(at);
+        }
+        for (at, reference) in file.facts.refs.iter().enumerate() {
+            rows.refs
+                .entry(reference.name.as_str())
+                .or_default()
+                .push(at);
+            if reference.is_reference() {
+                rows.referenced.insert(reference.name.as_str());
+            }
+        }
+        rows
+    }
+
+    fn names(&self) -> impl Iterator<Item = &'a str> + '_ {
+        self.symbols.keys().chain(self.refs.keys()).copied()
+    }
+
+    // Whether the file spells `name` at all, and whether it references it.
+    fn spells(&self, name: &str) -> (bool, bool) {
+        (self.refs.contains_key(name), self.referenced.contains(name))
     }
 }
 

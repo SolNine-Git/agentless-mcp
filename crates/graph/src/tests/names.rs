@@ -27,7 +27,7 @@ fn the_name_index_matches_the_reference() {
         let Some(cases) = corpus.section::<NameCase>("index") else {
             continue;
         };
-        assert_eq!(index.name_count(), cases.len(), "{}", corpus.name);
+        assert_eq!(index.names().len(), cases.len(), "{}", corpus.name);
         for case in cases {
             check_name(&index, &case, corpus.name);
         }
@@ -105,8 +105,8 @@ fn references_match_the_reference() {
         let Some(expected) = corpus.section::<Value>("references") else {
             continue;
         };
-        let definitions =
-            (0..index.name_count()).flat_map(|position| index.definitions_at(position));
+        let names = index.names();
+        let definitions = names.iter().flat_map(|name| index.definitions(name));
         let found: Vec<Value> = definitions
             .map(|definition| {
                 let sites: Vec<Value> = references_to(&index, definition)

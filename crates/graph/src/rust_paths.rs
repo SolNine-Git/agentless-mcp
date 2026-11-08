@@ -287,7 +287,7 @@ fn target_dir(inside: &str) -> Option<(&'static str, &str)> {
         .find_map(|top| inside.strip_prefix(top).map(|rest| (top, rest)))
 }
 
-fn is_manifest(file: &FileFacts) -> bool {
+pub(crate) fn is_manifest(file: &FileFacts) -> bool {
     file.language == Language::Toml
         && (file.path == MANIFEST || file.path.ends_with(&format!("/{MANIFEST}")))
 }

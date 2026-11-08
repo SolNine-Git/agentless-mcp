@@ -3,6 +3,7 @@
 
 mod aliases;
 mod ambiguous;
+mod candidates;
 mod communities;
 mod cycles;
 mod entries;
@@ -21,6 +22,7 @@ mod scan;
 mod scopes;
 mod symbols;
 mod unresolved;
+mod update;
 
 pub use aliases::Aliases;
 pub use ambiguous::AmbiguousDegrees;
@@ -45,6 +47,7 @@ pub use resolver::{Resolution, Resolver, Tier};
 pub use scan::{FileFacts, in_name_graph, joins_name_graph};
 pub use scopes::{ImportScope, Scopes};
 pub use symbols::{AmbiguousReference, Endpoint, Relation, SymbolEdge, SymbolGraph};
+pub use update::{KeptParts, Rebuild, Resolved, update};
 
 #[cfg(test)]
 mod tests;

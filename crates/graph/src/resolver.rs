@@ -7,6 +7,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use facts::{Declared, Ref, Role};
 use syntax::Language;
 
+use crate::candidates::Candidates;
 use crate::names::{Definition, NameIndex};
 use crate::scan::FileFacts;
 use crate::scopes::{ImportScope, Qualified, Scopes};
@@ -66,12 +67,6 @@ pub struct Resolution<'a> {
     pub candidates: Vec<Definition<'a>>,
 }
 
-// The definitions of one name, ordered by (path, line, qualified name), and their path groups.
-struct Candidates<'a> {
-    ordered: Vec<Definition<'a>>,
-    groups: Vec<(&'a str, usize, usize)>,
-}
-
 // How a site spells its name: a bare name reads only the file and the name, a qualified name and a
 // module attribute read their qualifier as well.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -120,7 +115,6 @@ type Memo = HashMap<Key, Vec<(Box<str>, Option<Kept>)>>;
 pub struct Resolver<'r, 'a> {
     index: &'r NameIndex<'a>,
     scopes: &'r Scopes<'a>,
-    candidates: Vec<Candidates<'a>>,
     // The index and the scopes never change, so a key and qualifier resolve once for the life of
     // the resolver. A lock, not a cell, keeps the resolver `Sync` for the types that hold it.
     resolved: Mutex<Memo>,
@@ -139,13 +133,9 @@ impl<'r, 'a> Resolver<'r, 'a> {
             std::ptr::eq(index.files(), scopes.files()),
             "the name index and the import scopes come from different scans"
         );
-        let candidates = (0..index.name_count())
-            .map(|position| ordered(index.definitions_at(position)))
-            .collect();
         Resolver {
             index,
             scopes,
-            candidates,
             resolved: Mutex::new(HashMap::new()),
             walks: AtomicUsize::new(0),
         }
@@ -178,10 +168,7 @@ impl<'r, 'a> Resolver<'r, 'a> {
     }
 
     fn resolve_bare(&self, name: &str, path: &str) -> Option<Resolution<'a>> {
-        let known = self
-            .index
-            .position(name)
-            .map(|position| &self.candidates[position]);
+        let known = self.index.candidates(name);
         if let Some(found) = known.and_then(|known| self.bound_here(known, name, path)) {
             return Some(found);
         }
@@ -359,8 +346,7 @@ impl<'r, 'a> Resolver<'r, 'a> {
 
     // A local definition outranks an import, and an import outranks a name-only match.
     fn bound_here(&self, known: &Candidates<'a>, name: &str, path: &str) -> Option<Resolution<'a>> {
-        let same_file: Vec<Definition<'a>> = group(known, path)
-            .iter()
+        let same_file: Vec<Definition<'a>> = (known.group(path).iter())
             .filter(|entry| in_module_scope(entry, path))
             .copied()
             .collect();
@@ -372,7 +358,7 @@ impl<'r, 'a> Resolver<'r, 'a> {
         }
         let scope = self.scopes.get(path)?;
         let spelled = self.scopes.language_of(path);
-        let named: Vec<Definition<'a>> = groups(known)
+        let named: Vec<Definition<'a>> = (known.groups())
             .filter(|(defining, _)| scope.binds(name, defining))
             .flat_map(|(_, entries)| entries.iter().copied())
             .filter(|entry| bare_name_reaches(spelled, entry))
@@ -390,13 +376,10 @@ impl<'r, 'a> Resolver<'r, 'a> {
         let scope = self.scopes.get(path)?;
         let targets = scope.module_bindings.get(qualifier);
         let bound = |defining: &str| targets.is_some_and(|targets| targets.contains(defining));
-        let known = self
-            .index
-            .position(name)
-            .map(|position| &self.candidates[position]);
+        let known = self.index.candidates(name);
         let direct: Vec<Definition<'a>> = known
             .into_iter()
-            .flat_map(groups)
+            .flat_map(Candidates::groups)
             .filter(|(defining, _)| bound(defining))
             .flat_map(|(_, entries)| entries.iter().copied())
             .collect();
@@ -435,15 +418,14 @@ impl<'r, 'a> Resolver<'r, 'a> {
                 pending.extend(hops.map(|(next, name)| (next, name, depth + 1)));
             }
         }
-        ordered(&found.definitions).ordered
+        Candidates::of(&found.definitions).ordered
     }
 
     fn defined_at(&self, member: &str, target: &str) -> Vec<Definition<'a>> {
-        let Some(position) = self.index.position(member) else {
+        let Some(known) = self.index.candidates(member) else {
             return Vec::new();
         };
-        group(&self.candidates[position], target)
-            .iter()
+        (known.group(target).iter())
             .filter(|entry| in_module_scope(entry, target))
             .copied()
             .collect()
@@ -501,47 +483,3 @@ fn bare_name_reaches(spelled: Option<Language>, candidate: &Definition<'_>) -> b
 fn in_module_scope(candidate: &Definition<'_>, path: &str) -> bool {
     candidate.path() == path && candidate.symbol().parent.is_empty()
 }
-
-fn ordered<'a>(definitions: &[Definition<'a>]) -> Candidates<'a> {
-    let mut keyed: Vec<((&'a str, u32, String), Definition<'a>)> = definitions
-        .iter()
-        .map(|entry| {
-            (
-                (entry.path(), entry.symbol().line, entry.symbol().qualname()),
-                *entry,
-            )
-        })
-        .collect();
-    keyed.sort_by(|left, right| left.0.cmp(&right.0));
-    let ordered: Vec<Definition<'a>> = keyed.into_iter().map(|(_, entry)| entry).collect();
-    let mut groups: Vec<(&'a str, usize, usize)> = Vec::new();
-    for (position, entry) in ordered.iter().enumerate() {
-        match groups.last_mut() {
-            Some((path, _, end)) if *path == entry.path() => *end = position + 1,
-            _ => groups.push((entry.path(), position, position + 1)),
-        }
-    }
-    Candidates { ordered, groups }
-}
-
-fn group<'c, 'a>(known: &'c Candidates<'a>, path: &str) -> &'c [Definition<'a>] {
-    known
-        .groups
-        .binary_search_by(|(held, _, _)| (*held).cmp(path))
-        .map_or(&[], |found| {
-            let (_, start, end) = known.groups[found];
-            &known.ordered[start..end]
-        })
-}
-
-fn groups<'c, 'a>(
-    known: &'c Candidates<'a>,
-) -> impl Iterator<Item = (&'a str, &'c [Definition<'a>])> {
-    known
-        .groups
-        .iter()
-        .map(|&(path, start, end)| (path, &known.ordered[start..end]))
-}
-
-#[cfg(test)]
-mod canonical;

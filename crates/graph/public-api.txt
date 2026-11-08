@@ -1,4 +1,24 @@
 pub mod graph
+pub enum graph::Rebuild
+pub graph::Rebuild::Manifest
+pub graph::Rebuild::Paths
+pub graph::Rebuild::RustModules
+impl core::clone::Clone for graph::Rebuild
+pub fn graph::Rebuild::clone(&self) -> Self
+impl core::cmp::Eq for graph::Rebuild
+impl core::cmp::PartialEq for graph::Rebuild
+pub fn graph::Rebuild::eq(&self, &Self) -> bool
+impl core::fmt::Debug for graph::Rebuild
+pub fn graph::Rebuild::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for graph::Rebuild
+impl core::marker::StructuralPartialEq for graph::Rebuild
+impl core::marker::Freeze for graph::Rebuild
+impl core::marker::Send for graph::Rebuild
+impl core::marker::Sync for graph::Rebuild
+impl core::marker::Unpin for graph::Rebuild
+impl core::marker::UnsafeUnpin for graph::Rebuild
+impl core::panic::unwind_safe::RefUnwindSafe for graph::Rebuild
+impl core::panic::unwind_safe::UnwindSafe for graph::Rebuild
 pub enum graph::Relation
 pub graph::Relation::Imports
 pub graph::Relation::Inherits
@@ -372,6 +392,15 @@ impl<'a> core::marker::Unpin for graph::ImportTargets<'a>
 impl<'a> core::marker::UnsafeUnpin for graph::ImportTargets<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::ImportTargets<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::ImportTargets<'a>
+pub struct graph::KeptParts<'p, 's>
+pub graph::KeptParts::index: core::option::Option<&'p mut graph::NameIndex<'s>>
+impl<'p, 's> core::marker::Freeze for graph::KeptParts<'p, 's>
+impl<'p, 's> core::marker::Send for graph::KeptParts<'p, 's>
+impl<'p, 's> core::marker::Sync for graph::KeptParts<'p, 's>
+impl<'p, 's> core::marker::Unpin for graph::KeptParts<'p, 's>
+impl<'p, 's> core::marker::UnsafeUnpin for graph::KeptParts<'p, 's>
+impl<'p, 's> core::panic::unwind_safe::RefUnwindSafe for graph::KeptParts<'p, 's>
+impl<'p, 's> !core::panic::unwind_safe::UnwindSafe for graph::KeptParts<'p, 's>
 pub struct graph::LineOwners<'a>
 impl<'a> graph::LineOwners<'a>
 pub fn graph::LineOwners<'a>::build(&'a [facts::values::Symbol]) -> graph::LineOwners<'a>
@@ -527,6 +556,27 @@ impl<'a> core::marker::Unpin for graph::Resolution<'a>
 impl<'a> core::marker::UnsafeUnpin for graph::Resolution<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::Resolution<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::Resolution<'a>
+pub struct graph::Resolved
+pub graph::Resolved::files: usize
+pub graph::Resolved::sites: usize
+impl core::clone::Clone for graph::Resolved
+pub fn graph::Resolved::clone(&self) -> Self
+impl core::cmp::Eq for graph::Resolved
+impl core::cmp::PartialEq for graph::Resolved
+pub fn graph::Resolved::eq(&self, &Self) -> bool
+impl core::default::Default for graph::Resolved
+pub fn graph::Resolved::default() -> Self
+impl core::fmt::Debug for graph::Resolved
+pub fn graph::Resolved::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for graph::Resolved
+impl core::marker::StructuralPartialEq for graph::Resolved
+impl core::marker::Freeze for graph::Resolved
+impl core::marker::Send for graph::Resolved
+impl core::marker::Sync for graph::Resolved
+impl core::marker::Unpin for graph::Resolved
+impl core::marker::UnsafeUnpin for graph::Resolved
+impl core::panic::unwind_safe::RefUnwindSafe for graph::Resolved
+impl core::panic::unwind_safe::UnwindSafe for graph::Resolved
 pub struct graph::Resolver<'r, 'a>
 impl<'r, 'a> graph::Resolver<'r, 'a>
 pub fn graph::Resolver<'r, 'a>::index(&self) -> &'r graph::NameIndex<'a>
@@ -673,3 +723,4 @@ pub fn graph::rank_order<'a>(&graph::PageRank<'a>, impl core::ops::function::Fn(
 pub fn graph::references_to<'a>(&graph::NameIndex<'a>, &graph::Definition<'a>) -> alloc::vec::Vec<graph::Site<'a>>
 pub fn graph::resolve_definitions<'a>(&graph::NameIndex<'a>, &str) -> graph::Lookup<'a>
 pub fn graph::shortest_path<'a>(&graph::SymbolGraph<'a>, &str, &str, graph::PathPolicy, graph::PathBounds<'_>) -> core::result::Result<graph::PathResult<'a>, kernel::deadline::Stopped>
+pub fn graph::update<'s>(graph::KeptParts<'_, 's>, &'s [&'s graph::FileFacts], &'s [&'s graph::FileFacts]) -> core::result::Result<graph::Resolved, graph::Rebuild>
