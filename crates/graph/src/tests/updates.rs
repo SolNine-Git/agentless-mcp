@@ -8,7 +8,7 @@ use syntax::Language;
 
 use super::equality::{Canonical, Parts, assert_same};
 use super::rust::scanned;
-use crate::{FileFacts, KeptParts, NameIndex, Rebuild, Scopes, update};
+use crate::{FileFacts, KeptParts, NameIndex, Rebuild, Resolver, Scopes, SymbolGraph, update};
 
 // One change to one file of a scan: a text replaced in it, its whole new text, or its removal.
 enum Change {
@@ -115,10 +115,12 @@ fn run(case: &Case) {
     }
     let mut index = NameIndex::build(&lists[0]);
     let mut scopes = Scopes::build(&lists[0]);
+    let mut graph = SymbolGraph::build(&Resolver::new(&index, &scopes), None).expect("no deadline");
     for (step, pair) in lists.windows(2).enumerate() {
         let parts = KeptParts {
             index: Some(&mut index),
             scopes: Some(&mut scopes),
+            graph: Some(&mut graph),
         };
         let updated = update(parts, &pair[0], &pair[1]);
         let last = step + 1 == case.steps.len();
@@ -137,6 +139,7 @@ fn run(case: &Case) {
             files: &pair[1],
             index: Some(&index),
             scopes: Some(&scopes),
+            graph: Some(&graph),
             ..Parts::default()
         });
         let label = format!("{}: step {step}", case.name);
@@ -161,6 +164,17 @@ const PACKAGE: [(&str, &str); 5] = [
         "app.py",
         "from pkg import run\nfrom pkg.core import *\n\n\ndef main():\n    return run() + other()\n",
     ),
+];
+
+// A name with two definitions in each of two language families, spelled ambiguously in a file of
+// each; the Python file comes first in scan order.
+const FAMILIES: [(&str, &str); 6] = [
+    ("a.py", "def helper():\n    return 1\n"),
+    ("b.py", "def helper():\n    return 2\n"),
+    ("c.py", "def run():\n    return helper() + helper()\n"),
+    ("d.js", "function run() { return helper(); }\n"),
+    ("x.js", "function helper() { return 1; }\n"),
+    ("y.js", "function helper() { return 2; }\n"),
 ];
 
 const CASES: &[Case] = &[
@@ -402,6 +416,36 @@ const CASES: &[Case] = &[
                 "pricing.go",
                 Replace("func FormatMoney(", "func formatMoneyOld("),
             )],
+        ],
+        rebuilds: None,
+    },
+    Case {
+        name: "the first ambiguous spelling of a name moves to another file and family, and back",
+        fixture: "",
+        extra: &FAMILIES,
+        steps: &[
+            &[(
+                "c.py",
+                Replace("    return helper() + helper()\n", "    return 0\n"),
+            )],
+            &[("c.py", Replace("    return 0\n", "    return helper()\n"))],
+            &[("d.js", Replace("helper()", "0"))],
+        ],
+        rebuilds: None,
+    },
+    Case {
+        name: "two definitions that a chain reaches come to share a line",
+        fixture: "",
+        extra: &[
+            ("pkg/core.py", "A = 1\nB = 2\n"),
+            (
+                "app.py",
+                "from pkg.core import A as N\nfrom pkg.core import B as N\n\n\ndef f():\n    return N\n",
+            ),
+        ],
+        steps: &[
+            &[("pkg/core.py", Write("A = B = 1\n"))],
+            &[("pkg/core.py", Write("\nA = 1\nB = 2\n"))],
         ],
         rebuilds: None,
     },

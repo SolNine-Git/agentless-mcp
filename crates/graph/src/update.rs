@@ -4,15 +4,19 @@
 use facts::Import;
 use syntax::Language;
 
+use crate::affected::Affected;
 use crate::names::NameIndex;
+use crate::resolver::Resolver;
 use crate::rust_paths::is_manifest;
 use crate::scan::FileFacts;
 use crate::scopes::Scopes;
+use crate::symbols::{Nodes, SymbolGraph};
 
 /// The kept parts of one scan's graph. A part that was not built is `None`, and stays so.
 pub struct KeptParts<'p, 's> {
     pub index: Option<&'p mut NameIndex<'s>>,
     pub scopes: Option<&'p mut Scopes<'s>>,
+    pub graph: Option<&'p mut SymbolGraph<'s>>,
 }
 
 /// What an update resolved again: the files whose every site it resolved, and the sites.
@@ -31,6 +35,8 @@ pub enum Rebuild {
     Manifest,
     /// The `use` declarations or the `mod` items of a Rust file changed.
     RustModules,
+    /// A part was kept without a part that it is built from.
+    Unbuilt,
 }
 
 /// Carry `parts` from the scan `before` to the scan `after`. A file whose facts did not change
@@ -46,13 +52,36 @@ pub fn update<'s>(
     after: &'s [&'s FileFacts],
 ) -> Result<Resolved, Rebuild> {
     let changed = changed(before, after)?;
-    if let Some(index) = parts.index {
+    let KeptParts {
+        index,
+        scopes,
+        graph,
+    } = parts;
+    if graph.is_some() && (index.is_none() || scopes.is_none()) {
+        return Err(Rebuild::Unbuilt);
+    }
+    let index = index.map(|index| {
         index.update(after, &changed);
-    }
-    if let Some(scopes) = parts.scopes {
-        scopes.update(after, &changed);
-    }
-    Ok(Resolved::default())
+        &*index
+    });
+    let scopes = scopes.map(|scopes| {
+        let rebound = scopes.update(after, &changed);
+        (&*scopes, rebound)
+    });
+    let (Some(index), Some((scopes, rebound)), Some(graph)) = (index, scopes, graph) else {
+        return Ok(Resolved::default());
+    };
+    let affected = Affected::of(before, after, &changed, Some((scopes, &rebound)));
+    let resolver = Resolver::new(index, scopes);
+    let nodes = Nodes::new(after, true);
+    let relinked = graph.relinked(&nodes, &resolver, before, &affected);
+    let work = Resolved {
+        files: affected.whole.len(),
+        sites: relinked.sites(),
+    };
+    graph.relink(relinked, before, &affected);
+    graph.recount(scopes, &rebound);
+    Ok(work)
 }
 
 // The positions of the changed files, or the case that needs a full build.

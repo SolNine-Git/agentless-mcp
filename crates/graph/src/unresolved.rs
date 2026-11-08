@@ -3,19 +3,30 @@
 
 use std::collections::BTreeSet;
 
-use crate::scopes::{ResolvedImport, Scopes};
+use crate::scopes::{ImportScope, ResolvedImport, Scopes};
 
 pub(crate) fn unresolved_imports(scopes: &Scopes<'_>) -> u32 {
     count(scopes, |_| true)
 }
 
-// A relative import can name nothing but this repository; an absolute one does when it leads
-// with a directory name or a file stem here.
 pub(crate) fn unresolved_internal_imports(scopes: &Scopes<'_>) -> u32 {
     let segments = repository_segments(scopes.files().iter().map(|file| file.path.as_str()));
-    count(scopes, |row| {
-        row.relative || names_this_repository(&row.module, &segments)
-    })
+    count(scopes, |row| names_here(row, &segments))
+}
+
+// The unresolved statements of one scope, and those of them that name this repository.
+pub(crate) fn unresolved_rows(scope: &ImportScope<'_>, segments: &BTreeSet<&str>) -> (u32, u32) {
+    let rows = scope.statements.iter().filter(|row| row.resolved.is_none());
+    let (all, internal) = rows.fold((0, 0), |(all, internal), row| {
+        (all + 1, internal + u32::from(names_here(row, segments)))
+    });
+    (all, internal)
+}
+
+// A relative import can name nothing but this repository; an absolute one does when it leads
+// with a directory name or a file stem here.
+fn names_here(row: &ResolvedImport<'_>, segments: &BTreeSet<&str>) -> bool {
+    row.relative || names_this_repository(&row.module, segments)
 }
 
 fn count(scopes: &Scopes<'_>, internal: impl Fn(&ResolvedImport<'_>) -> bool) -> u32 {

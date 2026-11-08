@@ -172,9 +172,8 @@ impl<'a> Scopes<'a> {
         }
     }
 
-    // Reads `files`, the same paths in the same order as the scan of the scopes, and binds again
-    // each changed file and, after an entry's names change, every file inside its package. Returns
-    // each file whose scope changed, with its scope before.
+    // Binds again each changed file and, after an entry's names change, every file inside its
+    // package. Returns each file whose scope changed, with its scope before.
     pub(crate) fn update(
         &mut self,
         files: &'a [&'a FileFacts],
@@ -224,6 +223,11 @@ impl<'a> Scopes<'a> {
                 self.importers.remove(target);
             }
         }
+    }
+
+    // The scan positions of the files whose scope binds a name to the file at `path`.
+    pub(crate) fn importers(&self, path: &str) -> impl Iterator<Item = usize> + '_ {
+        self.importers.get(path).into_iter().flatten().copied()
     }
 
     // The scan positions of the files inside the package directory `directory`, in path order.

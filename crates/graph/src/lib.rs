@@ -1,6 +1,7 @@
 //! The repository graphs: the name index, the import scopes, the resolver, the symbol and file
 //! graphs, their ranks, floods, paths, cycles and communities.
 
+mod affected;
 mod aliases;
 mod ambiguous;
 mod candidates;

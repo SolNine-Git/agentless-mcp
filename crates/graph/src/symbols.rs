@@ -3,8 +3,8 @@
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, OnceLock};
 
 use kernel::{Deadline, Stopped, checkpoint};
 
@@ -224,10 +224,18 @@ pub struct SymbolGraph<'a> {
     unresolved_internal_imports: u32,
     pub(crate) ambiguous: Vec<AmbiguousReference<'a>>,
     pub(crate) candidates: Vec<(&'a str, Vec<Endpoint<'a>>)>,
+    // Where each name's candidates were met first, beside `candidates`: the order of the list.
+    pub(crate) met: Vec<Met>,
     pub(crate) candidate_names: BTreeMap<&'a str, usize>,
     pub(crate) by_name: BTreeMap<&'a str, Vec<usize>>,
     pub(crate) candidates_at: BTreeMap<Arc<str>, Vec<(&'a str, Endpoint<'a>)>>,
+    // The scan positions of the files whose symbols name each base, in scan order.
+    bases: BTreeMap<&'a str, Vec<usize>>,
 }
+
+// Where one link is made: the scan position of its file, and its place among the file's links,
+// a reference's place in the file's references, then a base's place after every reference.
+pub(crate) type Met = (usize, usize);
 
 impl<'a> SymbolGraph<'a> {
     /// Resolve every reference, import and base class of the resolver's scan into edges.
@@ -241,12 +249,13 @@ impl<'a> SymbolGraph<'a> {
         deadline: Option<&Deadline>,
     ) -> Result<SymbolGraph<'a>, Stopped> {
         let scopes = resolver.scopes();
-        let nodes = Nodes::build(scopes.files(), true);
+        let nodes = Nodes::new(scopes.files(), true);
         let mut parts = Parts::new(&nodes);
         for (position, file) in scopes.files().iter().enumerate() {
             parts.import_edges(scopes, position);
             if in_name_graph(file) {
-                parts.symbol_links(resolver, position, deadline)?;
+                parts.definitions_of(position);
+                parts.symbol_links(resolver, position, None, deadline)?;
             }
         }
         Ok(parts.finish(scopes))
@@ -255,7 +264,7 @@ impl<'a> SymbolGraph<'a> {
     /// Build the module-level import edges alone, resolving no reference.
     #[must_use]
     pub fn imports(scopes: &Scopes<'a>) -> SymbolGraph<'a> {
-        let nodes = Nodes::build(scopes.files(), false);
+        let nodes = Nodes::new(scopes.files(), false);
         let mut parts = Parts::new(&nodes);
         for position in 0..scopes.files().len() {
             parts.import_edges(scopes, position);
@@ -331,45 +340,51 @@ impl<'a> SymbolGraph<'a> {
     }
 }
 
-// Each file's node and each symbol's id and label, built once and shared by every endpoint.
-struct Nodes<'a> {
+// Each file's node and each symbol's id and label, built at a file's first use and shared by
+// every endpoint.
+pub(crate) struct Nodes<'a> {
     files: &'a [&'a FileFacts],
-    paths: Vec<Arc<str>>,
-    symbols: Vec<Vec<(Arc<str>, Arc<str>)>>,
+    with_symbols: bool,
+    paths: Vec<OnceLock<Arc<str>>>,
+    symbols: Vec<OnceLock<Ids>>,
 }
 
+// Each symbol's id and label, in symbol order.
+type Ids = Vec<(Arc<str>, Arc<str>)>;
+
 impl<'a> Nodes<'a> {
-    fn build(files: &'a [&'a FileFacts], with_symbols: bool) -> Nodes<'a> {
-        let symbols = files
-            .iter()
-            .map(|file| {
-                let wanted = with_symbols && in_name_graph(file);
-                let symbols = if wanted {
-                    file.facts.symbols.as_slice()
-                } else {
-                    &[]
-                };
-                symbols
-                    .iter()
-                    .map(|symbol| {
-                        let id = facts::StableId::of(file.language, &file.path, symbol).to_string();
-                        (Arc::from(id), Arc::from(symbol.qualname()))
-                    })
-                    .collect()
-            })
-            .collect();
+    pub(crate) fn new(files: &'a [&'a FileFacts], with_symbols: bool) -> Nodes<'a> {
         Nodes {
             files,
-            paths: files
-                .iter()
-                .map(|file| Arc::from(file.path.as_str()))
-                .collect(),
-            symbols,
+            with_symbols,
+            paths: files.iter().map(|_| OnceLock::new()).collect(),
+            symbols: files.iter().map(|_| OnceLock::new()).collect(),
         }
     }
 
-    fn file(&self, position: usize, line: u32) -> Endpoint<'a> {
-        let node = Arc::clone(&self.paths[position]);
+    fn path(&self, position: usize) -> &Arc<str> {
+        self.paths[position].get_or_init(|| Arc::from(self.files[position].path.as_str()))
+    }
+
+    fn symbols(&self, position: usize) -> &Ids {
+        self.symbols[position].get_or_init(|| {
+            let file = self.files[position];
+            let wanted = self.with_symbols && in_name_graph(file);
+            let symbols = if wanted {
+                file.facts.symbols.as_slice()
+            } else {
+                &[]
+            };
+            let ids = symbols.iter().map(|symbol| {
+                let id = facts::StableId::of(file.language, &file.path, symbol).to_string();
+                (Arc::from(id), Arc::from(symbol.qualname()))
+            });
+            ids.collect()
+        })
+    }
+
+    pub(crate) fn file(&self, position: usize, line: u32) -> Endpoint<'a> {
+        let node = Arc::clone(self.path(position));
         Endpoint {
             label: Arc::clone(&node),
             node,
@@ -379,8 +394,8 @@ impl<'a> Nodes<'a> {
         }
     }
 
-    fn symbol(&self, position: usize, symbol: usize) -> Endpoint<'a> {
-        let (id, label) = &self.symbols[position][symbol];
+    pub(crate) fn symbol(&self, position: usize, symbol: usize) -> Endpoint<'a> {
+        let (id, label) = &self.symbols(position)[symbol];
         Endpoint {
             node: Arc::clone(id),
             path: &self.files[position].path,
@@ -390,34 +405,50 @@ impl<'a> Nodes<'a> {
         }
     }
 
-    fn definition(&self, definition: &Definition<'a>) -> Endpoint<'a> {
+    pub(crate) fn definition(&self, definition: &Definition<'_>) -> Endpoint<'a> {
         let (file, symbol) = definition.position();
         self.symbol(file, symbol)
     }
 }
 
-struct Parts<'n, 'a> {
-    nodes: &'n Nodes<'a>,
-    edges: Vec<SymbolEdge<'a>>,
-    definitions: BTreeMap<String, Definition<'a>>,
-    ambiguous: Vec<AmbiguousReference<'a>>,
-    candidates: Vec<(&'a str, Vec<Endpoint<'a>>)>,
-    candidate_names: BTreeMap<&'a str, usize>,
+// One occurrence that a resolution links from: its endpoint, name, relation and place.
+struct Link<'a> {
+    source: Endpoint<'a>,
+    name: &'a str,
+    relation: Relation,
+    met: Met,
+}
+
+// The links of one build or update, before they are sorted into a graph.
+pub(crate) struct Parts<'n, 'a> {
+    pub(crate) nodes: &'n Nodes<'a>,
+    pub(crate) edges: Vec<SymbolEdge<'a>>,
+    pub(crate) definitions: BTreeMap<String, Definition<'a>>,
+    pub(crate) ambiguous: Vec<AmbiguousReference<'a>>,
+    pub(crate) candidates: Vec<(&'a str, Vec<Endpoint<'a>>)>,
+    pub(crate) met: Vec<Met>,
+    pub(crate) candidate_names: BTreeMap<&'a str, usize>,
+    pub(crate) bases: BTreeMap<&'a str, Vec<usize>>,
+    // How many references and bases the links tried to resolve.
+    pub(crate) sites: usize,
 }
 
 impl<'n, 'a> Parts<'n, 'a> {
-    fn new(nodes: &'n Nodes<'a>) -> Parts<'n, 'a> {
+    pub(crate) fn new(nodes: &'n Nodes<'a>) -> Parts<'n, 'a> {
         Parts {
             nodes,
             edges: Vec::new(),
             definitions: BTreeMap::new(),
             ambiguous: Vec::new(),
             candidates: Vec::new(),
+            met: Vec::new(),
             candidate_names: BTreeMap::new(),
+            bases: BTreeMap::new(),
+            sites: 0,
         }
     }
 
-    fn import_edges(&mut self, scopes: &Scopes<'a>, position: usize) {
+    pub(crate) fn import_edges(&mut self, scopes: &Scopes<'a>, position: usize) {
         let nodes = self.nodes;
         let path = nodes.files[position].path.as_str();
         for (module, line, target) in scopes.at(position).resolved_edges(path) {
@@ -436,48 +467,79 @@ impl<'n, 'a> Parts<'n, 'a> {
         }
     }
 
-    // Reference links first, then base-class links, as the candidate order depends on it.
-    fn symbol_links(
-        &mut self,
-        resolver: &Resolver<'_, 'a>,
-        position: usize,
-        deadline: Option<&Deadline>,
-    ) -> Result<(), Stopped> {
+    // Each symbol of the file by its id, and each base it names.
+    pub(crate) fn definitions_of(&mut self, position: usize) {
         let nodes = self.nodes;
-        let file = &nodes.files[position];
-        for (symbol, _) in file.facts.symbols.iter().enumerate() {
+        let file = nodes.files[position];
+        for (symbol, declared) in file.facts.symbols.iter().enumerate() {
             let definition = Definition::new(nodes.files, position, symbol);
             self.definitions
                 .insert(nodes.symbol(position, symbol).node.to_string(), definition);
+            let named = declared.bases.iter().map(|base| facts::base_name(base));
+            for base in named.filter(|base| !base.is_empty()) {
+                based(self.bases.entry(base).or_default(), position);
+            }
         }
+    }
+
+    // Reference links first, then base-class links, as the candidate order depends on it. Only
+    // the occurrences of `names`, when given, are linked.
+    pub(crate) fn symbol_links(
+        &mut self,
+        resolver: &Resolver<'_, 'a>,
+        position: usize,
+        names: Option<&BTreeSet<&str>>,
+        deadline: Option<&Deadline>,
+    ) -> Result<(), Stopped> {
+        let nodes = self.nodes;
+        let file = nodes.files[position];
         let owners = LineOwners::build(&file.facts.symbols);
-        for (reference, resolution) in resolver.resolved_sites(file, None) {
+        for (place, reference, resolution) in resolver.attempted_sites(file, names) {
+            self.sites += 1;
+            let Some(resolution) = resolution else {
+                continue;
+            };
             checkpoint(deadline)?;
             let source = match owners.owner_position(reference.line) {
                 Some(owner) => nodes.symbol(position, owner),
                 None => nodes.file(position, reference.line),
             };
-            self.link(source, &reference.name, &resolution, Relation::References);
+            let link = Link {
+                source,
+                name: &reference.name,
+                relation: Relation::References,
+                met: (position, place),
+            };
+            self.link(link, &resolution);
         }
-        for (symbol, name, resolution) in inheritance(resolver, file) {
+        let after_refs = file.facts.refs.len();
+        for (place, symbol, name) in bases(file) {
+            if names.is_some_and(|names| !names.contains(name)) {
+                continue;
+            }
+            self.sites += 1;
+            let Some(resolution) = resolver.resolve(name, &file.path) else {
+                continue;
+            };
             checkpoint(deadline)?;
-            self.link(
-                nodes.symbol(position, symbol),
+            let link = Link {
+                source: nodes.symbol(position, symbol),
                 name,
-                &resolution,
-                Relation::Inherits,
-            );
+                relation: Relation::Inherits,
+                met: (position, after_refs + place),
+            };
+            self.link(link, &resolution);
         }
         Ok(())
     }
 
-    fn link(
-        &mut self,
-        source: Endpoint<'a>,
-        name: &'a str,
-        resolution: &Resolution<'a>,
-        relation: Relation,
-    ) {
+    fn link(&mut self, link: Link<'a>, resolution: &Resolution<'a>) {
+        let Link {
+            source,
+            name,
+            relation,
+            met,
+        } = link;
         if resolution.tier != Tier::Ambiguous {
             for candidate in &resolution.candidates {
                 let target = self.nodes.definition(candidate);
@@ -501,6 +563,7 @@ impl<'n, 'a> Parts<'n, 'a> {
             self.candidate_names.insert(name, self.candidates.len());
             self.candidates
                 .push((name, distinct_endpoints(self.nodes, resolution)));
+            self.met.push(met);
         }
     }
 
@@ -531,39 +594,43 @@ impl<'n, 'a> Parts<'n, 'a> {
             unresolved_internal_imports: unresolved_internal_imports(scopes),
             ambiguous: self.ambiguous,
             candidates: self.candidates,
+            met: self.met,
             candidate_names: self.candidate_names,
             by_name: BTreeMap::new(),
             candidates_at: BTreeMap::new(),
+            bases: self.bases,
         };
         graph.index_ambiguous();
         graph
     }
 }
 
-// Each (symbol, base name, resolution) of the file's declared base classes, in declaration order.
-fn inheritance<'a>(
-    resolver: &Resolver<'_, 'a>,
-    file: &'a FileFacts,
-) -> Vec<(usize, &'a str, Resolution<'a>)> {
-    let bases = file
-        .facts
-        .symbols
-        .iter()
+// A file's bases arrive together, so a new position is a new file.
+fn based(files: &mut Vec<usize>, position: usize) {
+    if files.last() != Some(&position) {
+        files.push(position);
+    }
+}
+
+// Each base name of the file's symbols, with its place among them and its symbol, in declaration
+// order; an empty name names no class.
+fn bases(file: &FileFacts) -> impl Iterator<Item = (usize, usize, &str)> {
+    let declared = file.facts.symbols.iter().enumerate();
+    let named = declared.flat_map(|(symbol, declared)| {
+        let each = declared.bases.iter();
+        each.map(move |base| (symbol, facts::base_name(base)))
+    });
+    let placed = named
         .enumerate()
-        .flat_map(|(symbol, declared)| {
-            declared
-                .bases
-                .iter()
-                .map(move |base| (symbol, facts::base_name(base)))
-        });
-    bases
-        .filter(|(_, name)| !name.is_empty())
-        .filter_map(|(symbol, name)| Some((symbol, name, resolver.resolve(name, &file.path)?)))
-        .collect()
+        .map(|(place, (symbol, name))| (place, symbol, name));
+    placed.filter(|(_, _, name)| !name.is_empty())
 }
 
 // The candidates' endpoints, each once, in candidate order.
-fn distinct_endpoints<'a>(nodes: &Nodes<'a>, resolution: &Resolution<'a>) -> Vec<Endpoint<'a>> {
+pub(crate) fn distinct_endpoints<'a>(
+    nodes: &Nodes<'a>,
+    resolution: &Resolution<'_>,
+) -> Vec<Endpoint<'a>> {
     let mut endpoints: Vec<Endpoint<'a>> = Vec::new();
     for endpoint in resolution
         .candidates
@@ -579,3 +646,4 @@ fn distinct_endpoints<'a>(nodes: &Nodes<'a>, resolution: &Resolution<'a>) -> Vec
 
 #[cfg(test)]
 mod canonical;
+mod update;

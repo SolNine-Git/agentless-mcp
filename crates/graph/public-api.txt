@@ -3,6 +3,7 @@ pub enum graph::Rebuild
 pub graph::Rebuild::Manifest
 pub graph::Rebuild::Paths
 pub graph::Rebuild::RustModules
+pub graph::Rebuild::Unbuilt
 impl core::clone::Clone for graph::Rebuild
 pub fn graph::Rebuild::clone(&self) -> Self
 impl core::cmp::Eq for graph::Rebuild
@@ -397,6 +398,7 @@ impl<'a> core::marker::UnsafeUnpin for graph::ImportTargets<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::ImportTargets<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::ImportTargets<'a>
 pub struct graph::KeptParts<'p, 's>
+pub graph::KeptParts::graph: core::option::Option<&'p mut graph::SymbolGraph<'s>>
 pub graph::KeptParts::index: core::option::Option<&'p mut graph::NameIndex<'s>>
 pub graph::KeptParts::scopes: core::option::Option<&'p mut graph::Scopes<'s>>
 impl<'p, 's> core::marker::Freeze for graph::KeptParts<'p, 's>

@@ -33,6 +33,8 @@ impl SymbolGraph<'_> {
             ),
             ("ambiguous", self.ambiguous.iter().map(reference).collect()),
             ("candidates", Value::from(candidates)),
+            ("met", json!(self.met)),
+            ("bases", json!(self.bases)),
             ("candidate_names", json!(self.candidate_names)),
             ("by_name", json!(self.by_name)),
             ("candidates_at", Value::from(candidates_at)),

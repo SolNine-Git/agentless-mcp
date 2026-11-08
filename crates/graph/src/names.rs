@@ -181,6 +181,12 @@ impl<'a> NameIndex<'a> {
         (!entry.definitions.is_empty()).then_some(&entry.candidates)
     }
 
+    // Each site of `name` with the scan position of its file, in scan order.
+    pub(crate) fn sites_at(&self, name: &str) -> impl Iterator<Item = (usize, &Site<'a>)> + '_ {
+        let files = self.listed(name, |entry| &entry.site_files);
+        files.iter().copied().zip(self.sites(name))
+    }
+
     fn listed<'s, T>(&'s self, name: &str, pick: impl Fn(&'s NameEntry<'a>) -> &'s [T]) -> &'s [T] {
         self.position(name)
             .map_or(&[], |found| pick(&self.entries[found]))
