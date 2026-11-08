@@ -135,7 +135,7 @@ fn run(case: &Case) {
             imports: Some(&mut imports),
             cycles: Some(&mut cycles),
         };
-        let updated = update(parts, &pair[0], &pair[1]);
+        let updated = update(parts, &pair[0], &pair[1], 100);
         let last = step + 1 == case.steps.len();
         match (case.rebuilds, updated) {
             (Some(rebuild), Err(found)) if last => {
@@ -472,7 +472,10 @@ const CASES: &[Case] = &[
             ("core.py", "def target():\n    return 1\n"),
             ("mid.py", "from core import target as t\n"),
             ("api.py", "from mid import t as run\n"),
-            ("user.py", "from api import run\n\n\ndef use():\n    return run()\n"),
+            (
+                "user.py",
+                "from api import run\n\n\ndef use():\n    return run()\n",
+            ),
         ],
         steps: &[
             &[("core.py", Replace("def target()", "def aim()"))],

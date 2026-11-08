@@ -42,12 +42,14 @@ pub enum Rebuild {
     Manifest,
     /// The `use` declarations or the `mod` items of a Rust file changed.
     RustModules,
+    /// The update would resolve more than its share of the scan's sites again.
+    Affected,
     /// A part was kept without a part that it is built from.
     Unbuilt,
 }
 
-/// Carry `parts` from the scan `before` to the scan `after`. A file whose facts did not change
-/// keeps its facts' address in `after`, and every other file counts as changed.
+/// Carry `parts` from the scan `before` to the scan `after`, resolving at most `percent` of the
+/// scan's sites again. A file whose facts did not change keeps its facts' address in `after`.
 ///
 /// # Errors
 ///
@@ -57,6 +59,7 @@ pub fn update<'s>(
     parts: KeptParts<'_, 's>,
     before: &'s [&'s FileFacts],
     after: &'s [&'s FileFacts],
+    percent: usize,
 ) -> Result<Resolved, Rebuild> {
     let changed = changed(before, after)?;
     if !parts.built_from_their_parts() {
@@ -93,6 +96,9 @@ pub fn update<'s>(
         return Ok(Resolved::default());
     }
     let affected = Affected::of(before, after, &changed, Some((scopes, &rebound)));
+    if affected.costs_more_than(percent, index, after) {
+        return Err(Rebuild::Affected);
+    }
     let resolver = Resolver::new(index, scopes);
     let mut work = Resolved {
         files: affected.whole.len(),

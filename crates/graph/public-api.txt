@@ -1,5 +1,6 @@
 pub mod graph
 pub enum graph::Rebuild
+pub graph::Rebuild::Affected
 pub graph::Rebuild::Manifest
 pub graph::Rebuild::Paths
 pub graph::Rebuild::RustModules
@@ -732,4 +733,4 @@ pub fn graph::rank_order<'a>(&graph::PageRank<'a>, impl core::ops::function::Fn(
 pub fn graph::references_to<'a>(&graph::NameIndex<'a>, &graph::Definition<'a>) -> alloc::vec::Vec<graph::Site<'a>>
 pub fn graph::resolve_definitions<'a>(&graph::NameIndex<'a>, &str) -> graph::Lookup<'a>
 pub fn graph::shortest_path<'a>(&graph::SymbolGraph<'a>, &str, &str, graph::PathPolicy, graph::PathBounds<'_>) -> core::result::Result<graph::PathResult<'a>, kernel::deadline::Stopped>
-pub fn graph::update<'s>(graph::KeptParts<'_, 's>, &'s [&'s graph::FileFacts], &'s [&'s graph::FileFacts]) -> core::result::Result<graph::Resolved, graph::Rebuild>
+pub fn graph::update<'s>(graph::KeptParts<'_, 's>, &'s [&'s graph::FileFacts], &'s [&'s graph::FileFacts], usize) -> core::result::Result<graph::Resolved, graph::Rebuild>

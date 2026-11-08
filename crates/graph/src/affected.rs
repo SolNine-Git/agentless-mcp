@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use facts::{StableId, Symbol, SymbolKind};
 
+use crate::names::NameIndex;
 use crate::scan::{FileFacts, in_name_graph};
 use crate::scopes::{ImportScope, Scopes};
 
@@ -56,6 +57,25 @@ impl<'s> Affected<'s> {
         }
         affected.reach(scopes, after, hops);
         affected
+    }
+
+    // Whether the update would resolve more than `percent` of the scan's sites again: every site of
+    // the whole files, and each other site of the affected names.
+    pub(crate) fn costs_more_than(
+        &self,
+        percent: usize,
+        index: &NameIndex<'s>,
+        files: &[&FileFacts],
+    ) -> bool {
+        let whole: usize = self
+            .whole
+            .iter()
+            .map(|&at| files[at].facts.refs.len())
+            .sum();
+        let named = self.names.iter().flat_map(|name| index.sites_at(name));
+        let outside = named.filter(|(at, _)| !self.whole.contains(at)).count();
+        let total: usize = files.iter().map(|file| file.facts.refs.len()).sum();
+        (whole + outside) * 100 > percent * total
     }
 
     // Follows each changed step back to every member or whole-module binding that can reach it. A
