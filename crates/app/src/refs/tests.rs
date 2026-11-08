@@ -377,7 +377,8 @@ fn the_shared_caller_ranking_stops_under_a_spent_deadline() {
     let scanned = Scanned::new(&TESTED);
     let loaded = RepoFacts::load(&scanned.services, &scanned.reading());
     let facts = loaded.value.unwrap_or_else(|error| panic!("{error}"));
-    let index = NameIndex::build(&facts.files);
+    let listed: Vec<&FileFacts> = facts.files.iter().collect();
+    let index = NameIndex::build(&listed);
     let definitions = definitions_for(&index, "helper");
     let sites: Vec<Site<'_>> = (definitions.iter())
         .flat_map(|definition| references_to(&index, definition))

@@ -98,7 +98,7 @@ impl<'a> ImportScope<'a> {
 /// The import scope of every scanned file.
 #[derive(Clone, Debug)]
 pub struct Scopes<'a> {
-    files: &'a [FileFacts],
+    files: &'a [&'a FileFacts],
     per_file: Vec<ImportScope<'a>>,
     by_path: Vec<(&'a str, usize)>,
 }
@@ -106,7 +106,7 @@ pub struct Scopes<'a> {
 impl<'a> Scopes<'a> {
     /// Resolve every file's import statements against the scanned paths.
     #[must_use]
-    pub fn build(files: &'a [FileFacts]) -> Scopes<'a> {
+    pub fn build(files: &'a [&'a FileFacts]) -> Scopes<'a> {
         let paths = PathIndex::build(files.iter().map(|file| file.path.as_str()));
         let entries = EntryNames::build(files, &paths);
         let repository = Repository {
@@ -114,8 +114,7 @@ impl<'a> Scopes<'a> {
             entries: &entries,
         };
         let mut rust = RustTree::build(files, &paths);
-        let mut per_file: Vec<ImportScope<'a>> = files
-            .iter()
+        let mut per_file: Vec<ImportScope<'a>> = (files.iter().copied())
             .map(|file| bind_file(file, &repository, &rust))
             .collect();
         if rust.holds_manifest() {
@@ -139,7 +138,7 @@ impl<'a> Scopes<'a> {
 
     /// Return the scanned files the scopes were built from.
     #[must_use]
-    pub fn files(&self) -> &'a [FileFacts] {
+    pub fn files(&self) -> &'a [&'a FileFacts] {
         self.files
     }
 
@@ -230,11 +229,11 @@ fn bind_rust_file<'a>(file: &'a FileFacts, rust: &RustTree<'_, 'a>) -> ImportSco
 }
 
 fn rebind_rust<'a>(
-    files: &'a [FileFacts],
+    files: &[&'a FileFacts],
     per_file: &mut [ImportScope<'a>],
     rust: &RustTree<'_, 'a>,
 ) {
-    let rebound = files.iter().zip(per_file);
+    let rebound = files.iter().copied().zip(per_file);
     for (file, scope) in rebound.filter(|(file, _)| file.language == Language::Rust) {
         *scope = bind_rust_file(file, rust);
     }
@@ -242,12 +241,11 @@ fn rebind_rust<'a>(
 
 // The module file that each Rust file binds under one local name, for the next binding pass.
 fn exports_of<'a>(
-    files: &'a [FileFacts],
+    files: &[&'a FileFacts],
     per_file: &[ImportScope<'a>],
 ) -> BTreeMap<(&'a str, &'a str), &'a str> {
     let mut exports = BTreeMap::new();
-    let rust = files
-        .iter()
+    let rust = (files.iter().copied())
         .zip(per_file)
         .filter(|(file, _)| file.language == Language::Rust);
     for (file, scope) in rust {

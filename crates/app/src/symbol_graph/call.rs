@@ -120,8 +120,7 @@ pub(crate) enum Keeping<'a> {
 #[derive(Clone, Copy)]
 pub(crate) struct CallGraph<'a> {
     files: &'a Arc<Vec<Arc<FileFacts>>>,
-    // The facts side by side, which every part borrows, copied at the first build of a part.
-    built_over: &'a OnceLock<Vec<FileFacts>>,
+    listed: &'a [&'a FileFacts],
     built: &'a Built<'a>,
     deadline: Option<&'a Deadline>,
     keeping: Keeping<'a>,
@@ -148,11 +147,11 @@ pub(crate) fn with_call_graph<T>(
     keeping: Keeping<'_>,
     answer: impl FnOnce(&CallGraph<'_>) -> T,
 ) -> T {
-    let built_over = OnceLock::new();
+    let listed: Vec<&FileFacts> = files.iter().map(|file| &**file).collect();
     let built = Built::default();
     answer(&CallGraph {
         files,
-        built_over: &built_over,
+        listed: &listed,
         built: &built,
         deadline,
         keeping,
@@ -181,14 +180,8 @@ impl<'a> CallGraph<'a> {
         noted.map(|()| awaited(&replied, self.deadline).map_err(Error::from)?)
     }
 
-    pub(crate) fn files(&self) -> &'a [Arc<FileFacts>] {
-        self.files
-    }
-
-    fn built_over(&self) -> &'a [FileFacts] {
-        let files = self.files;
-        self.built_over
-            .get_or_init(|| files.iter().map(|file| FileFacts::clone(file)).collect())
+    pub(crate) fn files(&self) -> &'a [&'a FileFacts] {
+        self.listed
     }
 
     // The call's deadline, or none on a graph thread, where the waiting call checks it.
@@ -199,14 +192,14 @@ impl<'a> CallGraph<'a> {
     pub(crate) fn index(&self) -> &'a NameIndex<'a> {
         self.built.index.get_or_init(|| {
             self.counted(|counts| &counts.indexes);
-            NameIndex::build(self.built_over())
+            NameIndex::build(self.listed)
         })
     }
 
     pub(crate) fn scopes(&self) -> &'a Scopes<'a> {
         self.built.scopes.get_or_init(|| {
             self.counted(|counts| &counts.scopes);
-            Scopes::build(self.built_over())
+            Scopes::build(self.listed)
         })
     }
 

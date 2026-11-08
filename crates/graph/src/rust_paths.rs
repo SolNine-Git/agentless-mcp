@@ -30,10 +30,12 @@ enum Module<'a> {
 }
 
 impl<'p, 'a> RustTree<'p, 'a> {
-    pub(crate) fn build(files: &'a [FileFacts], paths: &'p PathIndex<'a>) -> RustTree<'p, 'a> {
+    pub(crate) fn build(files: &[&'a FileFacts], paths: &'p PathIndex<'a>) -> RustTree<'p, 'a> {
         let mut crates = BTreeMap::new();
         let mut packages = Vec::new();
-        let manifests: Vec<&FileFacts> = files.iter().filter(|file| is_manifest(file)).collect();
+        let manifests: Vec<&'a FileFacts> = (files.iter().copied())
+            .filter(|file| is_manifest(file))
+            .collect();
         for file in &manifests {
             let Some(manifest) = &file.facts.manifest else {
                 continue;

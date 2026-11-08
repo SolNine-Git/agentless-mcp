@@ -120,8 +120,9 @@ fn with_repo(
     scan: &RepoFacts,
     candidates: &[LintCandidateInput],
 ) -> Result<LintReport, Error> {
-    let names = NameIndex::build(&scan.files);
-    let scopes = Scopes::build(&scan.files);
+    let files: Vec<&FileFacts> = scan.files.iter().collect();
+    let names = NameIndex::build(&files);
+    let scopes = Scopes::build(&files);
     let resolver = Resolver::new(&names, &scopes);
     let texts = scanned_texts(judge.root, &scan.files);
     let facts = PatchBaseline::new(&resolver, &texts, read_declared_dependencies(judge.root));

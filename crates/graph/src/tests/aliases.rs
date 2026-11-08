@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 
 use super::rust::scanned;
+use crate::FileFacts;
 use crate::{Aliases, NameIndex, Resolver, Scopes};
 
 const FILES: [(&str, &str); 5] = [
@@ -20,6 +21,7 @@ const FILES: [(&str, &str); 5] = [
 #[test]
 fn each_binding_that_reaches_a_target_is_listed_once_in_path_order() {
     let files = scanned(&FILES);
+    let files: Vec<&FileFacts> = files.iter().collect();
     let (index, scopes) = (NameIndex::build(&files), Scopes::build(&files));
     let resolver = Resolver::new(&index, &scopes);
     let aliases = Aliases::build(&resolver);

@@ -24,7 +24,7 @@ impl NameIndex<'_> {
                 let definitions: Vec<Value> = (entry.definitions.iter())
                     .map(|definition| {
                         let (file, symbol) = definition.position();
-                        assert!(ptr::eq(definition.file(), &raw const self.files[file]));
+                        assert!(ptr::eq(definition.file(), self.files[file]));
                         assert!(ptr::eq(
                             definition.symbol(),
                             &raw const self.files[file].facts.symbols[symbol]
@@ -34,7 +34,7 @@ impl NameIndex<'_> {
                     .collect();
                 let sites: Vec<Value> = (entry.sites.iter())
                     .map(|site| {
-                        assert!(ptr::eq(site.file, &raw const self.files[at[site.path()]]));
+                        assert!(ptr::eq(site.file, self.files[at[site.path()]]));
                         let reference = site.reference;
                         let role = reference.role.as_str();
                         json!([site.path(), reference.line, role, reference.qualifier])

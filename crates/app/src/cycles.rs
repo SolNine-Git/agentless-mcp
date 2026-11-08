@@ -1,6 +1,6 @@
 //! The module-level import cycles of a repository, in a fixed order, cut at the caller's limit.
 
-use graph::{Cycle, Scopes, SymbolGraph, import_cycles};
+use graph::{Cycle, FileFacts, Scopes, SymbolGraph, import_cycles};
 use kernel::Bounded;
 
 use crate::bounds::within;
@@ -74,7 +74,8 @@ pub(crate) fn cycles_in(
 }
 
 fn report(facts: &RepoFacts, limit: usize) -> CycleReport {
-    let scopes = Scopes::build(&facts.files);
+    let files: Vec<&FileFacts> = facts.files.iter().collect();
+    let scopes = Scopes::build(&files);
     let imports = SymbolGraph::imports(&scopes);
     CycleReport {
         cycles: Bounded::cut(rows(&import_cycles(&imports)), limit),

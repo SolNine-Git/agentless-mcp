@@ -1,7 +1,7 @@
 //! The communities of a repository's files: the partition of the weighted file graph, largest
 //! community first, cut at the caller's limits.
 
-use graph::{NameIndex, Scopes, detect_communities};
+use graph::{FileFacts, NameIndex, Scopes, detect_communities};
 use kernel::Bounded;
 
 use crate::bounds::{at_least, within};
@@ -80,8 +80,9 @@ fn report(
     members: usize,
 ) -> Result<CommunityReport, Error> {
     let (config, deadline) = (&reading.repo.config, reading.deadline);
-    let index = NameIndex::build(&facts.files);
-    let graph = file_graph(&index, &Scopes::build(&facts.files), config, deadline)?;
+    let files: Vec<&FileFacts> = facts.files.iter().collect();
+    let index = NameIndex::build(&files);
+    let graph = file_graph(&index, &Scopes::build(&files), config, deadline)?;
     let partition = detect_communities(&graph, resolution, deadline)?;
     let rows = (partition.communities.into_iter())
         .map(|community| CommunityRow {

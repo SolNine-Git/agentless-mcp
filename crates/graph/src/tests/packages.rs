@@ -2,6 +2,7 @@
 //! outside package P, or for a member that is not a module.
 
 use super::rust::scanned;
+use crate::FileFacts;
 use crate::{Scopes, SymbolGraph, import_chain};
 
 const PACKAGE: [(&str, &str); 6] = [
@@ -24,6 +25,7 @@ fn rows_of(written: &[(&str, &str)], path: &str) -> Vec<(usize, String, String)>
     files.retain(|(held, _)| written.iter().all(|(replaced, _)| replaced != held));
     files.extend_from_slice(written);
     let files = scanned(&files);
+    let files: Vec<&FileFacts> = files.iter().collect();
     let scopes = Scopes::build(&files);
     let scope = scopes.get(path).expect("a scanned file");
     let found = scope.resolved_statements(path);
@@ -223,6 +225,7 @@ fn a_sibling_import_inside_the_package_is_no_chain_through_the_entry() {
             "def show():\n    from .rcmod import set_style\n",
         ),
     ]);
+    let files: Vec<&FileFacts> = files.iter().collect();
     let scopes = Scopes::build(&files);
     let graph = SymbolGraph::imports(&scopes);
     let chain = import_chain(&graph, "pkg/rcmod.py", "pkg/widgets.py", |_, _| true);

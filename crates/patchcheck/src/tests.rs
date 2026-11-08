@@ -278,7 +278,8 @@ fn scanned(path: &str, text: &str) -> FileFacts {
 
 // The report of one edit to app.py when `parse` stands in for the parser.
 fn report_with(parse: &Parse) -> PatchLint {
-    let files = vec![scanned("app.py", APP)];
+    let files = [scanned("app.py", APP)];
+    let files: Vec<&FileFacts> = files.iter().collect();
     let index = NameIndex::build(&files);
     let scopes = Scopes::build(&files);
     let resolver = Resolver::new(&index, &scopes);
@@ -360,6 +361,7 @@ fn a_patch_that_closes_a_rust_module_cycle_through_crate_paths_is_a_new_cycle() 
         .iter()
         .map(|(path, text)| scanned(path, text))
         .collect();
+    let files: Vec<&FileFacts> = files.iter().collect();
     let index = NameIndex::build(&files);
     let scopes = Scopes::build(&files);
     let resolver = Resolver::new(&index, &scopes);
@@ -400,6 +402,7 @@ fn a_patch_beside_a_package_entry_that_defines_a_member_gives_no_new_cycle() {
         .iter()
         .map(|(path, text)| scanned(path, text))
         .collect();
+    let files: Vec<&FileFacts> = files.iter().collect();
     let index = NameIndex::build(&files);
     let scopes = Scopes::build(&files);
     let resolver = Resolver::new(&index, &scopes);

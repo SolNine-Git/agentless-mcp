@@ -10,9 +10,10 @@ use crate::scan::FileFacts;
 use crate::scopes::{ImportScope, Scopes};
 use crate::symbols::SymbolGraph;
 
-fn with_resolver(check: impl Fn(&Corpus, &[FileFacts], &Resolver<'_>)) {
+fn with_resolver(check: impl Fn(&Corpus, &[&FileFacts], &Resolver<'_>)) {
     for corpus in Corpus::all() {
         let files = corpus.files();
+        let files: Vec<&FileFacts> = files.iter().collect();
         let index = NameIndex::build(&files);
         let scopes = Scopes::build(&files);
         check(&corpus, &files, &Resolver::new(&index, &scopes));

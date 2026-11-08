@@ -404,11 +404,11 @@ impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::Lookup<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::Lookup<'a>
 pub struct graph::NameIndex<'a>
 impl<'a> graph::NameIndex<'a>
-pub fn graph::NameIndex<'a>::build(&'a [graph::FileFacts]) -> graph::NameIndex<'a>
+pub fn graph::NameIndex<'a>::build(&'a [&'a graph::FileFacts]) -> graph::NameIndex<'a>
 pub fn graph::NameIndex<'a>::caller_spread(&self, &str) -> u32
 pub fn graph::NameIndex<'a>::defining_paths(&self, &str) -> &[&'a str]
 pub fn graph::NameIndex<'a>::definitions(&self, &str) -> &[graph::Definition<'a>]
-pub fn graph::NameIndex<'a>::files(&self) -> &'a [graph::FileFacts]
+pub fn graph::NameIndex<'a>::files(&self) -> &'a [&'a graph::FileFacts]
 pub fn graph::NameIndex<'a>::sites(&self, &str) -> &[graph::Site<'a>]
 pub fn graph::NameIndex<'a>::spelling_spread(&self, &str) -> u32
 impl<'a> core::marker::Freeze for graph::NameIndex<'a>
@@ -545,8 +545,8 @@ impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::Resolver<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::Resolver<'a>
 pub struct graph::Scopes<'a>
 impl<'a> graph::Scopes<'a>
-pub fn graph::Scopes<'a>::build(&'a [graph::FileFacts]) -> graph::Scopes<'a>
-pub fn graph::Scopes<'a>::files(&self) -> &'a [graph::FileFacts]
+pub fn graph::Scopes<'a>::build(&'a [&'a graph::FileFacts]) -> graph::Scopes<'a>
+pub fn graph::Scopes<'a>::files(&self) -> &'a [&'a graph::FileFacts]
 pub fn graph::Scopes<'a>::get(&self, &str) -> core::option::Option<&graph::ImportScope<'a>>
 pub fn graph::Scopes<'a>::import_pairs(&self) -> alloc::collections::btree::set::BTreeSet<(&'a str, &'a str)>
 pub fn graph::Scopes<'a>::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&'a str, &graph::ImportScope<'a>)> + '_

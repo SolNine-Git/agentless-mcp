@@ -2,6 +2,7 @@
 //! spell the name there.
 
 use super::rust::scanned;
+use crate::FileFacts;
 use crate::{NameIndex, Resolver, Scopes, SymbolGraph, Tier};
 
 const USERS: usize = 5;
@@ -39,6 +40,7 @@ fn each_spelling_file_walks_the_chain_once_for_all_its_sites() {
         .map(|(path, text)| (path.as_str(), text.as_str()))
         .collect();
     let files = scanned(&pairs);
+    let files: Vec<&FileFacts> = files.iter().collect();
     let (index, scopes) = (NameIndex::build(&files), Scopes::build(&files));
     let resolver = Resolver::new(&index, &scopes);
     let graph = SymbolGraph::build(&resolver, None).expect("no deadline");

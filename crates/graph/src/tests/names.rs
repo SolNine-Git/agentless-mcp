@@ -22,6 +22,7 @@ struct NameCase {
 fn the_name_index_matches_the_reference() {
     for corpus in Corpus::all() {
         let files = corpus.files();
+        let files: Vec<&FileFacts> = files.iter().collect();
         let index = NameIndex::build(&files);
         let Some(cases) = corpus.section::<NameCase>("index") else {
             continue;
@@ -77,6 +78,7 @@ fn check_name(index: &NameIndex<'_>, case: &NameCase, corpus: &str) {
 fn lookups_match_the_reference() {
     for corpus in Corpus::all() {
         let files = corpus.files();
+        let files: Vec<&FileFacts> = files.iter().collect();
         let index = NameIndex::build(&files);
         for (target, expected, scoped) in corpus
             .section::<(String, Value, bool)>("lookups")
@@ -98,6 +100,7 @@ fn lookups_match_the_reference() {
 fn references_match_the_reference() {
     for corpus in Corpus::all() {
         let files = corpus.files();
+        let files: Vec<&FileFacts> = files.iter().collect();
         let index = NameIndex::build(&files);
         let Some(expected) = corpus.section::<Value>("references") else {
             continue;

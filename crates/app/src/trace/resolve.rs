@@ -4,7 +4,6 @@
 
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::sync::Arc;
 
 use facts::{line_count, split_ordinal};
 use git::RepoFile;
@@ -132,7 +131,7 @@ enum Located {
 struct Resolver<'r, 'a> {
     scope: &'r Scope<'r, 'a>,
     walked: &'r Walked<'r>,
-    files: &'a [Arc<FileFacts>],
+    files: &'a [&'a FileFacts],
 }
 
 impl Resolver<'_, '_> {
@@ -261,8 +260,7 @@ impl Resolver<'_, '_> {
     }
 
     fn scanned(&self, path: &str) -> Option<&FileFacts> {
-        let found = self.files.iter().find(|file| file.path == path);
-        found.map(|file| &**file)
+        self.files.iter().copied().find(|file| file.path == path)
     }
 }
 

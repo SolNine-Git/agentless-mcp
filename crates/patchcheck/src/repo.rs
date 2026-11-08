@@ -32,7 +32,7 @@ impl<'a> PatchBaseline<'a> {
             .index()
             .files()
             .iter()
-            .map(|file| (file.path.as_str(), file))
+            .map(|file| (file.path.as_str(), *file))
             .collect();
         PatchBaseline {
             resolver,
@@ -65,7 +65,7 @@ impl<'a> PatchBaseline<'a> {
     }
 
     // Every scanned file as the resolver holds them, for a graph built over the same slice.
-    pub(crate) fn scan(&self) -> &'a [FileFacts] {
+    pub(crate) fn scan(&self) -> &'a [&'a FileFacts] {
         self.resolver.index().files()
     }
 

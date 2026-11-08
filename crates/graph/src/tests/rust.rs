@@ -27,6 +27,8 @@ pub(crate) fn scanned(files: &[(&str, &str)]) -> Vec<FileFacts> {
 
 // The tier and the candidate paths of `name` as the file at `path` spells it.
 fn resolved(files: &[FileFacts], name: &str, path: &str) -> Option<(Tier, Vec<String>)> {
+    let files: Vec<&FileFacts> = files.iter().collect();
+    let files = files.as_slice();
     let (index, scopes) = (NameIndex::build(files), Scopes::build(files));
     let found = Resolver::new(&index, &scopes).resolve(name, path)?;
     let paths = found.candidates.iter().map(|entry| entry.path().to_owned());
@@ -35,6 +37,8 @@ fn resolved(files: &[FileFacts], name: &str, path: &str) -> Option<(Tier, Vec<St
 
 // The tier and candidate paths of each occurrence of `name` in the file at `path` that binds.
 fn sites(files: &[FileFacts], name: &str, path: &str) -> Vec<(Tier, Vec<String>)> {
+    let files: Vec<&FileFacts> = files.iter().collect();
+    let files = files.as_slice();
     let (index, scopes) = (NameIndex::build(files), Scopes::build(files));
     let resolver = Resolver::new(&index, &scopes);
     let file = files
@@ -59,7 +63,8 @@ fn imported(paths: &[&str]) -> (Tier, Vec<String>) {
 }
 
 fn import_pairs(files: &[FileFacts]) -> Vec<(String, String)> {
-    let scopes = Scopes::build(files);
+    let files: Vec<&FileFacts> = files.iter().collect();
+    let scopes = Scopes::build(&files);
     let pairs = scopes.import_pairs().into_iter();
     pairs
         .map(|(from, to)| (from.to_owned(), to.to_owned()))
@@ -143,7 +148,8 @@ fn each_target_file_finds_its_crate_root() {
         ("member/src/x.rs", ""),
     ]);
     let paths = PathIndex::build(files.iter().map(|file| file.path.as_str()));
-    let tree = RustTree::build(&files, &paths);
+    let listed: Vec<&FileFacts> = files.iter().collect();
+    let tree = RustTree::build(&listed, &paths);
     let roots = [
         ("src/lib.rs", Some("src/lib.rs")),
         ("src/a/b.rs", Some("src/lib.rs")),
@@ -187,6 +193,7 @@ fn crate_self_and_super_walk_the_module_files() {
         resolved(&files, "top", "src/c/d.rs"),
         Some(imported(&["src/lib.rs"]))
     );
+    let files: Vec<&FileFacts> = files.iter().collect();
     let scopes = Scopes::build(&files);
     let scope = scopes.get("src/c/d.rs").expect("a scope");
     let rows: Vec<(&str, Option<&str>)> = (scope.statements.iter())
@@ -206,6 +213,7 @@ fn a_use_that_names_no_repository_module_keeps_one_unresolved_row() {
         ("Cargo.toml", "[package]\nname = \"p\"\n"),
         ("src/lib.rs", "use std::{fmt, io::Read};\n"),
     ]);
+    let files: Vec<&FileFacts> = files.iter().collect();
     let scopes = Scopes::build(&files);
     let scope = scopes.get("src/lib.rs").expect("a scope");
     let rows: Vec<(&str, Option<&str>)> = (scope.statements.iter())
@@ -226,6 +234,7 @@ fn super_inside_an_inline_module_stays_in_the_file_and_a_further_super_leaves_it
     ]);
     let pairs = import_pairs(&files);
     assert_eq!(pairs, [("src/a.rs".to_owned(), "src/lib.rs".to_owned())]);
+    let files: Vec<&FileFacts> = files.iter().collect();
     let scopes = Scopes::build(&files);
     let scope = scopes.get("src/a.rs").expect("a scope");
     let rows: Vec<Option<&str>> = scope.statements.iter().map(|row| row.resolved).collect();

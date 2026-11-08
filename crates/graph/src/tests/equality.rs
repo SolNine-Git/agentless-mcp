@@ -17,7 +17,7 @@ pub(crate) struct Canonical {
 
 // The parts that one scan's graph holds, borrowed from wherever they are kept.
 pub(crate) struct Parts<'p, 'a> {
-    pub(crate) files: &'a [FileFacts],
+    pub(crate) files: &'a [&'a FileFacts],
     pub(crate) index: &'p NameIndex<'a>,
     pub(crate) scopes: &'p Scopes<'a>,
     pub(crate) resolver: &'p Resolver<'p>,
@@ -53,6 +53,8 @@ impl Canonical {
 
     // A full build of every part of `files`.
     pub(crate) fn built(files: &[FileFacts]) -> Canonical {
+        let files: Vec<&FileFacts> = files.iter().collect();
+        let files = files.as_slice();
         let (index, scopes) = (NameIndex::build(files), Scopes::build(files));
         let resolver = Resolver::new(&index, &scopes);
         let graph = SymbolGraph::build(&resolver, None).expect("no deadline stops it");

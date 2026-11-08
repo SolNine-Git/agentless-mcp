@@ -9,7 +9,7 @@ use super::{ImportScope, Qualified, Scopes};
 impl Scopes<'_> {
     // Each file's scope in scan order, and the path order. The scopes must read the facts of the
     // scan they were built from.
-    pub(crate) fn canonical(&self, files: &[crate::FileFacts]) -> Value {
+    pub(crate) fn canonical(&self, files: &[&crate::FileFacts]) -> Value {
         assert!(ptr::eq(self.files, files));
         let scopes: Vec<Value> = (self.files.iter().zip(&self.per_file))
             .map(|(file, scope)| json!([file.path, scope.canonical()]))

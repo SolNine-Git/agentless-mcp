@@ -182,8 +182,9 @@ fn the_test_companion_pass_stops_under_a_spent_deadline() {
     let reading = scanned.reading();
     let loaded = RepoFacts::load(&scanned.services, &reading);
     let facts = loaded.value.unwrap_or_else(|error| panic!("{error}"));
-    let index = NameIndex::build(&facts.files);
-    let scopes = Scopes::build(&facts.files);
+    let listed: Vec<&FileFacts> = facts.files.iter().collect();
+    let index = NameIndex::build(&listed);
+    let scopes = Scopes::build(&listed);
     let graph = file_graph(&index, &scopes, &reading.repo.config, None);
     let graph = graph.expect("no deadline stops it");
     let by_path: BTreeMap<&str, &FileFacts> = (facts.files.iter())

@@ -8,7 +8,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
 use facts::{Declared, Role};
-use graph::{Aliases, Definition, NameIndex, Resolver, Scopes, Site, TargetForm, references_to};
+use graph::{
+    Aliases, Definition, FileFacts, NameIndex, Resolver, Scopes, Site, TargetForm, references_to,
+};
 use kernel::{Bounded, Deadline};
 
 use crate::bounds::within;
@@ -184,8 +186,9 @@ fn scanned(
     request: &RefsRequest,
     limit: usize,
 ) -> Result<RefsResult, Error> {
-    let index = NameIndex::build(&facts.files);
-    let scopes = Scopes::build(&facts.files);
+    let files: Vec<&FileFacts> = facts.files.iter().collect();
+    let index = NameIndex::build(&files);
+    let scopes = Scopes::build(&files);
     let resolver = Resolver::new(&index, &scopes);
     let fan = FanIn {
         resolver: &resolver,

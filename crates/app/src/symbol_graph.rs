@@ -21,8 +21,9 @@ pub(crate) fn with_resolved<T>(
     deadline: Option<&Deadline>,
     answer: impl FnOnce(&NameIndex<'_>, &SymbolGraph<'_>) -> Result<T, Error>,
 ) -> Result<T, Error> {
-    let index = NameIndex::build(files);
-    let scopes = Scopes::build(files);
+    let files: Vec<&FileFacts> = files.iter().collect();
+    let index = NameIndex::build(&files);
+    let scopes = Scopes::build(&files);
     let resolver = Resolver::new(&index, &scopes);
     let graph = SymbolGraph::build(&resolver, deadline)?;
     answer(&index, &graph)

@@ -333,13 +333,13 @@ impl<'a> SymbolGraph<'a> {
 
 // Each file's node and each symbol's id and label, built once and shared by every endpoint.
 struct Nodes<'a> {
-    files: &'a [FileFacts],
+    files: &'a [&'a FileFacts],
     paths: Vec<Arc<str>>,
     symbols: Vec<Vec<(Arc<str>, Arc<str>)>>,
 }
 
 impl<'a> Nodes<'a> {
-    fn build(files: &'a [FileFacts], with_symbols: bool) -> Nodes<'a> {
+    fn build(files: &'a [&'a FileFacts], with_symbols: bool) -> Nodes<'a> {
         let symbols = files
             .iter()
             .map(|file| {

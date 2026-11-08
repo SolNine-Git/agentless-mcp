@@ -39,7 +39,10 @@ pub(crate) fn cycle_dodge(scan: &TreeScan, pairs: &[&Pair]) -> Result<Outcome, E
     };
     let after: Vec<FileFacts> = repo.files.iter().map(import_facts).collect();
     let before = before_files(&repo.files, pairs);
-    let (after_scopes, before_scopes) = (Scopes::build(&after), Scopes::build(&before));
+    let (after_listed, before_listed): (Vec<&FileFacts>, Vec<&FileFacts>) =
+        (after.iter().collect(), before.iter().collect());
+    let (after_scopes, before_scopes) =
+        (Scopes::build(&after_listed), Scopes::build(&before_listed));
     let after_loads = Loads::of(&after, &after_scopes);
     let before_loads = Loads::of(&before, &before_scopes);
     let imports = LocalImports {

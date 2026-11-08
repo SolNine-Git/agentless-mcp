@@ -204,8 +204,9 @@ fn build(
     facts: &RepoFacts,
 ) -> Result<MapResult, Error> {
     let (config, deadline) = (&reading.repo.config, reading.deadline);
-    let index = NameIndex::build(&facts.files);
-    let graph = file_graph(&index, &Scopes::build(&facts.files), config, deadline)?;
+    let files: Vec<&FileFacts> = facts.files.iter().collect();
+    let index = NameIndex::build(&files);
+    let graph = file_graph(&index, &Scopes::build(&files), config, deadline)?;
     let known: Known<'_> = facts.files.iter().map(|file| file.path.as_str()).collect();
     let seeding = seed_weights(focus, &known, &index);
     // Tests stay pure sources of rank: the companions are their channel into a map.

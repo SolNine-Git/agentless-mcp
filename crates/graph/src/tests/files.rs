@@ -43,6 +43,7 @@ fn with_graphs(check: impl Fn(&Corpus, &BTreeMap<&str, FileGraph<'_>>)) {
     let stoplists = weightings();
     for corpus in Corpus::all() {
         let files: Vec<FileFacts> = corpus.files();
+        let files: Vec<&FileFacts> = files.iter().collect();
         let index = NameIndex::build(&files);
         let scopes = Scopes::build(&files);
         check(&corpus, &graphs(&index, &scopes, &stoplists));

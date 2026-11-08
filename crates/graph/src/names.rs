@@ -19,8 +19,8 @@ pub struct Definition<'a> {
 }
 
 impl<'a> Definition<'a> {
-    pub(crate) fn new(files: &'a [FileFacts], file_index: usize, symbol_index: usize) -> Self {
-        let file = &files[file_index];
+    pub(crate) fn new(files: &[&'a FileFacts], file_index: usize, symbol_index: usize) -> Self {
+        let file = files[file_index];
         Definition {
             file,
             symbol: &file.facts.symbols[symbol_index],
@@ -87,7 +87,7 @@ struct NameEntry<'a> {
 
 /// Name-keyed definitions and spellings across the name-graph files of one scan.
 pub struct NameIndex<'a> {
-    files: &'a [FileFacts],
+    files: &'a [&'a FileFacts],
     names: Vec<&'a str>,
     // Lookup only: every order the index gives out comes from `names`.
     positions: HashMap<&'a str, usize>,
@@ -97,7 +97,7 @@ pub struct NameIndex<'a> {
 impl<'a> NameIndex<'a> {
     /// Index `files` by name, each list in scan order; data files stay out.
     #[must_use]
-    pub fn build(files: &'a [FileFacts]) -> NameIndex<'a> {
+    pub fn build(files: &'a [&'a FileFacts]) -> NameIndex<'a> {
         let names = sorted_names(files);
         let positions = names
             .iter()
@@ -110,7 +110,7 @@ impl<'a> NameIndex<'a> {
             names,
             positions,
         };
-        for (file_index, file) in files.iter().enumerate() {
+        for (file_index, file) in files.iter().copied().enumerate() {
             if in_name_graph(file) {
                 index.add_file(file_index, file);
             }
@@ -125,7 +125,7 @@ impl<'a> NameIndex<'a> {
 
     /// Return the scanned files the index was built from.
     #[must_use]
-    pub fn files(&self) -> &'a [FileFacts] {
+    pub fn files(&self) -> &'a [&'a FileFacts] {
         self.files
     }
 
@@ -225,7 +225,7 @@ fn count_file(count: &mut u32, last: &mut Option<usize>, file_index: usize) {
 }
 
 // Each name is spelled many times, so the dedup comes before the sort.
-fn sorted_names(files: &[FileFacts]) -> Vec<&str> {
+fn sorted_names<'a>(files: &[&'a FileFacts]) -> Vec<&'a str> {
     let unique: HashSet<&str> = files
         .iter()
         .filter(|file| in_name_graph(file))

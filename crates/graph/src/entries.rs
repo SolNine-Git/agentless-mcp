@@ -20,9 +20,13 @@ pub(crate) struct EntryNames<'a> {
 }
 
 impl<'a> EntryNames<'a> {
-    pub(crate) fn build(files: &'a [FileFacts], paths: &PathIndex<'a>) -> EntryNames<'a> {
+    pub(crate) fn build(files: &[&'a FileFacts], paths: &PathIndex<'a>) -> EntryNames<'a> {
         let mut names = EntryNames::default();
-        for file in files.iter().filter(|file| is_package_entry(&file.path)) {
+        for file in files
+            .iter()
+            .copied()
+            .filter(|file| is_package_entry(&file.path))
+        {
             names.add(file, paths);
         }
         names
