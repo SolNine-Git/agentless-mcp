@@ -6,9 +6,8 @@ use std::path::PathBuf;
 use metrics::Block;
 use syntax::Language;
 
-use crate::analysis::text_digest;
 use crate::blob::stored_metrics;
-use crate::{FactsDb, SqlError, Unmeasured, schema};
+use crate::{FactsDb, RowKey, SqlError, Unmeasured, schema};
 
 /// What the database holds for one file's clone blocks.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,7 +68,7 @@ impl FactsDb {
         text: &str,
         language: Language,
     ) -> Result<Lookup, SqlError> {
-        let Some(id) = self.fresh_row(path, language, &text_digest(text))? else {
+        let Some(id) = self.fresh_row(path, &RowKey::of(language, text))? else {
             return Ok(Lookup::Miss);
         };
         let [metrics] = self.cells::<1>(schema::METRICS, id)?;

@@ -1,7 +1,7 @@
 //! The name index and the resolved graph that one call reads, each built at its first use, and the
-//! graphs that a server keeps between its calls. A kept graph borrows the scan it was built from,
-//! so it lives on the stack of one thread per root, and a call sends that thread a job that owns
-//! everything it reads.
+//! facts and graphs that a server keeps between its calls. A kept graph borrows the scan it was
+//! built from, so it lives on the stack of one thread per root, and a call sends that thread a job
+//! that owns everything it reads.
 
 use std::cell::OnceCell;
 use std::collections::HashMap;
@@ -13,12 +13,13 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::thread;
 use std::time::Duration;
 
+use git::RepoFile;
 use graph::{FileFacts, NameIndex, Resolver, Scopes, SymbolGraph};
 use kernel::{Deadline, Stopped, checkpoint};
 
 use crate::detached::answered_over;
 use crate::parallel::{map_in_order, threads};
-use crate::scan::{RepoFacts, Skipped};
+use crate::scan::{KeptFacts, RepoFacts, Skipped, rescan, scan_walked};
 use crate::{Error, Noted, Reading, Services};
 
 // How long a call waits for its root's graph thread between two checks of its deadline.
@@ -46,6 +47,44 @@ pub(crate) fn over_call_scan<T>(
         })
     });
     scanned.then_ok(|scan| answered_over(scan, answer))
+}
+
+// Scans the walked `files` once and gives the scan to `answer`. The walk's `warnings` come first,
+// as the scan's own walk gives them.
+pub(crate) fn over_walked_scan<T>(
+    reading: &Reading<'_>,
+    files: &[RepoFile],
+    warnings: &[String],
+    keeping: Keeping<'_>,
+    answer: impl FnOnce(&CallScan) -> Noted<Result<T, Error>>,
+) -> Noted<Result<T, Error>> {
+    let (root, source, deadline) = (&reading.repo.root, reading.facts, reading.deadline);
+    let scanned = match keeping {
+        Keeping::Server(graphs, kept_root) => {
+            let kept = graphs.facts(kept_root);
+            let scanned = rescan(root, files, source, deadline, &kept);
+            scanned.map(|scanned| {
+                scanned.map(|(kept, skipped)| {
+                    let files = Arc::clone(&kept.files);
+                    graphs.keep(kept_root, kept);
+                    CallScan { files, skipped }
+                })
+            })
+        }
+        Keeping::Own | Keeping::Thread(_) => {
+            let scanned = scan_walked(root, files, source, deadline);
+            scanned.map(|scanned| {
+                scanned.map(|facts| CallScan {
+                    files: Arc::new(facts.files),
+                    skipped: facts.skipped,
+                })
+            })
+        }
+    };
+    let mut diagnostics = warnings.to_vec();
+    diagnostics.extend(scanned.diagnostics);
+    let value = scanned.value.map_err(Error::from);
+    Noted { value, diagnostics }.then_ok(|scan| answered_over(scan, answer))
 }
 
 // Who builds the graph that a call graph answers over.
@@ -146,11 +185,29 @@ impl<'a> CallGraph<'a> {
     }
 }
 
-/// The name index and resolved graph of each root, kept between a server's trace calls.
-#[derive(Debug, Default)]
+/// The facts, name index and resolved graph of each root, kept between a server's trace calls.
+#[derive(Default)]
 pub struct KeptGraphs {
-    roots: Mutex<HashMap<PathBuf, Sender<Job>>>,
+    roots: Mutex<HashMap<PathBuf, KeptRoot>>,
     builds: Arc<AtomicUsize>,
+}
+
+impl std::fmt::Debug for KeptGraphs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let roots: Vec<PathBuf> = self.roots().keys().cloned().collect();
+        f.debug_struct("KeptGraphs")
+            .field("roots", &roots)
+            .field("builds", &self.builds())
+            .finish()
+    }
+}
+
+// What a server keeps of one root: the facts of its last scan, and its graph thread once a call
+// asked for the graph.
+#[derive(Default)]
+struct KeptRoot {
+    facts: Arc<KeptFacts>,
+    thread: Option<Sender<Job>>,
 }
 
 impl KeptGraphs {
@@ -164,7 +221,8 @@ impl KeptGraphs {
     // its thread ended. A thread that the system refuses hands the job back with the reason.
     fn ask(&self, root: &Path, job: Job) -> Result<(), (Job, String)> {
         let mut roots = self.roots();
-        let job = match roots.get(root) {
+        let kept = roots.entry(root.to_owned()).or_default();
+        let job = match &kept.thread {
             Some(thread) => match thread.send(job) {
                 Ok(()) => return Ok(()),
                 // The thread ended in a build that panicked; a new thread takes the job.
@@ -183,15 +241,28 @@ impl KeptGraphs {
             }
         };
         let sent = thread.send(job);
-        roots.insert(root.to_owned(), thread);
+        kept.thread = Some(thread);
         sent.map_err(|ended| {
             let reason = format!("the graph thread of {} ended", root.display());
             (ended.0, reason)
         })
     }
 
+    // The facts of the last scan of `root`, or none before its first scan.
+    fn facts(&self, root: &Path) -> Arc<KeptFacts> {
+        let roots = self.roots();
+        roots
+            .get(root)
+            .map(|kept| Arc::clone(&kept.facts))
+            .unwrap_or_default()
+    }
+
+    fn keep(&self, root: &Path, facts: Arc<KeptFacts>) {
+        self.roots().entry(root.to_owned()).or_default().facts = facts;
+    }
+
     // No code panics while it holds the lock, so a poisoned map is still whole.
-    fn roots(&self) -> MutexGuard<'_, HashMap<PathBuf, Sender<Job>>> {
+    fn roots(&self) -> MutexGuard<'_, HashMap<PathBuf, KeptRoot>> {
         self.roots.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }

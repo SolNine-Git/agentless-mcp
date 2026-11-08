@@ -45,6 +45,29 @@ impl FileText {
     pub fn digest(&self) -> Key {
         text_digest(&self.text)
     }
+
+    /// Returns the key of the stored row that describes the text.
+    #[must_use]
+    pub fn row_key(&self) -> RowKey {
+        RowKey::of(self.language, &self.text)
+    }
+}
+
+/// What a stored row of a path is matched by: the language and the digest of its text. The row
+/// describes a text when the text has the same key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RowKey {
+    pub(crate) language: Language,
+    pub(crate) digest: Key,
+}
+
+impl RowKey {
+    pub(crate) fn of(language: Language, text: &str) -> RowKey {
+        RowKey {
+            language,
+            digest: text_digest(text),
+        }
+    }
 }
 
 // The sha256 of the UTF-8 bytes of `text`: the key of a stored row.

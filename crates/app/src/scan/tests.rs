@@ -1,5 +1,6 @@
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use facts::Facts;
 use git::{RepoFile, Snapshot};
@@ -7,7 +8,7 @@ use kernel::Stopped;
 use store::{FactSource, FileText, Served};
 use syntax::Unparsable;
 
-use super::{RepoFacts, line_count, reads, scan};
+use super::{KeptFacts, RepoFacts, line_count, reads, rescan_with, scan};
 use crate::clock::{assert_spent, spent};
 use crate::endpoints::scanned::Scanned;
 use crate::testing::Sandbox;
@@ -53,7 +54,7 @@ fn only_files_in_a_language_are_scanned_and_the_config_is_not() {
         "sub/.agentless-mcp.json",
     ]);
     let files = [files, listed(&["big.py"])].concat();
-    let scanned = scan(sandbox.path(), files, 4, &parsed, None);
+    let scanned = scan(sandbox.path(), &files, 4, &parsed, None);
     let (files, skipped) = summary(scanned.value.as_ref().expect("no deadline stops it"));
     assert_eq!(
         files,
@@ -94,7 +95,7 @@ fn a_panic_in_one_file_reaches_the_caller_with_its_payload() {
         parsed(text)
     };
     let caught = panic::catch_unwind(AssertUnwindSafe(|| {
-        scan(sandbox.path(), files, 4, &panicking, None)
+        scan(sandbox.path(), &files, 4, &panicking, None)
     }));
     let payload = caught.expect_err("the panic reaches the caller");
     let message = payload
@@ -110,11 +111,53 @@ fn a_scan_without_helpers_equals_the_scan_with_them() {
     let sandbox = Sandbox::new();
     let files = many(&sandbox, 40);
     let unstopped = |scanned: Result<RepoFacts, Stopped>| scanned.expect("no deadline stops it");
-    let alone = scan(sandbox.path(), files.clone(), 1, &parsed, None).map(unstopped);
-    let helped = scan(sandbox.path(), files, 8, &parsed, None).map(unstopped);
+    let alone = scan(sandbox.path(), &files, 1, &parsed, None).map(unstopped);
+    let helped = scan(sandbox.path(), &files, 8, &parsed, None).map(unstopped);
     assert_eq!(alone.value.files, helped.value.files);
     assert_eq!(alone.value.skipped, helped.value.skipped);
     assert_eq!(alone.value.files.len(), 40);
+}
+
+fn rescanned(
+    sandbox: &Sandbox,
+    files: &[RepoFile],
+    facts_of: &(dyn Fn(&FileText) -> Served<Result<Facts, Unparsable>> + Sync),
+    kept: &Arc<KeptFacts>,
+) -> Arc<KeptFacts> {
+    let scanned = rescan_with(sandbox.path(), files, facts_of, None, kept);
+    scanned.value.expect("no deadline stops it").0
+}
+
+#[test]
+fn a_rescan_asks_the_source_only_for_the_files_whose_text_changed() {
+    let sandbox = Sandbox::new();
+    let files = many(&sandbox, 6);
+    let asked = Mutex::new(Vec::new());
+    let asked_paths = || std::mem::take(&mut *asked.lock().unwrap_or_else(PoisonError::into_inner));
+    let counting = |text: &FileText| {
+        let mut paths = asked.lock().unwrap_or_else(PoisonError::into_inner);
+        paths.push(text.path.clone());
+        parsed(text)
+    };
+    let first = rescanned(&sandbox, &files, &counting, &Arc::default());
+    assert_eq!(asked_paths().len(), 6);
+
+    let second = rescanned(&sandbox, &files, &counting, &first);
+    assert!(
+        Arc::ptr_eq(&second, &first),
+        "an unchanged scan shares the kept facts"
+    );
+    assert!(asked_paths().is_empty());
+
+    sandbox.put("m03.py", "def changed():\n    return 2\n");
+    let third = rescanned(&sandbox, &files, &counting, &first);
+    assert_eq!(asked_paths(), ["m03.py"]);
+    let read = scan(sandbox.path(), &files, 4, &parsed, None).value;
+    assert_eq!(*third.files, read.expect("no deadline stops it").files);
+    assert!(Arc::ptr_eq(
+        &rescanned(&sandbox, &files, &counting, &third),
+        &third
+    ));
 }
 
 #[test]
@@ -217,7 +260,7 @@ fn a_walk_with_no_file_in_a_language_still_stops_under_a_spent_deadline() {
 
     let scanned = scan(
         sandbox.path(),
-        listed(&["notes.txt"]),
+        &listed(&["notes.txt"]),
         4,
         &parsed,
         Some(&deadline),

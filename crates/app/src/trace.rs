@@ -15,7 +15,7 @@ use git::RepoFile;
 use crate::bounds::within;
 use crate::ops::limits::{FIND_USAGE_FILES, MAX_LIMIT};
 use crate::search::{FileRow, Place, walked_files};
-use crate::symbol_graph::{CallGraph, CallScan, Keeping, over_call_scan, with_call_graph};
+use crate::symbol_graph::{CallGraph, CallScan, Keeping, over_walked_scan, with_call_graph};
 use crate::{
     CycleRow, EdgeRow, Error, HistoryEntry, HistoryResult, IntArg, Noted, Reading, RefGroup,
     Services, SharedCaller, SymbolCard, Usage,
@@ -484,12 +484,13 @@ fn traced(
         return Noted::new(Err(error));
     }
     let walked = walked_files(services, &reading.repo.root);
-    let mut diagnostics = walked.diagnostics;
+    let warnings = walked.diagnostics;
+    let mut diagnostics = warnings.clone();
+    let keeping = kept.map_or(Keeping::Own, |kept| {
+        Keeping::Server(kept, reading.repo.root.as_path())
+    });
     let value = walked.value.and_then(|files| {
-        let traced = over_call_scan(services, reading, |scan| {
-            let keeping = kept.map_or(Keeping::Own, |kept| {
-                Keeping::Server(kept, reading.repo.root.as_path())
-            });
+        let traced = over_walked_scan(reading, &files, &warnings, keeping, |scan| {
             with_call_graph(&scan.files, reading.deadline, keeping, |graph| {
                 let resolved = resolve::resolved(reading, scan, graph, &files, &request.targets);
                 let call = Call {

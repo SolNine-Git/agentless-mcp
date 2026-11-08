@@ -1,13 +1,15 @@
 //! One call's scan: every file the walk lists in a language, read once and turned into facts by
 //! the fact source, in walk order, with the files it passed over and why.
 
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 
 use facts::{Facts, Symbol};
 use git::RepoFile;
 use graph::FileFacts;
 use kernel::{Deadline, Stopped, checkpoint};
-use store::{FactSource, FileText, Served};
+use store::{FactSource, FileText, RowKey, Served};
 use syntax::{Language, Unparsable};
 
 use crate::detached::answered_over;
@@ -29,6 +31,33 @@ pub(crate) struct RepoFacts {
     pub(crate) files: Vec<FileFacts>,
     pub(crate) skipped: Vec<Skipped>,
 }
+
+// The facts of a call's scan, which a server keeps for the next call of the root: the files with
+// facts, and the row key of each file that came with no warning.
+#[derive(Default)]
+pub(crate) struct KeptFacts {
+    pub(crate) files: Arc<Vec<FileFacts>>,
+    keys: Vec<Option<RowKey>>,
+    positions: HashMap<String, usize>,
+}
+
+impl KeptFacts {
+    // The position of the kept facts of the file whose text has `key`.
+    fn position(&self, text: &FileText, key: &RowKey) -> Option<usize> {
+        let at = *self.positions.get(&text.path)?;
+        (self.keys[at].as_ref() == Some(key)).then_some(at)
+    }
+}
+
+// One file of a scan over kept facts: the position of its kept facts, or its facts with the row
+// key to keep them by, which a warning leaves out.
+enum Fresh {
+    Kept(usize),
+    Read(Box<FileFacts>, Option<RowKey>),
+}
+
+// The kept facts after a scan, and the files it passed over, or the stop of the call.
+type Rescanned = Noted<Result<(Arc<KeptFacts>, Vec<Skipped>), Stopped>>;
 
 // The scan that reads each file's symbols and no other fact, and where each file spells the words
 // that the caller asked for.
@@ -84,11 +113,81 @@ impl RepoFacts {
         source: &FactSource,
         deadline: Option<&Deadline>,
     ) -> Noted<Result<RepoFacts, Error>> {
-        let facts_of = |text: &FileText| source.facts(text, deadline);
         walked(services, root, |files| {
-            scan(root, files, threads(), &facts_of, deadline)
+            scan_walked(root, files, source, deadline)
         })
     }
+}
+
+// The scan of the walked `files` at `root`, as `RepoFacts::load` scans the files of its own walk.
+pub(crate) fn scan_walked(
+    root: &Path,
+    files: &[RepoFile],
+    source: &FactSource,
+    deadline: Option<&Deadline>,
+) -> Noted<Result<RepoFacts, Stopped>> {
+    let facts_of = |text: &FileText| source.facts(text, deadline);
+    scan(root, files, threads(), &facts_of, deadline)
+}
+
+// Scans the walked `files` at `root`, and takes the facts of each file whose text has its kept
+// row key from `kept`. A scan that takes every file from `kept` at its position shares it.
+pub(crate) fn rescan(
+    root: &Path,
+    files: &[RepoFile],
+    source: &FactSource,
+    deadline: Option<&Deadline>,
+    kept: &Arc<KeptFacts>,
+) -> Rescanned {
+    let facts_of = |text: &FileText| source.facts(text, deadline);
+    rescan_with(root, files, &facts_of, deadline, kept)
+}
+
+fn rescan_with(
+    root: &Path,
+    files: &[RepoFile],
+    facts_of: &FactsOf<'_>,
+    deadline: Option<&Deadline>,
+    kept: &Arc<KeptFacts>,
+) -> Rescanned {
+    let fresh = |text: &FileText| {
+        let key = text.row_key();
+        if let Some(at) = kept.position(text, &key) {
+            let value = Ok(Fresh::Kept(at));
+            return Served {
+                value,
+                warning: None,
+            };
+        }
+        let Served { value, warning } = file_facts(text, facts_of);
+        let key = warning.is_none().then_some(key);
+        let value = value.map(|facts| Fresh::Read(Box::new(facts), key));
+        Served { value, warning }
+    };
+    let scanned = scan_values(root, files, threads(), &fresh, deadline);
+    scanned.map(|scanned| scanned.map(|(fresh, skipped)| (kept_after(kept, fresh), skipped)))
+}
+
+// The kept facts after a scan: `kept` itself when the scan took every file from it in place.
+fn kept_after(kept: &Arc<KeptFacts>, fresh: Vec<Fresh>) -> Arc<KeptFacts> {
+    let in_place = |(at, file): (usize, &Fresh)| matches!(file, Fresh::Kept(from) if *from == at);
+    if fresh.len() == kept.files.len() && fresh.iter().enumerate().all(in_place) {
+        return Arc::clone(kept);
+    }
+    let (files, keys): (Vec<FileFacts>, Vec<Option<RowKey>>) = (fresh.into_iter())
+        .map(|file| match file {
+            Fresh::Kept(at) => (kept.files[at].clone(), kept.keys[at]),
+            Fresh::Read(facts, key) => (*facts, key),
+        })
+        .unzip();
+    let positions = (files.iter().enumerate())
+        .map(|(at, file)| (file.path.clone(), at))
+        .collect();
+    Arc::new(KeptFacts {
+        files: Arc::new(files),
+        keys,
+        positions,
+    })
 }
 
 // Scans the repository once and gives the scan to `answer`. The scan's warnings come with
@@ -133,7 +232,7 @@ impl SymbolFacts {
 fn walked<T>(
     services: &Services,
     root: &Path,
-    scan: impl FnOnce(Vec<RepoFile>) -> Noted<Result<T, Stopped>>,
+    scan: impl FnOnce(&[RepoFile]) -> Noted<Result<T, Stopped>>,
 ) -> Noted<Result<T, Error>> {
     let walk = services.git.walk(root, reads);
     let mut diagnostics: Vec<String> = walk.warnings.iter().map(ToString::to_string).collect();
@@ -147,7 +246,7 @@ fn walked<T>(
             };
         }
     };
-    let scanned = scan(files);
+    let scanned = scan(&files);
     diagnostics.extend(scanned.diagnostics);
     Noted {
         value: scanned.value.map_err(Error::from),
@@ -158,23 +257,25 @@ fn walked<T>(
 // Reads and parses the files in a language on `threads` threads, and keeps the walk order.
 fn scan(
     root: &Path,
-    files: Vec<RepoFile>,
+    files: &[RepoFile],
     threads: usize,
     facts_of: &FactsOf<'_>,
     deadline: Option<&Deadline>,
 ) -> Noted<Result<RepoFacts, Stopped>> {
-    let file_facts = |text: &FileText| {
-        let Served { value, warning } = facts_of(text);
-        let value = value.map(|facts| FileFacts {
-            path: text.path.clone(),
-            language: text.language,
-            line_count: line_count(&text.text),
-            facts,
-        });
-        Served { value, warning }
-    };
+    let file_facts = |text: &FileText| file_facts(text, facts_of);
     let scanned = scan_values(root, files, threads, &file_facts, deadline);
     scanned.map(|scanned| scanned.map(|(files, skipped)| RepoFacts { files, skipped }))
+}
+
+fn file_facts(text: &FileText, facts_of: &FactsOf<'_>) -> Served<Result<FileFacts, Unparsable>> {
+    let Served { value, warning } = facts_of(text);
+    let value = value.map(|facts| FileFacts {
+        path: text.path.clone(),
+        language: text.language,
+        line_count: line_count(&text.text),
+        facts,
+    });
+    Served { value, warning }
 }
 
 type Scanned<T> = Result<Served<Result<T, Skipped>>, Stopped>;
@@ -186,7 +287,7 @@ type Values<T> = Noted<Result<(Vec<T>, Vec<Skipped>), Stopped>>;
 // a scan thread when it is.
 fn scan_values<T: Send>(
     root: &Path,
-    files: Vec<RepoFile>,
+    files: &[RepoFile],
     threads: usize,
     value_of: &ValueOf<'_, T>,
     deadline: Option<&Deadline>,
@@ -203,10 +304,10 @@ fn scan_values<T: Send>(
 }
 
 // The files the scan reads. A file it passes over gets its check here.
-fn in_languages(
-    files: Vec<RepoFile>,
+fn in_languages<'f>(
+    files: &'f [RepoFile],
     deadline: Option<&Deadline>,
-) -> Result<Vec<(RepoFile, Language)>, Stopped> {
+) -> Result<Vec<(&'f RepoFile, Language)>, Stopped> {
     let mut wanted = Vec::new();
     for file in files {
         match in_language(file) {
@@ -236,7 +337,7 @@ fn collected<T>(scanned: Vec<Scanned<T>>) -> Values<T> {
     values.map(Ok)
 }
 
-fn in_language(file: RepoFile) -> Option<(RepoFile, Language)> {
+fn in_language(file: &RepoFile) -> Option<(&RepoFile, Language)> {
     let language = scanned_language(&file.path)?;
     Some((file, language))
 }

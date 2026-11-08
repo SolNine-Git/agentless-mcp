@@ -5,15 +5,14 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use kernel::Key;
 use rusqlite::Connection;
-use syntax::Language;
 
 use crate::freshness::{analysis_rejection, facts_schema_rejection, rejection};
 use crate::open::{BUSY_TIMEOUT, connect, fetch, has_meta, read_meta};
 use crate::value::Cell;
 use crate::{
-    FACTS_SCHEMA_VERSION, FileText, IndexMeta, Refusal, RowCounts, SqlClass, SqlError, schema,
+    FACTS_SCHEMA_VERSION, FileText, IndexMeta, Refusal, RowCounts, RowKey, SqlClass, SqlError,
+    schema,
 };
 
 /// What the open of a repository's agentless.db found.
@@ -132,23 +131,18 @@ impl FactsDb {
     }
 
     pub(crate) fn fresh_id(&self, file: &FileText) -> Result<Option<i64>, SqlError> {
-        self.fresh_row(&file.path, file.language, &file.digest())
+        self.fresh_row(&file.path, &file.row_key())
     }
 
-    // The id of the row that describes `path` now: for this language, from the text with this
-    // digest. The open admitted only rows of this analysis.
-    pub(crate) fn fresh_row(
-        &self,
-        path: &str,
-        language: Language,
-        digest: &Key,
-    ) -> Result<Option<i64>, SqlError> {
+    // The id of the row that describes `path` now: the row of the text with this key. The open
+    // admitted only rows of this analysis.
+    pub(crate) fn fresh_row(&self, path: &str, key: &RowKey) -> Result<Option<i64>, SqlError> {
         let found = fetch::<3>(&self.connection(), schema::LOOKUP, [path], 1)?;
         let Some([id, stored, stored_digest]) = found.into_iter().next() else {
             return Ok(None);
         };
-        let fresh = stored.equals(Some(language.name()))
-            && stored_digest == Cell::Blob(digest.bytes().to_vec());
+        let fresh = stored.equals(Some(key.language.name()))
+            && stored_digest == Cell::Blob(key.digest.bytes().to_vec());
         if !fresh {
             return Ok(None);
         }
