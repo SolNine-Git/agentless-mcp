@@ -205,8 +205,8 @@ impl Git {
     ///
     /// Returns the note of a git that cannot say.
     pub fn differs(&self, root: &Path, path: &str, revision: &CommitId) -> Result<bool, String> {
-        // "./" defeats pathspec magic, so a file named ":(exclude)x" is a path.
-        let target = OsString::from(format!("./{path}"));
+        // ":(literal)" keeps the path as written: no pathspec magic and no glob widens it.
+        let target = OsString::from(format!(":(literal){path}"));
         let rest = [
             OsStr::new("--quiet"),
             OsStr::new(revision.as_str()),

@@ -648,7 +648,7 @@
  ],
  "argv": [
   ["log_span", ["a.py", 3, 9, 11, "0000000000000000000000000000000000000000"], ["log", "-L3,9:a.py", "--no-patch", "-z", "--format=%H%x00%aI%x00%s%x00%b", "--max-count=11", "0000000000000000000000000000000000000000", "--"]],
-  ["differs", ["a b.py", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"], ["diff", "--quiet", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "--", "./a b.py"]],
+  ["differs", ["a b.py", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"], ["diff", "--quiet", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "--", ":(literal)a b.py"]],
   ["is_shallow", [], ["rev-parse", "--is-shallow-repository"]],
   ["churn", ["a.py", "b.py", "old.py", "d\u00e9.py", ":!x.py", "with space.py", "missing.py"], ["log", "--since=90.days", "--pretty=%x00%ct", "--name-only", "--relative", "--", "./a.py", "./b.py", "./old.py", "./d\u00e9.py", "./:!x.py", "./with space.py", "./missing.py"]]
  ],
@@ -675,7 +675,7 @@
   ["span", "new.py", "b76de683ff23f2dc810037bce05a338f7be395cc", false],
   ["span", "gone.py", "b76de683ff23f2dc810037bce05a338f7be395cc", false],
   ["span", "a.py", "0000000000000000000000000000000000000000", {"unknown": "git diff exited 128: fatal: bad object 0000000000000000000000000000000000000000"}],
-  ["span", "../outside.py", "b76de683ff23f2dc810037bce05a338f7be395cc", {"unknown": "git diff exited 128: fatal: ./../outside.py: './../outside.py' is outside repository at '{root}/span'"}],
+  ["span", "../outside.py", "b76de683ff23f2dc810037bce05a338f7be395cc", {"unknown": "git diff exited 128: fatal: :(literal)../outside.py: '../outside.py' is outside repository at '{root}/span'"}],
   ["plain", "a.py", "0000000000000000000000000000000000000000", true]
  ],
  "shallow": [

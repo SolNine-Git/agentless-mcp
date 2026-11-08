@@ -242,6 +242,32 @@ fn each_diff_answer_over_real_repositories_matches_the_reference() {
     }
 }
 
+// As a glob, "a*.py" also matches the changed "ab.py".
+#[test]
+fn a_glob_character_in_the_diff_path_matches_only_itself() {
+    let scratch = Scratch::new();
+    let root = scratch.repo("repo", &[("a*.py", "a = 1\n"), ("ab.py", "b = 1\n")]);
+    scratch.write("repo/ab.py", "b = 2\n");
+    let head = scratch.run_git(&root, &["rev-parse", "HEAD"]);
+    let head = id(String::from_utf8(head).expect("a hex sha").trim_end());
+    let git = scratch.git();
+    assert_eq!(git.differs(&root, "a*.py", &head), Ok(false));
+    assert_eq!(git.differs(&root, "ab.py", &head), Ok(true));
+}
+
+// As pathspec magic, ":(exclude)a.py" would match the changed "b.py".
+#[test]
+fn a_path_that_looks_like_pathspec_magic_is_a_path() {
+    let scratch = Scratch::new();
+    let files = [(":(exclude)a.py", "a = 1\n"), ("b.py", "b = 1\n")];
+    let root = scratch.repo("repo", &files);
+    scratch.write("repo/b.py", "b = 2\n");
+    let head = scratch.run_git(&root, &["rev-parse", "HEAD"]);
+    let head = id(String::from_utf8(head).expect("a hex sha").trim_end());
+    let git = scratch.git();
+    assert_eq!(git.differs(&root, ":(exclude)a.py", &head), Ok(false));
+}
+
 #[test]
 fn each_shallow_answer_over_real_repositories_matches_the_reference() {
     let repos = Repos::build();
