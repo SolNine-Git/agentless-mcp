@@ -5,35 +5,32 @@ mod seeds;
 
 use std::borrow::Cow;
 use std::ffi::OsStr;
-use std::fs;
-use std::io::{ErrorKind, Read, Write};
+use std::io::{Read, Write};
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use app::{EnvConfig, IntArg, MapRequest, MapResult, Reading, Repo, Services, Session};
-use git::Toplevel;
 use io::Granularity;
 use json::JsonValue;
 use kernel::{Clock, SystemClock};
 
+use crate::reply::{self, EMITTED, INTERNAL};
+use crate::repository;
 use crate::search::log::{self, Entry, key};
 use crate::search::{Parsed, parsed, text_field};
+use crate::state::{self, Claim};
 use crate::text::sha256_hex;
 use crate::worker::{self, Finished};
 
 pub(crate) type MapFn = fn(&Services, &Path, &MapRequest) -> Result<MapResult, app::Error>;
 
 const MARKER_DIR: &str = "agentless_prompt_map";
-const TEMPORARY_DIR: &str = "/tmp";
 const DEADLINE: Duration = Duration::from_secs(5);
-// The erosion gate's git timeout.
-const GIT_TIMEOUT: Duration = Duration::from_secs(2);
 const THREAD: &str = "prompt-map";
 const HOOK: &str = "prompt-map";
 const EVENT_NAME: &str = "UserPromptSubmit";
 
-const EMITTED: &str = "emitted";
 const SILENT: &str = "silent";
 const ALREADY_ENRICHED: &str = "already_enriched";
 const MALFORMED_PAYLOAD: &str = "malformed_payload";
@@ -46,7 +43,6 @@ const DEADLINE_PASSED: &str = "deadline";
 const MAP_FAILED: &str = "map_failed";
 const TOO_LONG: &str = "too_long";
 const MARKER_STORAGE_UNAVAILABLE: &str = "marker_storage_unavailable";
-const INTERNAL: &str = "internal";
 
 const HOOK_KEY: &str = "hook";
 const SEEDS_KEY: &str = "seeds";
@@ -86,11 +82,8 @@ pub(crate) struct Hook<'a> {
     pub(crate) deadline: Duration,
 }
 
-// TMPDIR when it is set and not empty, else /tmp; never the search gate's directory.
 fn marker_dir(env: &EnvConfig) -> PathBuf {
-    let base = env.var("TMPDIR").filter(|value| !value.is_empty());
-    base.map_or_else(|| PathBuf::from(TEMPORARY_DIR), PathBuf::from)
-        .join(MARKER_DIR)
+    state::temporary_dir(env, MARKER_DIR)
 }
 
 // The map of one prompt, as the command line's `map` makes it.
@@ -126,30 +119,12 @@ pub(crate) fn answer(
         decide(hook, services, stdin, &mut facts)
     }));
     let reason = match decided {
-        Ok(Ok(context)) => written(stdout, &context),
+        Ok(Ok(context)) => reply::written(stdout, EVENT_NAME, &context),
         Ok(Err(reason)) => reason,
         Err(_) => INTERNAL,
     };
     // The log is the hook's only channel: a failed append has nowhere to be reported.
     drop(log::append(hook.log, &entry(ts, &facts, reason)));
-}
-
-fn written(stdout: &mut dyn Write, context: &str) -> &'static str {
-    let reply = JsonValue::Object(vec![(
-        "hookSpecificOutput".into(),
-        JsonValue::Object(vec![
-            ("hookEventName".into(), JsonValue::Str(EVENT_NAME.into())),
-            ("additionalContext".into(), JsonValue::Str(context.into())),
-        ]),
-    )]);
-    let text = json::value_text(&reply);
-    match stdout
-        .write_all(text.as_bytes())
-        .and_then(|()| stdout.flush())
-    {
-        Ok(()) => EMITTED,
-        Err(_) => INTERNAL,
-    }
 }
 
 // The steps in order. A prompt with no seed writes no marker, so a later prompt can still emit.
@@ -170,7 +145,7 @@ fn decide(
     let prompt = prompt.ok_or(NO_PROMPT)?;
     let cwd = text_field(fields, "cwd").and_then(|cwd| cwd.as_str());
     let cwd = cwd.map(Path::new).or(hook.cwd).ok_or(NO_REPOSITORY)?;
-    let root = repository_root(services, cwd).ok_or(NO_REPOSITORY)?;
+    let root = repository::root_of(services, cwd).ok_or(NO_REPOSITORY)?;
     let found = seeds::seeds(prompt, &|rel| root.join(rel).is_file());
     facts.seeds = Some(found.clone());
     if found.is_empty() {
@@ -181,33 +156,17 @@ fn decide(
     context(&result, &found, facts)
 }
 
-fn repository_root(services: &Services, cwd: &Path) -> Option<PathBuf> {
-    let Toplevel::Found(stdout) = services.git.toplevel(cwd, GIT_TIMEOUT) else {
-        return None;
-    };
-    let shown = String::from_utf8(stdout).ok()?;
-    io::resolve(Path::new(text::strip(&shown))).ok()
-}
-
 // The session's one try: the marker is written before the map runs, so a deadline or a crash
-// uses it too. Another user can plant entries in a shared directory, so only a private one counts.
+// uses it too.
 fn claim(markers: &Path, session: &str) -> Result<(), &'static str> {
-    io::create_missing_owner_dir(markers).map_err(|_| MARKER_STORAGE_UNAVAILABLE)?;
-    if !matches!(io::is_private_directory(markers), Ok(true)) {
+    if !state::private_dir(markers) {
         return Err(MARKER_STORAGE_UNAVAILABLE);
     }
-    let marker = markers.join(sha256_hex(session.as_bytes()));
-    match io::write_new_file(&marker, b"") {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == ErrorKind::AlreadyExists && is_plain_file(&marker) => {
-            Err(ALREADY_ENRICHED)
-        }
-        Err(_) => Err(MARKER_STORAGE_UNAVAILABLE),
+    match state::claim(&markers.join(sha256_hex(session.as_bytes()))) {
+        Claim::New => Ok(()),
+        Claim::Held => Err(ALREADY_ENRICHED),
+        Claim::Unavailable => Err(MARKER_STORAGE_UNAVAILABLE),
     }
-}
-
-fn is_plain_file(path: &Path) -> bool {
-    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
 fn mapped(
