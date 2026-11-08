@@ -3,13 +3,11 @@ use std::fs;
 use std::path::Path;
 
 use json::JsonValue;
-use text::testing::cases;
 
-use super::{Calls, MORE_SECTIONS, Presence, RootCount, Shape, TOOLS, tool_entry};
+use super::{MORE_SECTIONS, Presence, RootCount, Shape, TOOLS, tool_entry};
 use crate::trace::Section;
 
 const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
-const FIXTURE: &str = "surface/surface";
 
 // The tools section, read with its key order and its number forms kept.
 fn reference_tools() -> Vec<JsonValue> {
@@ -46,27 +44,10 @@ fn each_tool_entry_is_the_reference_entry() {
 }
 
 #[test]
-fn localizes_follows_the_reference_unlock_rule() {
-    let reference: Vec<(String, Option<String>, Option<String>)> =
-        cases(MANIFEST_DIR, FIXTURE, "unlock");
-    assert!(!reference.is_empty());
-    for (name, operation, reason) in reference {
-        let tool = TOOLS
-            .iter()
-            .find(|tool| tool.name == name)
-            .unwrap_or_else(|| panic!("no tool {name}"));
-        let localizes = tool.localizes(operation.as_deref());
-        assert_eq!(localizes, reason.is_some(), "{name} {operation:?}");
-    }
-}
-
-#[test]
 fn no_tool_has_an_operation_table_and_the_tool_names_are_distinct() {
     let names: BTreeSet<&str> = TOOLS.iter().map(|tool| tool.name).collect();
     assert_eq!(names.len(), TOOLS.len());
     for tool in TOOLS {
-        assert!(matches!(tool.calls, Calls::Single { .. }), "{}", tool.name);
-        assert!(tool.operation("map").is_none(), "{}", tool.name);
         for param in tool.params {
             assert_ne!(param.name, "operation", "{}", tool.name);
             if param.presence == Presence::DefaultFalse {

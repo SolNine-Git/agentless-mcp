@@ -105,10 +105,6 @@
       },
       "text": "an integer of 1 or more"
     },
-    "accepts_line_ranges": {
-      "arguments": {},
-      "text": "one [start, end] pair of 1-based line numbers, such as [10, 20], or a list of pairs, such as [[10, 20], [40, 50]]"
-    },
     "accepts_number": {
       "arguments": {
         "ceiling": "100",
@@ -899,10 +895,6 @@
       },
       "text": "  xarray/core/_aggregations.py @754 (12 lines)"
     },
-    "gate_deny": {
-      "arguments": {},
-      "text": "Structural pass first: no agentless call has localized this session yet.\nCall mcp__agentless__orient with operation=\"map\" and focus seeds from the task (file paths or symbol names). Broad Grep, Glob and shell search unlock after that call. A Grep of one existing file runs now.\n"
-    },
     "grouped_files": {
       "arguments": {
         "count": 4
@@ -1472,14 +1464,6 @@
         "count": 9
       },
       "text": "... 9 symbols in this file; the focus has no reference path to it, so no budget shows them"
-    },
-    "map_limit_out_of_range": {
-      "arguments": {
-        "limit": 500,
-        "maximum": 200,
-        "minimum": 1
-      },
-      "text": "limit is 500, but operation map takes a limit from 1 to 200."
     },
     "map_max_files_none": {
       "arguments": {

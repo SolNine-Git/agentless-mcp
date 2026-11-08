@@ -25,10 +25,6 @@ pub const ACCEPTS_INTEGER_FROM: Template<Count> = Template::new(&[
     Piece::Text(" or more"),
 ]);
 
-/// A text that takes no values.
-pub const ACCEPTS_LINE_RANGES: &str = "one [start, end] pair of 1-based line numbers, such as \
-        [10, 20], or a list of pairs, such as [[10, 20], [40, 50]]";
-
 /// A template that takes (`minimum`, `ceiling`).
 pub const ACCEPTS_NUMBER: Template<(Count, Text)> = Template::new(&[
     Piece::Text("a number above "),
@@ -1182,13 +1178,6 @@ pub const FIND_USAGE_ROW: Template<(Text, Count, Count)> = Template::new(&[
     Piece::Text(")"),
 ]);
 
-/// A text that takes no values.
-pub const GATE_DENY: &str = "Structural pass first: no agentless call has localized this session \
-        yet.\nCall mcp__agentless__orient with operation=\"map\" and \
-        focus seeds from the task (file paths or symbol names). Broad \
-        Grep, Glob and shell search unlock after that call. A Grep of \
-        one existing file runs now.\n";
-
 /// A template that takes `count`.
 pub const GROUPED_FILES: Template<Count> = Template::new(&[
     Piece::Text("("),
@@ -1993,17 +1982,6 @@ pub const MAP_FILE_UNREACHED: Template<Count> = Template::new(&[
         budget shows ",
     ),
     Piece::Choice(0, "it", "them"),
-]);
-
-/// A template that takes (`limit`, `minimum`, `maximum`).
-pub const MAP_LIMIT_OUT_OF_RANGE: Template<(Count, Count, Count)> = Template::new(&[
-    Piece::Text("limit is "),
-    Piece::Value(0),
-    Piece::Text(", but operation map takes a limit from "),
-    Piece::Value(1),
-    Piece::Text(" to "),
-    Piece::Value(2),
-    Piece::Text("."),
 ]);
 
 /// A template that takes `count`.

@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 366] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 363] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -101,12 +101,6 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 366] = [
         "accepts_integer_from",
         &["minimum"],
         messages::ACCEPTS_INTEGER_FROM.pieces(),
-    ),
-    (
-        "messages",
-        "accepts_line_ranges",
-        &[],
-        &[Piece::Text(messages::ACCEPTS_LINE_RANGES)],
     ),
     (
         "messages",
@@ -832,12 +826,6 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 366] = [
     ),
     (
         "messages",
-        "gate_deny",
-        &[],
-        &[Piece::Text(messages::GATE_DENY)],
-    ),
-    (
-        "messages",
         "grouped_files",
         &["count"],
         messages::GROUPED_FILES.pieces(),
@@ -1345,12 +1333,6 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 366] = [
         "map_file_unreached",
         &["count"],
         messages::MAP_FILE_UNREACHED.pieces(),
-    ),
-    (
-        "messages",
-        "map_limit_out_of_range",
-        &["limit", "minimum", "maximum"],
-        messages::MAP_LIMIT_OUT_OF_RANGE.pieces(),
     ),
     (
         "messages",

@@ -817,19 +817,6 @@ pub const app::search::REPEAT_PLACES: usize
 pub fn app::search::is_source_path(&str) -> bool
 pub fn app::search::search(&app::Services, &app::Reading<'_>, &app::search::SearchRequest) -> app::Noted<core::result::Result<app::search::Searched, app::search::SearchError>>
 pub mod app::surface
-pub enum app::surface::Calls
-pub app::surface::Calls::Operations(&'static [app::surface::Operation])
-pub app::surface::Calls::Single
-pub app::surface::Calls::Single::localizes: bool
-impl core::fmt::Debug for app::surface::Calls
-pub fn app::surface::Calls::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for app::surface::Calls
-impl core::marker::Send for app::surface::Calls
-impl core::marker::Sync for app::surface::Calls
-impl core::marker::Unpin for app::surface::Calls
-impl core::marker::UnsafeUnpin for app::surface::Calls
-impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Calls
-impl core::panic::unwind_safe::UnwindSafe for app::surface::Calls
 pub enum app::surface::Effect
 pub app::surface::Effect::ReadOnly
 impl core::clone::Clone for app::surface::Effect
@@ -920,20 +907,6 @@ impl core::marker::Unpin for app::surface::Shape
 impl core::marker::UnsafeUnpin for app::surface::Shape
 impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Shape
 impl core::panic::unwind_safe::UnwindSafe for app::surface::Shape
-pub struct app::surface::Operation
-pub app::surface::Operation::accepted: &'static [&'static str]
-pub app::surface::Operation::localizes: bool
-pub app::surface::Operation::name: &'static str
-pub app::surface::Operation::required: &'static [&'static str]
-impl core::fmt::Debug for app::surface::Operation
-pub fn app::surface::Operation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for app::surface::Operation
-impl core::marker::Send for app::surface::Operation
-impl core::marker::Sync for app::surface::Operation
-impl core::marker::Unpin for app::surface::Operation
-impl core::marker::UnsafeUnpin for app::surface::Operation
-impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Operation
-impl core::panic::unwind_safe::UnwindSafe for app::surface::Operation
 pub struct app::surface::Param
 pub app::surface::Param::description: &'static str
 pub app::surface::Param::name: &'static str
@@ -950,15 +923,11 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Param
 impl core::panic::unwind_safe::UnwindSafe for app::surface::Param
 pub struct app::surface::Tool
 pub app::surface::Tool::always_load: bool
-pub app::surface::Tool::calls: app::surface::Calls
 pub app::surface::Tool::description: &'static str
 pub app::surface::Tool::effect: app::surface::Effect
 pub app::surface::Tool::name: &'static str
 pub app::surface::Tool::params: &'static [app::surface::Param]
 pub app::surface::Tool::title: &'static str
-impl app::surface::Tool
-pub fn app::surface::Tool::localizes(&self, core::option::Option<&str>) -> bool
-pub fn app::surface::Tool::operation(&self, &str) -> core::option::Option<&'static app::surface::Operation>
 impl core::fmt::Debug for app::surface::Tool
 pub fn app::surface::Tool::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for app::surface::Tool

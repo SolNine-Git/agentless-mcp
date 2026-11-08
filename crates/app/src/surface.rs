@@ -24,8 +24,6 @@ pub struct Tool {
     pub always_load: bool,
     /// The parameters in declaration order, which is the order of the schema properties.
     pub params: &'static [Param],
-    /// How a call selects its work.
-    pub calls: Calls,
 }
 
 /// What a call to a tool can change.
@@ -33,33 +31,6 @@ pub struct Tool {
 pub enum Effect {
     /// The call reads only, repeats with no further effect, and reaches nothing outside the server.
     ReadOnly,
-}
-
-// No tool has an operation table now. The retired `gate-mark` hook still reads `Calls` and
-// `localizes`, so both stay until that hook goes.
-/// How a call to a tool selects its work.
-#[derive(Debug)]
-pub enum Calls {
-    /// The tool answers one question.
-    Single {
-        /// True when a call shows where code lives, which unlocks the search gate.
-        localizes: bool,
-    },
-    /// The `operation` parameter names one row of this table.
-    Operations(&'static [Operation]),
-}
-
-/// One operation of a tool.
-#[derive(Debug)]
-pub struct Operation {
-    /// The operation name.
-    pub name: &'static str,
-    /// The parameters it accepts, in table order, apart from `repo_root` and `operation`.
-    pub accepted: &'static [&'static str],
-    /// The accepted parameters that a call must give, in table order.
-    pub required: &'static [&'static str],
-    /// True when a call shows where code lives, which unlocks the search gate.
-    pub localizes: bool,
 }
 
 /// One parameter of a tool.
@@ -213,7 +184,6 @@ static TRACE: Tool = Tool {
             parameter::TRACE_MORE,
         ),
     ],
-    calls: Calls::Single { localizes: true },
 };
 
 static SEARCH: Tool = Tool {
@@ -235,32 +205,7 @@ static SEARCH: Tool = Tool {
         ),
         optional("limit", int(1, MAX_SEARCH_LIMIT), parameter::SEARCH_LIMIT),
     ],
-    calls: Calls::Single { localizes: false },
 };
-
-impl Tool {
-    /// Returns the operation named `name`, or `None` when the tool has no such operation.
-    #[must_use]
-    pub fn operation(&self, name: &str) -> Option<&'static Operation> {
-        match self.calls {
-            Calls::Single { .. } => None,
-            Calls::Operations(operations) => {
-                operations.iter().find(|operation| operation.name == name)
-            }
-        }
-    }
-
-    /// Returns true when a call with this `operation` argument shows where code lives.
-    #[must_use]
-    pub fn localizes(&self, operation: Option<&str>) -> bool {
-        match self.calls {
-            Calls::Single { localizes } => localizes,
-            Calls::Operations(_) => operation
-                .and_then(|name| self.operation(name))
-                .is_some_and(|operation| operation.localizes),
-        }
-    }
-}
 
 /// Returns the entry that a tools/list answer of a server with `count` roots holds for `tool`,
 /// with its keys in wire order.
@@ -280,7 +225,7 @@ fn input_schema(tool: &Tool, count: RootCount) -> JsonValue {
     let params = published(tool, count);
     let properties = params
         .iter()
-        .map(|param| (param.name, param_schema(tool, param)))
+        .map(|param| (param.name, param_schema(param)))
         .collect();
     let required: Vec<JsonValue> = params
         .iter()
@@ -339,8 +284,8 @@ fn meta(tool: &Tool) -> JsonValue {
 }
 
 // A nullable parameter publishes its shape alone: the validation still reads a null as absent.
-fn param_schema(tool: &Tool, param: &Param) -> JsonValue {
-    let mut entries = value_entries(tool, param);
+fn param_schema(param: &Param) -> JsonValue {
+    let mut entries = shape_entries(&param.shape);
     // The parameter's description replaces the description of its type.
     entries.retain(|(key, _)| *key != "description");
     if param.presence == Presence::DefaultFalse {
@@ -348,21 +293,6 @@ fn param_schema(tool: &Tool, param: &Param) -> JsonValue {
     }
     entries.push(("description", text(param.description)));
     schema(entries)
-}
-
-// The `operation` parameter publishes the operation table's names, in table order, as its enum.
-// Its validation stays a string, so an unknown name gets the refusal that lists the operations.
-fn value_entries(tool: &Tool, param: &Param) -> Vec<(&'static str, JsonValue)> {
-    match tool.calls {
-        Calls::Operations(operations) if param.name == "operation" => {
-            let names = operations.iter().map(|operation| text(operation.name));
-            vec![
-                ("enum", JsonValue::Array(names.collect())),
-                ("type", text("string")),
-            ]
-        }
-        _ => shape_entries(&param.shape),
-    }
 }
 
 fn shape_schema(shape: &Shape) -> JsonValue {
