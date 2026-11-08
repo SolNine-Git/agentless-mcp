@@ -15,7 +15,7 @@ use super::{
     MORE_TREE_DEPTH, MORE_TREE_ENTRIES, Section, Tally, cap,
 };
 use crate::cycles::cycles_in;
-use crate::explain::explain_in;
+use crate::explain::file_imports_in;
 use crate::ops::limits::MAX_LIMIT;
 use crate::search::{Place, file_row};
 use crate::{
@@ -152,9 +152,8 @@ fn links(
         limit: IntArg::from_usize(MAX_LIMIT),
     };
     let skipped = &call.scan.skipped;
-    explain_in(call.reading, &request, call.graph, skipped).map_ok(|explained| {
-        let out = &explained.imports_out;
-        let into = &explained.imports_in;
+    file_imports_in(call.reading, &request, call.graph, skipped).map_ok(|(out, into)| {
+        let (out, into) = (&out, &into);
         Links {
             imports: Linked::Found(linked(
                 out,

@@ -131,21 +131,61 @@ pub(crate) fn explain_in(
     })
 }
 
+// The imports that the file of a symbol declares, and the imports of that file by other files.
+pub(crate) type FileImports = (Bounded<ImportRow>, Bounded<ImportRow>);
+
+// The imports of the symbol's file as `explain_in` lists them. They come from the import edges
+// alone, so a file card builds no resolved graph.
+pub(crate) fn file_imports_in(
+    reading: &Reading<'_>,
+    request: &ExplainRequest,
+    graph: &CallGraph<'_>,
+    skipped: &[Skipped],
+) -> Noted<Result<FileImports, Error>> {
+    let keyed = |explained: Explanation| (explained.imports_out, explained.imports_in);
+    limited(reading, request, keyed, |limit| {
+        let (skipped, root) = (skipped.to_vec(), reading.repo.root.clone());
+        let target = request.target.clone();
+        graph.over(move |graph| {
+            let scope = Scope {
+                index: graph.index(),
+                skipped: &skipped,
+                root: &root,
+            };
+            let bound = bind(&scope, &target, limit, &TARGET_WORDING);
+            if bound.binding.status == BindingStatus::NotFound {
+                return Ok(keyed(uncarded(&target, bound.binding)));
+            }
+            Ok(imports(graph.imports(), bound.definitions[0].path(), limit))
+        })
+    })
+}
+
 // A refused limit and a data key need no graph; any other request gets its limit to `explained`.
 fn with_limit(
     reading: &Reading<'_>,
     request: &ExplainRequest,
     explained: impl FnOnce(usize) -> Noted<Result<Explanation, Error>>,
 ) -> Noted<Result<Explanation, Error>> {
+    limited(reading, request, |keyed| keyed, explained)
+}
+
+// As `with_limit`, for an answer that `keyed` takes from a data key's explanation.
+fn limited<T>(
+    reading: &Reading<'_>,
+    request: &ExplainRequest,
+    keyed: impl FnOnce(Explanation) -> T,
+    answer: impl FnOnce(usize) -> Noted<Result<T, Error>>,
+) -> Noted<Result<T, Error>> {
     let limit = match within(&request.limit, 1, MAX_LIMIT, "limit") {
         Ok(limit) => limit,
         Err(error) => return Noted::new(Err(error)),
     };
     let target = request.target.as_str();
     if let Some(found) = data_key_span(reading, target) {
-        return found.map(|span| Ok(keyed(target, span)));
+        return found.map(|span| Ok(keyed(self::keyed(target, span))));
     }
-    explained(limit)
+    answer(limit)
 }
 
 // The work owns what it reads, as a kept graph answers it on the root's graph thread.
@@ -354,11 +394,7 @@ fn edge_row(edge: &SymbolEdge<'_>, outgoing: bool) -> EdgeRow {
 
 // The import edges that leave `path` (declared) and those that arrive at it, each counted
 // before the cut.
-fn imports(
-    graph: &SymbolGraph<'_>,
-    path: &str,
-    limit: usize,
-) -> (Bounded<ImportRow>, Bounded<ImportRow>) {
+fn imports(graph: &SymbolGraph<'_>, path: &str, limit: usize) -> FileImports {
     let (mut declared, mut importers) = (Vec::new(), Vec::new());
     for edge in graph.import_edges() {
         let row = || ImportRow {

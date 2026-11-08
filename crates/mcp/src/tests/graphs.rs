@@ -69,3 +69,19 @@ fn every_card_of_one_call_reads_one_kept_graph() {
     assert_eq!(traced(&server, &targets), answer);
     assert_eq!(server.inner.graphs.builds(), built(1));
 }
+
+#[test]
+fn a_file_card_reads_its_imports_with_no_resolved_graph() {
+    let sandbox = probe();
+    let server = pinned(&sandbox);
+    let answer = traced(&server, &json!("pkg/mod.py"));
+    assert!(!answer.is_error, "{}", answer.text);
+    assert!(answer.text.contains("main.py"), "{}", answer.text);
+    let builds = Builds {
+        indexes: 1,
+        scopes: 1,
+        resolvers: 0,
+        graphs: 0,
+    };
+    assert_eq!(server.inner.graphs.builds(), builds);
+}
