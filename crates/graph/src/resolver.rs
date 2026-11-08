@@ -1,6 +1,7 @@
 //! The one place a name spelled in a file becomes an evidence tier and a candidate set.
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use facts::{Declared, Ref, Role};
@@ -122,6 +123,7 @@ pub struct Resolver<'a> {
     // The index and the scopes never change, so a key and qualifier resolve once for the life of
     // the resolver. A lock, not a cell, keeps the resolver `Sync` for the types that hold it.
     resolved: Mutex<Memo>,
+    walks: AtomicUsize,
 }
 
 impl<'a> Resolver<'a> {
@@ -144,7 +146,14 @@ impl<'a> Resolver<'a> {
             scopes,
             candidates,
             resolved: Mutex::new(HashMap::new()),
+            walks: AtomicUsize::new(0),
         }
+    }
+
+    // How many alias chains the resolver walked: the memo holds it to one per key it resolved.
+    #[cfg(test)]
+    pub(crate) fn walks(&self) -> usize {
+        self.walks.load(Ordering::Relaxed)
     }
 
     /// Return the name index the resolver reads.
@@ -404,6 +413,7 @@ impl<'a> Resolver<'a> {
     where
         'a: 'n,
     {
+        self.walks.fetch_add(1, Ordering::Relaxed);
         let mut pending: VecDeque<(&'a str, &'n str, u32)> = first
             .into_iter()
             .map(|(target, member)| (target, member, 1))

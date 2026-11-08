@@ -3,6 +3,7 @@ mod corpus;
 mod deadline;
 mod files;
 mod lookup;
+mod memo;
 mod names;
 mod packages;
 mod properties;
