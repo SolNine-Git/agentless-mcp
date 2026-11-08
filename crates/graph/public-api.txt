@@ -368,10 +368,14 @@ pub fn graph::ImportScope<'a>::resolved_edges<'s>(&'s self, &'s str) -> impl cor
 pub fn graph::ImportScope<'a>::resolved_statements<'s>(&'s self, &'s str) -> impl core::iter::traits::iterator::Iterator<Item = (usize, &'s str, &'a str)> + 's
 impl<'a> core::clone::Clone for graph::ImportScope<'a>
 pub fn graph::ImportScope<'a>::clone(&self) -> Self
+impl<'a> core::cmp::Eq for graph::ImportScope<'a>
+impl<'a> core::cmp::PartialEq for graph::ImportScope<'a>
+pub fn graph::ImportScope<'a>::eq(&self, &Self) -> bool
 impl<'a> core::default::Default for graph::ImportScope<'a>
 pub fn graph::ImportScope<'a>::default() -> Self
 impl<'a> core::fmt::Debug for graph::ImportScope<'a>
 pub fn graph::ImportScope<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::StructuralPartialEq for graph::ImportScope<'a>
 impl<'a> core::marker::Freeze for graph::ImportScope<'a>
 impl<'a> core::marker::Send for graph::ImportScope<'a>
 impl<'a> core::marker::Sync for graph::ImportScope<'a>
@@ -394,6 +398,7 @@ impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::ImportTargets<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::ImportTargets<'a>
 pub struct graph::KeptParts<'p, 's>
 pub graph::KeptParts::index: core::option::Option<&'p mut graph::NameIndex<'s>>
+pub graph::KeptParts::scopes: core::option::Option<&'p mut graph::Scopes<'s>>
 impl<'p, 's> core::marker::Freeze for graph::KeptParts<'p, 's>
 impl<'p, 's> core::marker::Send for graph::KeptParts<'p, 's>
 impl<'p, 's> core::marker::Sync for graph::KeptParts<'p, 's>
@@ -600,8 +605,6 @@ pub fn graph::Scopes<'a>::files(&self) -> &'a [&'a graph::FileFacts]
 pub fn graph::Scopes<'a>::get(&self, &str) -> core::option::Option<&graph::ImportScope<'a>>
 pub fn graph::Scopes<'a>::import_pairs(&self) -> alloc::collections::btree::set::BTreeSet<(&'a str, &'a str)>
 pub fn graph::Scopes<'a>::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&'a str, &graph::ImportScope<'a>)> + '_
-impl<'a> core::clone::Clone for graph::Scopes<'a>
-pub fn graph::Scopes<'a>::clone(&self) -> Self
 impl<'a> core::fmt::Debug for graph::Scopes<'a>
 pub fn graph::Scopes<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<'a> core::marker::Freeze for graph::Scopes<'a>

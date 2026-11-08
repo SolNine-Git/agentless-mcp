@@ -8,7 +8,8 @@ use syntax::Language;
 
 use crate::entries::EntryNames;
 use crate::imports::{
-    inside_package, module_object, resolve_import_target, resolve_imported_submodule,
+    inside_package, module_object, package_directory, resolve_import_target,
+    resolve_imported_submodule,
 };
 use crate::paths::PathIndex;
 use crate::rust_paths::RustTree;
@@ -31,7 +32,7 @@ pub(crate) struct ResolvedImport<'a> {
 }
 
 /// What one file's import statements bring in: whole modules, module objects, named members.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ImportScope<'a> {
     pub(crate) wholesale: BTreeSet<&'a str>,
     pub(crate) module_bindings: Bindings<'a>,
@@ -85,6 +86,24 @@ impl<'a> ImportScope<'a> {
         })
     }
 
+    // Every file that a binding of the scope names: a member's file, a module, a whole module.
+    fn targets(&self) -> BTreeSet<&'a str> {
+        let members = self.members.values().flatten().map(|(target, _)| *target);
+        let modules = self.module_bindings.values().flatten().copied();
+        let qualified = self.qualified.values().filter_map(|named| match named {
+            Qualified::Module(module) => Some(*module),
+            Qualified::Foreign => None,
+        });
+        let named = self.named.values().flatten().copied();
+        let wholesale = self.wholesale.iter().copied();
+        members
+            .chain(modules)
+            .chain(qualified)
+            .chain(named)
+            .chain(wholesale)
+            .collect()
+    }
+
     // Only C's #include, Python's `from x import *` and Rust's `use m::*` bring every name in.
     pub(crate) fn binds(&self, name: &str, path: &str) -> bool {
         self.wholesale.contains(path)
@@ -96,11 +115,17 @@ impl<'a> ImportScope<'a> {
 }
 
 /// The import scope of every scanned file.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Scopes<'a> {
     files: &'a [&'a FileFacts],
     per_file: Vec<ImportScope<'a>>,
     by_path: Vec<(&'a str, usize)>,
+    // What a file's statements bind against, kept so that an update binds a file again.
+    paths: PathIndex<'a>,
+    entries: EntryNames<'a>,
+    exports: BTreeMap<(&'a str, &'a str), &'a str>,
+    // The scan positions of the files whose scope binds a name to each file.
+    importers: BTreeMap<&'a str, BTreeSet<usize>>,
 }
 
 impl<'a> Scopes<'a> {
@@ -123,17 +148,90 @@ impl<'a> Scopes<'a> {
                 rebind_rust(files, &mut per_file, &rust);
             }
         }
+        let exports = std::mem::take(&mut rust.exports);
         let mut by_path: Vec<(&'a str, usize)> = files
             .iter()
             .enumerate()
             .map(|(position, file)| (file.path.as_str(), position))
             .collect();
         by_path.sort_unstable();
+        let mut importers: BTreeMap<&'a str, BTreeSet<usize>> = BTreeMap::new();
+        for (position, scope) in per_file.iter().enumerate() {
+            for target in scope.targets() {
+                importers.entry(target).or_default().insert(position);
+            }
+        }
         Scopes {
             files,
             per_file,
             by_path,
+            paths,
+            entries,
+            exports,
+            importers,
         }
+    }
+
+    // Reads `files`, the same paths in the same order as the scan of the scopes, and binds again
+    // each changed file and, after an entry's names change, every file inside its package. Returns
+    // each file whose scope changed, with its scope before.
+    pub(crate) fn update(
+        &mut self,
+        files: &'a [&'a FileFacts],
+        changed: &[usize],
+    ) -> Vec<(usize, ImportScope<'a>)> {
+        let before = self.files;
+        self.files = files;
+        let mut rebound: BTreeSet<usize> = changed.iter().copied().collect();
+        for &at in changed {
+            let (old, new) = (before[at], files[at]);
+            let directory = package_directory(&new.path);
+            if let Some(directory) = directory
+                && self.entries.replace(old, new, &self.paths)
+            {
+                rebound.extend(self.inside(directory));
+            }
+        }
+        let mut rust = RustTree::build(files, &self.paths);
+        rust.exports = self.exports.clone();
+        let repository = Repository {
+            paths: &self.paths,
+            entries: &self.entries,
+        };
+        let bound: Vec<(usize, ImportScope<'a>)> = (rebound.into_iter())
+            .map(|at| (at, bind_file(files[at], &repository, &rust)))
+            .filter(|(at, scope)| *scope != self.per_file[*at])
+            .collect();
+        let mut differing = Vec::new();
+        for (at, scope) in bound {
+            let old = std::mem::replace(&mut self.per_file[at], scope);
+            self.unindexed(at, &old);
+            for target in self.per_file[at].targets() {
+                self.importers.entry(target).or_default().insert(at);
+            }
+            differing.push((at, old));
+        }
+        differing
+    }
+
+    fn unindexed(&mut self, at: usize, old: &ImportScope<'a>) {
+        for target in old.targets() {
+            let Some(held) = self.importers.get_mut(target) else {
+                continue;
+            };
+            held.remove(&at);
+            if held.is_empty() {
+                self.importers.remove(target);
+            }
+        }
+    }
+
+    // The scan positions of the files inside the package directory `directory`, in path order.
+    fn inside(&self, directory: &str) -> Vec<usize> {
+        let start = self.by_path.partition_point(|(path, _)| *path < directory);
+        let held = self.by_path[start..].iter();
+        let inside = held.take_while(|(path, _)| path.starts_with(directory));
+        inside.map(|(_, position)| *position).collect()
     }
 
     /// Return the scanned files the scopes were built from.

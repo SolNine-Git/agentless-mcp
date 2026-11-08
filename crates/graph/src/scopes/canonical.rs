@@ -14,7 +14,16 @@ impl Scopes<'_> {
         let scopes: Vec<Value> = (self.files.iter().zip(&self.per_file))
             .map(|(file, scope)| json!([file.path, scope.canonical()]))
             .collect();
-        json!({ "scopes": scopes, "by_path": self.by_path })
+        let exports: Vec<Value> = (self.exports.iter())
+            .map(|(key, target)| json!([key, target]))
+            .collect();
+        json!({
+            "scopes": scopes,
+            "by_path": self.by_path,
+            "entries": self.entries.canonical(),
+            "exports": exports,
+            "importers": self.importers,
+        })
     }
 }
 

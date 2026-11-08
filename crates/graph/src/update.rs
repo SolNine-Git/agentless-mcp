@@ -7,10 +7,12 @@ use syntax::Language;
 use crate::names::NameIndex;
 use crate::rust_paths::is_manifest;
 use crate::scan::FileFacts;
+use crate::scopes::Scopes;
 
 /// The kept parts of one scan's graph. A part that was not built is `None`, and stays so.
 pub struct KeptParts<'p, 's> {
     pub index: Option<&'p mut NameIndex<'s>>,
+    pub scopes: Option<&'p mut Scopes<'s>>,
 }
 
 /// What an update resolved again: the files whose every site it resolved, and the sites.
@@ -46,6 +48,9 @@ pub fn update<'s>(
     let changed = changed(before, after)?;
     if let Some(index) = parts.index {
         index.update(after, &changed);
+    }
+    if let Some(scopes) = parts.scopes {
+        scopes.update(after, &changed);
     }
     Ok(Resolved::default())
 }

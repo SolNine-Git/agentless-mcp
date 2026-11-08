@@ -48,11 +48,48 @@ impl<'a> EntryNames<'a> {
         }
     }
 
+    // Puts the names that `new` binds in place of those of `old`, the same entry's earlier facts,
+    // and returns whether they differ.
+    pub(crate) fn replace(
+        &mut self,
+        old: &'a FileFacts,
+        new: &'a FileFacts,
+        paths: &PathIndex<'a>,
+    ) -> bool {
+        let entry = old.path.as_str();
+        let held: Vec<(&'a str, &'a str)> = (self.objects.range((entry, "")..))
+            .take_while(|((path, _), _)| *path == entry)
+            .map(|(key, _)| *key)
+            .collect();
+        let rows = |names: &EntryNames<'a>| -> Vec<(&str, BTreeSet<Object<'a>>)> {
+            let rows = names.objects.range((entry, "")..);
+            let rows = rows.take_while(|((path, _), _)| *path == entry);
+            rows.map(|((_, name), objects)| (*name, objects.clone()))
+                .collect()
+        };
+        let before = rows(self);
+        for key in held {
+            self.objects.remove(&key);
+        }
+        self.add(new, paths);
+        before != rows(self)
+    }
+
     fn insert(&mut self, entry: &'a str, name: &'a str, object: Object<'a>) {
         self.objects
             .entry((entry, name))
             .or_default()
             .insert(object);
+    }
+
+    // Each entry's names with their objects, in key order.
+    #[cfg(test)]
+    pub(crate) fn canonical(&self) -> serde_json::Value {
+        let rows = self
+            .objects
+            .iter()
+            .map(|(key, objects)| serde_json::json!([key, objects]));
+        serde_json::Value::from(rows.collect::<Vec<_>>())
     }
 
     // Whether `entry` binds one of `members`, each with the module of its name, to another object.

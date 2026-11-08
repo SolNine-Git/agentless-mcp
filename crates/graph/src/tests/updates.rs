@@ -8,7 +8,7 @@ use syntax::Language;
 
 use super::equality::{Canonical, Parts, assert_same};
 use super::rust::scanned;
-use crate::{FileFacts, KeptParts, NameIndex, Rebuild, update};
+use crate::{FileFacts, KeptParts, NameIndex, Rebuild, Scopes, update};
 
 // One change to one file of a scan: a text replaced in it, its whole new text, or its removal.
 enum Change {
@@ -114,9 +114,11 @@ fn run(case: &Case) {
         lists.push(carried);
     }
     let mut index = NameIndex::build(&lists[0]);
+    let mut scopes = Scopes::build(&lists[0]);
     for (step, pair) in lists.windows(2).enumerate() {
         let parts = KeptParts {
             index: Some(&mut index),
+            scopes: Some(&mut scopes),
         };
         let updated = update(parts, &pair[0], &pair[1]);
         let last = step + 1 == case.steps.len();
@@ -134,12 +136,32 @@ fn run(case: &Case) {
         let kept = Canonical::of(&Parts {
             files: &pair[1],
             index: Some(&index),
+            scopes: Some(&scopes),
             ..Parts::default()
         });
         let label = format!("{}: step {step}", case.name);
         assert_same(&label, &kept, &Canonical::built(&pair[1]));
     }
 }
+
+// A package whose entry re-exports a name, a module that the entry does not bind, and a file that
+// star-imports a module.
+const PACKAGE: [(&str, &str); 5] = [
+    ("pkg/__init__.py", "from pkg.core import run\n"),
+    (
+        "pkg/core.py",
+        "def run():\n    return 1\n\n\ndef other():\n    return 2\n",
+    ),
+    ("pkg/mod.py", "x = 1\n"),
+    (
+        "pkg/user.py",
+        "from pkg import mod, run\n\n\ndef use():\n    return run() + mod.x\n",
+    ),
+    (
+        "app.py",
+        "from pkg import run\nfrom pkg.core import *\n\n\ndef main():\n    return run() + other()\n",
+    ),
+];
 
 const CASES: &[Case] = &[
     Case {
@@ -246,6 +268,139 @@ const CASES: &[Case] = &[
             &[(
                 "src/ledger.rs",
                 Replace("use crate::helpers", "// moved\n\nuse crate::helpers"),
+            )],
+        ],
+        rebuilds: None,
+    },
+    Case {
+        name: "an import added and removed",
+        fixture: "repo_nested",
+        extra: &[],
+        steps: &[
+            &[(
+                "billing/invoice.py",
+                Replace(
+                    "from billing.tax import tax_on\n",
+                    "from billing.tax import tax_on\nfrom billing.money import round_amount\n",
+                ),
+            )],
+            &[(
+                "billing/invoice.py",
+                Replace("from billing.money import round_amount\n", ""),
+            )],
+        ],
+        rebuilds: None,
+    },
+    Case {
+        name: "a package entry's re-export, an entry name that changes what a module loads, and a star import",
+        fixture: "",
+        extra: &PACKAGE,
+        steps: &[
+            &[(
+                "pkg/__init__.py",
+                Write("from pkg.core import run, other\n"),
+            )],
+            &[(
+                "pkg/__init__.py",
+                Write("from pkg.core import run, other\nmod = 1\n"),
+            )],
+            &[(
+                "pkg/core.py",
+                Replace(
+                    "def other():",
+                    "def third():\n    return 3\n\n\ndef other():",
+                ),
+            )],
+            &[("app.py", Replace("from pkg.core import *\n", ""))],
+        ],
+        rebuilds: None,
+    },
+    Case {
+        name: "a JavaScript import through an index file",
+        fixture: "",
+        extra: &[
+            (
+                "lib/index.ts",
+                "export function helper(): number { return 1; }\n",
+            ),
+            (
+                "lib/other.ts",
+                "export function helper(): number { return 2; }\n",
+            ),
+            (
+                "main.ts",
+                "import { helper } from './lib';\n\nexport function main(): number { return helper(); }\n",
+            ),
+        ],
+        steps: &[
+            &[("main.ts", Replace("from './lib'", "from './lib/other'"))],
+            &[(
+                "lib/other.ts",
+                Replace("function helper()", "function aide()"),
+            )],
+        ],
+        rebuilds: None,
+    },
+    Case {
+        name: "a Java import",
+        fixture: "",
+        extra: &[
+            (
+                "src/a/b/Money.java",
+                "package a.b;\npublic class Money { public int cents() { return 1; } }\n",
+            ),
+            (
+                "src/a/c/Report.java",
+                "package a.c;\nimport a.b.Money;\npublic class Report { int run(Money m) { return m.cents(); } }\n",
+            ),
+        ],
+        steps: &[
+            &[("src/a/c/Report.java", Replace("import a.b.Money;\n", ""))],
+            &[(
+                "src/a/b/Money.java",
+                Replace(
+                    "public int cents()",
+                    "public int pence() { return 2; }\n  public int cents()",
+                ),
+            )],
+        ],
+        rebuilds: None,
+    },
+    Case {
+        name: "a C include",
+        fixture: "",
+        extra: &[
+            ("util.h", "int helper(int x);\n"),
+            (
+                "util.c",
+                "#include \"util.h\"\nint helper(int x) { return x; }\n",
+            ),
+            (
+                "main.c",
+                "#include \"util.h\"\nint main(void) { return helper(1); }\n",
+            ),
+        ],
+        steps: &[
+            &[("util.h", Write("int helper(int x);\nint other(int x);\n"))],
+            &[("main.c", Replace("#include \"util.h\"\n", ""))],
+        ],
+        rebuilds: None,
+    },
+    Case {
+        name: "a Go name of the same package",
+        fixture: "repo_go",
+        extra: &[],
+        steps: &[
+            &[(
+                "inventory.go",
+                Replace(
+                    "func NewInventory(",
+                    "func FormatMoney(amount float64) string { return \"\" }\n\nfunc NewInventory(",
+                ),
+            )],
+            &[(
+                "pricing.go",
+                Replace("func FormatMoney(", "func formatMoneyOld("),
             )],
         ],
         rebuilds: None,
