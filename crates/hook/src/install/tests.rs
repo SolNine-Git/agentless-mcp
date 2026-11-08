@@ -7,8 +7,9 @@ use app::EnvConfig;
 use serde_json::{Value, json};
 
 use super::disk::{self, Written};
+use super::edit::Removed;
 use super::layout::indented;
-use super::{installed, statused, uninstalled};
+use super::{installed, statused, uninstall_output, uninstalled};
 use crate::Output;
 use crate::testing::{MANIFEST_DIR, Sandbox};
 
@@ -328,6 +329,14 @@ fn a_file_that_changes_during_the_write_gets_one_retry_then_a_refusal() {
     let wrote = disk::written(&target, &edit, &once);
     assert!(matches!(wrote, Ok((Written::Wrote, ()))));
     assert_eq!(text(&target), "{}!");
+}
+
+#[test]
+fn an_uninstall_that_races_names_uninstall() {
+    let raced = uninstall_output(Ok((Written::Raced, Removed::default())), "/c/settings.json");
+    let stderr = "agentless-mcp: /c/settings.json changed twice while hook uninstall wrote it. \
+                  hook uninstall wrote nothing. Run it again.\n";
+    assert_eq!((raced.code, raced.stderr.as_str()), (1, stderr));
 }
 
 #[test]

@@ -1617,13 +1617,14 @@ pub const HOOK_INSTALL_DRY_RUN: Template<(Text, Text)> = Template::new(&[
     Piece::Value(0),
 ]);
 
-/// A template that takes `path`.
-pub const HOOK_INSTALL_RACED: Template<Text> = Template::new(&[
+/// A template that takes (`path`, `command`).
+pub const HOOK_INSTALL_RACED: Template<(Text, Text)> = Template::new(&[
     Piece::Value(0),
-    Piece::Text(
-        " changed twice while hook install wrote it. hook install wrote \
-        nothing. Run it again.",
-    ),
+    Piece::Text(" changed twice while hook "),
+    Piece::Value(1),
+    Piece::Text(" wrote it. hook "),
+    Piece::Value(1),
+    Piece::Text(" wrote nothing. Run it again."),
 ]);
 
 /// A template that takes `path`.

@@ -1073,7 +1073,7 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 364] = [
     (
         "messages",
         "hook_install_raced",
-        &["path"],
+        &["path", "command"],
         messages::HOOK_INSTALL_RACED.pieces(),
     ),
     (

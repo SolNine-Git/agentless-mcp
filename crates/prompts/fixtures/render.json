@@ -1181,9 +1181,10 @@
     },
     "hook_install_raced": {
       "arguments": {
+        "command": "uninstall",
         "path": "/home/u/.claude/settings.json"
       },
-      "text": "/home/u/.claude/settings.json changed twice while hook install wrote it. hook install wrote nothing. Run it again."
+      "text": "/home/u/.claude/settings.json changed twice while hook uninstall wrote it. hook uninstall wrote nothing. Run it again."
     },
     "hook_install_unchanged": {
       "arguments": {

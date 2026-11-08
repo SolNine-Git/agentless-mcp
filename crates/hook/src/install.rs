@@ -93,7 +93,7 @@ fn with_binary(run: impl FnOnce(&str) -> Output) -> Output {
 
 // Why a file's text takes no edit. Uninstall of a file with no agentless entry, or of no file,
 // writes nothing and succeeds.
-enum NoEdit {
+pub(crate) enum NoEdit {
     BadJson(String),
     Unshaped(Misshaped),
     NothingToRemove,
@@ -122,7 +122,7 @@ pub(crate) fn installed(args: &[OsString], env: &EnvConfig, binary: &str) -> Out
     match disk::written(&target, &edit, &disk::read) {
         Ok((Written::Wrote, counts)) => done(&HOOK_INSTALL_WROTE.render((&shown, &counts))),
         Ok((Written::Unchanged, _)) => done(&HOOK_INSTALL_UNCHANGED.render(&shown)),
-        Ok((Written::Raced, _)) => failed(&HOOK_INSTALL_RACED.render(&shown)),
+        Ok((Written::Raced, _)) => failed(&HOOK_INSTALL_RACED.render((&shown, INSTALL.command))),
         Err(stopped) => stopped_output(stopped, &shown, INSTALL.command),
     }
 }
@@ -153,15 +153,22 @@ pub(crate) fn uninstalled(args: &[OsString], env: &EnvConfig) -> Output {
         Ok(target) => target,
         Err(output) => return output,
     };
-    let shown = shown(&target);
-    match disk::written(&target, &uninstall_edit, &disk::read) {
+    let written = disk::written(&target, &uninstall_edit, &disk::read);
+    uninstall_output(written, &shown(&target))
+}
+
+pub(crate) fn uninstall_output(
+    written: Result<(Written, Removed), Stopped<NoEdit>>,
+    shown: &str,
+) -> Output {
+    match written {
         Ok((Written::Wrote, removed)) => {
             let count = removed.current.len() + removed.retired.len();
-            done(&HOOK_UNINSTALL_REPORT.render((&shown, count, removed.kept)))
+            done(&HOOK_UNINSTALL_REPORT.render((shown, count, removed.kept)))
         }
-        Ok((Written::Unchanged, _)) => done(&HOOK_UNINSTALL_NONE.render(&shown)),
-        Ok((Written::Raced, _)) => failed(&HOOK_INSTALL_RACED.render(&shown)),
-        Err(stopped) => stopped_output(stopped, &shown, UNINSTALL.command),
+        Ok((Written::Unchanged, _)) => done(&HOOK_UNINSTALL_NONE.render(shown)),
+        Ok((Written::Raced, _)) => failed(&HOOK_INSTALL_RACED.render((shown, UNINSTALL.command))),
+        Err(stopped) => stopped_output(stopped, shown, UNINSTALL.command),
     }
 }
 
