@@ -501,6 +501,7 @@ dependencies = [
  "json",
  "kernel",
  "prompts",
+ "render",
  "serde",
  "serde_json",
  "sha2",

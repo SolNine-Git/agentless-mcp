@@ -1,0 +1,17 @@
+{
+  "hook": "erosion",
+  "fixture": "repo_py",
+  "payload": {
+    "session_id": "session-1",
+    "transcript_path": "/home/user/.claude/projects/repo/session-1.jsonl",
+    "cwd": "<REPO>",
+    "permission_mode": "default",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "<REPO>/audit.py",
+      "content": "def audit(rows):\n    total = 0\n    if rows[0]:\n        total += 0\n    if rows[1]:\n        total += 1\n    if rows[2]:\n        total += 2\n    if rows[3]:\n        total += 3\n    if rows[4]:\n        total += 4\n    if rows[5]:\n        total += 5\n    if rows[6]:\n        total += 6\n    if rows[7]:\n        total += 7\n    if rows[8]:\n        total += 8\n    if rows[9]:\n        total += 9\n    if rows[10]:\n        total += 10\n    return total\n"
+    },
+    "tool_use_id": "toolu_05"
+  }
+}

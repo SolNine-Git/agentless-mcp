@@ -1,0 +1,31 @@
+{
+  "hook": "subagent-map",
+  "fixture": "repo_py",
+  "before": [
+    {
+      "hook": "brief-record",
+      "payload": {
+        "session_id": "session-1",
+        "transcript_path": "/home/user/.claude/projects/repo/session-1.jsonl",
+        "cwd": "<REPO>",
+        "permission_mode": "default",
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Agent",
+        "tool_input": {
+          "description": "Find the undercount",
+          "prompt": "Find why `stock_value` in reports.py undercounts wholesale stock. Report the cause.",
+          "subagent_type": "Explore"
+        },
+        "tool_use_id": "toolu_00"
+      }
+    }
+  ],
+  "payload": {
+    "session_id": "session-1",
+    "transcript_path": "/home/user/.claude/projects/repo/session-1.jsonl",
+    "cwd": "<REPO>",
+    "hook_event_name": "SubagentStart",
+    "agent_id": "agent-7",
+    "agent_type": "Explore"
+  }
+}
