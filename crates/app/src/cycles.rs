@@ -64,10 +64,7 @@ pub(crate) fn cycles_in(
         Ok(limit) => limit,
         Err(error) => return Noted::new(Err(error)),
     };
-    let answered = graph.over(move |graph| {
-        let imports = SymbolGraph::imports(graph.scopes());
-        Ok(Bounded::cut(rows(&import_cycles(&imports)), limit))
-    });
+    let answered = graph.over(move |graph| Ok(Bounded::cut(rows(graph.cycles()), limit)));
     let mut diagnostics = scan.warnings.clone();
     diagnostics.extend(answered.diagnostics);
     Noted {

@@ -14,7 +14,9 @@ use std::thread;
 use std::time::Duration;
 
 use git::RepoFile;
-use graph::{FileFacts, NameIndex, Resolver, Scopes, SymbolGraph};
+use graph::{
+    AmbiguousDegrees, Cycle, FileFacts, NameIndex, Resolver, Scopes, SymbolGraph, import_cycles,
+};
 use kernel::{Deadline, Stopped, checkpoint};
 
 use crate::detached::answered_over;
@@ -115,13 +117,17 @@ pub(crate) struct CallGraph<'a> {
     keeping: Keeping<'a>,
 }
 
-// What a call graph builds from its files. The resolver and the graph borrow the index and scopes.
+// What a call graph builds from its files, and what it reads from them once: the ambiguous
+// degrees of the graph, and the import cycles of the import edges. Each borrows the files.
 #[derive(Default)]
 struct Built<'a> {
     index: OnceCell<NameIndex<'a>>,
     scopes: OnceCell<Scopes<'a>>,
     resolver: OnceCell<Resolver<'a>>,
     graph: OnceCell<Result<SymbolGraph<'a>, Stopped>>,
+    degrees: OnceCell<AmbiguousDegrees>,
+    imports: OnceCell<SymbolGraph<'a>>,
+    cycles: OnceCell<Vec<Cycle<'a>>>,
 }
 
 // Gives `answer` the call graph of `files`, which builds nothing until an answer needs it.
@@ -201,6 +207,20 @@ impl<'a> CallGraph<'a> {
             SymbolGraph::build(self.resolver(), self.deadline)
         });
         built.as_ref().map_err(|stopped| Error::from(*stopped))
+    }
+
+    pub(crate) fn degrees(&self) -> Result<&'a AmbiguousDegrees, Error> {
+        let graph = self.graph()?;
+        Ok(self.built.degrees.get_or_init(|| graph.ambiguous_degrees()))
+    }
+
+    // The module-level import edges alone, which resolve no reference.
+    pub(crate) fn imports(&self) -> &'a SymbolGraph<'a> {
+        (self.built.imports).get_or_init(|| SymbolGraph::imports(self.scopes()))
+    }
+
+    pub(crate) fn cycles(&self) -> &'a [Cycle<'a>] {
+        (self.built.cycles).get_or_init(|| import_cycles(self.imports()))
     }
 
     fn counted(&self, count: impl FnOnce(&Counts) -> &AtomicUsize) {

@@ -160,13 +160,12 @@ fn graph_explained(
     let root = reading.repo.root.clone();
     let target = target.to_owned();
     graph.over(move |graph| {
-        let built = graph.graph()?;
         let scope = Scope {
             index: graph.index(),
             skipped: &skipped,
             root: &root,
         };
-        let explained = explanation(&scope, built, &target, limit);
+        let explained = explanation(&scope, graph, &target, limit)?;
         let coverage = Coverage::of(&explained.binding, &skipped);
         Ok(Explanation {
             coverage,
@@ -176,21 +175,23 @@ fn graph_explained(
     })
 }
 
+// The graph is built before the target binds, so a stopped build stops every explain.
 fn explanation(
     scope: &Scope<'_, '_>,
-    graph: &SymbolGraph<'_>,
+    call: &CallGraph<'_>,
     target: &str,
     limit: usize,
-) -> Explanation {
+) -> Result<Explanation, Error> {
+    let graph = call.graph()?;
     let bound = bind(scope, target, limit, &TARGET_WORDING);
     if bound.binding.status == BindingStatus::NotFound {
-        return uncarded(target, bound.binding);
+        return Ok(uncarded(target, bound.binding));
     }
     let ordered = bound.definitions;
     let tied = best_band(&ordered, &bound.key).len();
     let chosen = &ordered[0];
     let node = chosen.stable_id().to_string();
-    let degrees = graph.ambiguous_degrees();
+    let degrees = call.degrees()?;
     let (imports_out, imports_in) = imports(graph, chosen.path(), limit);
     let mut fan_out = tier_groups(graph.outgoing(&node).iter(), limit, true);
     let leaving = graph.ambiguous_from(&node);
@@ -208,7 +209,7 @@ fn explanation(
         limit,
         false,
     ));
-    Explanation {
+    Ok(Explanation {
         target: target.to_owned(),
         card: Some(card(chosen)),
         message: String::new(),
@@ -228,7 +229,7 @@ fn explanation(
         binding: bound.binding,
         coverage: Coverage::not_checked(),
         skipped: Vec::new(),
-    }
+    })
 }
 
 // A data key stays out of the name graph, so its card stands alone. A key that the file does not
