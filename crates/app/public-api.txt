@@ -1186,6 +1186,8 @@ impl core::marker::UnsafeUnpin for app::trace::Tally
 impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Tally
 impl core::panic::unwind_safe::UnwindSafe for app::trace::Tally
 pub struct app::trace::Callees
+pub app::trace::Callees::bound: usize
+pub app::trace::Callees::name_only: usize
 pub app::trace::Callees::rows: alloc::vec::Vec<app::trace::EdgeGroup>
 pub app::trace::Callees::rows_total: app::trace::Tally
 pub app::trace::Callees::tiers: alloc::vec::Vec<app::trace::TierTotal>

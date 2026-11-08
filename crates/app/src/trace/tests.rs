@@ -266,6 +266,24 @@ fn a_count_comes_from_the_complete_list_when_a_tier_passes_the_largest_listing()
     assert_eq!(callers.name_only_files, Tally::Floor(1));
 }
 
+// The bare `run` binds to neither definition, so explain lists an edge to each.
+#[test]
+fn a_symbol_card_counts_its_bound_and_its_name_only_callees() {
+    let files = [
+        ("a.py", "def run():\n    return 1\n"),
+        ("b.py", "def run():\n    return 2\n"),
+        (
+            "c.py",
+            "from a import run as first\n\n\ndef helper():\n    return 3\n\n\n\
+             def go():\n    return first() + helper() + run()\n",
+        ),
+    ];
+    let traced = symbol(card(&files, "py:c.py::go", Some(Section::Callees)));
+    let callees = traced.callees.unwrap_or_else(|| panic!("callees"));
+    let total: usize = callees.tiers.iter().map(|tier| tier.total).sum();
+    assert_eq!((callees.bound, callees.name_only, total), (2, 2, 4));
+}
+
 #[test]
 fn more_shows_one_section_alone_and_the_body_and_history_in_full() {
     let scanned = Scanned::new(&TESTED);

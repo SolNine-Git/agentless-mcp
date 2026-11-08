@@ -268,9 +268,13 @@ fn callees(explained: &Explanation, cap: usize) -> Callees {
     let binding: Vec<&TierGroup> = (explained.fan_out.iter())
         .filter(|group| binds(group.tier))
         .collect();
+    let bound: usize = binding.iter().map(|group| group.total).sum();
+    let all: usize = explained.fan_out.iter().map(|group| group.total).sum();
     let whole = binding.iter().all(|group| group.rows.len() == group.total);
     let groups: Vec<EdgeGroup> = binding.into_iter().flat_map(by_file).collect();
     Callees {
+        bound,
+        name_only: all - bound,
         rows_total: Tally::of(groups.len(), whole),
         rows: groups.into_iter().take(cap).collect(),
         tiers,

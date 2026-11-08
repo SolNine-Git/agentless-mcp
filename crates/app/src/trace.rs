@@ -197,6 +197,10 @@ pub struct TierSites {
 /// The symbols that a symbol references, by evidence tier.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Callees {
+    /// The edges at a binding tier, same-file or resolved-via-import.
+    pub bound: usize,
+    /// The edges at a name-only tier, unique or ambiguous.
+    pub name_only: usize,
     /// The edges of each tier, strongest first.
     pub tiers: Vec<TierTotal>,
     /// The binding-tier edges grouped by file and tier, in edge order, cut at the cap.
