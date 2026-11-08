@@ -9,7 +9,7 @@ use super::noise::{NoiseClass, class_of, cut, is_minified};
 
 // One file with a match: its class, the lines the answer may show, and its match count.
 #[derive(Debug)]
-pub(super) struct FileHits {
+pub(crate) struct FileHits {
     pub(super) path: String,
     pub(super) source: bool,
     pub(super) class: Option<NoiseClass>,

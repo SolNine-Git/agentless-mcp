@@ -4,6 +4,7 @@
 
 mod change;
 mod file;
+mod miss;
 mod resolve;
 mod section;
 mod symbol;
@@ -20,6 +21,7 @@ use crate::{
     CycleRow, EdgeRow, Error, HistoryEntry, HistoryResult, IntArg, Noted, Reading, RefGroup,
     Services, SharedCaller, SymbolCard, Usage,
 };
+use miss::Misses;
 use resolve::Resolved;
 
 pub use crate::symbol_graph::{Builds, KeptGraphs};
@@ -497,6 +499,7 @@ fn traced(
                     services,
                     reading,
                     files: &files,
+                    walk_warnings: &warnings,
                     scan,
                     graph,
                 };
@@ -509,11 +512,13 @@ fn traced(
     Noted { value, diagnostics }
 }
 
-// What every card of one call reads: the walk, the scan, and the scan's one name index and graph.
+// What every card of one call reads: the walk and its warnings, the scan, and the scan's one name
+// index and graph.
 struct Call<'c, 'r, 'g> {
     services: &'c Services,
     reading: &'c Reading<'r>,
     files: &'c [RepoFile],
+    walk_warnings: &'c [String],
     scan: &'c CallScan,
     graph: &'c CallGraph<'g>,
 }
@@ -525,11 +530,12 @@ fn carded(
     resolved: Vec<Resolved>,
 ) -> Noted<Result<Vec<Traced>, Error>> {
     let mut noted = Noted::new(Vec::new());
+    let mut misses = Misses::of(&request.targets, &resolved);
     for (at, (target, resolved)) in request.targets.iter().zip(resolved).enumerate() {
         let first = request.targets[..at].iter().position(|seen| seen == target);
         let outcome = match first {
             Some(first) => Noted::new(Ok(Outcome::Same(first))),
-            None => outcome(call, resolved, request.more),
+            None => outcome(call, resolved, request.more, &mut misses),
         };
         noted.diagnostics.extend(outcome.diagnostics);
         match outcome.value {
@@ -549,13 +555,9 @@ fn outcome(
     call: &Call<'_, '_, '_>,
     resolved: Resolved,
     more: Option<Section>,
+    misses: &mut Misses,
 ) -> Noted<Result<Outcome, Error>> {
-    let Call {
-        services,
-        reading,
-        files,
-        ..
-    } = *call;
+    let Call { reading, files, .. } = *call;
     let kind = resolved.kind();
     let absent = more.filter(|section| !kind.sections().contains(section));
     if let Some(section) = absent
@@ -572,7 +574,7 @@ fn outcome(
             file::folder_trace(reading, files, &path, more).map(|traced| Ok(Card::Folder(traced)))
         }
         Resolved::Candidates(rows) => Noted::new(Ok(Card::Candidates(candidates(rows, more)))),
-        Resolved::Missed(missed) => resolve::missed(services, reading, missed).map_ok(Card::Miss),
+        Resolved::Missed(target) => misses.card(call, target).map_ok(Card::Miss),
     };
     card.map_ok(Outcome::Card)
 }

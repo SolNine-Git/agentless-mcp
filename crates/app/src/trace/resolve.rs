@@ -14,9 +14,9 @@ use super::{CardKind, MISS_LITERAL_FILES, Miss};
 use crate::endpoints::{BindingStatus, Scope, TARGET_WORDING, bind};
 use crate::map::focus_resolution;
 use crate::ops::limits::MAX_LIMIT;
-use crate::search::{SearchError, Selected, literal_files};
+use crate::search::{SearchError, Selected};
 use crate::symbol_graph::{CallGraph, CallScan};
-use crate::{Error, FindRequest, IntArg, Noted, Reading, Services, SymbolCard, find, symbol_card};
+use crate::{Error, Noted, Reading, SymbolCard, symbol_card};
 
 // The paths of `File "<path>", line <n>` frames and of URLs, which the map's focus rule reads.
 const FRAME_START: &str = "File \"";
@@ -312,45 +312,4 @@ fn usage_name(text: &str) -> String {
         Target::Id(id, _) => split_ordinal(id.qualname()).0.to_owned(),
         _ => text.to_owned(),
     }
-}
-
-// A name's miss lists the files that use the name; with none, where its text occurs.
-pub(super) fn missed(
-    services: &Services,
-    reading: &Reading<'_>,
-    missed: Missed,
-) -> Noted<Result<Miss, Error>> {
-    let (name, literal) = match missed {
-        Missed::Ready(miss) => return Noted::new(Ok(miss)),
-        Missed::Name { name, literal } => (name, literal),
-    };
-    if literal.trim().is_empty() {
-        let (usage, literal) = (None, None);
-        return Noted::new(Ok(Miss::Nothing {
-            name,
-            usage,
-            literal,
-        }));
-    }
-    let request = FindRequest {
-        query: name.clone(),
-        kind: None,
-        limit: IntArg::from_usize(1),
-    };
-    let found = find(services, reading, &request).map_ok(|found| found.usage);
-    found.then_ok(|usage| {
-        if usage.is_some() {
-            return Noted::new(Ok(Miss::Nothing {
-                name,
-                usage,
-                literal: None,
-            }));
-        }
-        let scanned = literal_files(services, reading, &literal, MISS_LITERAL_FILES);
-        scanned.map_ok(|places| Miss::Nothing {
-            name,
-            usage: None,
-            literal: Some(places),
-        })
-    })
 }

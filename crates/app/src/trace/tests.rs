@@ -194,6 +194,49 @@ fn a_name_that_matches_nothing_gives_its_usage_files_or_where_its_text_occurs() 
 }
 
 #[test]
+fn each_miss_of_a_batch_is_the_miss_that_its_target_gives_alone() {
+    let files = [
+        (
+            "a.py",
+            "def caller():\n    return missing_name(other_name)\n",
+        ),
+        ("b.py", "X = 'zz_in_code'\n"),
+        ("notes.txt", "zz_text_only and other_name here\n"),
+        ("data.json", "{\"zz_text_only\": 1}\n"),
+    ];
+    let scanned = Scanned::new(&files);
+    let targets = [
+        "missing_name",
+        "zz_text_only",
+        "other_name",
+        "zz_text_only",
+        "zz in code",
+        "zz_in_code",
+        "   ",
+        "pkg/missing.py",
+    ];
+    let batch = traced_in(&scanned, &targets, None);
+    let outcomes: Vec<&Outcome> = batch.cards.iter().map(|card| &card.outcome).collect();
+    assert_eq!(outcomes[3], &Outcome::Same(1));
+    for (target, outcome) in targets
+        .iter()
+        .zip(outcomes)
+        .filter(|(_, outcome)| !matches!(outcome, Outcome::Same(_)))
+    {
+        let alone = traced_in(&scanned, &[target], None);
+        assert_eq!(outcome, &alone.cards[0].outcome, "{target}");
+    }
+    let Miss::Nothing { literal, .. } = miss(card_in(&scanned, "zz_text_only", None)) else {
+        panic!("a name miss");
+    };
+    let (_, files) = literal.unwrap_or_else(|| panic!("the places of the text"));
+    assert_eq!(
+        files, 2,
+        "the text is found in a data file and a file that no grammar reads"
+    );
+}
+
+#[test]
 fn a_target_list_takes_one_to_eight_targets_and_a_repeat_shares_its_first_card() {
     let scanned = Scanned::new(&MIXED);
     let traced = traced_in(&scanned, &["Job", "pkg/other.py", "Job"], None);

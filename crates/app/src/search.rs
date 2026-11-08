@@ -8,6 +8,7 @@ mod noise;
 mod pattern;
 mod shape;
 
+use std::borrow::Cow;
 use std::path::Path;
 
 use git::RepoFile;
@@ -17,12 +18,13 @@ use regex::Regex;
 use crate::bounds::within;
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
 use files::in_scope;
-use lines::{FileHits, hits_in};
+use lines::hits_in;
 use shape::{Shaped, owner_blocks, shaped};
 
 pub(crate) use files::file_row;
 pub use files::{FileRow, Measure, is_source_path};
 pub(crate) use files::{Selected, walked_files};
+pub(crate) use lines::FileHits;
 pub use noise::{
     MINIFIED_KEEP_CHARS, MINIFIED_LONGEST_LINE_BYTES, MINIFIED_MEAN_LINE_BYTES, NoiseClass,
 };
@@ -308,8 +310,7 @@ struct Read {
     skipped: Vec<Skipped>,
 }
 
-// Each file gets one check of the call's deadline before it is read. A binary file is not
-// searched, as ripgrep skips one.
+// Each file gets one check of the call's deadline before it is read.
 fn read_hits(
     reading: &Reading<'_>,
     files: &[&RepoFile],
@@ -324,10 +325,11 @@ fn read_hits(
     for file in files {
         checkpoint(reading.deadline)?;
         match io::read_bounded(&reading.repo.root.join(&file.path)) {
-            Ok(bytes) if git::looks_binary(&bytes) => {}
             Ok(bytes) => {
+                let Some(text) = searched_text(&bytes) else {
+                    continue;
+                };
                 read.searched += 1;
-                let text = String::from_utf8_lossy(&bytes);
                 read.hits.extend(hits_in(&file.path, &text, regex, context));
             }
             Err(skipped) => read.skipped.push(Skipped {
@@ -359,29 +361,48 @@ fn owned(reading: &Reading<'_>, shaped: Shaped) -> Noted<Matches> {
     }
 }
 
-// The first match line of each file that spells `literal`, in the answer's file order, cut at
-// `cap`, and how many files spell it. Trace's miss reads it.
-pub(crate) fn literal_files(
-    services: &Services,
-    reading: &Reading<'_>,
-    literal: &str,
-    cap: usize,
-) -> Noted<Result<(Vec<Place>, usize), Error>> {
-    let regex = match Regex::new(&regex::escape(literal)) {
-        Ok(regex) => regex,
-        Err(error) => {
-            let message = format!("{literal}: {error}");
-            return Noted::new(Err(kernel::Error::OperationFailed(message).into()));
+// The text that a search reads of a file's bytes, or `None` for a binary file, which ripgrep
+// skips.
+pub(crate) fn searched_text(bytes: &[u8]) -> Option<Cow<'_, str>> {
+    (!git::looks_binary(bytes)).then(|| String::from_utf8_lossy(bytes))
+}
+
+// The text of a trace miss's target, matched as a search for its escaped text matches it: a line
+// matches when it holds the text.
+pub(crate) struct Literal {
+    text: String,
+    regex: Regex,
+}
+
+impl Literal {
+    pub(crate) fn new(literal: &str) -> Result<Literal, Error> {
+        match Regex::new(&regex::escape(literal)) {
+            Ok(regex) => Ok(Literal {
+                text: literal.to_owned(),
+                regex,
+            }),
+            Err(error) => {
+                let message = format!("{literal}: {error}");
+                Err(kernel::Error::OperationFailed(message).into())
+            }
         }
-    };
-    let walked = walked_files(services, &reading.repo.root);
-    walked.map(|files| {
-        let files = files?;
-        let scoped = in_scope(&files, &Selected::Root, None);
-        let read = read_hits(reading, &scoped, &regex, 0)?;
-        let total = read.hits.len();
-        Ok((shape::first_places(read.hits, cap), total))
-    })
+    }
+
+    // The hits in one file's searched text. A line holds the text only where the whole text does,
+    // so a text that does not hold it is not split into lines.
+    pub(crate) fn hits(&self, path: &str, text: &str) -> Option<FileHits> {
+        if !text.contains(&self.text) {
+            return None;
+        }
+        hits_in(path, text, &self.regex, 0)
+    }
+}
+
+// The first match line of each file with a hit, in the answer's file order, cut at `cap`, and how
+// many files hold a hit.
+pub(crate) fn literal_places(hits: Vec<FileHits>, cap: usize) -> (Vec<Place>, usize) {
+    let total = hits.len();
+    (shape::first_places(hits, cap), total)
 }
 
 #[cfg(test)]
