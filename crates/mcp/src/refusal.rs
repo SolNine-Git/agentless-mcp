@@ -79,19 +79,20 @@ fn integer(minimum: usize, maximum: Option<usize>) -> String {
 
 // A list or a choice of shapes that a refusal names in words, else the pointer to its schema.
 fn compound(shape: &Shape) -> String {
-    let text = match shape {
+    match shape {
         Shape::Array {
             items: Shape::Text, ..
-        } => ACCEPTS_TEXTS,
+        } => ACCEPTS_TEXTS.to_owned(),
         Shape::AnyOf(
             [
                 Shape::Text,
                 Shape::Array {
-                    items: Shape::Text, ..
+                    items: Shape::Text,
+                    min_items: Some(minimum),
+                    max_items: Some(maximum),
                 },
             ],
-        ) => ACCEPTS_TEXT_OR_TEXTS,
-        _ => ACCEPTS_SCHEMA,
-    };
-    text.to_owned()
+        ) => ACCEPTS_TEXT_OR_TEXTS.render((*minimum, *maximum)),
+        _ => ACCEPTS_SCHEMA.to_owned(),
+    }
 }

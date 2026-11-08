@@ -165,6 +165,18 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **The refusal of a trace target count names the limit of 1 to 8 targets.**
+  Through MCP, a `target` that is not a string or a list of 1 to 8 strings is
+  refused with "target is VALUE, but must be a string or a list of 1 to 8
+  strings." (before: "a string or a list of strings."). The CLI `trace` and
+  the hooks that trace in their own process refuse 0 or 9 or more targets
+  with "target holds 9 targets, but trace takes 1 to 8 targets." (before:
+  "target takes a value from 1 through 8, got 9"). The changed expected
+  values: the 8 `target` coercion cases and the 3 `target` refusals of
+  `crates/mcp/src/validate/tests.rs`, with one new case for `[]`; the 0 and
+  9 target refusals of `crates/app/src/trace/tests.rs`; the
+  `accepts_text_or_texts` row of `crates/prompts/fixtures/render.json`. No
+  golden changes.
 - **Rust has scope analysis: a parameter, a local or a member name is no
   reference.** A Rust pattern binding (a function or closure parameter, `let`,
   `if let`, `while let`, a match arm, `for`) and each use of it in scope are no

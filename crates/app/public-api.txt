@@ -1621,6 +1621,7 @@ pub const app::trace::FOLDER_ENTRIES: usize
 pub const app::trace::LAST_CHANGE_DEADLINE: core::time::Duration
 pub const app::trace::LISTING_LIMIT: usize
 pub const app::trace::MAX_TARGETS: usize
+pub const app::trace::MIN_TARGETS: usize
 pub const app::trace::MISS_LITERAL_FILES: usize
 pub const app::trace::MISS_USAGE_FILES: usize
 pub const app::trace::MORE_TREE_DEPTH: usize

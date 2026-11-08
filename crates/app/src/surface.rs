@@ -7,7 +7,7 @@ use prompts::tool_descriptions as described;
 use text::CodePointString;
 
 use crate::search::{MAX_SEARCH_CONTEXT, MAX_SEARCH_LIMIT};
-use crate::trace::MAX_TARGETS;
+use crate::trace::{MAX_TARGETS, MIN_TARGETS};
 
 /// One tool of the surface.
 #[derive(Debug)]
@@ -132,7 +132,7 @@ const TARGETS: Shape = Shape::AnyOf(&[
     Shape::Text,
     Shape::Array {
         items: &Shape::Text,
-        min_items: Some(1),
+        min_items: Some(MIN_TARGETS),
         max_items: Some(MAX_TARGETS),
     },
 ]);

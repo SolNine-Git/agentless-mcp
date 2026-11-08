@@ -254,7 +254,7 @@ fn a_target_list_takes_one_to_eight_targets_and_a_repeat_shares_its_first_card()
             .unwrap_or_else(|| panic!("{count} targets are refused"));
         assert_eq!(
             error.to_string(),
-            format!("target takes a value from 1 through 8, got {count}")
+            format!("target holds {count} targets, but trace takes 1 to 8 targets.")
         );
     }
 }

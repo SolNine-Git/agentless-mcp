@@ -133,8 +133,11 @@
       "text": "a string"
     },
     "accepts_text_or_texts": {
-      "arguments": {},
-      "text": "a string or a list of strings"
+      "arguments": {
+        "maximum": 8,
+        "minimum": 1
+      },
+      "text": "a string or a list of 1 to 8 strings"
     },
     "accepts_texts": {
       "arguments": {},
@@ -2348,6 +2351,14 @@
         "target": "pricing.py"
       },
       "text": "target: pricing.py"
+    },
+    "trace_target_count": {
+      "arguments": {
+        "count": 9,
+        "maximum": 8,
+        "minimum": 1
+      },
+      "text": "target holds 9 targets, but trace takes 1 to 8 targets."
     },
     "trace_tier_unchecked": {
       "arguments": {

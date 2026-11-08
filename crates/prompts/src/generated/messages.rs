@@ -48,8 +48,14 @@ pub const ACCEPTS_SCHEMA: &str = "a value that fits its schema in tools/list";
 /// A text that takes no values.
 pub const ACCEPTS_TEXT: &str = "a string";
 
-/// A text that takes no values.
-pub const ACCEPTS_TEXT_OR_TEXTS: &str = "a string or a list of strings";
+/// A template that takes (`minimum`, `maximum`).
+pub const ACCEPTS_TEXT_OR_TEXTS: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("a string or a list of "),
+    Piece::Value(0),
+    Piece::Text(" to "),
+    Piece::Value(1),
+    Piece::Text(" strings"),
+]);
 
 /// A text that takes no values.
 pub const ACCEPTS_TEXTS: &str = "a list of strings";
@@ -3130,6 +3136,17 @@ pub const TRACE_SIMILAR_ROW: Template<(Text, Count)> = Template::new(&[
 
 /// A template that takes `target`.
 pub const TRACE_TARGET: Template<Text> = Template::new(&[Piece::Text("target: "), Piece::Value(0)]);
+
+/// A template that takes (`count`, `minimum`, `maximum`).
+pub const TRACE_TARGET_COUNT: Template<(Count, Count, Count)> = Template::new(&[
+    Piece::Text("target holds "),
+    Piece::Value(0),
+    Piece::Text(" targets, but trace takes "),
+    Piece::Value(1),
+    Piece::Text(" to "),
+    Piece::Value(2),
+    Piece::Text(" targets."),
+]);
 
 /// A template that takes `name`.
 pub const TRACE_TIER_UNCHECKED: Template<Text> =

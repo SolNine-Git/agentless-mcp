@@ -12,14 +12,14 @@ mod symbol;
 use std::time::Duration;
 
 use git::RepoFile;
+use prompts::messages::TRACE_TARGET_COUNT;
 
-use crate::bounds::within;
 use crate::ops::limits::{FIND_USAGE_FILES, MAX_LIMIT};
 use crate::search::{FileRow, Place, walked_files};
 use crate::symbol_graph::{CallGraph, CallScan, Keeping, over_walked_scan, with_call_graph};
 use crate::{
-    CycleRow, EdgeRow, Error, HistoryEntry, HistoryResult, IntArg, Noted, Reading, RefGroup,
-    Services, SharedCaller, SymbolCard, Usage,
+    CycleRow, EdgeRow, Error, HistoryEntry, HistoryResult, Noted, Reading, RefGroup, Services,
+    SharedCaller, SymbolCard, Usage,
 };
 use miss::Misses;
 use resolve::Resolved;
@@ -27,6 +27,8 @@ use resolve::Resolved;
 pub use crate::symbol_graph::{Builds, KeptGraphs};
 pub use section::{CardKind, Section};
 
+/// The fewest targets that one trace call takes.
+pub const MIN_TARGETS: usize = 1;
 /// The most targets that one trace call takes.
 pub const MAX_TARGETS: usize = 8;
 /// The rows that a symbol card shows of each of its callers, tests, callees and similar sections.
@@ -522,8 +524,13 @@ fn first_of_each<'p>(paths: impl Iterator<Item = &'p str>) -> Vec<String> {
     files
 }
 
-fn target_count(targets: &[String]) -> Result<usize, Error> {
-    within(&IntArg::from_usize(targets.len()), 1, MAX_TARGETS, "target")
+fn target_count(targets: &[String]) -> Result<(), Error> {
+    let count = targets.len();
+    if (MIN_TARGETS..=MAX_TARGETS).contains(&count) {
+        return Ok(());
+    }
+    let message = TRACE_TARGET_COUNT.render((count, MIN_TARGETS, MAX_TARGETS));
+    Err(kernel::Error::OperationFailed(message).into())
 }
 
 // The walk, the call's one scan and the scan's graph, then `work` over them. The walk's warnings

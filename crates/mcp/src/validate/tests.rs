@@ -122,14 +122,15 @@ const LAX: &str = r#"[
 ["trace", "target", "a", {"ok": "a"}],
 ["trace", "target", ["a"], {"ok": ["a"]}],
 ["trace", "target", ["a", "b"], {"ok": ["a", "b"]}],
-["trace", "target", ["a", 5], {"error": "target is [\"a\",5], but must be a string or a list of strings."}],
-["trace", "target", [5, 6], {"error": "target is [5,6], but must be a string or a list of strings."}],
-["trace", "target", 5, {"error": "target is 5, but must be a string or a list of strings."}],
-["trace", "target", true, {"error": "target is true, but must be a string or a list of strings."}],
-["trace", "target", {}, {"error": "target is {}, but must be a string or a list of strings."}],
-["trace", "target", 1.5, {"error": "target is 1.5, but must be a string or a list of strings."}],
-["trace", "target", [null], {"error": "target is [null], but must be a string or a list of strings."}],
-["trace", "target", [[]], {"error": "target is [[]], but must be a string or a list of strings."}]
+["trace", "target", ["a", 5], {"error": "target is [\"a\",5], but must be a string or a list of 1 to 8 strings."}],
+["trace", "target", [5, 6], {"error": "target is [5,6], but must be a string or a list of 1 to 8 strings."}],
+["trace", "target", 5, {"error": "target is 5, but must be a string or a list of 1 to 8 strings."}],
+["trace", "target", true, {"error": "target is true, but must be a string or a list of 1 to 8 strings."}],
+["trace", "target", {}, {"error": "target is {}, but must be a string or a list of 1 to 8 strings."}],
+["trace", "target", 1.5, {"error": "target is 1.5, but must be a string or a list of 1 to 8 strings."}],
+["trace", "target", [null], {"error": "target is [null], but must be a string or a list of 1 to 8 strings."}],
+["trace", "target", [[]], {"error": "target is [[]], but must be a string or a list of 1 to 8 strings."}],
+["trace", "target", [], {"error": "target is [], but must be a string or a list of 1 to 8 strings."}]
 ]"#;
 
 fn tool_named(name: &str) -> &'static Tool {
@@ -166,7 +167,7 @@ fn outcome(tool: &str, param: &str, value: &Json) -> Json {
 #[test]
 fn each_value_coerces_as_the_reference_coerces_its_shape() {
     let cases: Vec<(String, String, Json, Json)> = serde_json::from_str(LAX).expect("the cases");
-    assert_eq!(cases.len(), 121);
+    assert_eq!(cases.len(), 122);
     let failed: Vec<String> = (cases.iter())
         .filter_map(|(tool, param, value, want)| {
             let found = outcome(tool, param, value);
@@ -252,12 +253,12 @@ fn a_refusal_judges_each_parameter_once_in_declaration_order() {
         (
             "trace",
             json!({}),
-            "target is required and must be a string or a list of strings.",
+            "target is required and must be a string or a list of 1 to 8 strings.",
         ),
         (
             "trace",
             json!({"more": "bodies", "target": 3, "operation": "find"}),
-            "target is 3, but must be a string or a list of strings. more is \"bodies\", but \
+            "target is 3, but must be a string or a list of 1 to 8 strings. more is \"bodies\", but \
              must be one of candidates, callers, callees, tests, similar, history, body, \
              declares, imports, importers, cycles or tree. trace has no parameter operation. \
              trace takes target, repo_root and more.",
@@ -266,7 +267,7 @@ fn a_refusal_judges_each_parameter_once_in_declaration_order() {
             "trace",
             json!({"target": ["a", "b", "c", "d", "e", "f", "g", "h", "i"]}),
             "target is [\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\"], but must be a \
-             string or a list of strings.",
+             string or a list of 1 to 8 strings.",
         ),
         (
             "search",
