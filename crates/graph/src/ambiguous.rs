@@ -30,20 +30,22 @@ impl AmbiguousDegrees {
 
     // Takes out the tally `old` of some names before an update and adds their tally `new` after.
     pub(crate) fn replace(&mut self, old: &AmbiguousDegrees, new: &AmbiguousDegrees) {
-        for (held, old) in [
-            (&mut self.arriving, &old.arriving),
-            (&mut self.leaving, &old.leaving),
-        ] {
-            for (node, count) in old {
-                take(held, node, *count);
-            }
-        }
-        for (held, new) in [
-            (&mut self.arriving, &new.arriving),
-            (&mut self.leaving, &new.leaving),
-        ] {
-            for (node, count) in new {
-                add(held, node, *count);
+        self.changed(old, take);
+        self.changed(new, add);
+    }
+
+    fn changed(
+        &mut self,
+        tally: &AmbiguousDegrees,
+        change: fn(&mut BTreeMap<String, u64>, &str, u64),
+    ) {
+        let pairs = [
+            (&mut self.arriving, &tally.arriving),
+            (&mut self.leaving, &tally.leaving),
+        ];
+        for (held, counts) in pairs {
+            for (node, count) in counts {
+                change(held, node, *count);
             }
         }
     }
