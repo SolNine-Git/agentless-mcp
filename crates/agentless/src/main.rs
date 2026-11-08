@@ -31,15 +31,23 @@ fn main() -> ExitCode {
     ExitCode::from(dispatch(&args, &env, &services))
 }
 
+// One hook: its subcommand name and its run.
+type HookRun = fn(&EnvConfig, &Services) -> u8;
+
+const HOOKS: [(&str, HookRun); 4] = [
+    ("erosion", erosion),
+    ("gate-check", searched),
+    ("gate-mark", marked),
+    ("prompt-map", prompt_mapped),
+];
+
 // The hooks need no start-up directory, so only the other command lines stop on an unread one.
 fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
     let words: Vec<Option<&str>> = args.iter().map(|arg| arg.to_str()).collect();
-    match words.as_slice() {
-        [Some("hook"), Some("erosion")] => return erosion(env, services),
-        [Some("hook"), Some("gate-check")] => return searched(env),
-        [Some("hook"), Some("gate-mark")] => return marked(env),
-        [Some("hook"), Some("prompt-map")] => return prompt_mapped(env, services),
-        _ => {}
+    if let [Some("hook"), Some(name)] = words.as_slice()
+        && let Some((_, run)) = HOOKS.iter().find(|(hook, _)| hook == name)
+    {
+        return run(env, services);
     }
     if words.first() == Some(&Some("gate-report")) {
         return with_streams(|streams| {
@@ -65,12 +73,12 @@ fn erosion(env: &EnvConfig, services: &Services) -> u8 {
 }
 
 // The search gate writes its deny message itself, because a failed write changes the exit code.
-fn searched(env: &EnvConfig) -> u8 {
+fn searched(env: &EnvConfig, _services: &Services) -> u8 {
     keep_panic_lines();
     hook::gate_check(env, &mut io::stdin().lock(), &mut io::stderr().lock())
 }
 
-fn marked(env: &EnvConfig) -> u8 {
+fn marked(env: &EnvConfig, _services: &Services) -> u8 {
     keep_panic_lines();
     hook::gate_mark(env, &mut io::stdin().lock());
     0
