@@ -2,7 +2,7 @@
 //! and event that the removal empties, then, for an install, one group per row of the entry
 //! table. Every other key, group and handler stays where it is.
 
-use app::hooks::{self, DEFAULT_SERVER_NAME, Entry, EntryState, Expected, Handler, HooksShape};
+use app::hooks::{self, Entry, Expected, Handler, HooksShape, Named};
 use app::hooks::{Hook, Retired};
 use json::JsonValue;
 use text::CodePointString;
@@ -142,24 +142,19 @@ fn pruned_group(
     Some(JsonValue::Object(fields))
 }
 
-// An agentless entry runs `<path> hook <name>` (design rule 1). The table's own comparison
-// decides it, so the rule keeps one home.
 fn kept(handler: Option<&Handler>, removed: &mut Removed) -> bool {
     let Some(handler) = handler else {
         return true;
     };
-    let status = hooks::compare(std::slice::from_ref(handler), "", DEFAULT_SERVER_NAME);
-    if let Some(retired) = status.retired.first() {
-        removed.retired.push(retired.hook);
-        return false;
+    match hooks::named(handler) {
+        Some(Named::Current(hook)) => removed.current.push(hook),
+        Some(Named::Retired(hook)) => removed.retired.push(hook),
+        None => {
+            removed.kept += 1;
+            return true;
+        }
     }
-    let current = (status.rows.iter()).find(|row| row.state != EntryState::Missing);
-    if let Some(row) = current {
-        removed.current.push(row.entry.hook);
-        return false;
-    }
-    removed.kept += 1;
-    true
+    false
 }
 
 fn appended(events: &mut Vec<Event>, entry: &Entry, binary: &str) {

@@ -12,7 +12,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use app::EnvConfig;
 use app::hooks::{
-    DEFAULT_SERVER_NAME, EntryState, Expected, Handler, HookStatus, compare, handlers,
+    DEFAULT_SERVER_NAME, EntryState, Expected, Handler, HookStatus, SETTINGS_FILE, compare,
+    handlers, user_settings,
 };
 use json::JsonValue;
 use prompts::messages::{
@@ -23,9 +24,7 @@ use prompts::messages::{
 use crate::refusal::listed;
 use crate::roots::stat_key;
 
-const CONFIG_DIR_VARIABLE: &str = "CLAUDE_CONFIG_DIR";
 const CONFIG_DIR: &str = ".claude";
-const SETTINGS: &str = "settings.json";
 const LOCAL_SETTINGS: &str = "settings.local.json";
 const HOOKS_KEY: &str = "hooks";
 
@@ -43,11 +42,8 @@ impl HookCheck {
     /// `$HOME/.claude/settings.json`.
     #[must_use]
     pub fn of(env: &EnvConfig, binary: PathBuf) -> HookCheck {
-        let named = |name: &str| env.var(name).filter(|value| !value.is_empty());
-        let config_dir = (named(CONFIG_DIR_VARIABLE).map(PathBuf::from))
-            .or_else(|| named("HOME").map(|home| Path::new(home).join(CONFIG_DIR)));
         HookCheck {
-            user_settings: config_dir.map(|dir| dir.join(SETTINGS)),
+            user_settings: user_settings(env),
             binary,
         }
     }
@@ -109,7 +105,7 @@ impl Hooks {
     fn handlers(&self, check: &HookCheck, root: &Path) -> Result<Vec<Handler>, (String, String)> {
         let project = root.join(CONFIG_DIR);
         let files = (check.user_settings.iter().cloned())
-            .chain([project.join(SETTINGS), project.join(LOCAL_SETTINGS)]);
+            .chain([project.join(SETTINGS_FILE), project.join(LOCAL_SETTINGS)]);
         let mut read = self.read.lock().unwrap_or_else(PoisonError::into_inner);
         let mut found = Vec::new();
         for path in files {

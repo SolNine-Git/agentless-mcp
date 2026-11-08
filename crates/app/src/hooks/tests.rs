@@ -1,7 +1,11 @@
+use std::ffi::OsString;
+use std::path::PathBuf;
+
 use super::{
-    DEFAULT_SERVER_NAME, EntryState, Event, Expected, Found, Hook, HookStatus, HooksShape, Retired,
-    command, compare, entries, handlers,
+    DEFAULT_SERVER_NAME, EntryState, Event, Expected, Found, Handler, Hook, HookStatus, HooksShape,
+    Named, Retired, command, compare, entries, handlers, named, user_settings,
 };
+use crate::EnvConfig;
 
 const OWN: &str = "/home/user/.local/bin/agentless-mcp";
 
@@ -236,5 +240,62 @@ fn a_hooks_value_of_another_shape_names_the_first_place_that_differs() {
             expected,
         };
         assert_eq!(refused, Err(shape), "{settings}");
+    }
+}
+
+// The variables of one environment, by name.
+type Vars<'a> = &'a [(&'a str, &'a str)];
+
+#[test]
+fn the_user_settings_file_is_under_claude_config_dir_when_it_is_set_and_not_empty() {
+    let cases: [(Vars, Option<&str>); 5] = [
+        (
+            &[("CLAUDE_CONFIG_DIR", "/c"), ("HOME", "/h")],
+            Some("/c/settings.json"),
+        ),
+        (
+            &[("CLAUDE_CONFIG_DIR", ""), ("HOME", "/h")],
+            Some("/h/.claude/settings.json"),
+        ),
+        (&[("HOME", "/h")], Some("/h/.claude/settings.json")),
+        (&[("CLAUDE_CONFIG_DIR", ""), ("HOME", "")], None),
+        (&[], None),
+    ];
+    for (vars, expected) in cases {
+        let vars = (vars.iter()).map(|(name, value)| (OsString::from(name), OsString::from(value)));
+        let env = EnvConfig::new(vars, PathBuf::from("/"));
+        assert_eq!(user_settings(&env), expected.map(PathBuf::from));
+    }
+}
+
+#[test]
+fn an_agentless_entry_is_a_command_of_the_binary_that_names_a_current_or_retired_hook() {
+    let cases = [
+        (
+            "command",
+            "/x/agentless-mcp hook read-card",
+            Some(Named::Current(Hook::ReadCard)),
+        ),
+        (
+            "command",
+            "'/a b/agentless-mcp' hook gate-mark",
+            Some(Named::Retired(Retired::GateMark)),
+        ),
+        ("command", "/x/agentless-mcp hook nope", None),
+        ("command", "/x/agentless-mcp-dev hook read-card", None),
+        ("command", "/x/agentless-mcp run read-card", None),
+        ("command", "/x/agentless-mcp hook read-card --now", None),
+        ("command", "/x/agentless-mcp hook 'read-card", None),
+        ("prompt", "/x/agentless-mcp hook read-card", None),
+    ];
+    for (kind, command, expected) in cases {
+        let handler = Handler {
+            event: "PostToolUse".to_owned(),
+            matcher: None,
+            kind: Some(kind.to_owned()),
+            command: Some(command.to_owned()),
+            timeout: None,
+        };
+        assert_eq!(named(&handler), expected, "{kind} {command}");
     }
 }

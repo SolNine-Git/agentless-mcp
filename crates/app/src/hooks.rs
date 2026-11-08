@@ -4,9 +4,12 @@
 
 mod parse;
 
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use text::{posix_name, split_shell_words};
+
+use crate::EnvConfig;
 
 pub use parse::{Expected, Handler, HooksShape, handlers};
 
@@ -18,6 +21,13 @@ pub const DEFAULT_SERVER_NAME: &str = "agentless";
 pub const TIMEOUT_FACTOR: u32 = 3;
 /// The time that `read-card` may spend on a card.
 pub const READ_CARD_DEADLINE: Duration = Duration::from_secs(3);
+/// The variable that names the user's Claude Code configuration folder.
+pub const CONFIG_DIR_VARIABLE: &str = "CLAUDE_CONFIG_DIR";
+/// The file name of a user or project settings file.
+pub const SETTINGS_FILE: &str = "settings.json";
+
+// The configuration folder under the home folder, when the variable names none.
+const HOME_CONFIG_DIR: &str = ".claude";
 
 // The word between the binary and the hook name in every agentless command.
 const HOOK_WORD: &str = "hook";
@@ -263,10 +273,31 @@ pub struct RetiredEntry {
     pub found: Found,
 }
 
-// The hook that an agentless command names.
-enum Named {
+/// Returns `$CLAUDE_CONFIG_DIR/settings.json` when the variable is set and not empty, else
+/// `$HOME/.claude/settings.json`, or `None` when neither is set and not empty.
+#[must_use]
+pub fn user_settings(env: &EnvConfig) -> Option<PathBuf> {
+    let named = |name: &str| env.var(name).filter(|value| !value.is_empty());
+    let config_dir = (named(CONFIG_DIR_VARIABLE).map(PathBuf::from))
+        .or_else(|| named("HOME").map(|home| Path::new(home).join(HOME_CONFIG_DIR)));
+    config_dir.map(|dir| dir.join(SETTINGS_FILE))
+}
+
+/// The hook that an agentless entry runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Named {
+    /// A hook of the entry table.
     Current(Hook),
+    /// A hook that an earlier release installed.
     Retired(Retired),
+}
+
+/// Returns the hook of `handler` when it is an agentless entry (design rule 1): a command
+/// `<path> hook <name>` whose path's file name is [`BINARY_NAME`] and whose name is a current or
+/// retired hook. Any other handler gives `None`.
+#[must_use]
+pub fn named(handler: &Handler) -> Option<Named> {
+    agentless(handler).map(|(named, _)| named)
 }
 
 /// Compares `handlers` with the entry table of `server_name`. `own` is the canonical path of the
@@ -277,12 +308,16 @@ pub fn compare(handlers: &[Handler], own: &str, server_name: &str) -> HookStatus
     let mut current: Vec<(Hook, Found)> = Vec::new();
     let mut retired: Vec<RetiredEntry> = Vec::new();
     for handler in handlers {
-        match agentless(handler) {
-            Some((Named::Current(hook), found)) if !current.contains(&(hook, found.clone())) => {
+        let Some((named, path)) = agentless(handler) else {
+            continue;
+        };
+        let found = found(handler, path);
+        match named {
+            Named::Current(hook) if !current.contains(&(hook, found.clone())) => {
                 current.push((hook, found));
             }
-            Some((Named::Retired(hook), found)) => retired.push(RetiredEntry { hook, found }),
-            Some((Named::Current(_), _)) | None => {}
+            Named::Retired(hook) => retired.push(RetiredEntry { hook, found }),
+            Named::Current(_) => {}
         }
     }
     let rows = (entries(server_name).into_iter())
@@ -298,15 +333,14 @@ pub fn compare(handlers: &[Handler], own: &str, server_name: &str) -> HookStatus
     HookStatus { rows, retired }
 }
 
-fn agentless(handler: &Handler) -> Option<(Named, Found)> {
+// The hook of an agentless entry and the binary path of its command.
+fn agentless(handler: &Handler) -> Option<(Named, String)> {
     if handler.kind.as_deref() != Some(COMMAND_TYPE) {
         return None;
     }
     let words = split_shell_words(handler.command.as_deref()?).ok()?;
-    let [path, word, name] = words.as_slice() else {
-        return None;
-    };
-    if word != HOOK_WORD || posix_name(path) != BINARY_NAME {
+    let [path, word, name] = <[String; 3]>::try_from(words).ok()?;
+    if word != HOOK_WORD || posix_name(&path) != BINARY_NAME {
         return None;
     }
     let named = (Hook::ALL.into_iter().find(|hook| hook.name() == name))
@@ -314,14 +348,17 @@ fn agentless(handler: &Handler) -> Option<(Named, Found)> {
         .or_else(|| {
             (Retired::ALL.into_iter().find(|hook| hook.name() == name)).map(Named::Retired)
         })?;
+    Some((named, path))
+}
+
+fn found(handler: &Handler, path: String) -> Found {
     let matcher = (handler.matcher.as_deref()).filter(|matcher| !MATCH_ALL.contains(matcher));
-    let found = Found {
+    Found {
         event: handler.event.clone(),
         matcher: matcher.map(str::to_owned),
         timeout: handler.timeout,
-        path: path.clone(),
-    };
-    Some((named, found))
+        path,
+    }
 }
 
 // A handler that two settings files define runs once, so a copy is one handler.

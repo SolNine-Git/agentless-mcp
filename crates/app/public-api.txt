@@ -118,6 +118,25 @@ impl core::marker::Unpin for app::hooks::Hook
 impl core::marker::UnsafeUnpin for app::hooks::Hook
 impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Hook
 impl core::panic::unwind_safe::UnwindSafe for app::hooks::Hook
+pub enum app::hooks::Named
+pub app::hooks::Named::Current(app::hooks::Hook)
+pub app::hooks::Named::Retired(app::hooks::Retired)
+impl core::clone::Clone for app::hooks::Named
+pub fn app::hooks::Named::clone(&self) -> Self
+impl core::cmp::Eq for app::hooks::Named
+impl core::cmp::PartialEq for app::hooks::Named
+pub fn app::hooks::Named::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::Named
+pub fn app::hooks::Named::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::hooks::Named
+impl core::marker::StructuralPartialEq for app::hooks::Named
+impl core::marker::Freeze for app::hooks::Named
+impl core::marker::Send for app::hooks::Named
+impl core::marker::Sync for app::hooks::Named
+impl core::marker::Unpin for app::hooks::Named
+impl core::marker::UnsafeUnpin for app::hooks::Named
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Named
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::Named
 pub enum app::hooks::Retired
 pub app::hooks::Retired::GateCheck
 pub app::hooks::Retired::GateMark
@@ -271,13 +290,17 @@ impl core::marker::UnsafeUnpin for app::hooks::RowStatus
 impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::RowStatus
 impl core::panic::unwind_safe::UnwindSafe for app::hooks::RowStatus
 pub const app::hooks::BINARY_NAME: &str
+pub const app::hooks::CONFIG_DIR_VARIABLE: &str
 pub const app::hooks::DEFAULT_SERVER_NAME: &str
 pub const app::hooks::READ_CARD_DEADLINE: core::time::Duration
+pub const app::hooks::SETTINGS_FILE: &str
 pub const app::hooks::TIMEOUT_FACTOR: u32
 pub fn app::hooks::command(&str, app::hooks::Hook) -> alloc::string::String
 pub fn app::hooks::compare(&[app::hooks::Handler], &str, &str) -> app::hooks::HookStatus
 pub fn app::hooks::entries(&str) -> alloc::vec::Vec<app::hooks::Entry>
 pub fn app::hooks::handlers(&json::parse::JsonValue) -> core::result::Result<alloc::vec::Vec<app::hooks::Handler>, app::hooks::HooksShape>
+pub fn app::hooks::named(&app::hooks::Handler) -> core::option::Option<app::hooks::Named>
+pub fn app::hooks::user_settings(&app::EnvConfig) -> core::option::Option<std::path::PathBuf>
 pub mod app::ops
 pub mod app::ops::limits
 pub const app::ops::limits::DEFAULT_COMMUNITY_LIMIT: usize

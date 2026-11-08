@@ -14,7 +14,8 @@ use std::path::{Path, PathBuf};
 
 use app::EnvConfig;
 use app::hooks::{
-    self, BINARY_NAME, DEFAULT_SERVER_NAME, EntryState, Handler, HookStatus, Retired,
+    self, BINARY_NAME, CONFIG_DIR_VARIABLE, DEFAULT_SERVER_NAME, EntryState, Handler, HookStatus,
+    Retired, SETTINGS_FILE,
 };
 use json::{JsonValue, get};
 use prompts::messages::{
@@ -49,11 +50,7 @@ const UNINSTALL: Takes = Takes {
     dry_run: false,
 };
 
-const CONFIG_DIR_ENV: &str = "CLAUDE_CONFIG_DIR";
-const HOME_ENV: &str = "HOME";
-const USER_DIR: &str = ".claude";
 const PROJECT_DIR: &str = ".claude";
-const SETTINGS: &str = "settings.json";
 const LOCAL_SETTINGS: &str = "settings.local.json";
 const HOOKS_KEY: &str = "hooks";
 // The places of a shape error, in the notation of a JSON path.
@@ -288,20 +285,11 @@ fn status_files(env: &EnvConfig, options: &Options) -> Result<Vec<PathBuf>, Outp
 
 fn settings_path(env: &EnvConfig, scope: Scope, repo: Option<&str>) -> Result<PathBuf, Output> {
     match scope {
-        Scope::User => user_dir(env).map(|dir| dir.join(SETTINGS)),
-        Scope::Project => Ok(repo_dir(env, repo)?.join(PROJECT_DIR).join(SETTINGS)),
+        Scope::User => hooks::user_settings(env)
+            .ok_or_else(|| failed(&ARGUMENT_MISSING.render((ACCEPTS_TEXT, CONFIG_DIR_VARIABLE)))),
+        Scope::Project => Ok(repo_dir(env, repo)?.join(PROJECT_DIR).join(SETTINGS_FILE)),
         Scope::Local => Ok(repo_dir(env, repo)?.join(PROJECT_DIR).join(LOCAL_SETTINGS)),
     }
-}
-
-// CLAUDE_CONFIG_DIR when it is set and not empty, else ~/.claude.
-fn user_dir(env: &EnvConfig) -> Result<PathBuf, Output> {
-    let set = |name: &str| env.var(name).filter(|value| !value.is_empty());
-    if let Some(dir) = set(CONFIG_DIR_ENV) {
-        return Ok(PathBuf::from(dir));
-    }
-    let home = set(HOME_ENV).map(|home| Path::new(home).join(USER_DIR));
-    home.ok_or_else(|| failed(&ARGUMENT_MISSING.render((ACCEPTS_TEXT, CONFIG_DIR_ENV))))
 }
 
 // The repository folder: --repo below the start-up directory, else the start-up directory.
