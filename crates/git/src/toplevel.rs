@@ -81,13 +81,17 @@ fn exited(code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Toplevel {
     if code == 0 {
         return Toplevel::Found(stdout);
     }
-    if stderr
-        .windows(NOT_A_REPOSITORY.len())
-        .any(|window| window == NOT_A_REPOSITORY)
-    {
+    if says_not_a_repository(&stderr) {
         return Toplevel::NotRepository;
     }
     Toplevel::Failed { code, stderr }
+}
+
+// Whether a failed git's stderr says that no repository encloses its directory.
+pub(crate) fn says_not_a_repository(stderr: &[u8]) -> bool {
+    stderr
+        .windows(NOT_A_REPOSITORY.len())
+        .any(|window| window == NOT_A_REPOSITORY)
 }
 
 #[cfg(test)]

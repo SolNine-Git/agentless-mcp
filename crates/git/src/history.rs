@@ -28,7 +28,7 @@ pub(crate) const PROBE: Limits = Limits {
 };
 
 // %b has no terminator of its own, so with -z each commit is exactly four NUL-ended fields.
-const FORMAT: &str = "--format=%H%x00%aI%x00%s%x00%b";
+pub(crate) const FORMAT: &str = "--format=%H%x00%aI%x00%s%x00%b";
 const FIELDS_PER_COMMIT: usize = 4;
 const SHA1_DIGITS: usize = 40;
 const SHA256_DIGITS: usize = 64;
