@@ -1,6 +1,7 @@
-//! The command line: the parser, the steps of `lint`, `capabilities`, the read subcommands and the
-//! write subcommands, and the exit codes.
+//! The command line: the parser, the steps of `lint`, `capabilities`, `trace`, `search`, the read
+//! subcommands and the write subcommands, and the exit codes.
 
+mod answers;
 mod args;
 mod caller;
 mod commands;

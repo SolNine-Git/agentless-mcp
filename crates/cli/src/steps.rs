@@ -14,7 +14,7 @@ use crate::args::{self, Arg, Exit};
 use crate::commands;
 use crate::exit::{EXIT_OK, EXIT_USAGE, fail, failed, report, write_answer};
 use crate::invocation::{Command, Invocation, RepoFlags};
-use crate::{lint, patches, read, validate, vote};
+use crate::{answers, lint, patches, read, validate, vote};
 
 // The receipt's cache field for a command that opens no cache.
 pub(crate) const NO_CACHE: &str = "none";
@@ -75,6 +75,7 @@ fn dispatched(
     match command {
         Command::Lint(request) => lint::run(&request, services, streams),
         Command::Capabilities(flags) => capabilities(&flags, services, streams),
+        Command::Answer(call) => answers::run(&call, services, streams),
         Command::Read(call) => read::run(&call, services, streams),
         Command::PatchParse(input) => patches::parse(&input, services, run.stdin, streams),
         Command::PatchEdit(call) => patches::edit(&call, services, run.stdin, streams),

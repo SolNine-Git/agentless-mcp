@@ -1,16 +1,16 @@
 //! The agentless-mcp-server door: the thin binary runs its sibling under the server's name, which
 //! parses the server's command line and serves one stdio session, with the hook note on its first
-//! answer.
+//! answer; and the command line's trace and search, which answer as the tools answer.
 
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use io::testing::Tree;
+use io::testing::{Identity, Tree, run_git};
 use serde_json::{Value, json};
 
 const DOOR: &str = env!("CARGO_BIN_EXE_agentless-mcp-server");
@@ -19,6 +19,12 @@ const DEADLINE: Duration = Duration::from_secs(30);
 const SURFACE_REFUSED: &str = "agentless-mcp-server: error: --surface is no longer served: this \
      release publishes trace and search only. Drop --surface.\n";
 const ALL_MISSING: &str = "hooks: 7 of 7 agentless hook entries are missing";
+// The commit of every rig, as the render goldens pin it.
+const IDENTITY: Identity = Identity {
+    name: "render goldens",
+    email: "render@example.invalid",
+    date: "2026-02-01T00:00:00Z",
+};
 
 struct Ran {
     code: Option<i32>,
@@ -331,4 +337,184 @@ fn a_closed_output_ends_the_door_with_120_and_one_line() {
                 Broken pipe\n";
     assert_eq!(err, line);
     drop(stdin);
+}
+
+fn characterization(parts: &[&str]) -> PathBuf {
+    let base = [env!("CARGO_MANIFEST_DIR"), "../../tests/characterization"];
+    base.iter().chain(parts).collect()
+}
+
+// Each request beside a trace or search golden, by the golden's stem, in name order.
+fn requests() -> Vec<(String, Value)> {
+    let mut found = Vec::new();
+    for kind in ["trace", "search"] {
+        let dir = characterization(&["goldens", kind]);
+        let entries = std::fs::read_dir(&dir).unwrap_or_else(|error| panic!("{error}"));
+        for entry in entries {
+            let path = entry.unwrap_or_else(|error| panic!("{error}")).path();
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            if let Some(stem) = name.strip_suffix(".request.json") {
+                let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{error}"));
+                let request = serde_json::from_str(&text).unwrap_or_else(|error| panic!("{error}"));
+                found.push((format!("{kind}/{stem}"), request));
+            }
+        }
+    }
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    found
+}
+
+// A copy of the request's fixture repository with its extra files, committed with the pinned
+// identity, as the render goldens build it.
+fn rig(tree: &Tree, request: &Value) -> PathBuf {
+    let fixture = request["fixture"].as_str().expect("a fixture name");
+    copied(&characterization(&["fixtures", fixture]), tree, "repo");
+    for (path, text) in request["files"].as_object().into_iter().flatten() {
+        let relative = format!("repo/{path}");
+        if let Some((parent, _)) = relative.rsplit_once('/') {
+            tree.create_dir(parent).expect("a folder");
+        }
+        let text = text.as_str().expect("a file's text");
+        tree.write_file(&relative, text).expect("an extra file");
+    }
+    for (path, size) in request["sparse"].as_object().into_iter().flatten() {
+        let relative = format!("repo/{path}");
+        tree.write_file(&relative, "").expect("a sparse file");
+        let size = size.as_u64().expect("a size");
+        tree.set_len(&relative, size).expect("a length");
+    }
+    let root = tree.path().join("repo");
+    let env = env(tree);
+    for args in [
+        &["init", "--quiet", "-b", "main"][..],
+        &["add", "-A"],
+        &["commit", "--quiet", "-m", "fixture"],
+    ] {
+        drop(run_git(&root, args, &env, &IDENTITY));
+    }
+    root
+}
+
+fn copied(from: &Path, tree: &Tree, below: &str) {
+    tree.create_dir(below).expect("a folder");
+    let entries = std::fs::read_dir(from).unwrap_or_else(|error| panic!("{error}"));
+    for entry in entries {
+        let path = entry.unwrap_or_else(|error| panic!("{error}")).path();
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("a name");
+        let relative = format!("{below}/{name}");
+        if path.is_dir() {
+            copied(&path, tree, &relative);
+        } else {
+            tree.copy_file(&path, &relative).expect("a copied file");
+        }
+    }
+}
+
+// The command line that asks what `arguments` ask the tool `tool`.
+fn command_line(tool: &str, arguments: &Value, root: &Path) -> Vec<String> {
+    let mut args = vec![tool.to_owned()];
+    let text = |name: &str| arguments[name].as_str().map(str::to_owned);
+    for (name, flag) in [("more", "--more"), ("files", "--files"), ("path", "--path")] {
+        if let Some(value) = text(name) {
+            args.extend([flag.to_owned(), value]);
+        }
+    }
+    for (name, flag) in [("context", "--context"), ("limit", "--limit")] {
+        if let Some(count) = arguments[name].as_u64() {
+            args.extend([flag.to_owned(), count.to_string()]);
+        }
+    }
+    if arguments["ignore_case"] == true {
+        args.push("--ignore-case".to_owned());
+    }
+    args.extend([
+        "--repo".to_owned(),
+        root.display().to_string(),
+        "--".to_owned(),
+    ]);
+    match &arguments["target"] {
+        Value::String(target) => args.push(target.clone()),
+        Value::Array(targets) => args
+            .extend((targets.iter()).map(|target| target.as_str().expect("a target").to_owned())),
+        _ => args.extend(text("pattern")),
+    }
+    args
+}
+
+// The answer below its receipt, whose root and cache fields differ between the two doors.
+fn body(text: &str) -> String {
+    let lines: Vec<&str> = text
+        .lines()
+        .skip_while(|line| line.starts_with("// "))
+        .collect();
+    lines.join("\n")
+}
+
+// What the command line gives for one request: the answer body, or the refusal of a call that
+// the tool refuses.
+fn command_answer(tree: &Tree, args: &[String]) -> (String, bool) {
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    let ran = run(BINARY, tree, &args);
+    if ran.code == Some(0) {
+        return (body(&ran.out), false);
+    }
+    let refusal = ran.err.lines().last().unwrap_or_default();
+    let refusal = refusal.strip_prefix("agentless-mcp: ").unwrap_or(refusal);
+    (refusal.to_owned(), true)
+}
+
+fn tool_answer(session: &mut Session, tool: &str, arguments: &Value) -> (String, bool) {
+    let (text, error) = session.call(tool, arguments);
+    if error {
+        let prefix = format!("Error calling tool '{tool}': ");
+        (text.strip_prefix(&prefix).unwrap_or(&text).to_owned(), true)
+    } else {
+        (body(&text), false)
+    }
+}
+
+// A late git gives a card that says so in one door and not the other; a retry reads the commit.
+const LAST_CHANGE_TRIES: usize = 3;
+
+// For every request beside a trace or search golden, the command line answers with the text of
+// the tool, below the receipt, or refuses with the refusal of the tool.
+#[test]
+fn the_command_line_answers_as_the_tools_answer() {
+    let mut differences = Vec::new();
+    let requests = requests();
+    assert!(requests.len() > 50, "{} requests", requests.len());
+    for (stem, request) in &requests {
+        let tree = sandbox();
+        let root = rig(&tree, request);
+        let mut session = Session::start(&tree, &["--root", &root.display().to_string()]);
+        let tool = request["tool"].as_str().expect("a tool");
+        let args = command_line(tool, &request["arguments"], &root);
+        let mut answers = Vec::new();
+        for _ in 0..LAST_CHANGE_TRIES {
+            let answer = tool_answer(&mut session, tool, &request["arguments"]);
+            let command = command_answer(&tree, &args);
+            let late = [&answer.0, &command.0]
+                .iter()
+                .any(|text| text.contains("not read in"));
+            answers = vec![answer, command];
+            if answers[0] == answers[1] || !late {
+                break;
+            }
+        }
+        assert!(!answers[0].0.is_empty(), "{stem}: an empty answer");
+        if answers[0] != answers[1] {
+            differences.push(format!(
+                "{stem}: {args:?}\ntool {:?}\n cli {:?}",
+                answers[0], answers[1]
+            ));
+        }
+        assert_eq!(session.ended(), Some(0), "{stem}");
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
 }

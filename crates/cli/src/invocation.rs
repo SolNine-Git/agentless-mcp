@@ -18,11 +18,34 @@ pub(crate) struct Invocation {
 pub(crate) enum Command {
     Lint(Lint),
     Capabilities(RepoFlags),
+    Answer(AnswerCall),
     Read(ReadCall),
     PatchParse(PatchInput),
     PatchEdit(PatchEdit),
     Validate(Validate),
     Vote(Vote),
+}
+
+// `trace` or `search`, and the values its parser set.
+pub(crate) struct AnswerCall {
+    pub(crate) answer: Answer,
+    pub(crate) namespace: Namespace,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum Answer {
+    Trace,
+    Search,
+}
+
+impl Answer {
+    fn named(name: &str) -> Answer {
+        if name == "trace" {
+            Answer::Trace
+        } else {
+            Answer::Search
+        }
+    }
 }
 
 // A read subcommand: its operation's declaration and the values its parser set.
@@ -96,7 +119,7 @@ impl Invocation {
     pub(crate) fn new(parsed: Parsed) -> Invocation {
         let counter = parsed.top.text("token_counter");
         let command = match parsed.chosen {
-            Chosen::Ported { path, namespace } => ported(&path, &namespace),
+            Chosen::Ported { path, namespace } => ported(&path, namespace),
             Chosen::Read { op, namespace } => Command::Read(ReadCall { op, namespace }),
         };
         Invocation {
@@ -107,19 +130,23 @@ impl Invocation {
 }
 
 // The command of a hand-built parser path. The paths are the ones that commands.rs declares.
-fn ported(path: &[&str], namespace: &Namespace) -> Command {
+fn ported(path: &[&str], namespace: Namespace) -> Command {
     match path {
-        ["lint"] => Command::Lint(lint(namespace)),
-        ["capabilities"] => Command::Capabilities(repo_flags(namespace)),
-        ["patch", "parse"] => Command::PatchParse(patch_input(namespace)),
-        ["patch", step] => Command::PatchEdit(PatchEdit {
-            step: edit_step(step, namespace),
-            input: patch_input(namespace),
-            flags: repo_flags(namespace),
+        ["lint"] => Command::Lint(lint(&namespace)),
+        ["capabilities"] => Command::Capabilities(repo_flags(&namespace)),
+        [tool @ ("trace" | "search")] => Command::Answer(AnswerCall {
+            answer: Answer::named(tool),
+            namespace,
         }),
-        ["validate"] => Command::Validate(validate(namespace)),
+        ["patch", "parse"] => Command::PatchParse(patch_input(&namespace)),
+        ["patch", step] => Command::PatchEdit(PatchEdit {
+            step: edit_step(step, &namespace),
+            input: patch_input(&namespace),
+            flags: repo_flags(&namespace),
+        }),
+        ["validate"] => Command::Validate(validate(&namespace)),
         ["vote"] => Command::Vote(Vote {
-            verdicts: required(namespace, "verdicts"),
+            verdicts: required(&namespace, "verdicts"),
             json: namespace.flag("json"),
         }),
         _ => panic!("commands.rs declares no command {path:?}"),
