@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
 use facts::{Declared, Role};
-use graph::{Definition, NameIndex, Resolver, Scopes, Site, TargetForm, references_to};
+use graph::{Aliases, Definition, NameIndex, Resolver, Scopes, Site, TargetForm, references_to};
 use kernel::{Bounded, Deadline};
 
 use crate::bounds::within;
@@ -186,8 +186,10 @@ fn scanned(
 ) -> Result<RefsResult, Error> {
     let index = NameIndex::build(&facts.files);
     let scopes = Scopes::build(&facts.files);
+    let resolver = Resolver::new(&index, &scopes);
     let fan = FanIn {
-        resolver: &Resolver::new(&index, &scopes),
+        resolver: &resolver,
+        aliases: &Aliases::build(&resolver),
         skipped: &facts.skipped,
         root: &reading.repo.root,
         stoplist: &reading.repo.config.stoplist,
@@ -211,6 +213,7 @@ pub(crate) fn refs_in(
         let answered = graph.over(move |graph| {
             let fan = FanIn {
                 resolver: graph.resolver(),
+                aliases: graph.aliases(),
                 skipped: &skipped,
                 root: &root,
                 stoplist: &stoplist,
@@ -243,10 +246,11 @@ fn with_limit(
     fanned(limit)
 }
 
-// What one fan-in reads: the resolver of the scan, the files it passed over, the repository's
-// root and stoplist, and the deadline.
+// What one fan-in reads: the resolver and the aliases of the scan, the files it passed over, the
+// repository's root and stoplist, and the deadline.
 struct FanIn<'f, 'a> {
     resolver: &'f Resolver<'a>,
+    aliases: &'f Aliases<'a>,
     skipped: &'f [Skipped],
     root: &'f Path,
     stoplist: &'f BTreeSet<String>,
@@ -273,7 +277,7 @@ fn fan_in(fan: &FanIn<'_, '_>, request: &RefsRequest, limit: usize) -> Result<Re
     let target_ids: BTreeSet<String> = (bound.definitions.iter())
         .map(|definition| definition.stable_id().to_string())
         .collect();
-    let spellings = spellings(resolver, &bound.definitions, &target_ids);
+    let spellings = spellings(fan, &bound.definitions, &target_ids);
     let sites = dedupe(&spellings);
     let names = names_by_path(&spellings);
     let tiers = sites::site_tiers(&sites, &names, resolver, &target_ids);
@@ -353,10 +357,11 @@ fn single_definition(bound: &Bound<'_>) -> Option<String> {
 // Each definition's spellings outside its span in its family, then the alias spellings, less the
 // paths through a module outside the repository and the lines that only declare (a row is a line).
 fn spellings<'a>(
-    resolver: &Resolver<'a>,
+    fan: &FanIn<'_, 'a>,
     definitions: &[Definition<'a>],
     target_ids: &BTreeSet<String>,
 ) -> Vec<Site<'a>> {
+    let resolver = fan.resolver;
     let spelled: BTreeSet<&str> = (definitions.iter())
         .map(|definition| definition.symbol().name.as_str())
         .collect();
@@ -366,7 +371,7 @@ fn spellings<'a>(
         sites.filter(move |site| site.file.language.family() == family)
     });
     let mut declared: HashMap<&'a str, Declared<'a>> = HashMap::new();
-    let all = direct.chain(alias_sites(resolver, target_ids, &spelled));
+    let all = direct.chain(alias_sites(fan, target_ids, &spelled));
     all.filter(|site| {
         !resolver.names_outside(site.reference, site.path()) && !only_declares(&mut declared, site)
     })
@@ -382,24 +387,21 @@ fn only_declares<'a>(declared: &mut HashMap<&'a str, Declared<'a>>, site: &Site<
 }
 
 // A file that imported the target under another name calls it by that name. Only the import
-// chain can rename, so it is walked first and the resolver confirms.
+// chain can rename, so the chains that reach the target come first and the resolver confirms.
 fn alias_sites<'a>(
-    resolver: &Resolver<'a>,
+    fan: &FanIn<'_, 'a>,
     target_ids: &BTreeSet<String>,
     spelled: &BTreeSet<&str>,
 ) -> Vec<Site<'a>> {
+    let resolver = fan.resolver;
     let mut found = Vec::new();
-    for (path, scope) in resolver.scopes().iter() {
-        for local in scope.member_names() {
-            if spelled.contains(local)
-                || !lands_on(&resolver.through_imports(local, path), target_ids)
-            {
-                continue;
-            }
-            let confirmed = resolver.resolve(local, path);
-            if confirmed.is_some_and(|resolution| lands_on(&resolution.candidates, target_ids)) {
-                found.extend(alias_spellings(resolver.index(), local, path));
-            }
+    for (path, local) in fan.aliases.reaching(target_ids) {
+        if spelled.contains(local) {
+            continue;
+        }
+        let confirmed = resolver.resolve(local, path);
+        if confirmed.is_some_and(|resolution| lands_on(&resolution.candidates, target_ids)) {
+            found.extend(alias_spellings(resolver.index(), local, path));
         }
     }
     found

@@ -1,6 +1,7 @@
 //! The repository graphs: the name index, the import scopes, the resolver, the symbol and file
 //! graphs, their ranks, floods, paths, cycles and communities.
 
+mod aliases;
 mod ambiguous;
 mod communities;
 mod cycles;
@@ -21,6 +22,7 @@ mod scopes;
 mod symbols;
 mod unresolved;
 
+pub use aliases::Aliases;
 pub use ambiguous::AmbiguousDegrees;
 pub use communities::{
     Community, CommunityPartition, DEFAULT_RESOLUTION, ROOT_LABEL, community_label,

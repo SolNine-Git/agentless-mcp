@@ -105,6 +105,17 @@ impl core::marker::Unpin for graph::Tier
 impl core::marker::UnsafeUnpin for graph::Tier
 impl core::panic::unwind_safe::RefUnwindSafe for graph::Tier
 impl core::panic::unwind_safe::UnwindSafe for graph::Tier
+pub struct graph::Aliases<'a>
+impl<'a> graph::Aliases<'a>
+pub fn graph::Aliases<'a>::build(&graph::Resolver<'a>) -> graph::Aliases<'a>
+pub fn graph::Aliases<'a>::reaching(&self, &alloc::collections::btree::set::BTreeSet<alloc::string::String>) -> alloc::vec::Vec<(&'a str, &'a str)>
+impl<'a> core::marker::Freeze for graph::Aliases<'a>
+impl<'a> core::marker::Send for graph::Aliases<'a>
+impl<'a> core::marker::Sync for graph::Aliases<'a>
+impl<'a> core::marker::Unpin for graph::Aliases<'a>
+impl<'a> core::marker::UnsafeUnpin for graph::Aliases<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::Aliases<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for graph::Aliases<'a>
 pub struct graph::AmbiguousDegrees
 pub graph::AmbiguousDegrees::arriving: alloc::collections::btree::map::BTreeMap<alloc::string::String, u64>
 pub graph::AmbiguousDegrees::leaving: alloc::collections::btree::map::BTreeMap<alloc::string::String, u64>

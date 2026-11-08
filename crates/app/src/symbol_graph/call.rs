@@ -15,7 +15,8 @@ use std::time::Duration;
 
 use git::RepoFile;
 use graph::{
-    AmbiguousDegrees, Cycle, FileFacts, NameIndex, Resolver, Scopes, SymbolGraph, import_cycles,
+    Aliases, AmbiguousDegrees, Cycle, FileFacts, NameIndex, Resolver, Scopes, SymbolGraph,
+    import_cycles,
 };
 use kernel::{Deadline, Stopped, checkpoint};
 
@@ -117,13 +118,14 @@ pub(crate) struct CallGraph<'a> {
     keeping: Keeping<'a>,
 }
 
-// What a call graph builds from its files, and what it reads from them once: the ambiguous
-// degrees of the graph, and the import cycles of the import edges. Each borrows the files.
+// What a call graph builds from its files, and what it reads from them once: the aliases of the
+// resolver, the ambiguous degrees of the graph, and the import cycles. Each borrows the files.
 #[derive(Default)]
 struct Built<'a> {
     index: OnceCell<NameIndex<'a>>,
     scopes: OnceCell<Scopes<'a>>,
     resolver: OnceCell<Resolver<'a>>,
+    aliases: OnceCell<Aliases<'a>>,
     graph: OnceCell<Result<SymbolGraph<'a>, Stopped>>,
     degrees: OnceCell<AmbiguousDegrees>,
     imports: OnceCell<SymbolGraph<'a>>,
@@ -198,6 +200,10 @@ impl<'a> CallGraph<'a> {
             self.counted(|counts| &counts.resolvers);
             Resolver::new(self.index(), self.scopes())
         })
+    }
+
+    pub(crate) fn aliases(&self) -> &'a Aliases<'a> {
+        (self.built.aliases).get_or_init(|| Aliases::build(self.resolver()))
     }
 
     // A stopped build stops every later answer too, as the deadline it ran under has passed.
