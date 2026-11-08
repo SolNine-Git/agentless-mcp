@@ -2,20 +2,26 @@
 //! proposed text of each Write and Edit, decides whether to block, advise or allow, and appends
 //! one log record. The search gate holds broad text search until a localizing agentless call, and
 //! records that call. The prompt map names the files that rank first for the names in the first
-//! prompt of a session.
+//! prompt of a session. The read card adds a source file's card to its first read in a context,
+//! and the ledger records the files whose cards a context holds.
 
 mod call;
 mod destination;
 mod edit;
 mod gate;
 mod halt;
+mod ledger;
+mod ledger_mark;
+mod ledger_reset;
 mod modes;
 mod payload;
 mod prompt_map;
+mod read_card;
 mod record;
 mod reply;
 mod report;
 mod repository;
+mod run;
 mod search;
 mod signals;
 mod state;
@@ -34,7 +40,10 @@ use std::sync::Arc;
 use app::{EnvConfig, Services};
 use kernel::{Clock, SystemClock};
 
+pub use crate::ledger_mark::ledger_mark;
+pub use crate::ledger_reset::ledger_reset;
 pub use crate::prompt_map::prompt_map;
+pub use crate::read_card::read_card;
 pub use crate::report::gate_report;
 pub use crate::search::{gate_check, gate_mark};
 

@@ -5,7 +5,7 @@ mod check;
 pub(crate) mod log;
 mod mark;
 mod marker;
-mod shell;
+pub(crate) mod shell;
 mod stat;
 
 use std::ffi::OsStr;

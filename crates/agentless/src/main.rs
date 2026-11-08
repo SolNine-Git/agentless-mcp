@@ -34,11 +34,14 @@ fn main() -> ExitCode {
 // One hook: its subcommand name and its run.
 type HookRun = fn(&EnvConfig, &Services) -> u8;
 
-const HOOKS: [(&str, HookRun); 4] = [
+const HOOKS: [(&str, HookRun); 7] = [
+    ("read-card", read_carded),
+    ("ledger-mark", ledger_marked),
+    ("prompt-map", prompt_mapped),
     ("erosion", erosion),
+    ("ledger-reset", ledger_reset),
     ("gate-check", searched),
     ("gate-mark", marked),
-    ("prompt-map", prompt_mapped),
 ];
 
 // The hooks need no start-up directory, so only the other command lines stop on an unread one.
@@ -94,6 +97,27 @@ fn prompt_mapped(env: &EnvConfig, services: &Services) -> u8 {
         &mut io::stdin().lock(),
         &mut io::stdout().lock(),
     )
+}
+
+// The card of a first read goes to stdout as the hook's reply, like the prompt map's.
+fn read_carded(env: &EnvConfig, services: &Services) -> u8 {
+    keep_panic_lines();
+    hook::read_card(
+        env,
+        services,
+        &mut io::stdin().lock(),
+        &mut io::stdout().lock(),
+    )
+}
+
+fn ledger_marked(env: &EnvConfig, services: &Services) -> u8 {
+    keep_panic_lines();
+    hook::ledger_mark(env, services, &mut io::stdin().lock())
+}
+
+fn ledger_reset(env: &EnvConfig, _services: &Services) -> u8 {
+    keep_panic_lines();
+    hook::ledger_reset(env, &mut io::stdin().lock())
 }
 
 // The report opens its paths as given, so like the hook it needs no start-up directory.

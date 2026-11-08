@@ -19,6 +19,7 @@ io = { path = "../io" }
 json = { path = "../json" }
 kernel = { path = "../kernel" }
 prompts = { path = "../prompts" }
+render = { path = "../render" }
 serde.workspace = true
 sha2.workspace = true
 signal-hook.workspace = true

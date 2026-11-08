@@ -140,3 +140,120 @@ impl Sandbox {
         ));
     }
 }
+
+const INVOICE_TEXT: &str = "class InvoiceTotal:\n    def rounded(self):\n        return \
+                            round_cents(self.amount)\n\n\ndef round_cents(value):\n    return \
+                            round(value, 2)\n";
+const REPORT_TEXT: &str = "from src.billing.invoice import InvoiceTotal\n\n\n\
+                           def monthly_report(items):\n    return [InvoiceTotal() for _ in items]\n";
+
+// A sandbox with a committed two-file Python repository and a TOML file, the services, the
+// ledger and the gate log of the runs of the trace surface's hooks.
+pub(crate) struct Rig {
+    pub(crate) sandbox: Sandbox,
+    pub(crate) services: app::Services,
+    pub(crate) log: OsString,
+}
+
+impl Rig {
+    pub(crate) const INVOICE: &'static str = "src/billing/invoice.py";
+    pub(crate) const REPORT: &'static str = "src/billing/report.py";
+    pub(crate) const SETTINGS: &'static str = "config/settings.toml";
+    const LOG: &'static str = "gate.jsonl";
+
+    pub(crate) fn new() -> Self {
+        let sandbox = Sandbox::new();
+        sandbox.mkdir("repo");
+        sandbox.git(&["init", "--quiet", "-b", "main"]);
+        drop(sandbox.put(&format!("repo/{}", Self::INVOICE), INVOICE_TEXT));
+        drop(sandbox.put(&format!("repo/{}", Self::REPORT), REPORT_TEXT));
+        drop(sandbox.put(
+            &format!("repo/{}", Self::SETTINGS),
+            "[billing]\nround = 2\n",
+        ));
+        sandbox.git(&["add", "-A"]);
+        sandbox.git(&["commit", "--quiet", "-m", "fixture"]);
+        // No repository above the sandbox can answer for a directory outside the fixture.
+        let ceiling = sandbox.path().as_os_str().to_owned();
+        let env = sandbox.env(&[("GIT_CEILING_DIRECTORIES", ceiling)]);
+        let services = app::Services::new(&env);
+        let log = sandbox.path().join(Self::LOG).into_os_string();
+        Self {
+            sandbox,
+            services,
+            log,
+        }
+    }
+
+    pub(crate) fn ledger(&self) -> PathBuf {
+        self.sandbox.path().join("ledger")
+    }
+
+    // The absolute path of a file below the repository.
+    pub(crate) fn file(&self, relative: &str) -> PathBuf {
+        self.sandbox.root().join(relative)
+    }
+
+    pub(crate) fn run<'a>(&'a self, clock: &'a dyn Clock) -> crate::run::Run<'a> {
+        crate::run::Run {
+            ledger: self.ledger(),
+            log: Some(self.log.as_os_str()),
+            cwd: None,
+            clock,
+        }
+    }
+
+    // The read-card reply to a Read of `relative` in the context.
+    pub(crate) fn read_reply(&self, session: &str, agent: Option<&str>, relative: &str) -> String {
+        let clock = Steps::fixed();
+        let hook = crate::read_card::ReadCard {
+            run: self.run(&clock),
+            card: crate::read_card::in_process,
+            deadline: Duration::from_secs(30),
+        };
+        let mut payload = serde_json::json!({
+            "session_id": session,
+            "tool_name": "Read",
+            "tool_input": {"file_path": self.file(relative)},
+        });
+        if let Some(agent) = agent {
+            payload["agent_id"] = serde_json::json!(agent);
+        }
+        let mut stdout = Vec::new();
+        let stdin = payload.to_string();
+        crate::read_card::answer(&hook, &self.services, &mut stdin.as_bytes(), &mut stdout);
+        String::from_utf8(stdout).expect("UTF-8 stdout")
+    }
+
+    pub(crate) fn lines(&self) -> Vec<serde_json::Value> {
+        let path = self.sandbox.path().join(Self::LOG);
+        let text = std::fs::read_to_string(path).unwrap_or_default();
+        text.lines()
+            .map(|line| serde_json::from_str(line).expect("a JSON line"))
+            .collect()
+    }
+
+    pub(crate) fn reasons(&self) -> Vec<String> {
+        let lines = self.lines();
+        let reasons = lines
+            .iter()
+            .map(|line| line["reason"].as_str().unwrap_or("?"));
+        reasons.map(str::to_owned).collect()
+    }
+}
+
+// The context string of a hook's reply, after a check of the reply's shape.
+pub(crate) fn context_of(stdout: &str, event: &str) -> String {
+    let reply: serde_json::Value = serde_json::from_str(stdout).expect("one JSON object");
+    assert_eq!(
+        reply.as_object().map(serde_json::Map::len),
+        Some(1),
+        "{stdout}"
+    );
+    let output = &reply["hookSpecificOutput"];
+    assert_eq!(output["hookEventName"], event, "{stdout}");
+    output["additionalContext"]
+        .as_str()
+        .expect("a context string")
+        .to_owned()
+}
