@@ -5,12 +5,14 @@ use facts::Import;
 use syntax::Language;
 
 use crate::affected::Affected;
+use crate::aliases::Aliases;
 use crate::ambiguous::AmbiguousDegrees;
+use crate::cycles::{Cycle, import_cycles};
 use crate::names::NameIndex;
 use crate::resolver::Resolver;
 use crate::rust_paths::is_manifest;
 use crate::scan::FileFacts;
-use crate::scopes::Scopes;
+use crate::scopes::{ImportScope, Scopes};
 use crate::symbols::{Nodes, SymbolGraph};
 
 /// The kept parts of one scan's graph. A part that was not built is `None`, and stays so.
@@ -19,6 +21,9 @@ pub struct KeptParts<'p, 's> {
     pub scopes: Option<&'p mut Scopes<'s>>,
     pub graph: Option<&'p mut SymbolGraph<'s>>,
     pub degrees: Option<&'p mut AmbiguousDegrees>,
+    pub aliases: Option<&'p mut Aliases<'s>>,
+    pub imports: Option<&'p mut SymbolGraph<'s>>,
+    pub cycles: Option<&'p mut Vec<Cycle<'s>>>,
 }
 
 /// What an update resolved again: the files whose every site it resolved, and the sites.
@@ -54,16 +59,18 @@ pub fn update<'s>(
     after: &'s [&'s FileFacts],
 ) -> Result<Resolved, Rebuild> {
     let changed = changed(before, after)?;
+    if !parts.built_from_their_parts() {
+        return Err(Rebuild::Unbuilt);
+    }
     let KeptParts {
         index,
         scopes,
         graph,
         degrees,
+        aliases,
+        imports,
+        cycles,
     } = parts;
-    let graphed = index.is_some() && scopes.is_some();
-    if (graph.is_some() && !graphed) || (degrees.is_some() && graph.is_none()) {
-        return Err(Rebuild::Unbuilt);
-    }
     let index = index.map(|index| {
         index.update(after, &changed);
         &*index
@@ -72,25 +79,81 @@ pub fn update<'s>(
         let rebound = scopes.update(after, &changed);
         (&*scopes, rebound)
     });
-    let (Some(index), Some((scopes, rebound)), Some(graph)) = (index, scopes, graph) else {
+    let (Some(index), Some((scopes, rebound))) = (index, scopes) else {
         return Ok(Resolved::default());
     };
+    let restated = (rebound.iter()).any(|(at, old)| old.statements != scopes.at(*at).statements);
+    if let Some(imports) = imports.filter(|_| restated) {
+        *imports = SymbolGraph::imports(scopes);
+        if let Some(cycles) = cycles {
+            *cycles = import_cycles(imports);
+        }
+    }
+    if graph.is_none() && aliases.is_none() {
+        return Ok(Resolved::default());
+    }
     let affected = Affected::of(before, after, &changed, Some((scopes, &rebound)));
     let resolver = Resolver::new(index, scopes);
-    let nodes = Nodes::new(after, true);
-    let relinked = graph.relinked(&nodes, &resolver, before, &affected);
-    let work = Resolved {
+    let mut work = Resolved {
         files: affected.whole.len(),
-        sites: relinked.sites(),
+        sites: 0,
     };
-    let names = relinked.names();
-    let tally = degrees.map(|degrees| (graph.degrees_of(names.iter().copied()), degrees));
-    graph.relink(relinked, before, &affected);
-    graph.recount(scopes, &rebound);
-    if let Some((old, degrees)) = tally {
-        degrees.replace(&old, &graph.degrees_of(names.iter().copied()));
+    if let Some(graph) = graph {
+        let linked = Linked {
+            resolver: &resolver,
+            before,
+            after,
+            affected: &affected,
+        };
+        work.sites = linked.relink(graph, degrees, &rebound);
+    }
+    if let Some(aliases) = aliases {
+        aliases.update(&resolver, after, &affected);
     }
     Ok(work)
+}
+
+impl KeptParts<'_, '_> {
+    // Each part kept with the parts it is built from: the graph and the aliases resolve over the
+    // index and the scopes, the degrees count the graph, and the cycles walk the import graph.
+    fn built_from_their_parts(&self) -> bool {
+        let resolving = self.index.is_some() && self.scopes.is_some();
+        (resolving || (self.graph.is_none() && self.aliases.is_none()))
+            && (self.degrees.is_none() || self.graph.is_some())
+            && (self.imports.is_none() || self.scopes.is_some())
+            && (self.cycles.is_none() || self.imports.is_some())
+    }
+}
+
+// What the graph of an update links again over.
+struct Linked<'l, 's> {
+    resolver: &'l Resolver<'l, 's>,
+    before: &'l [&'s FileFacts],
+    after: &'s [&'s FileFacts],
+    affected: &'l Affected<'s>,
+}
+
+impl<'s> Linked<'_, 's> {
+    // Links the affected sites of `graph` again, and the degrees of the names it changes. Returns
+    // how many sites it resolved.
+    fn relink(
+        &self,
+        graph: &mut SymbolGraph<'s>,
+        degrees: Option<&mut AmbiguousDegrees>,
+        rebound: &[(usize, ImportScope<'s>)],
+    ) -> usize {
+        let nodes = Nodes::new(self.after, true);
+        let relinked = graph.relinked(&nodes, self.resolver, self.before, self.affected);
+        let sites = relinked.sites();
+        let names = relinked.names();
+        let tally = degrees.map(|degrees| (graph.degrees_of(names.iter().copied()), degrees));
+        graph.relink(relinked, self.before, self.affected);
+        graph.recount(self.resolver.scopes(), rebound);
+        if let Some((old, degrees)) = tally {
+            degrees.replace(&old, &graph.degrees_of(names.iter().copied()));
+        }
+        sites
+    }
 }
 
 // The positions of the changed files, or the case that needs a full build.

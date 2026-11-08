@@ -8,7 +8,10 @@ use syntax::Language;
 
 use super::equality::{Canonical, Parts, assert_same};
 use super::rust::scanned;
-use crate::{FileFacts, KeptParts, NameIndex, Rebuild, Resolver, Scopes, SymbolGraph, update};
+use crate::{
+    Aliases, FileFacts, KeptParts, NameIndex, Rebuild, Resolver, Scopes, SymbolGraph,
+    import_cycles, update,
+};
 
 // One change to one file of a scan: a text replaced in it, its whole new text, or its removal.
 enum Change {
@@ -115,14 +118,22 @@ fn run(case: &Case) {
     }
     let mut index = NameIndex::build(&lists[0]);
     let mut scopes = Scopes::build(&lists[0]);
-    let mut graph = SymbolGraph::build(&Resolver::new(&index, &scopes), None).expect("no deadline");
+    let resolver = Resolver::new(&index, &scopes);
+    let mut graph = SymbolGraph::build(&resolver, None).expect("no deadline");
+    let mut aliases = Aliases::build(&resolver);
+    drop(resolver);
     let mut degrees = graph.ambiguous_degrees();
+    let mut imports = SymbolGraph::imports(&scopes);
+    let mut cycles = import_cycles(&imports);
     for (step, pair) in lists.windows(2).enumerate() {
         let parts = KeptParts {
             index: Some(&mut index),
             scopes: Some(&mut scopes),
             graph: Some(&mut graph),
             degrees: Some(&mut degrees),
+            aliases: Some(&mut aliases),
+            imports: Some(&mut imports),
+            cycles: Some(&mut cycles),
         };
         let updated = update(parts, &pair[0], &pair[1]);
         let last = step + 1 == case.steps.len();
@@ -143,7 +154,9 @@ fn run(case: &Case) {
             scopes: Some(&scopes),
             graph: Some(&graph),
             degrees: Some(&degrees),
-            ..Parts::default()
+            aliases: Some(&aliases),
+            imports: Some(&imports),
+            cycles: Some(&cycles),
         });
         let label = format!("{}: step {step}", case.name);
         assert_same(&label, &kept, &Canonical::built(&pair[1]));
@@ -449,6 +462,36 @@ const CASES: &[Case] = &[
         steps: &[
             &[("pkg/core.py", Write("A = B = 1\n"))],
             &[("pkg/core.py", Write("\nA = 1\nB = 2\n"))],
+        ],
+        rebuilds: None,
+    },
+    Case {
+        name: "a chain of two aliases that breaks and mends",
+        fixture: "",
+        extra: &[
+            ("core.py", "def target():\n    return 1\n"),
+            ("mid.py", "from core import target as t\n"),
+            ("api.py", "from mid import t as run\n"),
+            ("user.py", "from api import run\n\n\ndef use():\n    return run()\n"),
+        ],
+        steps: &[
+            &[("core.py", Replace("def target()", "def aim()"))],
+            &[("core.py", Replace("def aim()", "def target()"))],
+            &[("mid.py", Write("from core import target as t, aim\n"))],
+        ],
+        rebuilds: None,
+    },
+    Case {
+        name: "an import that closes a cycle and opens it",
+        fixture: "",
+        extra: &[
+            ("a.py", "import b\n\n\ndef f():\n    return b.g()\n"),
+            ("b.py", "import c\n\n\ndef g():\n    return c.h()\n"),
+            ("c.py", "def h():\n    return 1\n"),
+        ],
+        steps: &[
+            &[("c.py", Replace("def h():", "import a\n\n\ndef h():"))],
+            &[("c.py", Replace("import a\n\n\n", ""))],
         ],
         rebuilds: None,
     },

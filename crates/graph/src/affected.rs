@@ -17,6 +17,8 @@ pub(crate) struct Affected<'s> {
     pub(crate) names: BTreeSet<&'s str>,
     // Each symbol of a changed file that kept its id at another line, with the new line.
     pub(crate) moved: BTreeMap<String, u32>,
+    // Each member step whose answer the update can change, by the file asked and the name.
+    pub(crate) steps: BTreeSet<(&'s str, &'s str)>,
     pub(crate) changed: Vec<usize>,
 }
 
@@ -34,6 +36,7 @@ impl<'s> Affected<'s> {
             whole: changed.iter().copied().collect(),
             names: BTreeSet::new(),
             moved: BTreeMap::new(),
+            steps: BTreeSet::new(),
             changed: changed.to_vec(),
         };
         let mut hops: Vec<Hop<'s>> = Vec::new();
@@ -66,6 +69,7 @@ impl<'s> Affected<'s> {
             }
             let (target, member) = hop;
             self.names.extend(member);
+            self.steps.extend(member.map(|member| (target, member)));
             let importers: Vec<usize> = scopes.importers(target).collect();
             for &importer in &importers {
                 let path = files[importer].path.as_str();
