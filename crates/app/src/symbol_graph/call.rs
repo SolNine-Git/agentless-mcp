@@ -15,12 +15,12 @@ use std::time::{Duration, Instant};
 
 use git::RepoFile;
 use graph::{
-    Aliases, AmbiguousDegrees, Cycle, FileFacts, NameIndex, Resolver, Scopes, SymbolGraph,
-    import_cycles,
+    Aliases, AmbiguousDegrees, Cycle, FileFacts, KeptParts, NameIndex, Rebuild, Resolved, Resolver,
+    Scopes, SymbolGraph, import_cycles,
 };
 use kernel::{Clock, Deadline, Stopped, checkpoint};
 
-use super::retention::{Called, RETAINED};
+use super::retention::{Called, RETAINED, Updates};
 use super::store::Scan;
 use crate::detached::{answered_over, drop_detached};
 use crate::parallel::{map_in_order, threads};
@@ -140,6 +140,67 @@ struct Built<'s> {
     degrees: OnceLock<AmbiguousDegrees>,
     imports: OnceLock<SymbolGraph<'s>>,
     cycles: OnceLock<Vec<Cycle<'s>>>,
+}
+
+impl<'s> Built<'s> {
+    // Carries each built part from the scan `before` to the scan `after` of the same paths,
+    // resolving at most `sites` percent of the scan's sites again.
+    fn updated(
+        &mut self,
+        before: &'s [&'s FileFacts],
+        after: &'s [&'s FileFacts],
+        sites: usize,
+    ) -> Result<Resolved, Rebuild> {
+        let graph = match self.graph.get_mut() {
+            Some(Ok(graph)) => Some(graph),
+            Some(Err(_)) => return Err(Rebuild::Unbuilt),
+            None => None,
+        };
+        let parts = KeptParts {
+            index: self.index.get_mut(),
+            scopes: self.scopes.get_mut(),
+            graph,
+            degrees: self.degrees.get_mut(),
+            aliases: self.aliases.get_mut(),
+            imports: self.imports.get_mut(),
+            cycles: self.cycles.get_mut(),
+        };
+        graph::update(parts, before, after, sites)
+    }
+}
+
+// What a kept state's store holds beyond its first scan: the scans, and the sites of the facts
+// that later scans replaced, against the sites of the first scan.
+struct Stored {
+    scans: usize,
+    replaced: usize,
+    sites: usize,
+}
+
+impl Stored {
+    fn of(files: &[&FileFacts]) -> Stored {
+        Stored {
+            scans: 1,
+            replaced: 0,
+            sites: files.iter().map(|file| weight(file)).sum(),
+        }
+    }
+
+    fn add(&mut self, before: &[&FileFacts], after: &[&FileFacts]) {
+        self.scans += 1;
+        let pairs = before.iter().zip(after);
+        let replaced = pairs.filter(|(old, new)| !std::ptr::eq(**old, **new));
+        self.replaced += replaced.map(|(old, _)| weight(old)).sum::<usize>();
+    }
+
+    fn passes(&self, bounds: &Updates) -> bool {
+        self.scans > bounds.scans || self.replaced * 100 > bounds.replaced * self.sites
+    }
+}
+
+// The size of one file's facts, by its symbols and references.
+fn weight(file: &FileFacts) -> usize {
+    file.facts.symbols.len() + file.facts.refs.len()
 }
 
 // Gives `answer` the call graph of `files`, which builds nothing until an answer needs it.
@@ -268,7 +329,7 @@ impl<'f, 's> CallGraph<'f, 's> {
     }
 }
 
-/// How many times the kept graphs built each part, over every root.
+/// How many times the kept graphs built each part, and updated them, over every root.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Builds {
     /// The name indexes.
@@ -279,6 +340,14 @@ pub struct Builds {
     pub resolvers: usize,
     /// The resolved graphs.
     pub graphs: usize,
+    /// The updates of a kept graph to a later scan.
+    pub updates: usize,
+    /// The later scans that an update left to a full build.
+    pub rebuilds: usize,
+    /// The files whose every site the updates resolved again.
+    pub resolved_files: usize,
+    /// The sites that the updates resolved again.
+    pub resolved_sites: usize,
 }
 
 // The counts of `Builds` and of the parts read from a graph, which the graph threads add to, and
@@ -293,10 +362,24 @@ pub(crate) struct Counts {
     degrees: AtomicUsize,
     imports: AtomicUsize,
     cycles: AtomicUsize,
+    updates: AtomicUsize,
+    rebuilds: AtomicUsize,
+    resolved_files: AtomicUsize,
+    resolved_sites: AtomicUsize,
     // The scans that arrived while the prebuild of the scan before them still ran.
     waits: AtomicUsize,
     #[cfg(test)]
     gate: Option<Gate>,
+    // The bounds of an update: the server's, or a test's.
+    bounds: Updates,
+}
+
+impl Counts {
+    fn updated(&self, work: Resolved) {
+        self.updates.fetch_add(1, Ordering::Relaxed);
+        self.resolved_files.fetch_add(work.files, Ordering::Relaxed);
+        self.resolved_sites.fetch_add(work.sites, Ordering::Relaxed);
+    }
 }
 
 // A scan that arrives while the prebuild runs waits for it, and a test hears of the wait.
@@ -444,14 +527,28 @@ impl KeptGraphs {
     // A server's empty state whose prebuilds `gate` holds back.
     #[cfg(test)]
     pub(crate) fn gated(clock: Arc<dyn Clock>, gate: Gate) -> KeptGraphs {
-        let graphs = KeptGraphs::new(clock);
         let builds = Counts {
             gate: Some(gate),
             ..Counts::default()
         };
+        KeptGraphs::with_counts(clock, builds)
+    }
+
+    // A server's empty state whose updates keep `bounds`.
+    #[cfg(test)]
+    fn bounded(clock: Arc<dyn Clock>, bounds: Updates) -> KeptGraphs {
+        let builds = Counts {
+            bounds,
+            ..Counts::default()
+        };
+        KeptGraphs::with_counts(clock, builds)
+    }
+
+    #[cfg(test)]
+    fn with_counts(clock: Arc<dyn Clock>, builds: Counts) -> KeptGraphs {
         KeptGraphs {
             builds: Arc::new(builds),
-            ..graphs
+            ..KeptGraphs::new(clock)
         }
     }
 
@@ -465,6 +562,10 @@ impl KeptGraphs {
             scopes: count(&counts.scopes),
             resolvers: count(&counts.resolvers),
             graphs: count(&counts.graphs),
+            updates: count(&counts.updates),
+            rebuilds: count(&counts.rebuilds),
+            resolved_files: count(&counts.resolved_files),
+            resolved_sites: count(&counts.resolved_sites),
         }
     }
 
@@ -642,11 +743,27 @@ struct Jobs<'j> {
 
 impl Jobs<'_> {
     // One kept state: the scans that its parts borrow, declared first so that they drop last, and
-    // the parts. Returns the first job that the state does not answer.
+    // the parts, which each update carries to the next scan. Returns the first job that needs a
+    // full build.
     fn kept_state(&self, first: Job) -> Option<Job> {
-        let scan = Scan::new(&first.files);
-        let built = Built::default();
-        self.scanned(first, &scan, &built)
+        let store = Scan::new(&first.files);
+        let mut built = Built::default();
+        let mut stored = Stored::of(store.listed());
+        let (mut scan, mut job) = (&store, first);
+        loop {
+            let next = self.scanned(job, scan, &built)?;
+            let after = scan.then(&next.files);
+            stored.add(scan.listed(), after.listed());
+            let bounds = &self.builds.bounds;
+            let updated = (!stored.passes(bounds))
+                .then(|| built.updated(scan.listed(), after.listed(), bounds.sites));
+            let Some(Ok(work)) = updated else {
+                self.builds.rebuilds.fetch_add(1, Ordering::Relaxed);
+                return Some(next);
+            };
+            self.builds.updated(work);
+            (scan, job) = (after, next);
+        }
     }
 
     // Answers each job of the first job's scan over `built`, and returns the first job of another

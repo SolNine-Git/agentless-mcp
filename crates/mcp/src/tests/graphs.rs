@@ -1,5 +1,5 @@
 //! The graph that a server keeps for a root: built once while the scan is the same, built again
-//! after a file changes, and answering as a fresh server does.
+//! after an edit that changes a large share of the sites, and answering as a fresh server does.
 
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -35,6 +35,7 @@ fn built(times: usize) -> Builds {
         scopes: times,
         resolvers: times,
         graphs: times,
+        ..Builds::default()
     }
 }
 
@@ -53,7 +54,11 @@ fn a_kept_graph_is_built_once_until_a_file_changes() {
         "def alpha():\n    return beta()\n\n\ndef beta():\n    return gamma()\n\n\ndef gamma():\n    return 1\n",
     ]);
     let edited = traced(&server, &json!("beta"));
-    assert_eq!(server.inner.graphs.builds(), built(2));
+    let rebuilt = Builds {
+        rebuilds: 1,
+        ..built(2)
+    };
+    assert_eq!(server.inner.graphs.builds(), rebuilt);
     assert_eq!(edited, traced(&pinned(&sandbox), &json!("beta")));
     assert!(edited.text.contains("gamma"), "{}", edited.text);
 }

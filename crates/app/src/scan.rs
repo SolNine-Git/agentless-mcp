@@ -33,8 +33,7 @@ pub(crate) struct RepoFacts {
 }
 
 // The facts of a call's scan, which a server keeps for the next call of the root: the files with
-// facts, each shared with the scans that read it, and the row key of each file that came with no
-// warning.
+// facts, and the row key of each file that came with no warning.
 #[derive(Default)]
 pub(crate) struct KeptFacts {
     pub(crate) files: Arc<Vec<Arc<FileFacts>>>,

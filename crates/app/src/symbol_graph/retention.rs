@@ -15,6 +15,28 @@ pub(super) struct Retention {
     pub(super) idle: Duration,
 }
 
+// An update resolves at most `sites` percent of a scan's sites again, else a full build costs no
+// more. A kept state holds at most `scans` scans, and replaced facts of at most `replaced` percent
+// of its sites, before a full build frees them.
+pub(super) const UPDATED: Updates = Updates {
+    sites: 20,
+    scans: 64,
+    replaced: 10,
+};
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Updates {
+    pub(super) sites: usize,
+    pub(super) scans: usize,
+    pub(super) replaced: usize,
+}
+
+impl Default for Updates {
+    fn default() -> Updates {
+        UPDATED
+    }
+}
+
 // One kept root: its path, the time of its last call, and the turn of that call among all calls.
 pub(super) type Called<'p> = (&'p Path, Instant, u64);
 

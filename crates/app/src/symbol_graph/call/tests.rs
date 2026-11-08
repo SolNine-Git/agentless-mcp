@@ -6,10 +6,10 @@ use std::time::{Duration, SystemTime};
 
 use kernel::testing::PinnedClock;
 
-use super::{Gate, KeptGraphs};
+use super::{Builds, Gate, KeptGraphs};
 use crate::endpoints::scanned::{LINKED, Scanned};
 use crate::scan::KeptFacts;
-use crate::symbol_graph::retention::RETAINED;
+use crate::symbol_graph::retention::{RETAINED, UPDATED, Updates};
 use crate::trace::{CardKind, Outcome, TraceRequest, trace_kept};
 
 fn pinned() -> (Arc<PinnedClock>, KeptGraphs) {
@@ -219,4 +219,150 @@ fn a_scan_that_arrives_while_the_prebuild_runs_waits_for_it() {
     held.prebuilt();
     assert_eq!(held.graphs.builds.waits.load(Ordering::Relaxed), 1);
     assert_eq!(held.kind(&scanned, "added"), CardKind::Symbol);
+}
+
+// Twenty modules, each calling the one before it, so that one file holds a twentieth of the sites.
+fn chained() -> Vec<(String, String)> {
+    let module = |at: usize| {
+        let call = if at == 0 {
+            "    return 1\n".to_owned()
+        } else {
+            format!("    return step{}() + 1\n", at - 1)
+        };
+        let import = if at == 0 {
+            String::new()
+        } else {
+            format!("from m{:02} import step{}\n\n\n", at - 1, at - 1)
+        };
+        (
+            format!("m{at:02}.py"),
+            format!("{import}def step{at}():\n{call}"),
+        )
+    };
+    (0..20).map(module).collect()
+}
+
+fn chained_repo() -> Scanned {
+    let files = chained();
+    let pairs: Vec<(&str, &str)> = (files.iter())
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    Scanned::new(&pairs)
+}
+
+// The text of the trace of `target` over `graphs`.
+fn trace_text(graphs: &KeptGraphs, scanned: &Scanned, target: &str) -> String {
+    let request = TraceRequest {
+        targets: vec![target.to_owned()],
+        more: None,
+    };
+    let traced = trace_kept(&scanned.services, &scanned.reading(), &request, graphs);
+    format!("{:?}", traced.value.map(|trace| trace.cards))
+}
+
+fn edit(scanned: &Scanned, path: &str, text: &str) {
+    let edited = scanned.reading().repo.root.join(path);
+    io::write_file(&edited, text.as_bytes())
+        .unwrap_or_else(|error| panic!("{}: {error}", edited.display()));
+}
+
+// How many references and bases of a file's text the resolver tries to bind.
+fn resolvable(path: &str, text: &str) -> usize {
+    let language = syntax::Language::from_path(path).expect("a known language");
+    let parsed = syntax::parse(language, Arc::from(text)).expect("the text parses");
+    let facts = facts::extract(&parsed);
+    let declared = facts::Declared::of(&facts.symbols, &facts.refs);
+    let refs = facts.refs.iter();
+    let sites = refs.filter(|reference| reference.is_resolvable() && !declared.declares(reference));
+    let bases = facts.symbols.iter().flat_map(|symbol| &symbol.bases);
+    let bases = bases.filter(|base| !facts::base_name(base).is_empty());
+    sites.count() + bases.count()
+}
+
+fn pinned_graphs(bounds: Updates) -> KeptGraphs {
+    let clock = Arc::new(PinnedClock::at(SystemTime::UNIX_EPOCH));
+    KeptGraphs::bounded(clock, bounds)
+}
+
+#[test]
+fn a_body_edit_of_one_file_resolves_that_file_again_and_builds_nothing() {
+    let scanned = chained_repo();
+    let graphs = pinned_graphs(UPDATED);
+    let before = trace_text(&graphs, &scanned, "step10");
+    let text = "from m10 import step10\n\n\ndef step11():\n    value = step10()\n    return value + step10()\n";
+    edit(&scanned, "m11.py", text);
+    let after = trace_text(&graphs, &scanned, "step10");
+    assert_ne!(after, before, "the edit adds a site of step10");
+    let fresh = pinned_graphs(UPDATED);
+    assert_eq!(after, trace_text(&fresh, &scanned, "step10"));
+    let builds = graphs.builds();
+    let built = (
+        builds.indexes,
+        builds.scopes,
+        builds.graphs,
+        builds.rebuilds,
+    );
+    assert_eq!(built, (1, 1, 1, 0));
+    let resolved = (builds.updates, builds.resolved_files, builds.resolved_sites);
+    assert_eq!(resolved, (1, 1, resolvable("m11.py", text)));
+}
+
+#[test]
+fn an_update_past_its_share_of_the_sites_is_a_full_build() {
+    let scanned = chained_repo();
+    let text = "from m10 import step10\n\n\ndef step11():\n    return step10() + step10()\n";
+    let narrow = Updates {
+        sites: 1,
+        ..UPDATED
+    };
+    let graphs = pinned_graphs(narrow);
+    trace_text(&graphs, &scanned, "step10");
+    edit(&scanned, "m11.py", text);
+    trace_text(&graphs, &scanned, "step10");
+    let builds = graphs.builds();
+    assert_eq!((builds.graphs, builds.updates, builds.rebuilds), (2, 0, 1));
+}
+
+// Edits m11.py once for each count of sites, and returns the builds after each call.
+fn edited_in_turn(graphs: &KeptGraphs, scanned: &Scanned, times: usize) -> Vec<Builds> {
+    trace_text(graphs, scanned, "step10");
+    let edits = (1..=times).map(|count| {
+        let calls = "    step10()\n".repeat(count);
+        let text = format!("from m10 import step10\n\n\ndef step11():\n{calls}    return 1\n");
+        edit(scanned, "m11.py", &text);
+        trace_text(graphs, scanned, "step10");
+        graphs.builds()
+    });
+    edits.collect()
+}
+
+#[test]
+fn a_kept_state_holds_at_most_its_count_of_scans() {
+    let scanned = chained_repo();
+    let bounds = Updates {
+        scans: 3,
+        replaced: 100,
+        ..UPDATED
+    };
+    let graphs = pinned_graphs(bounds);
+    let builds = edited_in_turn(&graphs, &scanned, 3);
+    let counts: Vec<(usize, usize)> = (builds.iter())
+        .map(|builds| (builds.updates, builds.rebuilds))
+        .collect();
+    assert_eq!(counts, [(1, 0), (2, 0), (2, 1)]);
+}
+
+// Each file holds about a twentieth of the sites, so the second replaced m11.py passes a tenth.
+#[test]
+fn a_kept_state_holds_replaced_facts_of_at_most_its_share_of_the_sites() {
+    let scanned = chained_repo();
+    let graphs = pinned_graphs(Updates {
+        replaced: 10,
+        ..UPDATED
+    });
+    let builds = edited_in_turn(&graphs, &scanned, 3);
+    let counts: Vec<(usize, usize)> = (builds.iter())
+        .map(|builds| (builds.updates, builds.rebuilds))
+        .collect();
+    assert_eq!(counts, [(1, 0), (1, 1), (2, 1)]);
 }

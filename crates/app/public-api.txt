@@ -1193,8 +1193,12 @@ impl core::panic::unwind_safe::UnwindSafe for app::trace::Tally
 pub struct app::trace::Builds
 pub app::trace::Builds::graphs: usize
 pub app::trace::Builds::indexes: usize
+pub app::trace::Builds::rebuilds: usize
+pub app::trace::Builds::resolved_files: usize
+pub app::trace::Builds::resolved_sites: usize
 pub app::trace::Builds::resolvers: usize
 pub app::trace::Builds::scopes: usize
+pub app::trace::Builds::updates: usize
 impl core::clone::Clone for app::trace::Builds
 pub fn app::trace::Builds::clone(&self) -> Self
 impl core::cmp::Eq for app::trace::Builds
