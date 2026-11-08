@@ -169,25 +169,6 @@ impl core::marker::Unpin for store::SqlClass
 impl core::marker::UnsafeUnpin for store::SqlClass
 impl core::panic::unwind_safe::RefUnwindSafe for store::SqlClass
 impl core::panic::unwind_safe::UnwindSafe for store::SqlClass
-pub enum store::UnitLookup
-pub store::UnitLookup::Hit(alloc::vec::Vec<facts::values::Symbol>, metrics::FileMetrics)
-pub store::UnitLookup::Miss
-pub store::UnitLookup::Unreadable(store::RowFailure)
-impl core::clone::Clone for store::UnitLookup
-pub fn store::UnitLookup::clone(&self) -> Self
-impl core::cmp::Eq for store::UnitLookup
-impl core::cmp::PartialEq for store::UnitLookup
-pub fn store::UnitLookup::eq(&self, &Self) -> bool
-impl core::fmt::Debug for store::UnitLookup
-pub fn store::UnitLookup::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for store::UnitLookup
-impl core::marker::Freeze for store::UnitLookup
-impl core::marker::Send for store::UnitLookup
-impl core::marker::Sync for store::UnitLookup
-impl core::marker::Unpin for store::UnitLookup
-impl core::marker::UnsafeUnpin for store::UnitLookup
-impl core::panic::unwind_safe::RefUnwindSafe for store::UnitLookup
-impl core::panic::unwind_safe::UnwindSafe for store::UnitLookup
 pub enum store::WriteError
 pub store::WriteError::Io(core::io::error::Error)
 pub store::WriteError::Locked
@@ -346,7 +327,7 @@ impl !core::panic::unwind_safe::UnwindSafe for store::FactSource
 pub struct store::FactsDb
 impl store::FactsDb
 pub fn store::FactsDb::blocks_for(&self, &str, &str, syntax::language::Language) -> store::Lookup
-pub fn store::FactsDb::units_for(&self, &str, &str, syntax::language::Language) -> store::UnitLookup
+pub fn store::FactsDb::units_for(&self, &str, &str, syntax::language::Language) -> core::result::Result<core::option::Option<(alloc::vec::Vec<facts::values::Symbol>, metrics::FileMetrics)>, store::RowFailure>
 impl store::FactsDb
 pub fn store::FactsDb::generation(&self) -> &str
 pub fn store::FactsDb::row_counts(&self) -> core::result::Result<store::RowCounts, store::SqlError>

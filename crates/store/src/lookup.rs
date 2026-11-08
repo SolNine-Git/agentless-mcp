@@ -25,18 +25,6 @@ pub enum Lookup {
     Unreadable(RowFailure),
 }
 
-/// What the database holds for one file's functions: its symbols and its measured units.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum UnitLookup {
-    /// The stored symbols and metrics.
-    Hit(Vec<Symbol>, FileMetrics),
-    /// The database holds no row for this text, or the file was not measured. The caller parses
-    /// the file.
-    Miss,
-    /// The rows could not be read. The caller parses the file and prints the warning.
-    Unreadable(RowFailure),
-}
-
 /// Stored rows of one file that could not be read. It displays as the warning line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RowFailure {
@@ -66,29 +54,33 @@ impl FactsDb {
     #[must_use]
     pub fn blocks_for(&self, path: &str, text: &str, language: Language) -> Lookup {
         self.stored_blocks(path, text, language)
-            .unwrap_or_else(|cause| {
-                Lookup::Unreadable(RowFailure {
-                    database: self.path().to_path_buf(),
-                    kind: "block",
-                    path: path.to_owned(),
-                    cause: cause.repr(),
-                })
-            })
+            .unwrap_or_else(|cause| Lookup::Unreadable(self.failure("block", path, &cause)))
     }
 
-    /// Returns the symbols and the metrics that the row of `path` stores, when the row describes
-    /// `text` in `language` now and the file was measured.
-    #[must_use]
-    pub fn units_for(&self, path: &str, text: &str, language: Language) -> UnitLookup {
-        self.stored_units(path, text, language)
-            .unwrap_or_else(|cause| {
-                UnitLookup::Unreadable(RowFailure {
-                    database: self.path().to_path_buf(),
-                    kind: "unit",
-                    path: path.to_owned(),
-                    cause: cause.repr(),
-                })
-            })
+    /// Returns the symbols and the metrics that the row of `path` stores, or `None` when no row
+    /// describes `text` in `language` now or the file was not measured.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`RowFailure`] of rows that could not be read.
+    pub fn units_for(
+        &self,
+        path: &str,
+        text: &str,
+        language: Language,
+    ) -> Result<Option<(Vec<Symbol>, FileMetrics)>, RowFailure> {
+        (self.stored_units(path, text, language))
+            .map_err(|cause| self.failure("unit", path, &cause))
+    }
+
+    // The rows of `path` that hold `kind` did not read for `cause`.
+    fn failure(&self, kind: &'static str, path: &str, cause: &SqlError) -> RowFailure {
+        RowFailure {
+            database: self.path().to_path_buf(),
+            kind,
+            path: path.to_owned(),
+            cause: cause.repr(),
+        }
     }
 
     fn stored_units(
@@ -96,16 +88,16 @@ impl FactsDb {
         path: &str,
         text: &str,
         language: Language,
-    ) -> Result<UnitLookup, SqlError> {
+    ) -> Result<Option<(Vec<Symbol>, FileMetrics)>, SqlError> {
         let Some(id) = self.fresh_row(path, &RowKey::of(language, text))? else {
-            return Ok(UnitLookup::Miss);
+            return Ok(None);
         };
         let [metrics] = self.cells::<1>(schema::METRICS, id)?;
         let Some(Ok(measured)) = stored_metrics(&metrics)? else {
-            return Ok(UnitLookup::Miss);
+            return Ok(None);
         };
         let [symbols] = self.cells::<1>(schema::SYMBOLS, id)?;
-        Ok(UnitLookup::Hit(decode_symbols(blob(&symbols)?)?, measured))
+        Ok(Some((decode_symbols(blob(&symbols)?)?, measured)))
     }
 
     fn stored_blocks(

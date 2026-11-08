@@ -75,9 +75,9 @@ impl Tags {
             return StoredUnits::Miss;
         };
         match db.units_for(path, text, language) {
-            store::UnitLookup::Hit(symbols, metrics) => StoredUnits::Hit(symbols, metrics),
-            store::UnitLookup::Miss => StoredUnits::Miss,
-            store::UnitLookup::Unreadable(failure) => StoredUnits::Unreadable(failure.to_string()),
+            Ok(Some((symbols, metrics))) => StoredUnits::Hit(symbols, metrics),
+            Ok(None) => StoredUnits::Miss,
+            Err(failure) => StoredUnits::Unreadable(failure.to_string()),
         }
     }
 }
