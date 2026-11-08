@@ -26,6 +26,7 @@ mod symbols;
 #[cfg(test)]
 mod tests;
 mod tool;
+mod trace;
 mod tree;
 mod view;
 mod views;
@@ -47,6 +48,7 @@ pub use refs::unbound_refusal;
 pub use symbols::expand_stderr_rows;
 pub use text::one_line;
 pub use tool::{ToolForm, tool_text};
+pub use trace::{TraceAnswer, trace_text};
 pub use view::{Rendered, Truncation, View, json, text};
 pub use vote::{vote_summary, vote_text};
 pub use warmup::warmup_text;

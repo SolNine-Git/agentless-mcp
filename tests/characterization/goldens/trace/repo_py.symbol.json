@@ -1,0 +1,179 @@
+{
+  "receipt": {
+    "repo": "<REPO>",
+    "head": "f5f25218",
+    "tree": "9e93a4f0",
+    "dirty": 0,
+    "cache": "none",
+    "note": "",
+    "notice": "repository data below"
+  },
+  "notice": "repository data below",
+  "more": null,
+  "cards": [
+    {
+      "target": "format_money",
+      "answer": "symbol",
+      "symbol": {
+        "stable_id": "py:pricing.py::format_money",
+        "path": "pricing.py",
+        "start_line": 78,
+        "end_line": 81,
+        "kind": "function",
+        "language": "python",
+        "signature": "def format_money(amount: Decimal) -> str",
+        "parent_class": ""
+      },
+      "callers": {
+        "bound": 4,
+        "name_only": 0,
+        "name_only_files": {
+          "count": 0,
+          "complete": true
+        },
+        "files": 1,
+        "tiers": [
+          {
+            "tier": "imported",
+            "sites": 4,
+            "files": 1
+          }
+        ],
+        "rows": [
+          {
+            "path": "reports.py",
+            "count": 4,
+            "tier": "imported",
+            "sites": [
+              {
+                "line": 6,
+                "enclosing": "(module level)",
+                "stable_id": null
+              },
+              {
+                "line": 43,
+                "enclosing": "reorder_report",
+                "stable_id": "py:reports.py::reorder_report"
+              },
+              {
+                "line": 51,
+                "enclosing": "_format_row",
+                "stable_id": "py:reports.py::_format_row"
+              },
+              {
+                "line": 75,
+                "enclosing": "summarise",
+                "stable_id": "py:reports.py::summarise"
+              }
+            ]
+          }
+        ],
+        "rows_total": {
+          "count": 1,
+          "complete": true
+        },
+        "coverage": {
+          "status": "complete",
+          "skipped_code_files": 0
+        }
+      },
+      "callees": {
+        "bound": 2,
+        "name_only": 0,
+        "tiers": [
+          {
+            "tier": "same_file",
+            "edges": 2
+          }
+        ],
+        "rows": [
+          {
+            "path": "pricing.py",
+            "tier": "same_file",
+            "edges": [
+              {
+                "node": "py:pricing.py::CENTS",
+                "label": "CENTS",
+                "line": 8
+              },
+              {
+                "node": "py:pricing.py::CURRENCY",
+                "label": "CURRENCY",
+                "line": 7
+              }
+            ]
+          }
+        ],
+        "rows_total": {
+          "count": 1,
+          "complete": true
+        }
+      },
+      "tests": {
+        "rows": [],
+        "total": {
+          "count": 0,
+          "complete": true
+        }
+      },
+      "similar": {
+        "total": 2,
+        "rows": [
+          {
+            "stable_id": "py:pricing.py::PriceBook",
+            "path": "pricing.py",
+            "line": 26,
+            "overlap": 2,
+            "shared_files": 1,
+            "score": 0.226338,
+            "defined_in_tests": false,
+            "shared_callers": [
+              {
+                "qualname": "reorder_report",
+                "path": "reports.py",
+                "line": 29
+              },
+              {
+                "qualname": "summarise",
+                "path": "reports.py",
+                "line": 69
+              }
+            ]
+          },
+          {
+            "stable_id": "py:inventory.py::Inventory",
+            "path": "inventory.py",
+            "line": 44,
+            "overlap": 2,
+            "shared_files": 1,
+            "score": 0.182608,
+            "defined_in_tests": false,
+            "shared_callers": [
+              {
+                "qualname": "reorder_report",
+                "path": "reports.py",
+                "line": 29
+              },
+              {
+                "qualname": "summarise",
+                "path": "reports.py",
+                "line": 69
+              }
+            ]
+          }
+        ],
+        "bound_total": {
+          "count": 2,
+          "complete": true
+        }
+      },
+      "last_change": {
+        "commit": {
+          "sha": "f5f252187928e7028e1c825f36c6a15c81c9162e",
+          "authored": "2026-02-01T00:00:00Z",
+          "subject": "fixture"
+        }
+      }
+    }
+  ]
+}

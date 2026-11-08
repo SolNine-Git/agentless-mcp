@@ -1,0 +1,2 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 7b975904   dirty: 0 files   cache: none
+big.py is not parsed: skipped: 1000001 bytes exceeds the per-file cap of 1000000 bytes. Read it or search it.

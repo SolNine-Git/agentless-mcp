@@ -1,0 +1,601 @@
+//! The JSON form of a trace answer: each card's typed values, the cards in request order, which the
+//! token ceiling trims as whole cards.
+
+use app::search::{FileRow, Measure, Place};
+use app::trace::{
+    Callees, Callers, Card, Change, Cycles, Declares, FileLinks, FileTrace, FolderEntry,
+    FolderTrace, Linked, Miss, Outcome, Section, Similar, SymbolTrace, Tally, Tests, Trace,
+    TraceRequest,
+};
+use app::{EdgeRow, HistoryResult, SymbolCard};
+use serde::Serialize;
+
+use crate::envelope::Listing;
+use crate::history::HistoryJson;
+use crate::refs::{CoverageJson, GroupJson, SharedRowJson};
+use crate::symbols::{CardJson, UsageJson};
+
+#[derive(Clone, Serialize)]
+pub(super) struct TraceJson<'a> {
+    more: Option<&'static str>,
+    cards: Vec<TracedJson<'a>>,
+}
+
+impl<'a> TraceJson<'a> {
+    pub(super) fn of(request: &TraceRequest, trace: &'a Trace) -> Self {
+        let cards = trace.cards.iter().map(|traced| TracedJson {
+            target: &traced.target,
+            outcome: OutcomeJson::of(&traced.outcome),
+        });
+        TraceJson {
+            more: request.more.map(Section::as_str),
+            cards: cards.collect(),
+        }
+    }
+}
+
+// The ceiling drops whole cards, the list the request names.
+impl Listing for TraceJson<'_> {
+    fn items(&self) -> usize {
+        self.cards.len()
+    }
+
+    fn prefix(&self, kept: usize) -> Self {
+        let mut prefix = self.clone();
+        prefix.cards.truncate(kept);
+        prefix
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct TracedJson<'a> {
+    target: &'a str,
+    #[serde(flatten)]
+    outcome: OutcomeJson<'a>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "answer", rename_all = "snake_case")]
+enum OutcomeJson<'a> {
+    Symbol(Box<SymbolJson<'a>>),
+    File(Box<FileJson<'a>>),
+    Folder(FolderJson<'a>),
+    Candidates {
+        total: usize,
+        rows: Vec<CardJson<'a>>,
+    },
+    Miss(MissJson<'a>),
+    Same {
+        card: usize,
+    },
+    NoSection {
+        section: &'static str,
+        kind: &'static str,
+    },
+}
+
+impl<'a> OutcomeJson<'a> {
+    fn of(outcome: &'a Outcome) -> Self {
+        match outcome {
+            Outcome::Card(Card::Symbol(traced)) => Self::Symbol(Box::new(SymbolJson::of(traced))),
+            Outcome::Card(Card::File(traced)) => Self::File(Box::new(FileJson::of(traced))),
+            Outcome::Card(Card::Folder(traced)) => Self::Folder(FolderJson::of(traced)),
+            Outcome::Card(Card::Candidates(traced)) => Self::Candidates {
+                total: traced.total,
+                rows: traced.rows.iter().map(CardJson::of).collect(),
+            },
+            Outcome::Card(Card::Miss(missed)) => Self::Miss(MissJson::of(missed)),
+            Outcome::Same(first) => Self::Same { card: *first },
+            Outcome::NoSection { section, kind } => Self::NoSection {
+                section: section.as_str(),
+                kind: kind.as_str(),
+            },
+        }
+    }
+}
+
+// A count, and whether it is complete or the floor of a list cut before the count.
+#[derive(Clone, Copy, Serialize)]
+struct TallyJson {
+    count: usize,
+    complete: bool,
+}
+
+impl TallyJson {
+    fn of(tally: Tally) -> Self {
+        let (count, complete) = match tally {
+            Tally::Exact(count) => (count, true),
+            Tally::Floor(count) => (count, false),
+        };
+        TallyJson { count, complete }
+    }
+}
+
+// A section that could not be read gives its reason in place of its value.
+#[derive(Clone, Serialize)]
+#[serde(untagged)]
+enum ReadJson<'a, T> {
+    Read(T),
+    Unread { unread: &'a str },
+}
+
+impl<'a, T> ReadJson<'a, T> {
+    fn of<V>(read: &'a Result<V, String>, value: impl Fn(&'a V) -> T) -> Self {
+        match read {
+            Ok(read) => ReadJson::Read(value(read)),
+            Err(reason) => ReadJson::Unread { unread: reason },
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct SymbolJson<'a> {
+    symbol: CardJson<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    callers: Option<CallersJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    callees: Option<CalleesJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tests: Option<TestsJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    similar: Option<SimilarJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_change: Option<ChangeJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    history: Option<ReadJson<'a, HistoryJson<'a>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body: Option<ReadJson<'a, CardJson<'a>>>,
+}
+
+impl<'a> SymbolJson<'a> {
+    fn of(traced: &'a SymbolTrace) -> Self {
+        let history = |result: &'a HistoryResult| HistoryJson::of(result);
+        let body = |card: &'a SymbolCard| CardJson::of(card);
+        SymbolJson {
+            symbol: CardJson::of(&traced.card),
+            callers: traced.callers.as_ref().map(CallersJson::of),
+            callees: traced.callees.as_ref().map(CalleesJson::of),
+            tests: traced.tests.as_ref().map(TestsJson::of),
+            similar: traced.similar.as_ref().map(SimilarJson::of),
+            last_change: traced.change.as_ref().map(ChangeJson::of),
+            history: (traced.history.as_ref()).map(|read| ReadJson::of(read, history)),
+            body: (traced.body.as_ref()).map(|read| ReadJson::of(read, body)),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct CallersJson<'a> {
+    bound: usize,
+    name_only: usize,
+    name_only_files: TallyJson,
+    files: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tiers: Option<Vec<TierSitesJson>>,
+    rows: Vec<GroupJson<'a>>,
+    rows_total: TallyJson,
+    coverage: CoverageJson,
+}
+
+impl<'a> CallersJson<'a> {
+    fn of(callers: &'a Callers) -> Self {
+        let tiers = callers.tiers.as_ref().map(|tiers| {
+            let counted = tiers.iter().map(|tier| TierSitesJson {
+                tier: tier.tier,
+                sites: tier.sites,
+                files: tier.files,
+            });
+            counted.collect()
+        });
+        CallersJson {
+            bound: callers.bound,
+            name_only: callers.name_only,
+            name_only_files: TallyJson::of(callers.name_only_files),
+            files: callers.files,
+            tiers,
+            rows: callers.rows.iter().map(GroupJson::of).collect(),
+            rows_total: TallyJson::of(callers.rows_total),
+            coverage: CoverageJson::of(callers.coverage),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct TierSitesJson {
+    tier: &'static str,
+    sites: usize,
+    files: usize,
+}
+
+#[derive(Clone, Serialize)]
+struct TierEdgesJson {
+    tier: &'static str,
+    edges: usize,
+}
+
+#[derive(Clone, Serialize)]
+struct CalleesJson<'a> {
+    bound: usize,
+    name_only: usize,
+    tiers: Vec<TierEdgesJson>,
+    rows: Vec<EdgeGroupJson<'a>>,
+    rows_total: TallyJson,
+}
+
+impl<'a> CalleesJson<'a> {
+    fn of(callees: &'a Callees) -> Self {
+        let tiers = callees.tiers.iter().map(|tier| TierEdgesJson {
+            tier: tier.tier,
+            edges: tier.total,
+        });
+        let rows = callees.rows.iter().map(|group| EdgeGroupJson {
+            path: &group.path,
+            tier: group.tier,
+            edges: group.edges.iter().map(EdgeJson::of).collect(),
+        });
+        CalleesJson {
+            bound: callees.bound,
+            name_only: callees.name_only,
+            tiers: tiers.collect(),
+            rows: rows.collect(),
+            rows_total: TallyJson::of(callees.rows_total),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct EdgeGroupJson<'a> {
+    path: &'a str,
+    tier: &'static str,
+    edges: Vec<EdgeJson<'a>>,
+}
+
+#[derive(Clone, Serialize)]
+struct EdgeJson<'a> {
+    node: &'a str,
+    label: &'a str,
+    line: u32,
+}
+
+impl<'a> EdgeJson<'a> {
+    fn of(edge: &'a EdgeRow) -> Self {
+        EdgeJson {
+            node: &edge.node,
+            label: &edge.label,
+            line: edge.line,
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct TestsJson<'a> {
+    rows: Vec<GroupJson<'a>>,
+    total: TallyJson,
+}
+
+impl<'a> TestsJson<'a> {
+    fn of(tests: &'a Tests) -> Self {
+        TestsJson {
+            rows: tests.rows.iter().map(GroupJson::of).collect(),
+            total: TallyJson::of(tests.total),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct SimilarJson<'a> {
+    total: usize,
+    rows: Vec<SharedRowJson<'a>>,
+    bound_total: TallyJson,
+}
+
+impl<'a> SimilarJson<'a> {
+    fn of(similar: &'a Similar) -> Self {
+        SimilarJson {
+            total: similar.total,
+            rows: similar.rows.iter().map(SharedRowJson::of).collect(),
+            bound_total: TallyJson::of(similar.bound_total),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ChangeJson<'a> {
+    Commit {
+        sha: &'a str,
+        authored: &'a str,
+        subject: &'a str,
+    },
+    NotRead {
+        seconds: u64,
+    },
+    Unavailable {
+        reason: &'a str,
+    },
+}
+
+impl<'a> ChangeJson<'a> {
+    fn of(change: &'a Change) -> Self {
+        match change {
+            Change::Commit(entry) => ChangeJson::Commit {
+                sha: &entry.sha,
+                authored: &entry.authored,
+                subject: &entry.subject,
+            },
+            Change::NotRead { seconds } => ChangeJson::NotRead { seconds: *seconds },
+            Change::Unavailable(reason) => ChangeJson::Unavailable { reason },
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct FileJson<'a> {
+    path: &'a str,
+    language: &'static str,
+    lines: u32,
+    id_prefix: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    no_symbol_at: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    declares: Option<DeclaresJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    imports: Option<LinkedJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    importers: Option<LinkedJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tests: Option<LinkedJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cycles: Option<CyclesJson<'a>>,
+}
+
+impl<'a> FileJson<'a> {
+    fn of(file: &'a FileTrace) -> Self {
+        FileJson {
+            path: &file.path,
+            language: file.language,
+            lines: file.lines,
+            id_prefix: file.id_prefix,
+            no_symbol_at: file.no_symbol_at,
+            declares: file.declares.as_ref().map(DeclaresJson::of),
+            imports: file.imports.as_ref().map(LinkedJson::of),
+            importers: file.importers.as_ref().map(LinkedJson::of),
+            tests: file.tests.as_ref().map(LinkedJson::of),
+            cycles: file.cycles.as_ref().map(CyclesJson::of),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct DeclaresJson<'a> {
+    total: usize,
+    kinds: Vec<KindJson>,
+    rows: Vec<CardJson<'a>>,
+}
+
+#[derive(Clone, Serialize)]
+struct KindJson {
+    kind: &'static str,
+    count: usize,
+}
+
+impl<'a> DeclaresJson<'a> {
+    fn of(declares: &'a Declares) -> Self {
+        let kinds = (declares.kinds.iter()).map(|&(kind, count)| KindJson { kind, count });
+        DeclaresJson {
+            total: declares.total,
+            kinds: kinds.collect(),
+            rows: declares.rows.iter().map(CardJson::of).collect(),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(untagged)]
+enum LinkedJson<'a> {
+    Found {
+        rows: Vec<PlaceJson<'a>>,
+        total: TallyJson,
+    },
+    NoAnchor {
+        no_anchor: bool,
+    },
+}
+
+impl<'a> LinkedJson<'a> {
+    fn of(linked: &'a Linked<FileLinks>) -> Self {
+        match linked {
+            Linked::Found(links) => LinkedJson::Found {
+                rows: links.rows.iter().map(PlaceJson::of).collect(),
+                total: TallyJson::of(links.total),
+            },
+            Linked::NoAnchor => LinkedJson::NoAnchor { no_anchor: true },
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+pub(crate) struct PlaceJson<'a> {
+    path: &'a str,
+    line: u32,
+}
+
+impl<'a> PlaceJson<'a> {
+    pub(crate) fn of(place: &'a Place) -> Self {
+        PlaceJson {
+            path: &place.path,
+            line: place.line,
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct CyclesJson<'a> {
+    rows: Vec<CycleJson<'a>>,
+    total: TallyJson,
+}
+
+#[derive(Clone, Serialize)]
+struct CycleJson<'a> {
+    files: &'a [String],
+    members: &'a [String],
+}
+
+impl<'a> CyclesJson<'a> {
+    fn of(cycles: &'a Cycles) -> Self {
+        let rows = cycles.rows.iter().map(|cycle| CycleJson {
+            files: &cycle.files,
+            members: &cycle.members,
+        });
+        CyclesJson {
+            rows: rows.collect(),
+            total: TallyJson::of(cycles.total),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct FolderJson<'a> {
+    path: &'a str,
+    files: usize,
+    lines: u64,
+    total: usize,
+    depth: usize,
+    entries: Vec<EntryJson<'a>>,
+}
+
+impl<'a> FolderJson<'a> {
+    fn of(folder: &'a FolderTrace) -> Self {
+        FolderJson {
+            path: &folder.path,
+            files: folder.files,
+            lines: folder.lines,
+            total: folder.total,
+            depth: folder.depth,
+            entries: folder.entries.iter().map(EntryJson::of).collect(),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "entry", rename_all = "snake_case")]
+enum EntryJson<'a> {
+    File {
+        depth: usize,
+        #[serde(flatten)]
+        row: RowJson<'a>,
+    },
+    Folder {
+        depth: usize,
+        path: &'a str,
+        files: usize,
+    },
+}
+
+impl<'a> EntryJson<'a> {
+    fn of(entry: &'a FolderEntry) -> Self {
+        match entry {
+            FolderEntry::File { depth, row } => EntryJson::File {
+                depth: *depth,
+                row: RowJson::of(row),
+            },
+            FolderEntry::Folder { depth, path, files } => EntryJson::Folder {
+                depth: *depth,
+                path,
+                files: *files,
+            },
+        }
+    }
+}
+
+// One file's row as a folder card and a file listing publish it.
+#[derive(Clone, Serialize)]
+pub(crate) struct RowJson<'a> {
+    path: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lines: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    symbols: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unread: Option<&'a str>,
+}
+
+impl<'a> RowJson<'a> {
+    pub(crate) fn of(row: &'a FileRow) -> Self {
+        let (lines, symbols, unread) = match &row.measure {
+            Measure::Counted { lines, symbols } => (Some(*lines), *symbols, None),
+            Measure::Unread(reason) => (None, None, Some(reason.as_str())),
+        };
+        RowJson {
+            path: &row.path,
+            lines,
+            symbols,
+            unread,
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "miss", rename_all = "snake_case")]
+enum MissJson<'a> {
+    Nothing {
+        name: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        usage: Option<UsageJson<'a>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        literal: Option<LiteralJson<'a>>,
+    },
+    UnknownPath {
+        path: &'a str,
+        endings: &'a [String],
+    },
+    NotParsed {
+        path: &'a str,
+        reason: &'a str,
+    },
+    NoGrammar {
+        path: &'a str,
+    },
+    NotScanned {
+        path: &'a str,
+    },
+    LinePastEnd {
+        path: &'a str,
+        line: u32,
+        lines: u32,
+    },
+}
+
+#[derive(Clone, Serialize)]
+struct LiteralJson<'a> {
+    places: Vec<PlaceJson<'a>>,
+    files: usize,
+}
+
+impl<'a> MissJson<'a> {
+    fn of(miss: &'a Miss) -> Self {
+        match miss {
+            Miss::Nothing {
+                name,
+                usage,
+                literal,
+            } => MissJson::Nothing {
+                name,
+                usage: usage.as_ref().map(UsageJson::of),
+                literal: literal.as_ref().map(|(places, files)| LiteralJson {
+                    places: places.iter().map(PlaceJson::of).collect(),
+                    files: *files,
+                }),
+            },
+            Miss::UnknownPath { path, endings } => MissJson::UnknownPath { path, endings },
+            Miss::NotParsed { path, reason } => MissJson::NotParsed { path, reason },
+            Miss::NoGrammar { path } => MissJson::NoGrammar { path },
+            Miss::NotScanned { path } => MissJson::NotScanned { path },
+            Miss::LinePastEnd { path, line, lines } => MissJson::LinePastEnd {
+                path,
+                line: *line,
+                lines: *lines,
+            },
+        }
+    }
+}

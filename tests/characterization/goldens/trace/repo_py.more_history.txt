@@ -1,0 +1,5 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+[py:pricing.py::format_money] @78-81  function
+  def format_money(amount: Decimal) -> str
+py:pricing.py::format_money  pricing.py:78-81  (1 commit, newest first)
+  f5f25218  2026-02-01T00:00:00Z  fixture

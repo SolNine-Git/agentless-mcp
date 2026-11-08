@@ -1,0 +1,26 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+target: format_money
+[py:pricing.py::format_money] @78-81  function
+  def format_money(amount: Decimal) -> str
+callers: 4 bound
+  reports.py  imported  (module level) @6, reorder_report @43, _format_row @51, summarise @75
+callees: 2 bound
+  pricing.py  same-file  CENTS @8, CURRENCY @7
+tests: none
+similar: 2 candidates
+  [py:pricing.py::PriceBook] @26  2 shared callers
+  [py:inventory.py::Inventory] @44  2 shared callers
+last change: f5f25218 2026-02-01 fixture  (more=history)
+
+target: reports.py
+reports.py  python  79 lines  ids: py:reports.py::<QualifiedName>
+declares: 8 (5 functions, 2 constants, 1 class)
+  REPORT_WIDTH @8, SEPARATOR @9, class ReportError @12, def stock_value @16, def reorder_report @29, def _format_row @47, def check_report_inputs @55, def summarise @69
+imports: 2
+  inventory.py, pricing.py
+importers: none
+tests: none
+cycles: none
+
+target: format_money
+same card as target 1

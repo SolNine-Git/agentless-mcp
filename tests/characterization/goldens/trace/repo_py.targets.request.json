@@ -1,0 +1,11 @@
+{
+  "tool": "trace",
+  "fixture": "repo_py",
+  "arguments": {
+    "target": [
+      "format_money",
+      "reports.py",
+      "format_money"
+    ]
+  }
+}

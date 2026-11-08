@@ -1,0 +1,30 @@
+{
+  "receipt": {
+    "repo": "<REPO>",
+    "head": "f5f25218",
+    "tree": "9e93a4f0",
+    "dirty": 0,
+    "cache": "none",
+    "note": "",
+    "notice": "repository data below"
+  },
+  "notice": "repository data below",
+  "more": null,
+  "cards": [
+    {
+      "target": "pricing tiers",
+      "answer": "miss",
+      "miss": "nothing",
+      "name": "pricing tiers",
+      "literal": {
+        "places": [
+          {
+            "path": "pricing.py",
+            "line": 12
+          }
+        ],
+        "files": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+no symbol, file or folder matches quantize.
+usage: 1 file spells 'quantize' and does not declare it:
+  pricing.py @56 (2 lines)

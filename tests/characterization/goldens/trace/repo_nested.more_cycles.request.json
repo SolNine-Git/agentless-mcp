@@ -1,0 +1,8 @@
+{
+  "tool": "trace",
+  "fixture": "repo_nested",
+  "arguments": {
+    "target": "billing/invoice.py",
+    "more": "cycles"
+  }
+}

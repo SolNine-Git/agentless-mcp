@@ -1,0 +1,2 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: fa1ce609   dirty: 0 files   cache: none
+notes.md: no grammar reads .md files. Read it or search it.

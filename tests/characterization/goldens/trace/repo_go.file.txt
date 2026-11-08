@@ -1,0 +1,8 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 9fae3265   dirty: 0 files   cache: none
+reports.go  go  94 lines  ids: go:reports.go::<QualifiedName>
+declares: 6 (4 functions, 1 class, 1 method)
+  type ReportError @16, fn ReportError.Error @21, fn StockValue @30, fn ReorderReport @47, fn formatRow @72, fn CheckReportInputs @79
+imports: none
+importers: none
+tests: none
+cycles: none

@@ -1,0 +1,42 @@
+{
+  "receipt": {
+    "repo": "<REPO>",
+    "head": "f5f25218",
+    "tree": "9e93a4f0",
+    "dirty": 0,
+    "cache": "none",
+    "note": "",
+    "notice": "repository data below"
+  },
+  "notice": "repository data below",
+  "more": null,
+  "cards": [
+    {
+      "target": "__init__",
+      "answer": "candidates",
+      "total": 2,
+      "rows": [
+        {
+          "stable_id": "py:inventory.py::Inventory.__init__",
+          "path": "inventory.py",
+          "start_line": 49,
+          "end_line": 56,
+          "kind": "method",
+          "language": "python",
+          "signature": "def __init__(self, warehouse: str = DEFAULT_WAREHOUSE) -> None",
+          "parent_class": "Inventory"
+        },
+        {
+          "stable_id": "py:pricing.py::PriceBook.__init__",
+          "path": "pricing.py",
+          "start_line": 29,
+          "end_line": 36,
+          "kind": "method",
+          "language": "python",
+          "signature": "def __init__(self, costs: dict[str, Decimal]) -> None",
+          "parent_class": "PriceBook"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 47e14e8d   dirty: 0 files   cache: none
+[py:billing/money.py::format_amount] @14-16  function
+  def format_amount(amount: Decimal) -> str
+callers: 8 bound
+  billing/invoice.py  imported  (module level) @7, render_invoice @55, render_invoice @57
+  billing/ledger.py  imported  (module level) @10, Ledger.statement @49, Ledger.statement @50
+  catalog/search.py  imported  (module level) @5, describe @27
+callees: 2 bound
+  billing/money.py  same-file  BILLING_CURRENCY @5, round_amount @9
+tests: none
+similar: none
+last change: 47e14e8d 2026-02-01 fixture  (more=history)

@@ -1,0 +1,7 @@
+{
+  "tool": "trace",
+  "fixture": "repo_nested",
+  "arguments": {
+    "target": "."
+  }
+}

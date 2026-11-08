@@ -1,0 +1,3 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 2d733708   dirty: 0 files   cache: none
+// config: <REPO>/.agentless-mcp.json
+.agentless-mcp.json: the scan does not read this file. Read it or search it.

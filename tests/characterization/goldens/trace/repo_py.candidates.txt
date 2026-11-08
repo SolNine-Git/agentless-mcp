@@ -1,0 +1,4 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+__init__: 2 definitions. Trace one by its id.
+  [py:inventory.py::Inventory.__init__] @49-56  method
+  [py:pricing.py::PriceBook.__init__] @29-36  method

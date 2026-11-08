@@ -1,0 +1,7 @@
+{
+  "tool": "trace",
+  "fixture": "repo_go",
+  "arguments": {
+    "target": "StockValue"
+  }
+}

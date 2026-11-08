@@ -1,0 +1,2 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+no symbol, file or folder matches zz_no_such. No file holds it as text.

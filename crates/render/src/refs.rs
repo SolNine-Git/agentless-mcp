@@ -272,7 +272,7 @@ impl CoverageJson {
 }
 
 #[derive(Clone, Serialize)]
-struct GroupJson<'a> {
+pub(crate) struct GroupJson<'a> {
     path: &'a str,
     count: usize,
     tier: &'a str,
@@ -297,7 +297,7 @@ struct SharedJson<'a> {
 }
 
 #[derive(Clone, Serialize)]
-struct SharedRowJson<'a> {
+pub(crate) struct SharedRowJson<'a> {
     stable_id: &'a str,
     path: &'a str,
     line: u32,
@@ -342,7 +342,7 @@ impl<'a> RefsJson<'a> {
 }
 
 impl<'a> GroupJson<'a> {
-    fn of(group: &'a RefGroup) -> Self {
+    pub(crate) fn of(group: &'a RefGroup) -> Self {
         let sites = group.sites.iter().map(|site| SiteJson {
             line: site.line,
             enclosing: &site.enclosing,
@@ -371,7 +371,7 @@ impl<'a> SharedJson<'a> {
 }
 
 impl<'a> SharedRowJson<'a> {
-    fn of(row: &'a SharedCaller) -> Self {
+    pub(crate) fn of(row: &'a SharedCaller) -> Self {
         let callers = row.callers.iter().map(|caller| CallerJson {
             qualname: &caller.qualname,
             path: &caller.path,

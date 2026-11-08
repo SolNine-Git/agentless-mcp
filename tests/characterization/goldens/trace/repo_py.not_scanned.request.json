@@ -1,0 +1,10 @@
+{
+  "tool": "trace",
+  "fixture": "repo_py",
+  "files": {
+    ".agentless-mcp.json": "{}\n"
+  },
+  "arguments": {
+    "target": ".agentless-mcp.json"
+  }
+}

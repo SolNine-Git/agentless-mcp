@@ -1,0 +1,15 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: a28d26ea   dirty: 0 files   cache: none
+[py:pricing.py::format_money] @78-81  function
+  def format_money(amount: Decimal) -> str
+callers: 10 bound
+  billing.py  imported  (module level) @6, invoice_line @12
+  catalog.py  imported  (module level) @3, catalogue_lines @12
+  reports.py  imported  (module level) @6, reorder_report @43, _format_row @51, summarise @75
+callees: 2 bound
+  pricing.py  same-file  CENTS @8, CURRENCY @7
+tests: 1
+  tests/test_pricing.py  imported  (module level) @12, test_money_renders_with_the_configured_currency @34
+similar: 2 candidates
+  [py:pricing.py::PriceBook] @26  4 shared callers
+  [py:inventory.py::Inventory] @44  2 shared callers
+last change: a28d26ea 2026-02-01 fixture  (more=history)
