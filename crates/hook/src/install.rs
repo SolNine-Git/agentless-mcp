@@ -15,21 +15,21 @@ use std::path::{Path, PathBuf};
 use app::EnvConfig;
 use app::hooks::{
     self, BINARY_NAME, CONFIG_DIR_VARIABLE, DEFAULT_SERVER_NAME, EntryState, Handler, HookStatus,
-    Retired, SETTINGS_FILE,
+    Misshaped, Retired, SETTINGS_FILE,
 };
-use json::{JsonValue, get};
+use json::JsonValue;
 use prompts::messages::{
     ACCEPTS_TEXT, ARGUMENT_MISSING, HOOK_INSTALL_BAD_JSON, HOOK_INSTALL_COUNTS,
     HOOK_INSTALL_DRY_RUN, HOOK_INSTALL_RACED, HOOK_INSTALL_UNCHANGED, HOOK_INSTALL_WROTE,
     HOOK_STATUS_CURRENT, HOOK_STATUS_MISSING, HOOK_STATUS_OTHER_PATH, HOOK_STATUS_RETIRED,
-    HOOK_STATUS_STALE, HOOK_UNINSTALL_REPORT, HOOKS_UNREADABLE,
+    HOOK_STATUS_STALE, HOOK_UNINSTALL_NONE, HOOK_UNINSTALL_REPORT, HOOKS_UNREADABLE,
 };
 
 use crate::Output;
 use crate::text::{codec_text, shown};
 use args::{Options, Scope, Takes};
 use disk::{Stopped, Written};
-use edit::{Removed, Unshaped};
+use edit::Removed;
 
 const INSTALL: Takes = Takes {
     command: "install",
@@ -52,10 +52,6 @@ const UNINSTALL: Takes = Takes {
 
 const PROJECT_DIR: &str = ".claude";
 const LOCAL_SETTINGS: &str = "settings.local.json";
-const HOOKS_KEY: &str = "hooks";
-// The places of a shape error, in the notation of a JSON path.
-const ROOT_PLACE: &str = "$";
-const HOOKS_PLACE: &str = "$.hooks";
 
 const EXIT_FAILED: u8 = 1;
 const EXIT_USAGE: u8 = 2;
@@ -95,11 +91,12 @@ fn with_binary(run: impl FnOnce(&str) -> Output) -> Output {
     }
 }
 
-// Why a file's text takes no edit.
-enum Refusal {
+// Why a file's text takes no edit. Uninstall of a file with no agentless entry, or of no file,
+// writes nothing and succeeds.
+enum NoEdit {
     BadJson(String),
-    Unshaped(Unshaped),
-    Missing,
+    Unshaped(Misshaped),
+    NothingToRemove,
 }
 
 pub(crate) fn installed(args: &[OsString], env: &EnvConfig, binary: &str) -> Output {
@@ -112,9 +109,10 @@ pub(crate) fn installed(args: &[OsString], env: &EnvConfig, binary: &str) -> Out
         Err(output) => return output,
     };
     let server = (options.server_name.as_deref()).unwrap_or(DEFAULT_SERVER_NAME);
+    // A missing file is an empty document.
     let edit = |before: Option<&[u8]>| {
-        let document = document(before)?;
-        let edited = edit::installed(&document, binary, server).map_err(Refusal::Unshaped)?;
+        let document = before.map_or_else(|| Ok(JsonValue::Object(Vec::new())), document)?;
+        let edited = edit::installed(&document, binary, server).map_err(NoEdit::Unshaped)?;
         Ok((layout::indented(&edited.0), counts(&edited.1, server)))
     };
     let shown = shown(&target);
@@ -125,12 +123,12 @@ pub(crate) fn installed(args: &[OsString], env: &EnvConfig, binary: &str) -> Out
         Ok((Written::Wrote, counts)) => done(&HOOK_INSTALL_WROTE.render((&shown, &counts))),
         Ok((Written::Unchanged, _)) => done(&HOOK_INSTALL_UNCHANGED.render(&shown)),
         Ok((Written::Raced, _)) => failed(&HOOK_INSTALL_RACED.render(&shown)),
-        Err(stopped) => stopped_output(stopped, &shown, true),
+        Err(stopped) => stopped_output(stopped, &shown, INSTALL.command),
     }
 }
 
 // The new text on stdout, so that it can be read or saved; the report on stderr.
-fn dry_run(target: &Path, edit: &disk::Edit<'_, String, Refusal>) -> Output {
+fn dry_run(target: &Path, edit: &disk::Edit<'_, String, NoEdit>) -> Output {
     let shown = shown(target);
     let before = match disk::read(target) {
         Ok(before) => before,
@@ -142,7 +140,7 @@ fn dry_run(target: &Path, edit: &disk::Edit<'_, String, Refusal>) -> Output {
             stdout: text,
             stderr: format!("{}\n", HOOK_INSTALL_DRY_RUN.render((&shown, &counts))),
         },
-        Err(refusal) => failed(&refused(&refusal, &shown, true)),
+        Err(no_edit) => no_edit_output(&no_edit, &shown, INSTALL.command),
     }
 }
 
@@ -156,13 +154,13 @@ pub(crate) fn uninstalled(args: &[OsString], env: &EnvConfig) -> Output {
         Err(output) => return output,
     };
     // A missing file holds no entry, and uninstall makes none.
-    if let Err(error) = fs::metadata(&target) {
-        return failed(&io::os_error_text(&error, &target));
-    }
     let edit = |before: Option<&[u8]>| {
-        let document = document(Some(before.ok_or(Refusal::Missing)?))?;
-        let edited = edit::uninstalled(&document).map_err(Refusal::Unshaped)?;
-        Ok((layout::indented(&edited.0), edited.1))
+        let document = document(before.ok_or(NoEdit::NothingToRemove)?)?;
+        let (edited, removed) = edit::uninstalled(&document).map_err(NoEdit::Unshaped)?;
+        if removed.current.is_empty() && removed.retired.is_empty() {
+            return Err(NoEdit::NothingToRemove);
+        }
+        Ok((layout::indented(&edited), removed))
     };
     let shown = shown(&target);
     match disk::written(&target, &edit, &disk::read) {
@@ -170,9 +168,9 @@ pub(crate) fn uninstalled(args: &[OsString], env: &EnvConfig) -> Output {
             let count = removed.current.len() + removed.retired.len();
             done(&HOOK_UNINSTALL_REPORT.render((&shown, count, removed.kept)))
         }
-        Ok((Written::Unchanged, _)) => Output::default(),
+        Ok((Written::Unchanged, _)) => done(&HOOK_UNINSTALL_NONE.render(&shown)),
         Ok((Written::Raced, _)) => failed(&HOOK_INSTALL_RACED.render(&shown)),
-        Err(stopped) => stopped_output(stopped, &shown, false),
+        Err(stopped) => stopped_output(stopped, &shown, UNINSTALL.command),
     }
 }
 
@@ -229,25 +227,18 @@ fn file_handlers(path: &Path) -> Result<Vec<Handler>, String> {
     let Some(bytes) = read else {
         return Ok(Vec::new());
     };
-    let document = document(Some(&bytes)).map_err(|refusal| detail(&refusal))?;
-    let JsonValue::Object(top) = &document else {
-        return Err(detail(&Refusal::Unshaped(Unshaped::TopLevel)));
-    };
-    match get(top, HOOKS_KEY) {
-        Some(value) => hooks::handlers(value)
-            .map_err(|shape| detail(&Refusal::Unshaped(Unshaped::Hooks(shape)))),
-        None => Ok(Vec::new()),
-    }
+    let document = parsed(&bytes)?;
+    hooks::settings_handlers(&document).map_err(|shape| shape.text())
 }
 
-// A missing file is an empty document.
-fn document(before: Option<&[u8]>) -> Result<JsonValue, Refusal> {
-    let Some(bytes) = before else {
-        return Ok(JsonValue::Object(Vec::new()));
-    };
-    let text = io::decode_strict(bytes.to_vec())
-        .map_err(|error| Refusal::BadJson(codec_text(bytes, error)))?;
-    json::parse(&text).map_err(|error| Refusal::BadJson(error.to_string()))
+fn document(bytes: &[u8]) -> Result<JsonValue, NoEdit> {
+    parsed(bytes).map_err(NoEdit::BadJson)
+}
+
+// The document, or the text of the decode or parse error.
+fn parsed(bytes: &[u8]) -> Result<JsonValue, String> {
+    let text = io::decode_strict(bytes.to_vec()).map_err(|error| codec_text(bytes, error))?;
+    json::parse(&text).map_err(|error| error.to_string())
 }
 
 fn counts(removed: &Removed, server: &str) -> String {
@@ -308,28 +299,18 @@ fn repo_dir(env: &EnvConfig, repo: Option<&str>) -> Result<PathBuf, Output> {
     }
 }
 
-fn stopped_output(stopped: Stopped<Refusal>, shown: &str, installing: bool) -> Output {
+fn stopped_output(stopped: Stopped<NoEdit>, shown: &str, command: &str) -> Output {
     match stopped {
-        Stopped::Refused(refusal) => failed(&refused(&refusal, shown, installing)),
+        Stopped::Refused(no_edit) => no_edit_output(&no_edit, shown, command),
         Stopped::Failed(error, at) => failed(&io::os_error_text(&error, &at)),
     }
 }
 
-fn refused(refusal: &Refusal, shown: &str, installing: bool) -> String {
-    match refusal {
-        Refusal::BadJson(error) if installing => HOOK_INSTALL_BAD_JSON.render((shown, error)),
-        other => HOOKS_UNREADABLE.render((shown, &detail(other))),
-    }
-}
-
-// The parse error, or the place whose value has another shape than Claude Code reads.
-fn detail(refusal: &Refusal) -> String {
-    match refusal {
-        Refusal::BadJson(error) => error.clone(),
-        Refusal::Unshaped(Unshaped::TopLevel) => ROOT_PLACE.to_owned(),
-        Refusal::Unshaped(Unshaped::Hooks(shape)) if shape.at.is_empty() => HOOKS_PLACE.to_owned(),
-        Refusal::Unshaped(Unshaped::Hooks(shape)) => format!("{HOOKS_PLACE}.{}", shape.at),
-        Refusal::Missing => io::strerror(&Error::from(ErrorKind::NotFound)),
+fn no_edit_output(no_edit: &NoEdit, shown: &str, command: &str) -> Output {
+    match no_edit {
+        NoEdit::BadJson(error) => failed(&HOOK_INSTALL_BAD_JSON.render((shown, command, error))),
+        NoEdit::Unshaped(shape) => failed(&HOOKS_UNREADABLE.render((shown, &shape.text()))),
+        NoEdit::NothingToRemove => done(&HOOK_UNINSTALL_NONE.render(shown)),
     }
 }
 

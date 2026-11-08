@@ -220,11 +220,11 @@ fn a_file_that_cannot_be_read_makes_the_state_unknown() {
             "{\"hooks\": ",
             "Expecting value: line 1 column 11 (char 10)",
         ),
-        ("[]", "the file is not an object"),
-        ("{\"hooks\": []}", "hooks is not an object"),
+        ("[]", "$ is not an object"),
+        ("{\"hooks\": []}", "$.hooks is not an object"),
         (
             "{\"hooks\": {\"PreToolUse\": [{\"hooks\": [{\"timeout\": \"3\"}]}]}}",
-            "hooks.PreToolUse[0].hooks[0].timeout is not a number",
+            "$.hooks.PreToolUse[0].hooks[0].timeout is not a number",
         ),
     ] {
         rig.write("repo/.claude/settings.json", text);

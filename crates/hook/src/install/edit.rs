@@ -2,7 +2,7 @@
 //! and event that the removal empties, then, for an install, one group per row of the entry
 //! table. Every other key, group and handler stays where it is.
 
-use app::hooks::{self, Entry, Expected, Handler, HooksShape, Named};
+use app::hooks::{self, Entry, Expected, Handler, HooksShape, Misshaped, Named};
 use app::hooks::{Hook, Retired};
 use json::JsonValue;
 use text::CodePointString;
@@ -17,14 +17,6 @@ const TIMEOUT_KEY: &str = "timeout";
 const COMMAND_TYPE: &str = "command";
 
 type Fields = Vec<(CodePointString, JsonValue)>;
-
-// Why a document cannot take the edit: its top level is not an object, or its hooks value has
-// another shape than Claude Code reads.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Unshaped {
-    TopLevel,
-    Hooks(HooksShape),
-}
 
 // The agentless handlers that the removal took out, one item per handler, and the count of the
 // other handlers that it kept.
@@ -55,7 +47,7 @@ pub(crate) fn installed(
     document: &JsonValue,
     binary: &str,
     server_name: &str,
-) -> Result<(JsonValue, Removed), Unshaped> {
+) -> Result<(JsonValue, Removed), Misshaped> {
     let mut split = split(document)?;
     for entry in hooks::entries(server_name) {
         appended(&mut split.events, &entry, binary);
@@ -64,13 +56,13 @@ pub(crate) fn installed(
 }
 
 // The document with no agentless handler.
-pub(crate) fn uninstalled(document: &JsonValue) -> Result<(JsonValue, Removed), Unshaped> {
+pub(crate) fn uninstalled(document: &JsonValue) -> Result<(JsonValue, Removed), Misshaped> {
     split(document).map(|split| joined(split, true))
 }
 
-fn split(document: &JsonValue) -> Result<Split, Unshaped> {
+fn split(document: &JsonValue) -> Result<Split, Misshaped> {
     let JsonValue::Object(top) = document else {
-        return Err(Unshaped::TopLevel);
+        return Err(Misshaped::Document);
     };
     let at = top
         .iter()
@@ -90,8 +82,8 @@ fn split(document: &JsonValue) -> Result<Split, Unshaped> {
 
 // The parse of the hooks value checks its shape and reads its handlers in file order; the walk
 // below meets them in the same order.
-fn pruned(value: &JsonValue, removed: &mut Removed) -> Result<Vec<Event>, Unshaped> {
-    let parsed = hooks::handlers(value).map_err(Unshaped::Hooks)?;
+fn pruned(value: &JsonValue, removed: &mut Removed) -> Result<Vec<Event>, Misshaped> {
+    let parsed = hooks::handlers(value).map_err(Misshaped::Hooks)?;
     let mut parsed = parsed.into_iter();
     let JsonValue::Object(events) = value else {
         return Err(shape(String::new(), Expected::Object));
@@ -216,6 +208,6 @@ fn joined(split: Split, drop_empty_hooks: bool) -> (JsonValue, Removed) {
     (JsonValue::Object(top), removed)
 }
 
-fn shape(at: String, expected: Expected) -> Unshaped {
-    Unshaped::Hooks(HooksShape { at, expected })
+fn shape(at: String, expected: Expected) -> Misshaped {
+    Misshaped::Hooks(HooksShape { at, expected })
 }

@@ -82,6 +82,14 @@
     }
   },
   "messages": {
+    "accepts_any_number": {
+      "arguments": {},
+      "text": "a number"
+    },
+    "accepts_array": {
+      "arguments": {},
+      "text": "an array"
+    },
     "accepts_bool": {
       "arguments": {},
       "text": "true or false"
@@ -111,6 +119,10 @@
         "minimum": 0
       },
       "text": "a number above 0 and at most 100"
+    },
+    "accepts_object": {
+      "arguments": {},
+      "text": "an object"
     },
     "accepts_schema": {
       "arguments": {},
@@ -1141,10 +1153,11 @@
     },
     "hook_install_bad_json": {
       "arguments": {
+        "command": "uninstall",
         "error": "expected value at line 3 column 5",
         "path": "/home/u/.claude/settings.json"
       },
-      "text": "/home/u/.claude/settings.json is not valid JSON: expected value at line 3 column 5. hook install wrote nothing."
+      "text": "/home/u/.claude/settings.json is not valid JSON: expected value at line 3 column 5. hook uninstall wrote nothing."
     },
     "hook_install_counts": {
       "arguments": {
@@ -1213,6 +1226,12 @@
       },
       "text": "erosion: stale: the entry differs from the table of this binary"
     },
+    "hook_uninstall_none": {
+      "arguments": {
+        "path": "/home/u/.claude/settings.json"
+      },
+      "text": "nothing to remove: /home/u/.claude/settings.json holds no agentless entry"
+    },
     "hook_uninstall_report": {
       "arguments": {
         "kept": 3,
@@ -1259,6 +1278,13 @@
         "listed": "gate-check"
       },
       "text": "1 is retired (gate-check)"
+    },
+    "hooks_shape": {
+      "arguments": {
+        "accepted": "an object",
+        "path": "$.hooks.Stop[0]"
+      },
+      "text": "$.hooks.Stop[0] is not an object"
     },
     "hooks_stale": {
       "arguments": {

@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 363] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 368] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -80,6 +80,18 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 363] = [
     ),
     (
         "messages",
+        "accepts_any_number",
+        &[],
+        &[Piece::Text(messages::ACCEPTS_ANY_NUMBER)],
+    ),
+    (
+        "messages",
+        "accepts_array",
+        &[],
+        &[Piece::Text(messages::ACCEPTS_ARRAY)],
+    ),
+    (
+        "messages",
         "accepts_bool",
         &[],
         &[Piece::Text(messages::ACCEPTS_BOOL)],
@@ -107,6 +119,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 363] = [
         "accepts_number",
         &["minimum", "ceiling"],
         messages::ACCEPTS_NUMBER.pieces(),
+    ),
+    (
+        "messages",
+        "accepts_object",
+        &[],
+        &[Piece::Text(messages::ACCEPTS_OBJECT)],
     ),
     (
         "messages",
@@ -1037,7 +1055,7 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 363] = [
     (
         "messages",
         "hook_install_bad_json",
-        &["path", "error"],
+        &["path", "command", "error"],
         messages::HOOK_INSTALL_BAD_JSON.pieces(),
     ),
     (
@@ -1102,6 +1120,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 363] = [
     ),
     (
         "messages",
+        "hook_uninstall_none",
+        &["path"],
+        messages::HOOK_UNINSTALL_NONE.pieces(),
+    ),
+    (
+        "messages",
         "hook_uninstall_report",
         &["path", "removed", "kept"],
         messages::HOOK_UNINSTALL_REPORT.pieces(),
@@ -1141,6 +1165,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 363] = [
         "hooks_retired_more",
         &["count", "listed"],
         messages::HOOKS_RETIRED_MORE.pieces(),
+    ),
+    (
+        "messages",
+        "hooks_shape",
+        &["accepted", "path"],
+        messages::HOOKS_SHAPE.pieces(),
     ),
     (
         "messages",

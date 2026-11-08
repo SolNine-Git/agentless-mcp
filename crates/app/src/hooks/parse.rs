@@ -2,6 +2,14 @@
 //! matcher, or the place where the value has another shape than Claude Code reads.
 
 use json::{JsonValue, get};
+use prompts::messages::{
+    ACCEPTS_ANY_NUMBER, ACCEPTS_ARRAY, ACCEPTS_OBJECT, ACCEPTS_TEXT, HOOKS_SHAPE,
+};
+
+const HOOKS_KEY: &str = "hooks";
+// The JSON paths of the document and of its `hooks` value.
+const DOCUMENT_PATH: &str = "$";
+const HOOKS_PATH: &str = "$.hooks";
 
 /// One handler of a settings `hooks` value.
 #[derive(Clone, Debug, PartialEq)]
@@ -40,6 +48,58 @@ pub enum Expected {
     Number,
 }
 
+impl Expected {
+    fn accepted(self) -> &'static str {
+        match self {
+            Expected::Object => ACCEPTS_OBJECT,
+            Expected::Array => ACCEPTS_ARRAY,
+            Expected::Text => ACCEPTS_TEXT,
+            Expected::Number => ACCEPTS_ANY_NUMBER,
+        }
+    }
+}
+
+/// Where a settings document has another shape than Claude Code reads.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Misshaped {
+    /// The document is not an object.
+    Document,
+    /// The `hooks` value has another shape at this place.
+    Hooks(HooksShape),
+}
+
+impl Misshaped {
+    /// Returns the place as a JSON path from the document and the type it must hold, such as
+    /// `$.hooks.Stop[0] is not an object`.
+    #[must_use]
+    pub fn text(&self) -> String {
+        let (path, expected) = match self {
+            Misshaped::Document => (DOCUMENT_PATH.to_owned(), Expected::Object),
+            Misshaped::Hooks(shape) if shape.at.is_empty() => {
+                (HOOKS_PATH.to_owned(), shape.expected)
+            }
+            Misshaped::Hooks(shape) => (format!("{HOOKS_PATH}.{}", shape.at), shape.expected),
+        };
+        HOOKS_SHAPE.render((expected.accepted(), &path))
+    }
+}
+
+/// Reads the handlers of a settings document's `hooks` value in file order: none when the
+/// document has no `hooks` key. Every other key is left unread.
+///
+/// # Errors
+///
+/// Returns the first place whose value has another shape: the document, or a place of `hooks`.
+pub fn settings_handlers(document: &JsonValue) -> Result<Vec<Handler>, Misshaped> {
+    let JsonValue::Object(fields) = document else {
+        return Err(Misshaped::Document);
+    };
+    get(fields, HOOKS_KEY).map_or_else(
+        || Ok(Vec::new()),
+        |hooks| handlers(hooks).map_err(Misshaped::Hooks),
+    )
+}
+
 /// Reads `hooks`, the value of a settings file's `hooks` key, into its handlers in file order.
 ///
 /// # Errors
@@ -62,7 +122,7 @@ pub fn handlers(hooks: &JsonValue) -> Result<Vec<Handler>, HooksShape> {
 fn group_handlers(event: &str, group: &JsonValue, at: &str) -> Result<Vec<Handler>, HooksShape> {
     let fields = object(group, at.to_owned())?;
     let matcher = optional(fields, "matcher", at, text)?;
-    let Some(listed) = get(fields, "hooks") else {
+    let Some(listed) = get(fields, HOOKS_KEY) else {
         return Ok(Vec::new());
     };
     let place = format!("{at}.hooks");

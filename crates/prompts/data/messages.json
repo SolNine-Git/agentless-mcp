@@ -23,6 +23,9 @@
   "accepts_choice": "one of {listed}",
   "accepts_texts": "a list of strings",
   "accepts_text_or_texts": "a string or a list of strings",
+  "accepts_object": "an object",
+  "accepts_array": "an array",
+  "accepts_any_number": "a number",
   "accepts_schema": "a value that fits its schema in tools/list",
   "listed_or": "{listed} or {name}",
   "listed_and": "{listed} and {name}",
@@ -337,9 +340,10 @@
   "hook_install_wrote": "{summary}; wrote {path}",
   "hook_install_dry_run": "{summary}; --dry-run wrote nothing to {path}",
   "hook_install_unchanged": "no change: {path} holds the current entries",
-  "hook_install_bad_json": "{path} is not valid JSON: {error}. hook install wrote nothing.",
+  "hook_install_bad_json": "{path} is not valid JSON: {error}. hook {command} wrote nothing.",
   "hook_install_raced": "{path} changed twice while hook install wrote it. hook install wrote nothing. Run it again.",
   "hook_uninstall_report": "removed {removed} agentless {removed:handler|handlers}, kept {kept} other {kept:handler|handlers}; wrote {path}",
+  "hook_uninstall_none": "nothing to remove: {path} holds no agentless entry",
   "hooks_note": "hooks: {summary}. Run: agentless-mcp hook install",
   "hooks_missing": "{count} of {total} agentless hook {total:entry|entries} {count:is|are} missing ({listed})",
   "hooks_stale": "{count} of {total} agentless hook {total:entry|entries} {count:is|are} stale ({listed})",
@@ -348,5 +352,6 @@
   "hooks_retired_more": "{count} {count:is|are} retired ({listed})",
   "hooks_other_path": "hooks run {path}; this server runs {file}",
   "hooks_unreadable": "hooks: {path} is not readable: {error}; hook state unknown",
+  "hooks_shape": "{path} is not {accepted}",
   "surface_refused": "--surface is no longer served: this release publishes trace and search only. Drop --surface."
 }

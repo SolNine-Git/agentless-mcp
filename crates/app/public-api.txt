@@ -118,6 +118,26 @@ impl core::marker::Unpin for app::hooks::Hook
 impl core::marker::UnsafeUnpin for app::hooks::Hook
 impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Hook
 impl core::panic::unwind_safe::UnwindSafe for app::hooks::Hook
+pub enum app::hooks::Misshaped
+pub app::hooks::Misshaped::Document
+pub app::hooks::Misshaped::Hooks(app::hooks::HooksShape)
+impl app::hooks::Misshaped
+pub fn app::hooks::Misshaped::text(&self) -> alloc::string::String
+impl core::clone::Clone for app::hooks::Misshaped
+pub fn app::hooks::Misshaped::clone(&self) -> Self
+impl core::cmp::Eq for app::hooks::Misshaped
+impl core::cmp::PartialEq for app::hooks::Misshaped
+pub fn app::hooks::Misshaped::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::Misshaped
+pub fn app::hooks::Misshaped::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::hooks::Misshaped
+impl core::marker::Freeze for app::hooks::Misshaped
+impl core::marker::Send for app::hooks::Misshaped
+impl core::marker::Sync for app::hooks::Misshaped
+impl core::marker::Unpin for app::hooks::Misshaped
+impl core::marker::UnsafeUnpin for app::hooks::Misshaped
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Misshaped
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::Misshaped
 pub enum app::hooks::Named
 pub app::hooks::Named::Current(app::hooks::Hook)
 pub app::hooks::Named::Retired(app::hooks::Retired)
@@ -300,6 +320,7 @@ pub fn app::hooks::compare(&[app::hooks::Handler], &str, &str) -> app::hooks::Ho
 pub fn app::hooks::entries(&str) -> alloc::vec::Vec<app::hooks::Entry>
 pub fn app::hooks::handlers(&json::parse::JsonValue) -> core::result::Result<alloc::vec::Vec<app::hooks::Handler>, app::hooks::HooksShape>
 pub fn app::hooks::named(&app::hooks::Handler) -> core::option::Option<app::hooks::Named>
+pub fn app::hooks::settings_handlers(&json::parse::JsonValue) -> core::result::Result<alloc::vec::Vec<app::hooks::Handler>, app::hooks::Misshaped>
 pub fn app::hooks::user_settings(&app::EnvConfig) -> core::option::Option<std::path::PathBuf>
 pub mod app::ops
 pub mod app::ops::limits

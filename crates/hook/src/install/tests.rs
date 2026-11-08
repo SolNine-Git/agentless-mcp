@@ -197,17 +197,23 @@ fn a_file_that_is_not_json_or_not_shaped_as_settings_is_refused_and_kept() {
         ),
         (
             "[]",
-            format!("agentless-mcp: hooks: {shown} is not readable: $; hook state unknown\n"),
+            format!(
+                "agentless-mcp: hooks: {shown} is not readable: $ is not an object; hook state \
+                 unknown\n"
+            ),
         ),
         (
             r#"{"hooks": []}"#,
-            format!("agentless-mcp: hooks: {shown} is not readable: $.hooks; hook state unknown\n"),
+            format!(
+                "agentless-mcp: hooks: {shown} is not readable: $.hooks is not an object; hook \
+                 state unknown\n"
+            ),
         ),
         (
             r#"{"hooks": {"Stop": [{"hooks": [{"command": 7}]}]}}"#,
             format!(
-                "agentless-mcp: hooks: {shown} is not readable: $.hooks.Stop[0].hooks[0].command; \
-                 hook state unknown\n"
+                "agentless-mcp: hooks: {shown} is not readable: $.hooks.Stop[0].hooks[0].command \
+                 is not a string; hook state unknown\n"
             ),
         ),
     ] {
@@ -387,7 +393,7 @@ fn uninstall_removes_the_agentless_entries_only() {
     let report = "removed 7 agentless handlers, kept 2 other handlers; wrote \
                   <SANDBOX>/config/settings.json\n";
     assert_eq!(rig.shown(&first), (0, report.to_owned(), String::new()));
-    assert_eq!(rig.shown(&second), (0, String::new(), String::new()));
+    assert_eq!(rig.shown(&second), (0, NOTHING.to_owned(), String::new()));
     let document: Value = serde_json::from_str(&text(&rig.settings())).expect("JSON");
     let expected = json!({
         "PreToolUse": [{"matcher": "Grep|Glob|Bash", "hooks": [{"type": "command", "command": "/usr/local/bin/audit-shell"}]}],
@@ -404,20 +410,68 @@ fn uninstall_removes_the_agentless_entries_only() {
     assert_eq!(text(&rig.settings()), "{}\n");
 }
 
+const NOTHING: &str =
+    "nothing to remove: <SANDBOX>/config/settings.json holds no agentless entry\n";
+
+// Uninstall is idempotent: a missing file, or one with no agentless entry, takes no write.
 #[test]
-fn uninstall_refuses_a_missing_or_broken_file() {
+fn uninstall_with_nothing_to_remove_reports_it_and_writes_nothing() {
     let rig = Rig::new();
     let missing = rig.uninstall(&[]);
-    rig.put_settings("{oops");
-    let broken = rig.uninstall(&[]);
+    assert!(!rig.settings().exists());
+    let compact = r#"{"model": "opus", "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "notify-send done"}]}]}}"#;
+    rig.put_settings(compact);
+    let other = rig.uninstall(&[]);
 
-    let gone = "agentless-mcp: [Errno 2] No such file or directory: \
-                '<SANDBOX>/config/settings.json'\n";
-    assert_eq!(rig.shown(&missing), (1, String::new(), gone.to_owned()));
-    let unread = "agentless-mcp: hooks: <SANDBOX>/config/settings.json is not readable: Expecting \
-                  property name enclosed in double quotes: line 1 column 2 (char 1); hook state \
-                  unknown\n";
-    assert_eq!(rig.shown(&broken), (1, String::new(), unread.to_owned()));
+    assert_eq!(rig.shown(&missing), (0, NOTHING.to_owned(), String::new()));
+    assert_eq!(rig.shown(&other), (0, NOTHING.to_owned(), String::new()));
+    assert_eq!(text(&rig.settings()), compact);
+    let backup = rig
+        .sandbox
+        .path()
+        .join("config/settings.json.agentless-backup");
+    assert!(!backup.exists());
+}
+
+#[test]
+fn uninstall_refuses_a_file_that_is_not_json_or_not_shaped_as_settings() {
+    let rig = Rig::new();
+    let shown = "<SANDBOX>/config/settings.json";
+    for (written, stderr) in [
+        (
+            "{oops",
+            format!(
+                "agentless-mcp: {shown} is not valid JSON: Expecting property name enclosed in \
+                 double quotes: line 1 column 2 (char 1). hook uninstall wrote nothing.\n"
+            ),
+        ),
+        (
+            r#"{"hooks": {"Stop": [1]}}"#,
+            format!(
+                "agentless-mcp: hooks: {shown} is not readable: $.hooks.Stop[0] is not an \
+                 object; hook state unknown\n"
+            ),
+        ),
+    ] {
+        rig.put_settings(written);
+        let output = rig.uninstall(&[]);
+        assert_eq!(rig.shown(&output), (1, String::new(), stderr), "{written}");
+        assert_eq!(text(&rig.settings()), written);
+    }
+}
+
+#[test]
+fn status_names_the_json_path_of_a_hooks_value_of_another_shape() {
+    let rig = Rig::new();
+    drop(
+        rig.sandbox
+            .put("repo/.claude/settings.json", r#"{"hooks": {"Stop": [1]}}"#),
+    );
+    let (code, stdout, _) = rig.shown(&rig.status(&[]));
+    let first = "hooks: <SANDBOX>/repo/.claude/settings.json is not readable: $.hooks.Stop[0] is \
+                 not an object; hook state unknown\n";
+    assert_eq!(code, 1);
+    assert!(stdout.starts_with(first), "{stdout}");
 }
 
 #[test]

@@ -14,11 +14,14 @@ pub const prompts::envelope::RECEIPT_REPO: prompts::Template<prompts::Text>
 pub const prompts::envelope::RECEIPT_SUMMARY: prompts::Template<prompts::Text>
 pub const prompts::envelope::SERVICE_TRUNCATION: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub mod prompts::messages
+pub const prompts::messages::ACCEPTS_ANY_NUMBER: &str
+pub const prompts::messages::ACCEPTS_ARRAY: &str
 pub const prompts::messages::ACCEPTS_BOOL: &str
 pub const prompts::messages::ACCEPTS_CHOICE: prompts::Template<prompts::Text>
 pub const prompts::messages::ACCEPTS_INTEGER: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::ACCEPTS_INTEGER_FROM: prompts::Template<prompts::Count>
 pub const prompts::messages::ACCEPTS_NUMBER: prompts::Template<(prompts::Count, prompts::Text)>
+pub const prompts::messages::ACCEPTS_OBJECT: &str
 pub const prompts::messages::ACCEPTS_SCHEMA: &str
 pub const prompts::messages::ACCEPTS_TEXT: &str
 pub const prompts::messages::ACCEPTS_TEXTS: &str
@@ -176,10 +179,11 @@ pub const prompts::messages::HOOKS_NOTE: prompts::Template<prompts::Text>
 pub const prompts::messages::HOOKS_OTHER_PATH: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::HOOKS_RETIRED: prompts::Template<(prompts::Count, prompts::Text)>
 pub const prompts::messages::HOOKS_RETIRED_MORE: prompts::Template<(prompts::Count, prompts::Text)>
+pub const prompts::messages::HOOKS_SHAPE: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::HOOKS_STALE: prompts::Template<(prompts::Count, prompts::Count, prompts::Text)>
 pub const prompts::messages::HOOKS_STALE_MORE: prompts::Template<(prompts::Count, prompts::Text)>
 pub const prompts::messages::HOOKS_UNREADABLE: prompts::Template<(prompts::Text, prompts::Text)>
-pub const prompts::messages::HOOK_INSTALL_BAD_JSON: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::HOOK_INSTALL_BAD_JSON: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::messages::HOOK_INSTALL_COUNTS: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::HOOK_INSTALL_DRY_RUN: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::HOOK_INSTALL_RACED: prompts::Template<prompts::Text>
@@ -190,6 +194,7 @@ pub const prompts::messages::HOOK_STATUS_MISSING: prompts::Template<prompts::Tex
 pub const prompts::messages::HOOK_STATUS_OTHER_PATH: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::HOOK_STATUS_RETIRED: prompts::Template<prompts::Text>
 pub const prompts::messages::HOOK_STATUS_STALE: prompts::Template<prompts::Text>
+pub const prompts::messages::HOOK_UNINSTALL_NONE: prompts::Template<prompts::Text>
 pub const prompts::messages::HOOK_UNINSTALL_REPORT: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::HOOK_USAGE: &str
 pub const prompts::messages::LINT_NO_CHECKS: prompts::Template<prompts::Text>

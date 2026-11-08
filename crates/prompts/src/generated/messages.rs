@@ -4,6 +4,12 @@
 use crate::template::{Count, Piece, Template, Text};
 
 /// A text that takes no values.
+pub const ACCEPTS_ANY_NUMBER: &str = "a number";
+
+/// A text that takes no values.
+pub const ACCEPTS_ARRAY: &str = "an array";
+
+/// A text that takes no values.
 pub const ACCEPTS_BOOL: &str = "true or false";
 
 /// A template that takes `listed`.
@@ -32,6 +38,9 @@ pub const ACCEPTS_NUMBER: Template<(Count, Text)> = Template::new(&[
     Piece::Text(" and at most "),
     Piece::Value(1),
 ]);
+
+/// A text that takes no values.
+pub const ACCEPTS_OBJECT: &str = "an object";
 
 /// A text that takes no values.
 pub const ACCEPTS_SCHEMA: &str = "a value that fits its schema in tools/list";
@@ -1569,12 +1578,14 @@ pub const HISTORY_TARGET_UNRESOLVED: Template<(Text, Text)> = Template::new(&[
     ),
 ]);
 
-/// A template that takes (`path`, `error`).
-pub const HOOK_INSTALL_BAD_JSON: Template<(Text, Text)> = Template::new(&[
+/// A template that takes (`path`, `command`, `error`).
+pub const HOOK_INSTALL_BAD_JSON: Template<(Text, Text, Text)> = Template::new(&[
     Piece::Value(0),
     Piece::Text(" is not valid JSON: "),
+    Piece::Value(2),
+    Piece::Text(". hook "),
     Piece::Value(1),
-    Piece::Text(". hook install wrote nothing."),
+    Piece::Text(" wrote nothing."),
 ]);
 
 /// A template that takes (`listed`, `added`, `replaced`, `removed`, `kept`).
@@ -1648,6 +1659,13 @@ pub const HOOK_STATUS_STALE: Template<Text> = Template::new(&[
     Piece::Text(": stale: the entry differs from the table of this binary"),
 ]);
 
+/// A template that takes `path`.
+pub const HOOK_UNINSTALL_NONE: Template<Text> = Template::new(&[
+    Piece::Text("nothing to remove: "),
+    Piece::Value(0),
+    Piece::Text(" holds no agentless entry"),
+]);
+
 /// A template that takes (`path`, `removed`, `kept`).
 pub const HOOK_UNINSTALL_REPORT: Template<(Text, Count, Count)> = Template::new(&[
     Piece::Text("removed "),
@@ -1714,6 +1732,10 @@ pub const HOOKS_RETIRED_MORE: Template<(Count, Text)> = Template::new(&[
     Piece::Value(1),
     Piece::Text(")"),
 ]);
+
+/// A template that takes (`accepted`, `path`).
+pub const HOOKS_SHAPE: Template<(Text, Text)> =
+    Template::new(&[Piece::Value(1), Piece::Text(" is not "), Piece::Value(0)]);
 
 /// A template that takes (`count`, `total`, `listed`).
 pub const HOOKS_STALE: Template<(Count, Count, Text)> = Template::new(&[

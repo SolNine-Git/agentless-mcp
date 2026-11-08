@@ -11,7 +11,7 @@ use text::{posix_name, split_shell_words};
 
 use crate::EnvConfig;
 
-pub use parse::{Expected, Handler, HooksShape, handlers};
+pub use parse::{Expected, Handler, HooksShape, Misshaped, handlers, settings_handlers};
 
 /// The file name of the binary whose hook commands are agentless entries.
 pub const BINARY_NAME: &str = "agentless-mcp";

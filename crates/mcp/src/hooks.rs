@@ -12,10 +12,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use app::EnvConfig;
 use app::hooks::{
-    DEFAULT_SERVER_NAME, EntryState, Expected, Handler, HookStatus, SETTINGS_FILE, compare,
-    handlers, user_settings,
+    DEFAULT_SERVER_NAME, EntryState, Handler, HookStatus, SETTINGS_FILE, compare,
+    settings_handlers, user_settings,
 };
-use json::JsonValue;
 use prompts::messages::{
     HOOKS_MISSING, HOOKS_NOTE, HOOKS_OTHER_PATH, HOOKS_RETIRED, HOOKS_RETIRED_MORE, HOOKS_STALE,
     HOOKS_STALE_MORE, HOOKS_UNREADABLE, LISTED_AND,
@@ -26,7 +25,6 @@ use crate::roots::stat_key;
 
 const CONFIG_DIR: &str = ".claude";
 const LOCAL_SETTINGS: &str = "settings.local.json";
-const HOOKS_KEY: &str = "hooks";
 
 /// What the server compares the settings with: the user settings file and its own binary.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -142,30 +140,7 @@ fn parsed(path: &Path) -> Result<Vec<Handler>, String> {
     let bytes = fs::read(path).map_err(|error| io::os_error_str(&error))?;
     let text = io::decode_text(bytes.clone()).map_err(|error| io::codec_text(&bytes, error))?;
     let document = json::parse(&text).map_err(|error| error.to_string())?;
-    let JsonValue::Object(fields) = &document else {
-        return Err(misshaped("the file", Expected::Object));
-    };
-    let Some(hooks) = json::get(fields, HOOKS_KEY) else {
-        return Ok(Vec::new());
-    };
-    handlers(hooks).map_err(|shape| {
-        let place = if shape.at.is_empty() {
-            HOOKS_KEY.to_owned()
-        } else {
-            format!("{HOOKS_KEY}.{}", shape.at)
-        };
-        misshaped(&place, shape.expected)
-    })
-}
-
-fn misshaped(place: &str, expected: Expected) -> String {
-    let kind = match expected {
-        Expected::Object => "an object",
-        Expected::Array => "an array",
-        Expected::Text => "a string",
-        Expected::Number => "a number",
-    };
-    format!("{place} is not {kind}")
+    settings_handlers(&document).map_err(|shape| shape.text())
 }
 
 // An entry whose path resolves to this binary is current: a link to it runs the same file.

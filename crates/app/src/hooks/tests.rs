@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use super::{
     DEFAULT_SERVER_NAME, EntryState, Event, Expected, Found, Handler, Hook, HookStatus, HooksShape,
-    Named, Retired, command, compare, entries, handlers, named, user_settings,
+    Named, Retired, command, compare, entries, handlers, named, settings_handlers, user_settings,
 };
 use crate::EnvConfig;
 
@@ -298,4 +298,31 @@ fn an_agentless_entry_is_a_command_of_the_binary_that_names_a_current_or_retired
         };
         assert_eq!(named(&handler), expected, "{kind} {command}");
     }
+}
+
+#[test]
+fn a_settings_document_of_another_shape_names_the_json_path_and_the_type() {
+    for (text, expected) in [
+        ("[]", "$ is not an object"),
+        (r#"{"hooks": []}"#, "$.hooks is not an object"),
+        (r#"{"hooks": {"Stop": {}}}"#, "$.hooks.Stop is not an array"),
+        (
+            r#"{"hooks": {"Stop": [1]}}"#,
+            "$.hooks.Stop[0] is not an object",
+        ),
+        (
+            r#"{"hooks": {"Stop": [{"hooks": [{"command": 7}]}]}}"#,
+            "$.hooks.Stop[0].hooks[0].command is not a string",
+        ),
+        (
+            r#"{"hooks": {"Stop": [{"hooks": [{"timeout": "3"}]}]}}"#,
+            "$.hooks.Stop[0].hooks[0].timeout is not a number",
+        ),
+    ] {
+        let document = json::parse(text).unwrap_or_else(|error| panic!("{error}"));
+        let shape = settings_handlers(&document).expect_err(text);
+        assert_eq!(shape.text(), expected, "{text}");
+    }
+    let other = json::parse(r#"{"model": "opus"}"#).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(settings_handlers(&other), Ok(Vec::new()));
 }
