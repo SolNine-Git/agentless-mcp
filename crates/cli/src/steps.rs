@@ -62,7 +62,17 @@ fn execute(
         Err(error) => return failed(streams.err, &error),
     };
     let services = counted.as_ref().unwrap_or(services);
-    match invocation.command {
+    dispatched(invocation.command, run, services, streams)
+}
+
+// The step of `command`, with the services of the run's token counter.
+fn dispatched(
+    command: Command,
+    run: &mut Run<'_>,
+    services: &Services,
+    streams: &mut Streams<'_>,
+) -> u8 {
+    match command {
         Command::Lint(request) => lint::run(&request, services, streams),
         Command::Capabilities(flags) => capabilities(&flags, services, streams),
         Command::Read(call) => read::run(&call, services, streams),
