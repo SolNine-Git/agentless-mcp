@@ -146,8 +146,7 @@ impl<'r, 'a> Resolver<'r, 'a> {
         }
     }
 
-    /// Take what the resolver resolved, which outlives the parts it borrowed, for a caller that
-    /// frees it elsewhere; the resolver resolves again what it needs.
+    /// Take what the resolver resolved, which outlives the parts it read, to free it elsewhere.
     #[must_use]
     pub fn take_answers(&self) -> Answers {
         Answers {

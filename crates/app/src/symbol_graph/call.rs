@@ -743,8 +743,7 @@ struct Jobs<'j> {
 
 impl Jobs<'_> {
     // One kept state: the scans that its parts borrow, declared first so that they drop last, and
-    // the parts, which each update carries to the next scan. Returns the first job that needs a
-    // full build.
+    // the parts, which each update carries to the next scan.
     fn kept_state(&self, first: Job) -> Option<Job> {
         let store = Scan::new(&first.files);
         let mut built = Built::default();

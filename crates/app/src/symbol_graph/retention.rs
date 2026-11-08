@@ -15,9 +15,8 @@ pub(super) struct Retention {
     pub(super) idle: Duration,
 }
 
-// An update resolves at most `sites` percent of a scan's sites again, else a full build costs no
-// more. A kept state holds at most `scans` scans, and replaced facts of at most `replaced` percent
-// of its sites, before a full build frees them.
+// An update resolves at most `sites` percent of a scan's sites again; a kept state holds at most
+// `scans` scans, and replaced facts of at most `replaced` percent of its sites.
 pub(super) const UPDATED: Updates = Updates {
     sites: 70,
     scans: 64,
