@@ -20,7 +20,7 @@ pub(super) struct Retention {
 // of its sites, before a full build frees them.
 pub(super) const UPDATED: Updates = Updates {
     sites: 70,
-    scans: 50,
+    scans: 64,
     replaced: 8,
 };
 
