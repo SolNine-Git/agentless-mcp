@@ -234,11 +234,6 @@ pub const prompts::messages::MAP_SYMBOLS_UNLISTED: prompts::Template<prompts::Co
 pub const prompts::messages::MAP_TESTS_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::MAP_UNRESOLVED_SEEDS: prompts::Template<prompts::Text>
 pub const prompts::messages::MAP_WALK_CAPPED: &str
-pub const prompts::messages::OPERATION_IN_TOOL: prompts::Template<(prompts::Text, prompts::Text)>
-pub const prompts::messages::OPERATION_LACKS_PARAMETER: prompts::Template<(prompts::Text, prompts::Text)>
-pub const prompts::messages::OPERATION_REQUIRES_VALUE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
-pub const prompts::messages::OPERATION_TAKES: prompts::Template<(prompts::Text, prompts::Text)>
-pub const prompts::messages::OPERATION_TAKES_AND_REQUIRES: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::messages::OVERVIEW_DATA_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::OVERVIEW_STABLE_IDS: prompts::Template<prompts::Text>
 pub const prompts::messages::OVERVIEW_STABLE_IDS_DATA: prompts::Template<prompts::Text>
@@ -302,7 +297,6 @@ pub const prompts::messages::SPAN_SYMBOL_UNDEFINED: prompts::Template<(prompts::
 pub const prompts::messages::STABLE_IDS_PATTERN: prompts::Template<prompts::Text>
 pub const prompts::messages::SUBAGENT_MAP_CONTEXT: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::SURFACE_REFUSED: &str
-pub const prompts::messages::SURFACE_V1_DEPRECATED: prompts::Template<prompts::Text>
 pub const prompts::messages::TARGET_CANDIDATES: prompts::Template<(prompts::Text, prompts::Count, prompts::Text)>
 pub const prompts::messages::TARGET_CANDIDATES_CUT: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Text)>
 pub const prompts::messages::TARGET_DATA_FILE: prompts::Template<prompts::Text>

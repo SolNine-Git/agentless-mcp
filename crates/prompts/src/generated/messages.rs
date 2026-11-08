@@ -2079,55 +2079,6 @@ pub const MAP_UNRESOLVED_SEEDS: Template<Text> = Template::new(&[
 pub const MAP_WALK_CAPPED: &str = "// note: the walk out to these tests hit its node bound before \
         it finished, so this section is a floor rather than every test";
 
-/// A template that takes (`tool`, `operation`).
-pub const OPERATION_IN_TOOL: Template<(Text, Text)> = Template::new(&[
-    Piece::Text("Call the tool "),
-    Piece::Value(0),
-    Piece::Text(" with operation "),
-    Piece::Value(1),
-    Piece::Text("."),
-]);
-
-/// A template that takes (`operation`, `name`).
-pub const OPERATION_LACKS_PARAMETER: Template<(Text, Text)> = Template::new(&[
-    Piece::Text("Operation "),
-    Piece::Value(0),
-    Piece::Text(" has no parameter "),
-    Piece::Value(1),
-    Piece::Text("."),
-]);
-
-/// A template that takes (`operation`, `accepted`, `name`).
-pub const OPERATION_REQUIRES_VALUE: Template<(Text, Text, Text)> = Template::new(&[
-    Piece::Text("Operation "),
-    Piece::Value(0),
-    Piece::Text(" requires a value for "),
-    Piece::Value(2),
-    Piece::Text(", which must be "),
-    Piece::Value(1),
-    Piece::Text("."),
-]);
-
-/// A template that takes (`operation`, `accepted`).
-pub const OPERATION_TAKES: Template<(Text, Text)> = Template::new(&[
-    Piece::Text("Operation "),
-    Piece::Value(0),
-    Piece::Text(" takes "),
-    Piece::Value(1),
-    Piece::Text("."),
-]);
-
-/// A template that takes (`operation`, `accepted`, `required`).
-pub const OPERATION_TAKES_AND_REQUIRES: Template<(Text, Text, Text)> = Template::new(&[
-    Piece::Text("Operation "),
-    Piece::Value(0),
-    Piece::Text(" takes "),
-    Piece::Value(1),
-    Piece::Text(", and requires "),
-    Piece::Value(2),
-    Piece::Text("."),
-]);
-
 /// A template that takes (`count`, `cap`).
 pub const OVERVIEW_DATA_UNLISTED: Template<(Count, Count)> = Template::new(&[
     Piece::Value(0),
@@ -2748,17 +2699,6 @@ pub const SUBAGENT_MAP_CONTEXT: Template<(Text, Text)> = Template::new(&[
 /// A text that takes no values.
 pub const SURFACE_REFUSED: &str = "--surface is no longer served: this release publishes trace \
         and search only. Drop --surface.";
-
-/// A template that takes `surface`.
-pub const SURFACE_V1_DEPRECATED: Template<Text> = Template::new(&[
-    Piece::Text("--surface "),
-    Piece::Value(0),
-    Piece::Text(
-        " publishes the v1 tools. They are deprecated and are removed in \
-        0.11.0. Move to the v2 tools: agentless-mcp guide --section \
-        the-two-surfaces has the mapping.",
-    ),
-]);
 
 /// A template that takes (`name`, `count`, `listed`).
 pub const TARGET_CANDIDATES: Template<(Text, Count, Text)> = Template::new(&[

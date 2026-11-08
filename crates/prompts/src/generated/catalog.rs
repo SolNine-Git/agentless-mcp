@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 370] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 364] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1414,36 +1414,6 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 370] = [
     ),
     (
         "messages",
-        "operation_in_tool",
-        &["tool", "operation"],
-        messages::OPERATION_IN_TOOL.pieces(),
-    ),
-    (
-        "messages",
-        "operation_lacks_parameter",
-        &["operation", "name"],
-        messages::OPERATION_LACKS_PARAMETER.pieces(),
-    ),
-    (
-        "messages",
-        "operation_requires_value",
-        &["operation", "accepted", "name"],
-        messages::OPERATION_REQUIRES_VALUE.pieces(),
-    ),
-    (
-        "messages",
-        "operation_takes",
-        &["operation", "accepted"],
-        messages::OPERATION_TAKES.pieces(),
-    ),
-    (
-        "messages",
-        "operation_takes_and_requires",
-        &["operation", "accepted", "required"],
-        messages::OPERATION_TAKES_AND_REQUIRES.pieces(),
-    ),
-    (
-        "messages",
         "overview_data_unlisted",
         &["count", "cap"],
         messages::OVERVIEW_DATA_UNLISTED.pieces(),
@@ -1819,12 +1789,6 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 370] = [
         "surface_refused",
         &[],
         &[Piece::Text(messages::SURFACE_REFUSED)],
-    ),
-    (
-        "messages",
-        "surface_v1_deprecated",
-        &["surface"],
-        messages::SURFACE_V1_DEPRECATED.pieces(),
     ),
     (
         "messages",

@@ -1539,43 +1539,6 @@
       "arguments": {},
       "text": "// note: the walk out to these tests hit its node bound before it finished, so this section is a floor rather than every test"
     },
-    "operation_in_tool": {
-      "arguments": {
-        "operation": "find",
-        "tool": "symbols"
-      },
-      "text": "Call the tool symbols with operation find."
-    },
-    "operation_lacks_parameter": {
-      "arguments": {
-        "name": "source",
-        "operation": "map"
-      },
-      "text": "Operation map has no parameter source."
-    },
-    "operation_requires_value": {
-      "arguments": {
-        "accepted": "a string",
-        "name": "source",
-        "operation": "path"
-      },
-      "text": "Operation path requires a value for source, which must be a string."
-    },
-    "operation_takes": {
-      "arguments": {
-        "accepted": "limit",
-        "operation": "cycles"
-      },
-      "text": "Operation cycles takes limit."
-    },
-    "operation_takes_and_requires": {
-      "arguments": {
-        "accepted": "name, kind and limit",
-        "operation": "find",
-        "required": "name"
-      },
-      "text": "Operation find takes name, kind and limit, and requires name."
-    },
     "overview_data_unlisted": {
       "arguments": {
         "cap": 500,
@@ -2007,12 +1970,6 @@
     "surface_refused": {
       "arguments": {},
       "text": "--surface is no longer served: this release publishes trace and search only. Drop --surface."
-    },
-    "surface_v1_deprecated": {
-      "arguments": {
-        "surface": "v1"
-      },
-      "text": "--surface v1 publishes the v1 tools. They are deprecated and are removed in 0.11.0. Move to the v2 tools: agentless-mcp guide --section the-two-surfaces has the mapping."
     },
     "target_candidates": {
       "arguments": {

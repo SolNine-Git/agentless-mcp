@@ -1,5 +1,4 @@
 {
-  "surface_v1_deprecated": "--surface {surface} publishes the v1 tools. They are deprecated and are removed in 0.11.0. Move to the v2 tools: agentless-mcp guide --section the-two-surfaces has the mapping.",
   "server_no_roots": "no repositories are served: this server was started with no roots. Roots come from --root DIR flags and from --roots-from FILE, which lists one repository path per line. A root advertised by the client can only select among the roots the server is configured with; it cannot add one.",
   "server_root_required": "repo_root is required: this server holds several repositories and will not guess between them. Retry with repo_root set to one of: {roots}",
   "argument_invalid": "{name} is {found}, but must be {accepted}.",
@@ -7,11 +6,6 @@
   "argument_unknown": "{tool} has no parameter {name}.",
   "tool_takes": "{tool} takes {accepted}.",
   "unknown_tool": "No tool has this name. The tools are {listed}.",
-  "operation_in_tool": "Call the tool {tool} with operation {operation}.",
-  "operation_takes": "Operation {operation} takes {accepted}.",
-  "operation_takes_and_requires": "Operation {operation} takes {accepted}, and requires {required}.",
-  "operation_lacks_parameter": "Operation {operation} has no parameter {name}.",
-  "operation_requires_value": "Operation {operation} requires a value for {name}, which must be {accepted}.",
   "slice_needs_lines": "Operation slice requires lines or whole_file=true, and lines must be {accepted}.",
   "slice_lines_and_whole_file": "Operation slice takes lines or whole_file=true, but not both.",
   "slice_range_reversed": "lines holds {found}, but each pair must have its end at or after its start.",

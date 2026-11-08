@@ -20,12 +20,9 @@ impl Kind {
 }
 
 // A name's position is its value order, so templates with the same names take them in one order.
-pub const PLACEHOLDERS: [(&str, Kind); 95] = [
+pub const PLACEHOLDERS: [(&str, Kind); 92] = [
     ("tool", Kind::Text),
-    ("operation", Kind::Text),
     ("accepted", Kind::Text),
-    ("required", Kind::Text),
-    ("surface", Kind::Text),
     ("root", Kind::Text),
     ("head", Kind::Text),
     ("dirty", Kind::Text),
