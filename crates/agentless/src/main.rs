@@ -46,6 +46,15 @@ const HOOKS: [(&str, HookRun); 9] = [
     ("gate-mark", retired),
 ];
 
+// One command on the settings files: its subcommand name and its run on the options after it.
+type SettingsRun = fn(&[OsString], &EnvConfig) -> hook::Output;
+
+const SETTINGS: [(&str, SettingsRun); 3] = [
+    ("install", hook::install),
+    ("status", hook::status),
+    ("uninstall", hook::uninstall),
+];
+
 // The hooks need no start-up directory, so only the other command lines stop on an unread one.
 fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
     let words: Vec<Option<&str>> = args.iter().map(|arg| arg.to_str()).collect();
@@ -62,6 +71,16 @@ fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
     if let Err(unread) = env.cwd() {
         let line = cli::cwd_failure_line(&unread.error());
         return with_streams(|streams| cli::write_answer(streams, "", &line, cli::EXIT_DOMAIN));
+    }
+    if let [Some("hook"), Some(name), ..] = words.as_slice()
+        && let Some((_, run)) = SETTINGS.iter().find(|(command, _)| command == name)
+    {
+        return with_streams(|streams| {
+            guarded(streams, |streams| {
+                let output = run(&args[2..], env);
+                cli::write_answer(streams, &output.stdout, &output.stderr, output.code)
+            })
+        });
     }
     match words.as_slice() {
         [Some("hook"), ..] => with_streams(cli::refuse_hook),

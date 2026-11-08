@@ -363,6 +363,56 @@ fn hook_prompt_map_names_the_files_that_rank_first_for_a_first_prompt() {
     );
 }
 
+// Every run names a fixture CLAUDE_CONFIG_DIR, and HOME is the sandbox's own.
+#[test]
+fn hook_install_status_and_uninstall_write_only_the_fixture_settings() {
+    let tree = sandbox();
+    let config = tree.create_dir("config").expect("a config folder");
+    let shown = config.display().to_string();
+    let extra = [("CLAUDE_CONFIG_DIR", shown.as_str())];
+    let settings = config.join("settings.json");
+    let binary = std::fs::canonicalize(BINARY).expect("the binary's path");
+    let example_path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contrib/hooks/settings-example.json"
+    );
+    let example = std::fs::read_to_string(example_path).expect("the settings example");
+
+    let dry = run(&tree, &["hook", "install", "--dry-run"], &extra);
+    let before = run(&tree, &["hook", "status"], &extra);
+    let installed = run(&tree, &["hook", "install"], &extra);
+    let after = run(&tree, &["hook", "status"], &extra);
+    let uninstalled = run(&tree, &["hook", "uninstall"], &extra);
+
+    let path = settings.display();
+    let expected = example.replace(
+        "/ABSOLUTE/PATH/TO/agentless-mcp",
+        &binary.display().to_string(),
+    );
+    assert_eq!((dry.code, dry.out.as_str()), (Some(0), expected.as_str()));
+    let fresh = "added 7, replaced 0, removed 0 retired, kept 0 other handlers";
+    assert_eq!(
+        dry.err,
+        format!("{fresh}; --dry-run wrote nothing to {path}\n")
+    );
+    assert_eq!(
+        (before.code, before.out.lines().next()),
+        (Some(1), Some("read-card: missing"))
+    );
+    assert_eq!(installed.out, format!("{fresh}; wrote {path}\n"));
+    assert_eq!(
+        (after.code, after.out.lines().last()),
+        (Some(0), Some("ledger-reset: current"))
+    );
+    let removed = format!("removed 7 agentless handlers, kept 0 other handlers; wrote {path}\n");
+    assert_eq!((uninstalled.code, uninstalled.out), (Some(0), removed));
+    assert_eq!(
+        std::fs::read_to_string(&settings).ok().as_deref(),
+        Some("{}\n")
+    );
+    assert!(!tree.path().join("home/.claude").exists());
+}
+
 #[test]
 fn hook_erosion_reaches_the_hook() {
     let ran = run(

@@ -1,12 +1,35 @@
 {
   "hooks": {
-    "PreToolUse": [
+    "PostToolUse": [
       {
-        "matcher": "Grep|Glob|Bash",
+        "matcher": "Read|Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook gate-check"
+            "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook read-card",
+            "timeout": 9
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__agentless__trace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook ledger-mark",
+            "timeout": 6
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook brief-record",
+            "timeout": 3
           }
         ]
       },
@@ -21,13 +44,13 @@
         ]
       }
     ],
-    "PostToolUse": [
+    "SubagentStart": [
       {
-        "matcher": "mcp__agentless__.*",
         "hooks": [
           {
             "type": "command",
-            "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook gate-mark"
+            "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook subagent-map",
+            "timeout": 15
           }
         ]
       }
@@ -39,6 +62,18 @@
             "type": "command",
             "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook prompt-map",
             "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook ledger-reset",
+            "timeout": 3
           }
         ]
       }
