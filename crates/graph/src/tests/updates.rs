@@ -552,6 +552,19 @@ const CASES: &[Case] = &[
         rebuilds: Some(Rebuild::RustModules),
     },
     Case {
+        name: "a Rust pub use declaration",
+        fixture: "callee_overlap_rust/base",
+        extra: &[],
+        steps: &[&[(
+            "src/lib.rs",
+            Replace(
+                "pub mod builders;",
+                "pub use builders::*;\npub mod builders;",
+            ),
+        )]],
+        rebuilds: Some(Rebuild::RustModules),
+    },
+    Case {
         name: "a Rust mod item",
         fixture: "callee_overlap_rust/base",
         extra: &[],
