@@ -1,0 +1,13 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+search /format_money/: 5 matches in 2 files
+pricing.py
+  format_money  [py:pricing.py::format_money] @78-81
+    78| def format_money(amount: Decimal) -> str:
+reports.py
+    6| from pricing import PriceBook, Tier, format_money
+  reorder_report  [py:reports.py::reorder_report] @29-44
+    43|     lines.append(f"{'total'.ljust(22)}{format_money(running)}")
+  _format_row  [py:reports.py::_format_row] @47-52
+    51|     money = format_money(line_total)
+  summarise  [py:reports.py::summarise] @69-79
+    75|         "value": format_money(stock_value(inventory, prices, Tier.TRADE)),

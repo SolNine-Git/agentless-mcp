@@ -1,0 +1,109 @@
+{
+  "receipt": {
+    "repo": "<REPO>",
+    "head": "f5f25218",
+    "tree": "9e93a4f0",
+    "dirty": 0,
+    "cache": "none",
+    "note": "",
+    "notice": "repository data below"
+  },
+  "notice": "repository data below",
+  "request": {
+    "pattern": "format_money",
+    "files": null,
+    "path": null,
+    "ignore_case": false
+  },
+  "answer": "matches",
+  "matches": 5,
+  "files": 2,
+  "searched": 3,
+  "shown": 5,
+  "groups": [
+    {
+      "path": "pricing.py",
+      "blocks": [
+        {
+          "owner": {
+            "qualname": "format_money",
+            "stable_id": "py:pricing.py::format_money",
+            "start_line": 78,
+            "end_line": 81
+          },
+          "lines": [
+            {
+              "line": 78,
+              "text": "def format_money(amount: Decimal) -> str:",
+              "matched": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "reports.py",
+      "blocks": [
+        {
+          "owner": null,
+          "lines": [
+            {
+              "line": 6,
+              "text": "from pricing import PriceBook, Tier, format_money",
+              "matched": true
+            }
+          ]
+        },
+        {
+          "owner": {
+            "qualname": "reorder_report",
+            "stable_id": "py:reports.py::reorder_report",
+            "start_line": 29,
+            "end_line": 44
+          },
+          "lines": [
+            {
+              "line": 43,
+              "text": "    lines.append(f\"{'total'.ljust(22)}{format_money(running)}\")",
+              "matched": true
+            }
+          ]
+        },
+        {
+          "owner": {
+            "qualname": "_format_row",
+            "stable_id": "py:reports.py::_format_row",
+            "start_line": 47,
+            "end_line": 52
+          },
+          "lines": [
+            {
+              "line": 51,
+              "text": "    money = format_money(line_total)",
+              "matched": true
+            }
+          ]
+        },
+        {
+          "owner": {
+            "qualname": "summarise",
+            "stable_id": "py:reports.py::summarise",
+            "start_line": 69,
+            "end_line": 79
+          },
+          "lines": [
+            {
+              "line": 75,
+              "text": "        \"value\": format_money(stock_value(inventory, prices, Tier.TRADE)),",
+              "matched": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "repeats": [],
+  "rest": [],
+  "noise": [],
+  "skipped": []
+}

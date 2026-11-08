@@ -1,0 +1,13 @@
+{
+  "tool": "search",
+  "fixture": "repo_py",
+  "files": {
+    "poetry.lock": "[[package]]\nname = \"quantize-helper\"\n",
+    "vendor/rounding.py": "def quantize(value):\n    return value\n",
+    "static/app.min.js": "function quantize(v){return v};var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a\n"
+  },
+  "arguments": {
+    "pattern": "quantize",
+    "path": "static/app.min.js"
+  }
+}

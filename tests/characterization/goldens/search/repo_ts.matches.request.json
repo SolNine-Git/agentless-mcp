@@ -1,0 +1,7 @@
+{
+  "tool": "search",
+  "fixture": "repo_ts",
+  "arguments": {
+    "pattern": "formatMoney"
+  }
+}

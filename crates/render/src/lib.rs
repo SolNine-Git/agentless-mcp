@@ -21,6 +21,7 @@ mod patches;
 mod path;
 mod receipt;
 mod refs;
+mod search;
 mod skipped;
 mod symbols;
 #[cfg(test)]
@@ -45,6 +46,7 @@ pub use mermaid::{diagram_caveat, diagram_summary, mermaid, strip_fence};
 pub use patches::{block_line, check_text, note_text, parse_errors, patch_receipt};
 pub use receipt::{Receipt, receipt_lines};
 pub use refs::unbound_refusal;
+pub use search::{SearchAnswer, search_refusal, search_text};
 pub use symbols::expand_stderr_rows;
 pub use text::one_line;
 pub use tool::{ToolForm, tool_text};

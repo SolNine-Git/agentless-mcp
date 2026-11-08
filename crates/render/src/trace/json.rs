@@ -406,7 +406,7 @@ impl<'a> LinkedJson<'a> {
     fn of(linked: &'a Linked<FileLinks>) -> Self {
         match linked {
             Linked::Found(links) => LinkedJson::Found {
-                rows: links.rows.iter().map(PlaceJson::of).collect(),
+                rows: places(&links.rows),
                 total: TallyJson::of(links.total),
             },
             Linked::NoAnchor => LinkedJson::NoAnchor { no_anchor: true },
@@ -420,13 +420,13 @@ pub(crate) struct PlaceJson<'a> {
     line: u32,
 }
 
-impl<'a> PlaceJson<'a> {
-    pub(crate) fn of(place: &'a Place) -> Self {
-        PlaceJson {
-            path: &place.path,
-            line: place.line,
-        }
-    }
+// Each place of a list, in its order.
+pub(crate) fn places(places: &[Place]) -> Vec<PlaceJson<'_>> {
+    let each = places.iter().map(|place| PlaceJson {
+        path: &place.path,
+        line: place.line,
+    });
+    each.collect()
 }
 
 #[derive(Clone, Serialize)]
@@ -583,7 +583,7 @@ impl<'a> MissJson<'a> {
                 name,
                 usage: usage.as_ref().map(UsageJson::of),
                 literal: literal.as_ref().map(|(places, files)| LiteralJson {
-                    places: places.iter().map(PlaceJson::of).collect(),
+                    places: self::places(places),
                     files: *files,
                 }),
             },

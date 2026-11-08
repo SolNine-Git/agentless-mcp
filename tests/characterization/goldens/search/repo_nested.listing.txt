@@ -1,0 +1,5 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 47e14e8d   dirty: 0 files   cache: none
+search files=**/*.py in catalog: 3 files
+catalog/product.py  30 lines  5 symbols
+catalog/search.py  27 lines  4 symbols
+catalog/stock.py  32 lines  6 symbols

@@ -1,0 +1,10 @@
+{
+  "tool": "search",
+  "fixture": "repo_py",
+  "sparse": {
+    "big.py": 1000001
+  },
+  "arguments": {
+    "pattern": "format_money"
+  }
+}

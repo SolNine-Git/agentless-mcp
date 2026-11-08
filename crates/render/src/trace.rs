@@ -17,6 +17,9 @@ use text::one_line;
 use crate::envelope::wrap_json;
 use crate::{Rendered, View};
 
+pub(crate) use file::listing_row;
+pub(crate) use json::{PlaceJson, RowJson, places};
+
 // A row line of a list section holds at most this many items.
 const ITEMS_PER_LINE: usize = 8;
 

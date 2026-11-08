@@ -1,0 +1,1 @@
+pattern is not a valid regular expression: unclosed group at column 4. To match the text, pass pattern="foo\("

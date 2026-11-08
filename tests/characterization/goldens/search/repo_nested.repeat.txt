@@ -1,0 +1,4 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 47e14e8d   dirty: 0 files   cache: none
+search /^from decimal import Decimal$/: 4 matches in 4 files
+same line in 4 places: billing/invoice.py @4, billing/ledger.py @7, billing/tax.py @3, catalog/search.py @3
+    | from decimal import Decimal

@@ -700,8 +700,8 @@
         "total": 140,
         "listed": "a.py (30), b.py (10)"
       },
-      "one": "... 100 of 140 match lines shown; 1 more file: a.py (30), b.py (10)",
-      "many": "... 100 of 140 match lines shown; 2 more files: a.py (30), b.py (10)"
+      "one": "... 100 of 140 match lines shown; the rest are in 1 file: a.py (30), b.py (10)",
+      "many": "... 100 of 140 match lines shown; the rest are in 2 files: a.py (30), b.py (10)"
     },
     "search_more_files": {
       "arguments": {},

@@ -1,0 +1,1 @@
+search needs pattern, files or both.

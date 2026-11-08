@@ -1,0 +1,13 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 45d898f1   dirty: 0 files   cache: none
+search /formatMoney/: 5 matches in 2 files
+pricing.ts
+  formatMoney  [ts:pricing.ts::formatMoney] @94-96
+    94| export function formatMoney(money: Money): string {
+reports.ts
+    6| import { PriceBook, Tier, formatMoney } from "./pricing";
+  reorderReport  [ts:reports.ts::reorderReport] @32-49
+    47|   lines.push(`total`.padEnd(22) + formatMoney({ amount: running, currency: prices.currency }));
+  formatRow  [ts:reports.ts::formatRow] @51-56
+    54|   const money = formatMoney(lineTotal);
+  summarise  [ts:reports.ts::summarise] @58-69
+    63|     value: formatMoney(stockValue(inventory, prices, Tier.Trade)),

@@ -1,0 +1,7 @@
+{
+  "tool": "search",
+  "fixture": "repo_py",
+  "arguments": {
+    "files": "{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}"
+  }
+}

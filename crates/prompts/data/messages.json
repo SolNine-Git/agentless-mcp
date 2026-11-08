@@ -321,7 +321,7 @@
   "search_cut": "{text}...[+{chars} {chars:char|chars}]",
   "search_repeat": "same line in {count} places: {listed}",
   "search_noise": "+ {count} {count:match|matches} in {total} {kind} {total:file|files}: {listed}. path=<file> shows them.",
-  "search_rest": "... {shown} of {total} match lines shown; {count} more {count:file|files}: {listed}",
+  "search_rest": "... {shown} of {total} match lines shown; the rest are in {count} {count:file|files}: {listed}",
   "search_more_files": "{count} more {count:file|files}",
   "search_skipped": "// warning: {count} {count:file was|files were} not searched: {listed}",
   "search_bad_pattern": "pattern is not a valid regular expression: {reason} at column {count}. To match the text, pass pattern=\"{pattern}\"",

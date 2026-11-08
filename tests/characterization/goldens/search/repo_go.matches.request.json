@@ -1,0 +1,7 @@
+{
+  "tool": "search",
+  "fixture": "repo_go",
+  "arguments": {
+    "pattern": "ReorderReport"
+  }
+}

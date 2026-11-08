@@ -1868,7 +1868,7 @@
         "shown": 100,
         "total": 140
       },
-      "text": "... 100 of 140 match lines shown; 2 more files: a.py (30), b.py (10)"
+      "text": "... 100 of 140 match lines shown; the rest are in 2 files: a.py (30), b.py (10)"
     },
     "search_scope_files": {
       "arguments": {

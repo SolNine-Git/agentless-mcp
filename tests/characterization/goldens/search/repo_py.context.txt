@@ -1,0 +1,17 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+search /CENTS/: 3 matches in 1 file
+pricing.py
+  CURRENCY  [py:pricing.py::CURRENCY] @7
+    7| CURRENCY = "EUR"
+  CENTS  [py:pricing.py::CENTS] @8
+    8| CENTS = Decimal("0.01")
+    9| 
+  PriceBook.quote  [py:pricing.py::PriceBook.quote] @46-56
+    55|         line_total = discounted * quantity
+    56|         return line_total.quantize(CENTS, rounding=ROUND_HALF_UP)
+  PriceBook  [py:pricing.py::PriceBook] @26-75
+    57| 
+  format_money  [py:pricing.py::format_money] @78-81
+    79|     """Render an amount with the configured currency suffix."""
+    80|     quantized = amount.quantize(CENTS, rounding=ROUND_HALF_UP)
+    81|     return f"{quantized} {CURRENCY}"
