@@ -1,6 +1,7 @@
 //! The one place a name spelled in a file becomes an evidence tier and a candidate set.
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use facts::{Declared, Ref, Role};
 use syntax::Language;
@@ -70,11 +71,57 @@ struct Candidates<'a> {
     groups: Vec<(&'a str, usize, usize)>,
 }
 
+// How a site spells its name: a bare name reads only the file and the name, a qualified name and a
+// module attribute read their qualifier as well.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Shape {
+    Bare,
+    Qualified,
+    ModuleAttribute,
+}
+
+// Everything one resolution reads: the scan position of the spelling file, the shape, the
+// qualifier (empty for a bare name) and the name.
+#[derive(Clone, Copy)]
+struct Spelled<'s> {
+    at: Option<usize>,
+    shape: Shape,
+    qualifier: &'s str,
+    name: &'s str,
+}
+
+impl<'s> Spelled<'s> {
+    fn bare(at: Option<usize>, name: &'s str) -> Spelled<'s> {
+        Spelled {
+            at,
+            shape: Shape::Bare,
+            qualifier: "",
+            name,
+        }
+    }
+}
+
+// A spelling's file, shape and name position in the index; the qualifier keys the list below it.
+type Key = (usize, Shape, usize);
+
+// A resolution kept without the scan's lifetime, so the resolver stays covariant: the tier and the
+// (file, symbol) position of each candidate.
+struct Kept {
+    tier: Tier,
+    at: Vec<(usize, usize)>,
+}
+
+// Each key with every qualifier it was resolved under, and what it resolved to.
+type Memo = HashMap<Key, Vec<(Box<str>, Option<Kept>)>>;
+
 /// Resolves names against one scan's name index and import scopes.
 pub struct Resolver<'a> {
     index: &'a NameIndex<'a>,
     scopes: &'a Scopes<'a>,
     candidates: Vec<Candidates<'a>>,
+    // The index and the scopes never change, so a key and qualifier resolve once for the life of
+    // the resolver. A lock, not a cell, keeps the resolver `Sync` for the types that hold it.
+    resolved: Mutex<Memo>,
 }
 
 impl<'a> Resolver<'a> {
@@ -96,6 +143,7 @@ impl<'a> Resolver<'a> {
             index,
             scopes,
             candidates,
+            resolved: Mutex::new(HashMap::new()),
         }
     }
 
@@ -115,6 +163,11 @@ impl<'a> Resolver<'a> {
     /// name-only match keeps the definitions in the language family of the file at `path`.
     #[must_use]
     pub fn resolve(&self, name: &str, path: &str) -> Option<Resolution<'a>> {
+        let at = self.scopes.position(path);
+        self.memoized(Spelled::bare(at, name), || self.resolve_bare(name, path))
+    }
+
+    fn resolve_bare(&self, name: &str, path: &str) -> Option<Resolution<'a>> {
         let known = self
             .index
             .position(name)
@@ -177,12 +230,13 @@ impl<'a> Resolver<'a> {
         names: Option<&'r BTreeSet<&str>>,
     ) -> impl Iterator<Item = (&'a Ref, Resolution<'a>)> + 'r {
         let declared = Declared::of(&file.facts.symbols, &file.facts.refs);
+        let at = self.scopes.position(&file.path);
         file.facts.refs.iter().filter_map(move |reference| {
             let wanted = names.is_none_or(|names| names.contains(reference.name.as_str()));
             if !wanted || !reference.is_resolvable() || declared.declares(reference) {
                 return None;
             }
-            self.resolve_site(reference, &file.path)
+            self.resolve_site(reference, &file.path, at)
                 .map(|found| (reference, found))
         })
     }
@@ -196,13 +250,76 @@ impl<'a> Resolver<'a> {
             && self.qualified(&reference.qualifier, path) == Some(Qualified::Foreign)
     }
 
-    fn resolve_site(&self, reference: &Ref, path: &str) -> Option<Resolution<'a>> {
+    // `at` is the scan position of the file at `path`, which the caller looks up once per file.
+    fn resolve_site(
+        &self,
+        reference: &Ref,
+        path: &str,
+        at: Option<usize>,
+    ) -> Option<Resolution<'a>> {
+        let (name, qualifier) = (reference.name.as_str(), reference.qualifier.as_str());
+        let spelled = |shape| Spelled {
+            at,
+            shape,
+            qualifier,
+            name,
+        };
         if reference.role == Role::ModuleAttribute {
-            self.resolve_module_attribute(&reference.name, path, &reference.qualifier)
-        } else if !reference.qualifier.is_empty() {
-            self.resolve_qualified(&reference.name, path, &reference.qualifier)
+            self.memoized(spelled(Shape::ModuleAttribute), || {
+                self.resolve_module_attribute(name, path, qualifier)
+            })
+        } else if !qualifier.is_empty() {
+            self.memoized(spelled(Shape::Qualified), || {
+                self.resolve_qualified(name, path, qualifier)
+            })
         } else {
-            self.resolve(&reference.name, path)
+            self.memoized(Spelled::bare(at, name), || self.resolve_bare(name, path))
+        }
+    }
+
+    // The resolution of `spelled`, from the memo or from `resolve`; a path outside the scan or a
+    // name outside the index has no key and resolves each time.
+    fn memoized(
+        &self,
+        spelled: Spelled<'_>,
+        resolve: impl FnOnce() -> Option<Resolution<'a>>,
+    ) -> Option<Resolution<'a>> {
+        let Some(key) = (spelled.at)
+            .zip(self.index.position(spelled.name))
+            .map(|(file, name)| (file, spelled.shape, name))
+        else {
+            return resolve();
+        };
+        {
+            let resolved = self.memo();
+            let mut held = resolved.get(&key).into_iter().flatten();
+            if let Some((_, kept)) = held.find(|(held, _)| **held == *spelled.qualifier) {
+                return kept.as_ref().map(|kept| self.restored(kept));
+            }
+        }
+        let found = resolve();
+        let kept = found.as_ref().map(|found| Kept {
+            tier: found.tier,
+            at: found.candidates.iter().map(Definition::position).collect(),
+        });
+        let mut resolved = self.memo();
+        let held = resolved.entry(key).or_default();
+        held.push((spelled.qualifier.into(), kept));
+        found
+    }
+
+    // No code panics while it holds the lock, so a poisoned memo is still whole.
+    fn memo(&self) -> MutexGuard<'_, Memo> {
+        self.resolved.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn restored(&self, kept: &Kept) -> Resolution<'a> {
+        let files = self.index.files();
+        Resolution {
+            tier: kept.tier,
+            candidates: (kept.at.iter())
+                .map(|&(file, symbol)| Definition::new(files, file, symbol))
+                .collect(),
         }
     }
 

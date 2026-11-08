@@ -525,7 +525,7 @@ pub fn graph::Resolver<'a>::resolve(&self, &str, &str) -> core::option::Option<g
 pub fn graph::Resolver<'a>::resolved_sites<'r>(&'r self, &'a graph::FileFacts, core::option::Option<&'r alloc::collections::btree::set::BTreeSet<&str>>) -> impl core::iter::traits::iterator::Iterator<Item = (&'a facts::values::Ref, graph::Resolution<'a>)> + 'r
 pub fn graph::Resolver<'a>::scopes(&self) -> &'a graph::Scopes<'a>
 pub fn graph::Resolver<'a>::through_imports(&self, &str, &str) -> alloc::vec::Vec<graph::Definition<'a>>
-impl<'a> core::marker::Freeze for graph::Resolver<'a>
+impl<'a> !core::marker::Freeze for graph::Resolver<'a>
 impl<'a> core::marker::Send for graph::Resolver<'a>
 impl<'a> core::marker::Sync for graph::Resolver<'a>
 impl<'a> core::marker::Unpin for graph::Resolver<'a>
