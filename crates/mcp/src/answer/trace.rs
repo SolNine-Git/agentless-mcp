@@ -12,7 +12,9 @@ pub(super) fn answer(context: &Context<'_>, arguments: &Arguments) -> Result<Str
         targets: targets(arguments.value("target")),
         more: arguments.text("more").and_then(Section::from_name),
     };
-    let outcome = app::trace::trace(&context.inner.services, &context.reading, &request);
+    let services = &context.inner.services;
+    let graphs = &context.inner.graphs;
+    let outcome = app::trace::trace_kept(services, &context.reading, &request, graphs);
     context.logged(&outcome.diagnostics);
     let trace = outcome.value?;
     Ok(context.rendered(&TraceAnswer {

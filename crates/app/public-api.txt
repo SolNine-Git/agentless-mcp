@@ -1376,6 +1376,20 @@ impl core::marker::Unpin for app::trace::FolderTrace
 impl core::marker::UnsafeUnpin for app::trace::FolderTrace
 impl core::panic::unwind_safe::RefUnwindSafe for app::trace::FolderTrace
 impl core::panic::unwind_safe::UnwindSafe for app::trace::FolderTrace
+pub struct app::trace::KeptGraphs
+impl app::trace::KeptGraphs
+pub fn app::trace::KeptGraphs::builds(&self) -> usize
+impl core::default::Default for app::trace::KeptGraphs
+pub fn app::trace::KeptGraphs::default() -> Self
+impl core::fmt::Debug for app::trace::KeptGraphs
+pub fn app::trace::KeptGraphs::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for app::trace::KeptGraphs
+impl core::marker::Send for app::trace::KeptGraphs
+impl core::marker::Sync for app::trace::KeptGraphs
+impl core::marker::Unpin for app::trace::KeptGraphs
+impl core::marker::UnsafeUnpin for app::trace::KeptGraphs
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::KeptGraphs
+impl core::panic::unwind_safe::UnwindSafe for app::trace::KeptGraphs
 pub struct app::trace::Similar
 pub app::trace::Similar::bound_total: app::trace::Tally
 pub app::trace::Similar::rows: alloc::vec::Vec<app::trace::SimilarRow>
@@ -1555,6 +1569,7 @@ pub const app::trace::MORE_TREE_DEPTH: usize
 pub const app::trace::MORE_TREE_ENTRIES: usize
 pub const app::trace::SYMBOL_ROWS: usize
 pub fn app::trace::trace(&app::Services, &app::Reading<'_>, &app::trace::TraceRequest) -> app::Noted<core::result::Result<app::trace::Trace, app::Error>>
+pub fn app::trace::trace_kept(&app::Services, &app::Reading<'_>, &app::trace::TraceRequest, &app::trace::KeptGraphs) -> app::Noted<core::result::Result<app::trace::Trace, app::Error>>
 pub enum app::After
 pub app::After::File(std::path::PathBuf)
 pub app::After::Text(alloc::string::String)

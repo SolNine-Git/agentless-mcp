@@ -8,16 +8,15 @@ use graph::Tier;
 
 use super::change::last_change;
 use super::{
-    Callees, Callers, EdgeGroup, LAST_CHANGE_DEADLINE, LISTING_LIMIT, SYMBOL_ROWS, Section,
+    Call, Callees, Callers, EdgeGroup, LAST_CHANGE_DEADLINE, LISTING_LIMIT, SYMBOL_ROWS, Section,
     Similar, SimilarRow, SymbolTrace, Tally, Tests, TierSites, TierTotal, cap,
 };
 use crate::explain::explain_in;
 use crate::ops::limits::{DEFAULT_HISTORY_BUDGET, DEFAULT_HISTORY_LIMIT};
-use crate::symbol_graph::CallGraph;
 use crate::{
     Error, ExpandRequest, ExplainRequest, Explanation, HistoryRequest, HistoryResult, IntArg,
-    Noted, Reading, RefGroup, RefsRequest, RefsResult, Services, SharedCaller, SymbolCard,
-    TierGroup, expand, history, is_test_path, refs,
+    Noted, RefGroup, RefsRequest, RefsResult, SharedCaller, SymbolCard, TierGroup, expand, history,
+    is_test_path, refs,
 };
 
 // The sections that a default card holds and that `more` can also name alone.
@@ -29,16 +28,12 @@ const DEFAULT_SECTIONS: [Section; 4] = [
 ];
 
 pub(super) fn symbol_trace(
-    services: &Services,
-    reading: &Reading<'_>,
-    graph: &CallGraph<'_>,
+    call: &Call<'_, '_, '_>,
     card: SymbolCard,
     more: Option<Section>,
 ) -> Noted<Result<SymbolTrace, Error>> {
     let sections = Sections {
-        services,
-        reading,
-        graph,
+        call,
         id: card.stable_id.clone(),
         more,
     };
@@ -57,15 +52,13 @@ pub(super) fn symbol_trace(
     traced.then_ok(|traced| sections.with_git(traced))
 }
 
-struct Sections<'s, 'r, 'g> {
-    services: &'s Services,
-    reading: &'s Reading<'r>,
-    graph: &'s CallGraph<'g>,
+struct Sections<'s, 'c, 'r, 'g> {
+    call: &'s Call<'c, 'r, 'g>,
     id: String,
     more: Option<Section>,
 }
 
-impl Sections<'_, '_, '_> {
+impl Sections<'_, '_, '_, '_> {
     fn wants(&self, section: Section) -> bool {
         match self.more {
             None => DEFAULT_SECTIONS.contains(&section),
@@ -85,7 +78,7 @@ impl Sections<'_, '_, '_> {
             limit: IntArg::from_usize(LISTING_LIMIT),
             shared_callers: self.wants(Section::Similar),
         };
-        let found = refs(self.services, self.reading, &request);
+        let found = refs(self.call.services, self.call.reading, &request);
         found.map_ok(|found| SymbolTrace {
             callers: (self.wants(Section::Callers)).then(|| callers(&found, self.more)),
             tests: (self.wants(Section::Tests))
@@ -103,7 +96,8 @@ impl Sections<'_, '_, '_> {
             target: self.id.clone(),
             limit: IntArg::from_usize(LISTING_LIMIT),
         };
-        let explained = explain_in(self.reading, &request, self.graph);
+        let call = self.call;
+        let explained = explain_in(call.reading, &request, call.graph, &call.scan.skipped);
         explained.map_ok(|explained| SymbolTrace {
             callees: Some(callees(&explained, self.more)),
             ..traced
@@ -115,8 +109,9 @@ impl Sections<'_, '_, '_> {
     fn with_git(&self, traced: SymbolTrace) -> Noted<Result<SymbolTrace, Error>> {
         match self.more {
             None => {
+                let call = self.call;
                 let change =
-                    last_change(self.services, self.reading, &self.id, LAST_CHANGE_DEADLINE);
+                    last_change(call.services, call.reading, &self.id, LAST_CHANGE_DEADLINE);
                 Noted::new(Ok(SymbolTrace {
                     change: Some(change),
                     ..traced
@@ -144,7 +139,7 @@ impl Sections<'_, '_, '_> {
             limit: IntArg::from_usize(DEFAULT_HISTORY_LIMIT),
             budget: IntArg::from_usize(DEFAULT_HISTORY_BUDGET),
         };
-        history(self.services, self.reading, &request).map(refusal_text)
+        history(self.call.services, self.call.reading, &request).map(refusal_text)
     }
 
     fn body(&self) -> Noted<Result<Result<SymbolCard, String>, Error>> {
@@ -152,7 +147,7 @@ impl Sections<'_, '_, '_> {
             ids: vec![self.id.clone()],
             limit: IntArg::from_usize(1),
         };
-        let expanded = expand(self.services, self.reading, &request);
+        let expanded = expand(self.call.services, self.call.reading, &request);
         expanded.map_ok(|mut expanded| match expanded.cards.pop() {
             Some(card) => Ok(card),
             None => Err((expanded.unresolved.into_iter())

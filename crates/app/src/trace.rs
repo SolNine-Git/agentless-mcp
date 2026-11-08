@@ -11,19 +11,18 @@ mod symbol;
 use std::time::Duration;
 
 use git::RepoFile;
-use graph::NameIndex;
 
 use crate::bounds::within;
 use crate::ops::limits::{FIND_USAGE_FILES, MAX_LIMIT};
-use crate::scan::over_scan;
 use crate::search::{FileRow, Place, walked_files};
-use crate::symbol_graph::{CallGraph, with_call_graph};
+use crate::symbol_graph::{CallGraph, CallScan, Keeping, over_call_scan, with_call_graph};
 use crate::{
     CycleRow, EdgeRow, Error, HistoryEntry, HistoryResult, IntArg, Noted, Reading, RefGroup,
     Services, SharedCaller, SymbolCard, Usage,
 };
 use resolve::Resolved;
 
+pub use crate::symbol_graph::KeptGraphs;
 pub use section::{CardKind, Section};
 
 /// The most targets that one trace call takes.
@@ -460,6 +459,26 @@ pub fn trace(
     reading: &Reading<'_>,
     request: &TraceRequest,
 ) -> Noted<Result<Trace, Error>> {
+    traced(services, reading, request, None)
+}
+
+/// Traces as [`trace`] does, over the graph that `kept` holds for the repository.
+#[must_use]
+pub fn trace_kept(
+    services: &Services,
+    reading: &Reading<'_>,
+    request: &TraceRequest,
+    kept: &KeptGraphs,
+) -> Noted<Result<Trace, Error>> {
+    traced(services, reading, request, Some(kept))
+}
+
+fn traced(
+    services: &Services,
+    reading: &Reading<'_>,
+    request: &TraceRequest,
+    kept: Option<&KeptGraphs>,
+) -> Noted<Result<Trace, Error>> {
     let count = IntArg::from_usize(request.targets.len());
     if let Err(error) = within(&count, 1, MAX_TARGETS, "target") {
         return Noted::new(Err(error));
@@ -467,32 +486,34 @@ pub fn trace(
     let walked = walked_files(services, &reading.repo.root);
     let mut diagnostics = walked.diagnostics;
     let value = walked.value.and_then(|files| {
-        let scanned = over_scan(services, reading, |facts| {
-            let index = NameIndex::build(&facts.files);
-            let resolved = resolve::resolved(reading, facts, &index, &files, &request.targets);
-            Ok(with_call_graph(facts, &index, reading.deadline, |graph| {
+        let traced = over_call_scan(services, reading, |scan| {
+            let keeping = kept.map_or(Keeping::Own, |kept| {
+                Keeping::Server(kept, reading.repo.root.as_path())
+            });
+            with_call_graph(&scan.files, reading.deadline, keeping, |graph| {
+                let resolved = resolve::resolved(reading, scan, graph, &files, &request.targets);
                 let call = Call {
                     services,
                     reading,
                     files: &files,
+                    scan,
                     graph,
                 };
-                carded(&call, request, resolved)
-            }))
+                resolved.then_ok(|resolved| carded(&call, request, resolved))
+            })
         });
-        diagnostics.extend(scanned.diagnostics);
-        let traced = scanned.value?;
         diagnostics.extend(traced.diagnostics);
         traced.value.map(|cards| Trace { cards })
     });
     Noted { value, diagnostics }
 }
 
-// What every card of one call reads: the walk, and the scan's one name index and graph.
+// What every card of one call reads: the walk, the scan, and the scan's one name index and graph.
 struct Call<'c, 'r, 'g> {
     services: &'c Services,
     reading: &'c Reading<'r>,
     files: &'c [RepoFile],
+    scan: &'c CallScan,
     graph: &'c CallGraph<'g>,
 }
 
@@ -532,7 +553,7 @@ fn outcome(
         services,
         reading,
         files,
-        graph,
+        ..
     } = *call;
     let kind = resolved.kind();
     let absent = more.filter(|section| !kind.sections().contains(section));
@@ -542,9 +563,9 @@ fn outcome(
         return Noted::new(Ok(Outcome::NoSection { section, kind }));
     }
     let card = match resolved {
-        Resolved::Symbol(card) => symbol::symbol_trace(services, reading, graph, card, more)
+        Resolved::Symbol(card) => symbol::symbol_trace(call, card, more)
             .map(|traced| traced.map(|traced| Card::Symbol(Box::new(traced)))),
-        Resolved::File(found) => file::file_trace(services, reading, graph, &found, more)
+        Resolved::File(found) => file::file_trace(call, &found, more)
             .map(|traced| traced.map(|traced| Card::File(Box::new(traced)))),
         Resolved::Folder(path) => {
             file::folder_trace(reading, files, &path, more).map(|traced| Ok(Card::Folder(traced)))

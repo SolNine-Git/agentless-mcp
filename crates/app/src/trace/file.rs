@@ -10,14 +10,13 @@ use git::RepoFile;
 use super::change::file_change;
 use super::resolve::FoundFile;
 use super::{
-    Cycles, Declares, FILE_CYCLES, FILE_DECLARATIONS, FILE_ROWS, FOLDER_DEPTH, FOLDER_ENTRIES,
-    FileLinks, FileTrace, FolderEntry, FolderTrace, LAST_CHANGE_DEADLINE, Linked, MORE_TREE_DEPTH,
-    MORE_TREE_ENTRIES, Section, Tally, cap,
+    Call, Cycles, Declares, FILE_CYCLES, FILE_DECLARATIONS, FILE_ROWS, FOLDER_DEPTH,
+    FOLDER_ENTRIES, FileLinks, FileTrace, FolderEntry, FolderTrace, LAST_CHANGE_DEADLINE, Linked,
+    MORE_TREE_DEPTH, MORE_TREE_ENTRIES, Section, Tally, cap,
 };
 use crate::explain::explain_in;
 use crate::ops::limits::MAX_LIMIT;
 use crate::search::{Place, file_row};
-use crate::symbol_graph::CallGraph;
 use crate::{
     CyclesRequest, Error, ExplainRequest, ImportRow, IntArg, Noted, Reading, Services, SymbolCard,
     cycles, is_test_path,
@@ -28,17 +27,16 @@ use kernel::Bounded;
 const CONSTANT: &str = "constant";
 
 pub(super) fn file_trace(
-    services: &Services,
-    reading: &Reading<'_>,
-    graph: &CallGraph<'_>,
+    call: &Call<'_, '_, '_>,
     found: &FoundFile,
     more: Option<Section>,
 ) -> Noted<Result<FileTrace, Error>> {
+    let (services, reading) = (call.services, call.reading);
     let bare = read_lines(&reading.repo.root, &found.path).map(|lines| bare(found, lines, more));
     let linked = [Section::Imports, Section::Importers, Section::Tests];
     let traced = Noted::new(bare).then_ok(|traced| {
         if linked.into_iter().any(|section| wanted(more, section)) {
-            links(reading, graph, found, more).map_ok(|links| links.into_card(traced, more))
+            links(call, found, more).map_ok(|links| links.into_card(traced, more))
         } else {
             Noted::new(Ok(traced))
         }
@@ -138,8 +136,7 @@ impl Links {
 }
 
 fn links(
-    reading: &Reading<'_>,
-    graph: &CallGraph<'_>,
+    call: &Call<'_, '_, '_>,
     found: &FoundFile,
     more: Option<Section>,
 ) -> Noted<Result<Links, Error>> {
@@ -154,7 +151,8 @@ fn links(
         target: anchor.clone(),
         limit: IntArg::from_usize(MAX_LIMIT),
     };
-    explain_in(reading, &request, graph).map_ok(|explained| {
+    let skipped = &call.scan.skipped;
+    explain_in(call.reading, &request, call.graph, skipped).map_ok(|explained| {
         let out = &explained.imports_out;
         let into = &explained.imports_in;
         Links {

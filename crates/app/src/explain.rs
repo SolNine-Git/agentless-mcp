@@ -1,7 +1,7 @@
 //! One symbol's card: where it is defined, what it touches and what touches it, each side
 //! grouped by evidence tier, and the imports of its file.
 
-use graph::{Definition, NameIndex, SymbolEdge, SymbolGraph, Tier};
+use graph::{Definition, SymbolEdge, SymbolGraph, Tier};
 use kernel::Bounded;
 use prompts::messages::DATA_KEY_NO_FAN_IN;
 
@@ -11,9 +11,8 @@ use crate::endpoints::{
     data_key_binding,
 };
 use crate::ops::limits::MAX_LIMIT;
-use crate::scan::over_scan;
 use crate::span::{Missed, SymbolSpan, data_key_span};
-use crate::symbol_graph::{CallGraph, tier_at, verbs, with_call_graph};
+use crate::symbol_graph::{CallGraph, Keeping, over_call_scan, tier_at, verbs, with_call_graph};
 use crate::{
     Error, IntArg, Noted, RationaleNode, Reading, Services, Skipped, SymbolCard, rationale_nodes,
     symbol_card,
@@ -112,23 +111,23 @@ pub fn explain(
     request: &ExplainRequest,
 ) -> Noted<Result<Explanation, Error>> {
     with_limit(reading, request, |limit| {
-        over_scan(services, reading, |facts| {
-            let index = NameIndex::build(&facts.files);
-            with_call_graph(facts, &index, reading.deadline, |graph| {
-                over_graph(reading, graph, &request.target, limit)
+        over_call_scan(services, reading, |scan| {
+            with_call_graph(&scan.files, reading.deadline, Keeping::Own, |graph| {
+                graph_explained(reading, graph, &scan.skipped, &request.target, limit)
             })
         })
     })
 }
 
-// Explains `request` over the graph that one trace call builds once for all its cards.
+// Explains `request` over the graph that one trace call reads for all its cards.
 pub(crate) fn explain_in(
     reading: &Reading<'_>,
     request: &ExplainRequest,
     graph: &CallGraph<'_>,
+    skipped: &[Skipped],
 ) -> Noted<Result<Explanation, Error>> {
     with_limit(reading, request, |limit| {
-        Noted::new(over_graph(reading, graph, &request.target, limit))
+        graph_explained(reading, graph, skipped, &request.target, limit)
     })
 }
 
@@ -149,25 +148,30 @@ fn with_limit(
     explained(limit)
 }
 
-fn over_graph(
+// The work owns what it reads, as a kept graph answers it on the root's graph thread.
+fn graph_explained(
     reading: &Reading<'_>,
     graph: &CallGraph<'_>,
+    skipped: &[Skipped],
     target: &str,
     limit: usize,
-) -> Result<Explanation, Error> {
-    let built = graph.graph()?;
-    let skipped = &graph.facts.skipped;
-    let scope = Scope {
-        index: graph.index,
-        skipped,
-        root: &reading.repo.root,
-    };
-    let explained = explanation(&scope, built, target, limit);
-    let coverage = Coverage::of(&explained.binding, skipped);
-    Ok(Explanation {
-        coverage,
-        skipped: skipped.clone(),
-        ..explained
+) -> Noted<Result<Explanation, Error>> {
+    let skipped = skipped.to_vec();
+    let root = reading.repo.root.clone();
+    let target = target.to_owned();
+    graph.answered(move |index, built| {
+        let scope = Scope {
+            index,
+            skipped: &skipped,
+            root: &root,
+        };
+        let explained = explanation(&scope, built, &target, limit);
+        let coverage = Coverage::of(&explained.binding, &skipped);
+        Explanation {
+            coverage,
+            skipped,
+            ..explained
+        }
     })
 }
 

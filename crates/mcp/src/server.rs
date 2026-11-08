@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use app::trace::KeptGraphs;
 use app::{Services, Session};
 use tokio::sync::Semaphore;
 
@@ -96,6 +97,7 @@ impl Server {
             services,
             ports,
             hooks,
+            graphs: KeptGraphs::default(),
         };
         let tools = listed_tools(inner.allowlist.root_count());
         Server {

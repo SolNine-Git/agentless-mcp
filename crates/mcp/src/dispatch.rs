@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use app::Services;
 use app::surface::{TOOLS, Tool};
+use app::trace::KeptGraphs;
 use kernel::Deadline;
 use serde_json::{Map, Value as Json};
 
@@ -32,6 +33,8 @@ pub(crate) struct Inner {
     pub(crate) services: Arc<Services>,
     pub(crate) ports: Ports,
     pub(crate) hooks: Hooks,
+    // The graph of each root, which the trace calls read and rebuild only when the scan differs.
+    pub(crate) graphs: KeptGraphs,
 }
 
 // A call that passed its checks: the tool and the validated arguments.

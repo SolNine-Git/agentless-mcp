@@ -7,15 +7,15 @@ use std::path::Path;
 
 use facts::{line_count, split_ordinal};
 use git::RepoFile;
-use graph::{FileFacts, NameIndex, Target, enclosing_symbol, joins_name_graph, parse_target};
+use graph::{FileFacts, Target, enclosing_symbol, joins_name_graph, parse_target};
 use syntax::Language;
 
 use super::{CardKind, MISS_LITERAL_FILES, Miss};
 use crate::endpoints::{BindingStatus, Scope, TARGET_WORDING, bind};
 use crate::map::focus_resolution;
 use crate::ops::limits::MAX_LIMIT;
-use crate::scan::RepoFacts;
 use crate::search::{SearchError, Selected, literal_files};
+use crate::symbol_graph::{CallGraph, CallScan};
 use crate::{Error, FindRequest, IntArg, Noted, Reading, Services, SymbolCard, find, symbol_card};
 
 // The paths of `File "<path>", line <n>` frames and of URLs, which the map's focus rule reads.
@@ -59,26 +59,32 @@ pub(super) enum Missed {
     Name { name: String, literal: String },
 }
 
-// The call's one scan and its name index resolve every target of the call.
+// The call's one scan and the name index of its graph resolve every target of the call. The work
+// owns what it reads, as a kept graph answers it on the root's graph thread.
 pub(super) fn resolved(
     reading: &Reading<'_>,
-    facts: &RepoFacts,
-    index: &NameIndex<'_>,
-    files: &[RepoFile],
+    scan: &CallScan,
+    graph: &CallGraph<'_>,
+    walk: &[RepoFile],
     targets: &[String],
-) -> Vec<Resolved> {
-    let walked = Walked::new(files);
-    let scope = Scope {
-        index,
-        skipped: &facts.skipped,
-        root: &reading.repo.root,
-    };
-    let resolver = Resolver {
-        scope: &scope,
-        walked: &walked,
-        facts,
-    };
-    targets.iter().map(|target| resolver.one(target)).collect()
+) -> Noted<Result<Vec<Resolved>, Error>> {
+    let paths: Vec<String> = walk.iter().map(|file| file.path.clone()).collect();
+    let (skipped, root) = (scan.skipped.clone(), reading.repo.root.clone());
+    let targets = targets.to_vec();
+    graph.indexed(move |files, index| {
+        let walked = Walked::new(&paths);
+        let scope = Scope {
+            index,
+            skipped: &skipped,
+            root: &root,
+        };
+        let resolver = Resolver {
+            scope: &scope,
+            walked: &walked,
+            files,
+        };
+        targets.iter().map(|target| resolver.one(target)).collect()
+    })
 }
 
 // The walked paths: every file the walk lists, which the scan may not read.
@@ -87,8 +93,8 @@ struct Walked<'f> {
 }
 
 impl<'f> Walked<'f> {
-    fn new(files: &'f [RepoFile]) -> Self {
-        let known = files.iter().map(|file| file.path.as_str()).collect();
+    fn new(paths: &'f [String]) -> Self {
+        let known = paths.iter().map(String::as_str).collect();
         Walked { known }
     }
 
@@ -125,7 +131,7 @@ enum Located {
 struct Resolver<'r, 'a> {
     scope: &'r Scope<'r, 'a>,
     walked: &'r Walked<'r>,
-    facts: &'a RepoFacts,
+    files: &'a [FileFacts],
 }
 
 impl Resolver<'_, '_> {
@@ -254,7 +260,7 @@ impl Resolver<'_, '_> {
     }
 
     fn scanned(&self, path: &str) -> Option<&FileFacts> {
-        self.facts.files.iter().find(|file| file.path == path)
+        self.files.iter().find(|file| file.path == path)
     }
 }
 
