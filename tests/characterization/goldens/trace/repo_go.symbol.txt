@@ -4,5 +4,4 @@
 callers: none
 callees: 0 bound; 5 name-only hidden  (more=callees)
 tests: none
-similar: none
 last change: 9fae3265 2026-02-01 fixture  (more=history)

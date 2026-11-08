@@ -116,59 +116,6 @@
           "complete": true
         }
       },
-      "similar": {
-        "total": 2,
-        "rows": [
-          {
-            "stable_id": "py:pricing.py::PriceBook",
-            "path": "pricing.py",
-            "line": 26,
-            "overlap": 2,
-            "shared_files": 1,
-            "score": 0.226338,
-            "defined_in_tests": false,
-            "shared_callers": [
-              {
-                "qualname": "reorder_report",
-                "path": "reports.py",
-                "line": 29
-              },
-              {
-                "qualname": "summarise",
-                "path": "reports.py",
-                "line": 69
-              }
-            ],
-            "tier": "imported"
-          },
-          {
-            "stable_id": "py:inventory.py::Inventory",
-            "path": "inventory.py",
-            "line": 44,
-            "overlap": 2,
-            "shared_files": 1,
-            "score": 0.182608,
-            "defined_in_tests": false,
-            "shared_callers": [
-              {
-                "qualname": "reorder_report",
-                "path": "reports.py",
-                "line": 29
-              },
-              {
-                "qualname": "summarise",
-                "path": "reports.py",
-                "line": 69
-              }
-            ],
-            "tier": "imported"
-          }
-        ],
-        "bound_total": {
-          "count": 2,
-          "complete": true
-        }
-      },
       "last_change": {
         "commit": {
           "sha": "f5f252187928e7028e1c825f36c6a15c81c9162e",

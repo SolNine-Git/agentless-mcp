@@ -253,9 +253,9 @@ pub const TRACE: &str = "Show what a code target is and how it connects. target 
         repository-relative path, path:line or a stable id. A name with \
         more than one definition gives the candidates. A function, \
         method or class gives its signature, callers by evidence tier, \
-        callees, tests, similar functions and last change. A file gives \
-        its declarations, imports, importers, tests and import cycles. \
-        A folder gives its tree. Each section shows how many rows it \
-        hides, and more shows one section in full. more=body gives the \
-        numbered body. A list of targets gives one card per target in \
-        one call.";
+        callees, tests and last change. A file gives its declarations, \
+        imports, importers, tests and import cycles. A folder gives its \
+        tree. Each section shows how many rows it hides, and more shows \
+        one section in full. more=body gives the numbered body. \
+        more=similar lists the symbols that share callers with the \
+        target. A list of targets gives one card per target in one call.";

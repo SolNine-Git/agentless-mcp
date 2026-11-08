@@ -312,7 +312,7 @@ fn more_names_a_section_that_the_card_kind_does_not_hold() {
 }
 
 #[test]
-fn a_symbol_card_splits_callers_from_tests_and_reads_callees_similar_and_coverage() {
+fn a_symbol_card_splits_callers_from_tests_and_reads_callees_and_coverage() {
     let traced = symbol(card(&TESTED, "py:core.py::helper", None));
     let callers = traced.callers.unwrap_or_else(|| panic!("callers"));
     let rows: Vec<(&str, &str)> = (callers.rows.iter())
@@ -326,12 +326,19 @@ fn a_symbol_card_splits_callers_from_tests_and_reads_callees_similar_and_coverag
     assert_eq!(tests.total, Tally::Exact(1));
     let fan_out = traced.callees.unwrap_or_else(|| panic!("callees"));
     assert!(fan_out.rows.is_empty());
-    assert!(traced.similar.is_some());
+    assert!(traced.similar.is_none());
     assert!(traced.history.is_none() && traced.body.is_none());
     assert!(matches!(
         traced.change,
         Some(Change::Commit(_) | Change::NotRead { .. })
     ));
+}
+
+#[test]
+fn only_more_similar_reads_the_symbols_that_share_callers() {
+    let traced = symbol(card(&TESTED, "py:core.py::helper", Some(Section::Similar)));
+    assert!(traced.similar.is_some());
+    assert!(traced.callers.is_none() && traced.tests.is_none() && traced.callees.is_none());
 }
 
 #[test]

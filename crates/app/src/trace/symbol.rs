@@ -1,6 +1,6 @@
-//! A symbol's card: callers, tests and similar functions from refs, callees from explain, and the
-//! last change from history, or one section in full. Each count is a total that the operation
-//! took before its cut, or a [`Tally::Floor`] when the list it counts was cut.
+//! A symbol's card: callers and tests from refs, callees from explain, and the last change from
+//! history, or one section in full, such as the similar functions from refs. Each count is a total
+//! that the operation took before its cut, or a [`Tally::Floor`] when the list it counts was cut.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -21,12 +21,7 @@ use crate::{
 };
 
 // The sections that a default card holds and that `more` can also name alone.
-const DEFAULT_SECTIONS: [Section; 4] = [
-    Section::Callers,
-    Section::Tests,
-    Section::Similar,
-    Section::Callees,
-];
+const DEFAULT_SECTIONS: [Section; 3] = [Section::Callers, Section::Tests, Section::Callees];
 
 pub(super) fn symbol_trace(
     call: &Call<'_, '_, '_, '_>,
@@ -85,7 +80,7 @@ impl Sections<'_, '_, '_, '_, '_> {
             callers: (self.wants(Section::Callers)).then(|| callers(&found, self.more)),
             tests: (self.wants(Section::Tests))
                 .then(|| tests(&found, cap(self.more, Section::Tests, SYMBOL_ROWS))),
-            similar: (self.wants(Section::Similar)).then(|| similar(&found, self.more)),
+            similar: (self.wants(Section::Similar)).then(|| similar(&found)),
             ..traced
         })
     }
@@ -247,7 +242,7 @@ fn tests(found: &RefsResult, cap: usize) -> Tests {
 
 // A candidate's tier is the strongest tier at which one of its shared callers references the
 // target. A candidate ranks through a bound caller when that tier binds.
-fn similar(found: &RefsResult, more: Option<Section>) -> Similar {
+fn similar(found: &RefsResult) -> Similar {
     let listing = &found.groups;
     let mut strongest: BTreeMap<(&str, &str), usize> = BTreeMap::new();
     for group in &listing.rows {
@@ -272,14 +267,8 @@ fn similar(found: &RefsResult, more: Option<Section>) -> Similar {
         .collect();
     let bound = tiered.iter().filter(|(_, tier)| binds(tier)).count();
     let whole = listing.omitted() == 0 && shared.rows().len() == shared.total();
-    let listed: Vec<(&SharedCaller, &'static str)> = if more == Some(Section::Similar) {
-        let mut every = tiered;
-        every.sort_by_key(|(_, tier)| listing_rank(tier));
-        every
-    } else {
-        let binding = tiered.into_iter().filter(|(_, tier)| binds(tier));
-        binding.take(SYMBOL_ROWS).collect()
-    };
+    let mut listed = tiered;
+    listed.sort_by_key(|(_, tier)| listing_rank(tier));
     let rows = listed.into_iter().map(|(candidate, tier)| SimilarRow {
         candidate: candidate.clone(),
         tier,

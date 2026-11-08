@@ -165,6 +165,26 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **The default symbol card of `trace` no longer shows `similar`.** The
+  symbols that share callers with the target are a list of co-used names, not
+  of duplicates: 0 of 15 sampled function rows of the default card are
+  duplicates (Wilson 95% 0-20.4%; docs/plans/2026-11-08_duplicate-logic.md,
+  section 3). `more=similar` still lists them in full, and the default card no
+  longer ranks shared callers. The `trace` description no longer promises
+  similar functions on the card and says that `more=similar` lists the
+  symbols that share callers with the target: tools/list grows from 2,696 to
+  2,744 bytes, and from 514 to 524 cl100k tokens (`trace` 253 to 263). The
+  changed goldens are the 6 default symbol cards in text and the 2 in JSON of
+  `goldens/trace`, which lose their `similar` section, and their counts in
+  `crates/app/fixtures/read/tokens.json`. Measured on the TPF answer set with
+  the release builds of d7ee18f and of this change: of 1,192 CLI answers, 241
+  differ, 239 of them only by the removed section. The other 2
+  (sympy__sympy-24562, `trace` of the entry and of the entry targets) also
+  lose the over-ceiling note: without its 267 KB `similar` section the card
+  fits in the 16,000-token ceiling, so the two-target answer now shows its
+  second card. Of 894 MCP answers, 332 differ, each only by the removed
+  section. `explain` and `refs`: 596 of 596 are equal.
+
 - **The refusal of a trace target count names the limit of 1 to 8 targets.**
   Through MCP, a `target` that is not a string or a list of 1 to 8 strings is
   refused with "target is VALUE, but must be a string or a list of 1 to 8

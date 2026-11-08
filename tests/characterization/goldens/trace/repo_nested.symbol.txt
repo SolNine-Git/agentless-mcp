@@ -8,5 +8,4 @@ callers: 8 bound
 callees: 2 bound
   billing/money.py  same-file  BILLING_CURRENCY @5, round_amount @9
 tests: none
-similar: none
 last change: 47e14e8d 2026-02-01 fixture  (more=history)

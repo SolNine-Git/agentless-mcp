@@ -119,6 +119,9 @@ ceiling of 1.5 times. L4 is the default because its `similar` section serves dup
 benchmark cannot see. In sessions with 16 or more requests after the card, the knee moves down one level (the
 report's sensitivity table). The in-situ log and the trail run can move the default.
 
+2026-11-08: the default card drops `similar` (L4 less `similar`), because 0 of 15 sampled function rows of
+it are duplicates (`docs/plans/2026-11-08_duplicate-logic.md` section 3); `more=similar` keeps the section.
+
 **Symbol card**, `trace("rs:crates/hook/src/prompt_map.rs::answer")`, from `explain`, `refs` and `history`:
 
 ```
