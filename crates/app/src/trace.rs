@@ -481,8 +481,7 @@ fn traced(
     request: &TraceRequest,
     kept: Option<&KeptGraphs>,
 ) -> Noted<Result<Trace, Error>> {
-    let count = IntArg::from_usize(request.targets.len());
-    if let Err(error) = within(&count, 1, MAX_TARGETS, "target") {
+    if let Err(error) = target_count(&request.targets) {
         return Noted::new(Err(error));
     }
     let keeping = kept.map_or(Keeping::Own, |kept| {
@@ -494,6 +493,37 @@ fn traced(
         resolved.then_ok(|resolved| carded(call, request, resolved))
     });
     traced.map_ok(|cards| Trace { cards })
+}
+
+/// Resolves `targets` as [`trace`] does, and returns the repository-relative file of each symbol
+/// card and file card that they resolve to, each file once, in target order. It reads no section.
+#[must_use]
+pub fn card_files(
+    services: &Services,
+    reading: &Reading<'_>,
+    targets: &[String],
+) -> Noted<Result<Vec<String>, Error>> {
+    if let Err(error) = target_count(targets) {
+        return Noted::new(Err(error));
+    }
+    over_call(services, reading, Keeping::Own, |call| {
+        let resolved = resolve::resolved(reading, call.scan, call.graph, call.files, targets);
+        resolved.map_ok(|resolved| first_of_each(resolved.iter().filter_map(Resolved::card_file)))
+    })
+}
+
+fn first_of_each<'p>(paths: impl Iterator<Item = &'p str>) -> Vec<String> {
+    let mut files: Vec<String> = Vec::new();
+    for path in paths {
+        if !files.iter().any(|file| file == path) {
+            files.push(path.to_owned());
+        }
+    }
+    files
+}
+
+fn target_count(targets: &[String]) -> Result<usize, Error> {
+    within(&IntArg::from_usize(targets.len()), 1, MAX_TARGETS, "target")
 }
 
 // The walk, the call's one scan and the scan's graph, then `work` over them. The walk's warnings

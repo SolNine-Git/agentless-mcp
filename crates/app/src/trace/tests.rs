@@ -6,7 +6,7 @@ use store::FactSource;
 use super::change::{file_change, last_change};
 use super::{
     CANDIDATE_ROWS, Card, CardKind, Change, FileTrace, FolderEntry, Linked, Miss, Outcome, Section,
-    SymbolTrace, Tally, Trace, TraceRequest, trace,
+    SymbolTrace, Tally, Trace, TraceRequest, card_files, trace,
 };
 use crate::endpoints::scanned::{LINKED, Scanned, TESTED};
 use crate::search::{Measure, Place};
@@ -257,6 +257,45 @@ fn a_target_list_takes_one_to_eight_targets_and_a_repeat_shares_its_first_card()
             format!("target takes a value from 1 through 8, got {count}")
         );
     }
+}
+
+// The files are those of the trace's symbol and file cards, once each, in target order; a folder,
+// candidates and a miss give none.
+#[test]
+fn card_files_are_the_files_of_the_symbol_and_file_cards_of_the_targets() {
+    let scanned = Scanned::new(&MIXED);
+    let targets = [
+        "pkg/other.py",
+        "Job.run",
+        "pkg/",
+        "run",
+        "zz_nothing",
+        "pkg/jobs.py",
+        "LIMIT",
+    ];
+    let owned: Vec<String> = targets.map(str::to_owned).to_vec();
+    let files = card_files(&scanned.services, &scanned.reading(), &owned).value;
+    let files = files.unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(files, ["pkg/other.py", "pkg/jobs.py"]);
+
+    let mut carded: Vec<String> = Vec::new();
+    for traced in traced_in(&scanned, &targets, None).cards {
+        let path = match traced.outcome {
+            Outcome::Card(Card::Symbol(card)) => card.card.path,
+            Outcome::Card(Card::File(card)) => card.path,
+            _ => continue,
+        };
+        if !carded.contains(&path) {
+            carded.push(path);
+        }
+    }
+    assert_eq!(files, carded);
+    let nine = vec!["Job".to_owned(); 9];
+    assert!(
+        card_files(&scanned.services, &scanned.reading(), &nine)
+            .value
+            .is_err()
+    );
 }
 
 #[test]

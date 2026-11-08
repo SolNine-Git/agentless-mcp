@@ -41,6 +41,15 @@ impl Resolved {
             Resolved::Missed(_) => CardKind::Miss,
         }
     }
+
+    // The file of a symbol card or a file card.
+    pub(super) fn card_file(&self) -> Option<&str> {
+        match self {
+            Resolved::Symbol(card) => Some(&card.path),
+            Resolved::File(found) => Some(&found.path),
+            Resolved::Folder(_) | Resolved::Candidates(_) | Resolved::Missed(_) => None,
+        }
+    }
 }
 
 // A file that the scan read: its declarations in file order, and the stable id of one that joins

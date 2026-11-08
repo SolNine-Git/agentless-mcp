@@ -1,11 +1,9 @@
 //! ledger-mark: after a trace call, a ledger entry in the call's context for the file of each
 //! symbol card and file card that its targets resolve to, so a later read of the file gets no card.
 
-use std::collections::HashSet;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use app::trace::{Card, CardKind, Outcome as TraceOutcome, Section, Trace, TraceRequest};
 use app::{Reading, Services, Session};
 use json::{JsonValue, get};
 
@@ -26,8 +24,7 @@ const LEDGER_FULL: &str = "ledger_full";
 const NO_CARD_FILE: &str = "no_card_file";
 const RESOLVE_FAILED: &str = "resolve_failed";
 
-// The targets resolve as the server resolves them, with the one section per kind that costs
-// least: a symbol's body and a file's declarations. A file target is traced a second time.
+// The targets resolve as the server resolves them, and no card section is read.
 pub(crate) fn in_process(
     services: &Services,
     root: &Path,
@@ -35,57 +32,7 @@ pub(crate) fn in_process(
 ) -> Result<Vec<String>, app::Error> {
     let repo = app::Repo::load(services, root)?;
     let session = Session::open_facts(services, repo, false).session.value?;
-    let reading = Reading::of(&session);
-    let first = traced(services, &reading, targets, Section::Body)?;
-    let mut files = card_files(&first);
-    let file_targets: Vec<String> = (first.cards.iter())
-        .filter(|traced| {
-            matches!(
-                traced.outcome,
-                TraceOutcome::NoSection {
-                    kind: CardKind::File,
-                    ..
-                }
-            )
-        })
-        .map(|traced| traced.target.clone())
-        .collect();
-    if !file_targets.is_empty() {
-        files.extend(card_files(&traced(
-            services,
-            &reading,
-            &file_targets,
-            Section::Declares,
-        )?));
-    }
-    let mut seen = HashSet::new();
-    files.retain(|file| seen.insert(file.clone()));
-    Ok(files)
-}
-
-fn traced(
-    services: &Services,
-    reading: &Reading<'_>,
-    targets: &[String],
-    more: Section,
-) -> Result<Trace, app::Error> {
-    let request = TraceRequest {
-        targets: targets.to_vec(),
-        more: Some(more),
-    };
-    app::trace::trace(services, reading, &request).value
-}
-
-fn card_files(trace: &Trace) -> Vec<String> {
-    let files = trace
-        .cards
-        .iter()
-        .filter_map(|traced| match &traced.outcome {
-            TraceOutcome::Card(Card::Symbol(card)) => Some(card.card.path.clone()),
-            TraceOutcome::Card(Card::File(card)) => Some(card.path.clone()),
-            _ => None,
-        });
-    files.collect()
+    app::trace::card_files(services, &Reading::of(&session), targets).value
 }
 
 // The tool_input, not the tool_response: the response's shape is not documented.

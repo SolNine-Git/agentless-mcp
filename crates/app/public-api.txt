@@ -1626,6 +1626,7 @@ pub const app::trace::MISS_USAGE_FILES: usize
 pub const app::trace::MORE_TREE_DEPTH: usize
 pub const app::trace::MORE_TREE_ENTRIES: usize
 pub const app::trace::SYMBOL_ROWS: usize
+pub fn app::trace::card_files(&app::Services, &app::Reading<'_>, &[alloc::string::String]) -> app::Noted<core::result::Result<alloc::vec::Vec<alloc::string::String>, app::Error>>
 pub fn app::trace::trace(&app::Services, &app::Reading<'_>, &app::trace::TraceRequest) -> app::Noted<core::result::Result<app::trace::Trace, app::Error>>
 pub fn app::trace::trace_kept(&app::Services, &app::Reading<'_>, &app::trace::TraceRequest, &app::trace::KeptGraphs) -> app::Noted<core::result::Result<app::trace::Trace, app::Error>>
 pub enum app::After
