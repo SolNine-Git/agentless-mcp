@@ -40,8 +40,8 @@ const HOOKS: [(&str, HookRun); 7] = [
     ("prompt-map", prompt_mapped),
     ("erosion", erosion),
     ("ledger-reset", ledger_reset),
-    ("gate-check", searched),
-    ("gate-mark", marked),
+    ("gate-check", retired),
+    ("gate-mark", retired),
 ];
 
 // The hooks need no start-up directory, so only the other command lines stop on an unread one.
@@ -75,16 +75,10 @@ fn erosion(env: &EnvConfig, services: &Services) -> u8 {
     answered(|| hook::erosion(env, services, &mut io::stdin().lock()))
 }
 
-// The search gate writes its deny message itself, because a failed write changes the exit code.
-fn searched(env: &EnvConfig, _services: &Services) -> u8 {
+// A retired hook stays accepted for one release, so a stale settings entry breaks no session.
+fn retired(_env: &EnvConfig, _services: &Services) -> u8 {
     keep_panic_lines();
-    hook::gate_check(env, &mut io::stdin().lock(), &mut io::stderr().lock())
-}
-
-fn marked(env: &EnvConfig, _services: &Services) -> u8 {
-    keep_panic_lines();
-    hook::gate_mark(env, &mut io::stdin().lock());
-    0
+    hook::retired(&mut io::stdin().lock())
 }
 
 // The prompt map writes its reply itself. Claude Code reads plain stdout as context on this event,

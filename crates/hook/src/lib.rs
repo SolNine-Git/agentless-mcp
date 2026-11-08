@@ -1,9 +1,9 @@
 //! The hooks that Claude Code runs around tool calls and prompts. The erosion gate lints the
 //! proposed text of each Write and Edit, decides whether to block, advise or allow, and appends
-//! one log record. The search gate holds broad text search until a localizing agentless call, and
-//! records that call. The prompt map names the files that rank first for the names in the first
+//! one log record. The prompt map names the files that rank first for the names in the first
 //! prompt of a session. The read card adds a source file's card to its first read in a context,
-//! and the ledger records the files whose cards a context holds.
+//! and the ledger records the files whose cards a context holds. The retired search gate's two
+//! hooks still run and do nothing.
 
 mod call;
 mod destination;
@@ -21,6 +21,7 @@ mod record;
 mod reply;
 mod report;
 mod repository;
+mod retired;
 mod run;
 mod search;
 mod signals;
@@ -45,7 +46,7 @@ pub use crate::ledger_reset::ledger_reset;
 pub use crate::prompt_map::prompt_map;
 pub use crate::read_card::read_card;
 pub use crate::report::gate_report;
-pub use crate::search::{gate_check, gate_mark};
+pub use crate::retired::retired;
 
 use crate::call::Call;
 use crate::gate::Ports;

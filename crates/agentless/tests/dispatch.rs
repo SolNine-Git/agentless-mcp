@@ -119,6 +119,9 @@ fn a_hook_command_line_that_names_no_hook_is_refused() {
         &["hook", "gate-check", "extra"],
         &["hook", "gate-mark", "extra"],
         &["hook", "prompt-map", "extra"],
+        &["hook", "read-card", "extra"],
+        &["hook", "ledger-mark", "extra"],
+        &["hook", "ledger-reset", "extra"],
     ] {
         let ran = run(&tree, args, &[]);
         assert_eq!(
@@ -173,69 +176,25 @@ fn gate(tree: &Tree, hook: &str, payload: &str, extra: &[(&str, &str)]) -> Ran {
     fed(command, tree, payload, extra)
 }
 
-// The one log line without its ts, which the run's own clock sets.
-fn after_ts(log: &str) -> String {
-    let rest = log
-        .strip_prefix("{\"ts\": ")
-        .unwrap_or_else(|| panic!("a line that starts with the ts: {log}"));
-    let (ts, tail) = rest
-        .split_once(", ")
-        .unwrap_or_else(|| panic!("a field after the ts: {log}"));
-    assert!(ts.contains('.') && ts.parse::<f64>().is_ok(), "{log}");
-    tail.to_owned()
-}
-
+// A payload that the search gate denied: the retired hook allows it and writes nothing.
 #[test]
-fn hook_gate_check_reaches_the_search_gate() {
+fn the_retired_gate_hooks_exit_0_with_no_output_in_a_removed_directory() {
     let tree = sandbox();
     let log = tree.join("gate.jsonl");
     let shown = log.to_str().expect("a UTF-8 log path");
-    let payload = r#"{"session_id": "s", "tool_name": "Read"}"#;
-
-    let ran = gate(&tree, "gate-check", payload, &[(GATE_LOG, shown)]);
-
-    let quiet = (Some(0), "", "");
-    assert_eq!((ran.code, ran.out.as_str(), ran.err.as_str()), quiet);
-    let line = std::fs::read_to_string(&log).expect("the gate log");
-    let tail = concat!(
-        r#""session_id": "s", "tool": "Read", "pattern": null, "#,
-        r#""event": "native_search_allowed", "reason": "not_a_search_tool"}"#,
-    );
-    assert_eq!(after_ts(&line), format!("{tail}\n"));
-}
-
-#[test]
-fn hook_gate_mark_reaches_the_search_gate() {
-    let tree = sandbox();
-    let log = tree.join("gate.jsonl");
-    let shown = log.to_str().expect("a UTF-8 log path");
-    let payload = r#"{"session_id": "s", "tool_name": "mcp__agentless__capabilities"}"#;
-
-    let ran = gate(&tree, "gate-mark", payload, &[(GATE_LOG, shown)]);
-
-    let quiet = (Some(0), "", "");
-    assert_eq!((ran.code, ran.out.as_str(), ran.err.as_str()), quiet);
-    let line = std::fs::read_to_string(&log).expect("the gate log");
-    let tail = concat!(
-        r#""session_id": "s", "event": "agentless_call_ignored", "#,
-        r#""tool": "mcp__agentless__capabilities", "operation": null, "#,
-        r#""reason": "non_localizing_operation"}"#,
-    );
-    assert_eq!(after_ts(&line), format!("{tail}\n"));
-}
-
-// The gate hooks come before the start-up directory test of the other command lines.
-#[test]
-fn the_gate_hooks_run_in_a_removed_directory() {
-    let tree = sandbox();
-    let log = tree.join("gate.jsonl");
-    let shown = log.to_str().expect("a UTF-8 log path");
+    let tmp = tree.path().display().to_string();
+    let payload = r#"{"session_id": "s", "tool_name": "Grep", "tool_input": {"pattern": "x"}}"#;
     for hook in ["gate-check", "gate-mark"] {
         let mut command = Command::new("sh");
         command.args(["-c", IN_REMOVED_DIRECTORY, BINARY, hook]);
         tree.create_dir("gone").expect("the start directory");
 
-        let ran = fed(command, &tree, "{}", &[(GATE_LOG, shown)]);
+        let ran = fed(
+            command,
+            &tree,
+            payload,
+            &[("TMPDIR", &tmp), (GATE_LOG, shown)],
+        );
 
         let quiet = (Some(0), "", "");
         assert_eq!(
@@ -244,12 +203,7 @@ fn the_gate_hooks_run_in_a_removed_directory() {
             "{hook}"
         );
     }
-    let line = std::fs::read_to_string(&log).expect("the gate log");
-    let tail = concat!(
-        r#""session_id": null, "tool": null, "pattern": null, "#,
-        r#""event": "native_search_allowed", "reason": "no_session_id"}"#,
-    );
-    assert_eq!(after_ts(&line), format!("{tail}\n"));
+    assert!(!log.exists());
 }
 
 // The prompt map also comes before the start-up directory test, and an empty stdin is silent.
