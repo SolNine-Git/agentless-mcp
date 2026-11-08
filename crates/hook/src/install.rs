@@ -153,17 +153,8 @@ pub(crate) fn uninstalled(args: &[OsString], env: &EnvConfig) -> Output {
         Ok(target) => target,
         Err(output) => return output,
     };
-    // A missing file holds no entry, and uninstall makes none.
-    let edit = |before: Option<&[u8]>| {
-        let document = document(before.ok_or(NoEdit::NothingToRemove)?)?;
-        let (edited, removed) = edit::uninstalled(&document).map_err(NoEdit::Unshaped)?;
-        if removed.current.is_empty() && removed.retired.is_empty() {
-            return Err(NoEdit::NothingToRemove);
-        }
-        Ok((layout::indented(&edited), removed))
-    };
     let shown = shown(&target);
-    match disk::written(&target, &edit, &disk::read) {
+    match disk::written(&target, &uninstall_edit, &disk::read) {
         Ok((Written::Wrote, removed)) => {
             let count = removed.current.len() + removed.retired.len();
             done(&HOOK_UNINSTALL_REPORT.render((&shown, count, removed.kept)))
@@ -172,6 +163,16 @@ pub(crate) fn uninstalled(args: &[OsString], env: &EnvConfig) -> Output {
         Ok((Written::Raced, _)) => failed(&HOOK_INSTALL_RACED.render(&shown)),
         Err(stopped) => stopped_output(stopped, &shown, UNINSTALL.command),
     }
+}
+
+// A missing file holds no entry, and uninstall makes none.
+fn uninstall_edit(before: Option<&[u8]>) -> Result<(String, Removed), NoEdit> {
+    let document = document(before.ok_or(NoEdit::NothingToRemove)?)?;
+    let (edited, removed) = edit::uninstalled(&document).map_err(NoEdit::Unshaped)?;
+    if removed.current.is_empty() && removed.retired.is_empty() {
+        return Err(NoEdit::NothingToRemove);
+    }
+    Ok((layout::indented(&edited), removed))
 }
 
 pub(crate) fn statused(args: &[OsString], env: &EnvConfig, binary: &str) -> Output {
