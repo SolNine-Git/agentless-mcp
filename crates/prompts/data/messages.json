@@ -330,6 +330,7 @@
   "search_nothing_asked": "search needs pattern, files or both.",
   "search_wide_glob": "files expands to more than {limit} globs: {glob}. Use fewer brace groups.",
   "read_card_context": "File card (agentless-mcp), first read of {path} in this context:\n{card}",
+  "read_card_cut": "(card cut at {cap} characters; trace {path} for the rest)",
   "subagent_map_context": "Repository map (agentless-mcp): for {seeds} in this brief, the files that rank first and that the brief does not name are {paths}.",
   "hook_status_current": "{name}: current",
   "hook_status_missing": "{name}: missing",

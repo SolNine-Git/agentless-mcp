@@ -8,7 +8,7 @@ use app::search::is_source_path;
 use app::trace::{Card, Outcome as TraceOutcome, TraceRequest, Traced};
 use app::{Reading, Repo, Services, Session};
 use io::Skipped;
-use prompts::messages::READ_CARD_CONTEXT;
+use prompts::messages::{READ_CARD_CONTEXT, READ_CARD_CUT};
 use render::TraceAnswer;
 use text::CodePointString;
 
@@ -20,7 +20,7 @@ use crate::search::{object_field, shell, text_field};
 // The card of the file at a repository-relative path, or None when the trace gives no file card.
 pub(crate) type CardFn = fn(&Services, &Path, &str) -> Result<Option<String>, app::Error>;
 
-// The design's card cap, below the 10,000 characters of a documented context.
+// The design's cap on the whole context, below the 10,000 characters of a documented context.
 pub(crate) const CARD_CAP: usize = 1_000;
 
 const READ: &str = "Read";
@@ -84,8 +84,7 @@ pub(crate) fn decide(
     let (services, root, rel) = (services.clone(), found.root, found.rel.clone());
     let finished = run.timed(move || card(&services, &root, &rel), facts);
     let card = run::finished(finished, RENDER_FAILED)?.ok_or(NO_FILE_CARD)?;
-    let context = READ_CARD_CONTEXT.render((found.rel.as_str(), cut(&card).as_str()));
-    Ok(Outcome::Context(context))
+    Ok(Outcome::Context(card_context(&found.rel, &card)))
 }
 
 // The file that the call read, absolute: a relative path is below the call's directory.
@@ -142,26 +141,42 @@ fn found(services: &Services, read: &Path) -> Result<Found, &'static str> {
     })
 }
 
-// Whole lines up to the cap. A first line longer than the cap is cut at the cap.
-pub(crate) fn cut(card: &str) -> String {
+// The context with the whole card when it fits the cap, else with the card's whole lines that
+// fit before the cut line. A path too long for the header and the cut line is cut at the cap.
+pub(crate) fn card_context(rel: &str, card: &str) -> String {
     let card = card.strip_suffix('\n').unwrap_or(card);
-    let mut kept = String::new();
-    let mut count = 0;
-    for line in card.split('\n') {
-        let added = usize::from(count > 0) + line.chars().count();
-        if count + added > CARD_CAP {
+    let whole = READ_CARD_CONTEXT.render((rel, card));
+    if whole.chars().count() <= CARD_CAP {
+        return whole;
+    }
+    let cut_line = READ_CARD_CUT.render((rel, CARD_CAP));
+    let fixed = READ_CARD_CONTEXT.render((rel, "")).chars().count() + cut_line.chars().count();
+    let kept = whole_lines(card, CARD_CAP.saturating_sub(fixed + 1));
+    let card = if kept.is_empty() {
+        cut_line
+    } else {
+        format!("{kept}\n{cut_line}")
+    };
+    READ_CARD_CONTEXT
+        .render((rel, &card))
+        .chars()
+        .take(CARD_CAP)
+        .collect()
+}
+
+// The first lines of `card` whose text, with the newlines between them, fits in `room`.
+fn whole_lines(card: &str, room: usize) -> &str {
+    let (mut end, mut count) = (0, 0);
+    for (at, line) in card.split('\n').enumerate() {
+        let newline = usize::from(at > 0);
+        let added = newline + line.chars().count();
+        if count + added > room {
             break;
         }
-        if count > 0 {
-            kept.push('\n');
-        }
-        kept.push_str(line);
         count += added;
+        end += newline + line.len();
     }
-    if kept.is_empty() {
-        return card.chars().take(CARD_CAP).collect();
-    }
-    kept
+    &card[..end]
 }
 
 #[cfg(test)]

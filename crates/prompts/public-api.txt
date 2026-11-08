@@ -254,6 +254,7 @@ pub const prompts::messages::PATH_SOURCE_CANDIDATES: prompts::Template<(prompts:
 pub const prompts::messages::PATH_SOURCE_CANDIDATES_CUT: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Text)>
 pub const prompts::messages::PROMPT_MAP_CONTEXT: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::READ_CARD_CONTEXT: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::READ_CARD_CUT: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::REFS_ABSENT: prompts::Template<prompts::Text>
 pub const prompts::messages::REFS_ABSENT_COMPLETE: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::REFS_ABSENT_PARTIAL: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>

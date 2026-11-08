@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 368] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 369] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1531,6 +1531,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 368] = [
         "read_card_context",
         &["path", "card"],
         messages::READ_CARD_CONTEXT.pieces(),
+    ),
+    (
+        "messages",
+        "read_card_cut",
+        &["path", "cap"],
+        messages::READ_CARD_CUT.pieces(),
     ),
     (
         "messages",

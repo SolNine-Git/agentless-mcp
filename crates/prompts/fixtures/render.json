@@ -1676,6 +1676,13 @@
       },
       "text": "File card (agentless-mcp), first read of crates/hook/src/prompt_map.rs in this context:\ncrates/hook/src/prompt_map.rs  rust  304 lines  ids: rs:crates/hook/src/prompt_map.rs::<QualifiedName>"
     },
+    "read_card_cut": {
+      "arguments": {
+        "cap": 1000,
+        "path": "crates/hook/src/prompt_map.rs"
+      },
+      "text": "(card cut at 1000 characters; trace crates/hook/src/prompt_map.rs for the rest)"
+    },
     "refs_absent": {
       "arguments": {
         "target": "py:pkg/lib.py::target"

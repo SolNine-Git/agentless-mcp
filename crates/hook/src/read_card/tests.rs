@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use app::hooks::Hook;
 
-use super::{CARD_CAP, CardFn, cut, decide, in_process};
+use super::{CARD_CAP, CardFn, card_context, decide, in_process};
 use crate::ContextHook;
 use crate::ledger::CAP;
 use crate::run::Run;
@@ -316,15 +316,26 @@ fn the_log_line_holds_its_keys_in_order() {
 }
 
 #[test]
-fn a_card_over_the_cap_keeps_whole_lines_and_a_long_first_line_is_cut() {
-    assert_eq!(cut("a\nb\n"), "a\nb");
+fn a_card_over_the_cap_keeps_whole_lines_then_a_cut_line_within_the_cap() {
+    let rel = "pkg/invoice.py";
+    let header = "File card (agentless-mcp), first read of pkg/invoice.py in this context:";
+    let cut_line = "(card cut at 1000 characters; trace pkg/invoice.py for the rest)";
+    assert_eq!(card_context(rel, "a\nb\n"), format!("{header}\na\nb"));
+
     let line = "x".repeat(99);
     let card = [line.as_str(); 12].join("\n") + "\n";
-    let kept = cut(&card);
-    assert_eq!(kept.lines().count(), 10, "{kept}");
-    assert!(kept.chars().count() <= CARD_CAP);
-    let long = "y".repeat(CARD_CAP + 5);
-    assert_eq!(cut(&format!("{long}\nrest")), "y".repeat(CARD_CAP));
+    let cut = card_context(rel, &card);
+    let kept = [line.as_str(); 8].join("\n");
+    assert_eq!(cut, format!("{header}\n{kept}\n{cut_line}"));
+    assert!(cut.chars().count() <= CARD_CAP);
+
+    let long = "y".repeat(CARD_CAP);
+    assert_eq!(
+        card_context(rel, &format!("{long}\nrest")),
+        format!("{header}\n{cut_line}")
+    );
+    let deep = format!("{}/x.py", "d".repeat(500));
+    assert_eq!(card_context(&deep, &card).chars().count(), CARD_CAP);
 }
 
 #[test]

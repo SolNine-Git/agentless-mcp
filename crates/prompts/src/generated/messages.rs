@@ -2261,6 +2261,15 @@ pub const READ_CARD_CONTEXT: Template<(Text, Text)> = Template::new(&[
     Piece::Value(1),
 ]);
 
+/// A template that takes (`path`, `cap`).
+pub const READ_CARD_CUT: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("(card cut at "),
+    Piece::Value(1),
+    Piece::Text(" characters; trace "),
+    Piece::Value(0),
+    Piece::Text(" for the rest)"),
+]);
+
 /// A template that takes `target`.
 pub const REFS_ABSENT: Template<Text> = Template::new(&[
     Piece::Text("no references to "),
