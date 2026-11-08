@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 
+use io::testing::Identity;
 use serde_json::Value;
 
 use super::{CHURN_WINDOW_DAYS, Churn, commit_time, tally};
@@ -32,6 +33,42 @@ fn each_churn_answer_over_real_repositories_matches_the_reference() {
         let got = counts(git.churn(&repos.path(&repo), &paths));
         assert_eq!(got, expected, "{repo} {paths:?}");
     }
+}
+
+// The merge equals main in "a*.py", so git log on that path prunes the side branch that edits and
+// reverts it. As a glob, "a*.py" also matches the "ab.py" that the side branch changes.
+#[test]
+fn a_glob_character_in_a_churn_path_matches_only_itself() {
+    let scratch = Scratch::new();
+    let future = Identity {
+        name: "churn",
+        email: "churn@example.invalid",
+        date: "2091-01-01T00:00:00Z",
+    };
+    let root = scratch.init("repo");
+    let env = scratch.env();
+    let git_at = |args: &[&str]| drop(io::testing::run_git(&root, args, &env, &future));
+    let commit = |message: &str| {
+        git_at(&["add", "-A"]);
+        git_at(&["commit", "--quiet", "-m", message]);
+    };
+    scratch.write("repo/a*.py", "a = 1\n");
+    scratch.write("repo/ab.py", "b = 1\n");
+    commit("base");
+    git_at(&["checkout", "--quiet", "-b", "side"]);
+    scratch.write("repo/a*.py", "a = 2\n");
+    commit("edit");
+    scratch.write("repo/a*.py", "a = 1\n");
+    commit("revert");
+    scratch.write("repo/ab.py", "b = 2\n");
+    commit("change ab");
+    git_at(&["checkout", "--quiet", "main"]);
+    git_at(&["merge", "--quiet", "--no-ff", "-m", "merge", "side"]);
+    let found = scratch
+        .git()
+        .churn(&root, &["a*.py"])
+        .expect("a churn answer");
+    assert_eq!(found["a*.py"].commits, 1);
 }
 
 #[test]

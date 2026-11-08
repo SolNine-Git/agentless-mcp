@@ -650,7 +650,7 @@
   ["log_span", ["a.py", 3, 9, 11, "0000000000000000000000000000000000000000"], ["log", "-L3,9:a.py", "--no-patch", "-z", "--format=%H%x00%aI%x00%s%x00%b", "--max-count=11", "0000000000000000000000000000000000000000", "--"]],
   ["differs", ["a b.py", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"], ["diff", "--quiet", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "--", ":(literal)a b.py"]],
   ["is_shallow", [], ["rev-parse", "--is-shallow-repository"]],
-  ["churn", ["a.py", "b.py", "old.py", "d\u00e9.py", ":!x.py", "with space.py", "missing.py"], ["log", "--since=90.days", "--pretty=%x00%ct", "--name-only", "--relative", "--", "./a.py", "./b.py", "./old.py", "./d\u00e9.py", "./:!x.py", "./with space.py", "./missing.py"]]
+  ["churn", ["a.py", "b.py", "old.py", "d\u00e9.py", ":!x.py", "with space.py", "missing.py"], ["log", "--since=90.days", "--pretty=%x00%ct", "--name-only", "--relative", "--", ":(literal)a.py", ":(literal)b.py", ":(literal)old.py", ":(literal)d\u00e9.py", ":(literal):!x.py", ":(literal)with space.py", ":(literal)missing.py"]]
  ],
  "log_span": [
   ["span", "a.py", 1, 2, 10, "b76de683ff23f2dc810037bce05a338f7be395cc", {"commits": [["b76de683ff23f2dc810037bce05a338f7be395cc", "2026-01-04T00:00:00Z", "bytes \u00ff\u00fe and \u00e9 \u00ed\u00a0\u0080", "body \u00e2\u0082\n"], ["c5a83e9e6be7e78c546c032145c796ab259451fe", "2026-01-02T03:04:05Z", "change f", "first line\n\n  indented\nlast\n\n"], ["7ea481d14f5b7d513e8a89cb3ce819e6814026bf", "2026-01-01T00:00:00Z", "add f", ""]], "capped": false}],
