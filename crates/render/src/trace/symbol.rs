@@ -1,11 +1,15 @@
 //! The symbol card's text: the definition, then callers, callees, tests, similar functions and the
 //! last change, or one section in full.
 
-use app::trace::{Callees, Callers, Change, Section, Similar, SymbolTrace, Tally, Tests};
+use app::trace::{
+    Callees, Callers, Change, EdgeGroup, LISTING_LIMIT, Section, Similar, SimilarRow, SymbolTrace,
+    Tally, Tests,
+};
 use app::{CoverageStatus, HistoryResult, ROW_INDENT, RefGroup, SymbolCard, locator};
 use prompts::messages::{
-    HISTORY_GIT_FAILED, HISTORY_NO_GIT, HISTORY_PATH_NOT_IN_HEAD, TRACE_BOUND, TRACE_HIDDEN,
-    TRACE_LAST_CHANGE, TRACE_LAST_CHANGE_NOT_READ, TRACE_LAST_CHANGE_UNAVAILABLE, TRACE_MORE_HINT,
+    EXPLAIN_EDGES_UNLISTED, HISTORY_GIT_FAILED, HISTORY_NO_GIT, HISTORY_PATH_NOT_IN_HEAD,
+    REFS_CANDIDATES_UNLISTED, REFS_UNLISTED, TRACE_BOUND, TRACE_HIDDEN, TRACE_LAST_CHANGE,
+    TRACE_LAST_CHANGE_NOT_READ, TRACE_LAST_CHANGE_UNAVAILABLE, TRACE_MORE_HINT,
     TRACE_NAME_ONLY_FILES, TRACE_NAME_ONLY_FILES_FLOOR, TRACE_NAME_ONLY_HIDDEN, TRACE_NOT_RESOLVED,
     TRACE_SECTION_UNREAD, TRACE_SIMILAR, TRACE_SIMILAR_NAME_ONLY, TRACE_SIMILAR_ROW,
     TRACE_TIER_UNCHECKED,
@@ -73,13 +77,14 @@ fn unread(section: Section, reason: &str) -> String {
     TRACE_SECTION_UNREAD.render((section.as_str(), &one_line(reason)))
 }
 
-// The binding sites print as rows; the name-only sites print as a count.
+// By default the binding sites print as rows and the name-only sites as a count. In full every
+// row prints, so nothing is hidden but what the listing's limit left out.
 fn callers_lines(callers: &Callers, more: Option<Section>) -> Vec<String> {
     if callers.bound + callers.name_only == 0 {
         return vec![none(Section::Callers)];
     }
     let mut parts = vec![TRACE_BOUND.render(callers.bound)];
-    if callers.name_only > 0 {
+    if callers.name_only > 0 && more.is_none() {
         parts.push(match callers.name_only_files {
             Tally::Exact(files) => TRACE_NAME_ONLY_FILES.render((callers.name_only, files)),
             Tally::Floor(files) => TRACE_NAME_ONLY_FILES_FLOOR.render((callers.name_only, files)),
@@ -89,7 +94,19 @@ fn callers_lines(callers: &Callers, more: Option<Section>) -> Vec<String> {
     let mut lines = vec![head(Section::Callers, &parts, more, hidden)];
     lines.extend(callers.rows.iter().map(group_row));
     lines.extend(unlisted(callers.rows.len(), callers.rows_total));
+    if more.is_some() {
+        let shown: usize = callers.rows.iter().map(|group| group.sites.len()).sum();
+        let left = (callers.bound + callers.name_only).saturating_sub(shown);
+        lines.extend(listing_cut(left, |left| {
+            REFS_UNLISTED.render((left, LISTING_LIMIT))
+        }));
+    }
     lines
+}
+
+// The line under a section in full whose listing stopped at its limit.
+fn listing_cut(left: usize, line: impl FnOnce(usize) -> String) -> Option<String> {
+    (left > 0).then(|| format!("{ROW_INDENT}{}", line(left)))
 }
 
 // One file at one tier, with each site at the symbol that holds it.
@@ -112,20 +129,37 @@ fn callees_lines(callees: &Callees, more: Option<Section>) -> Vec<String> {
         return vec![none(Section::Callees)];
     }
     let mut parts = vec![TRACE_BOUND.render(callees.bound)];
-    if callees.name_only > 0 {
+    if callees.name_only > 0 && more.is_none() {
         parts.push(TRACE_NAME_ONLY_HIDDEN.render(callees.name_only));
     }
     let hidden = callees.name_only > 0 || is_cut(callees.rows.len(), callees.rows_total);
     let mut lines = vec![head(Section::Callees, &parts, more, hidden)];
-    lines.extend(callees.rows.iter().map(|group| {
-        let edges: Vec<String> = (group.edges.iter())
-            .map(|edge| format!("{} @{}", one_line(&edge.label), edge.line))
+    if more.is_none() {
+        lines.extend(callees.rows.iter().map(edge_row));
+        lines.extend(unlisted(callees.rows.len(), callees.rows_total));
+        return lines;
+    }
+    // In full, explain's limit cuts each tier apart, so each cut tier says so under its rows.
+    for tier in &callees.tiers {
+        let rows: Vec<&EdgeGroup> = (callees.rows.iter())
+            .filter(|group| group.tier == tier.tier)
             .collect();
-        let (path, tier) = (one_line(&group.path), tier_word(group.tier));
-        format!("{ROW_INDENT}{path}  {tier}  {}", edges.join(", "))
-    }));
-    lines.extend(unlisted(callees.rows.len(), callees.rows_total));
+        lines.extend(rows.iter().map(|group| edge_row(group)));
+        let shown: usize = rows.iter().map(|group| group.edges.len()).sum();
+        let left = tier.total.saturating_sub(shown);
+        lines.extend(listing_cut(left, |left| {
+            EXPLAIN_EDGES_UNLISTED.render(left)
+        }));
+    }
     lines
+}
+
+fn edge_row(group: &EdgeGroup) -> String {
+    let edges: Vec<String> = (group.edges.iter())
+        .map(|edge| format!("{} @{}", one_line(&edge.label), edge.line))
+        .collect();
+    let (path, tier) = (one_line(&group.path), tier_word(group.tier));
+    format!("{ROW_INDENT}{path}  {tier}  {}", edges.join(", "))
 }
 
 fn tests_lines(tests: &Tests, more: Option<Section>) -> Vec<String> {
@@ -144,6 +178,20 @@ fn similar_lines(similar: &Similar, more: Option<Section>) -> Vec<String> {
     if similar.total == 0 {
         return vec![none(Section::Similar)];
     }
+    if more.is_some() {
+        let mut lines = vec![head(
+            Section::Similar,
+            &[TRACE_SIMILAR.render(similar.total)],
+            more,
+            false,
+        )];
+        lines.extend(similar.rows.iter().map(|row| similar_row(row, true)));
+        let left = similar.total.saturating_sub(similar.rows.len());
+        lines.extend(listing_cut(left, |left| {
+            REFS_CANDIDATES_UNLISTED.render((left, LISTING_LIMIT))
+        }));
+        return lines;
+    }
     if similar.rows.is_empty() {
         let part = TRACE_SIMILAR_NAME_ONLY.render(similar.total);
         return vec![head(Section::Similar, &[part], more, true)];
@@ -154,15 +202,22 @@ fn similar_lines(similar: &Similar, more: Option<Section>) -> Vec<String> {
         parts.push(TRACE_HIDDEN.render(hidden));
     }
     let mut lines = vec![head(Section::Similar, &parts, more, hidden > 0)];
-    lines.extend(similar.rows.iter().map(|row| {
-        let line = row.line.to_string();
-        let at = locator(&row.stable_id, "", Some(&line));
-        format!(
-            "{ROW_INDENT}{}",
-            TRACE_SIMILAR_ROW.render((&at, row.overlap))
-        )
-    }));
+    lines.extend(similar.rows.iter().map(|row| similar_row(row, false)));
     lines
+}
+
+// A section in full mixes the tiers, so each of its rows names the tier it ranks through.
+fn similar_row(row: &SimilarRow, tiered: bool) -> String {
+    let candidate = &row.candidate;
+    let line = candidate.line.to_string();
+    let mut at = locator(&candidate.stable_id, "", Some(&line));
+    if tiered {
+        at = format!("{at}  {}", tier_word(row.tier));
+    }
+    format!(
+        "{ROW_INDENT}{}",
+        TRACE_SIMILAR_ROW.render((&at, candidate.overlap))
+    )
 }
 
 // Only a fan-in that read every code file vouches that no caller is missing.

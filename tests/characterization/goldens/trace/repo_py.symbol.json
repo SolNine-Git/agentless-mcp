@@ -138,7 +138,8 @@
                 "path": "reports.py",
                 "line": 69
               }
-            ]
+            ],
+            "tier": "imported"
           },
           {
             "stable_id": "py:inventory.py::Inventory",
@@ -159,7 +160,8 @@
                 "path": "reports.py",
                 "line": 69
               }
-            ]
+            ],
+            "tier": "imported"
           }
         ],
         "bound_total": {

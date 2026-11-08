@@ -288,6 +288,33 @@ fn a_symbol_card_counts_its_bound_and_its_name_only_callees() {
     assert_eq!((callees.bound, callees.name_only, total), (2, 2, 4));
 }
 
+// `a_user.py` calls `helper` by name with no import, so its site is name-only.
+#[test]
+fn more_lists_every_caller_binding_tiers_first_and_the_default_card_the_bound_ones() {
+    let mut files = TESTED.to_vec();
+    files.push((
+        "a_user.py",
+        "def by_name(value):\n    return helper(value)\n",
+    ));
+    let scanned = Scanned::new(&files);
+    let rows = |more| {
+        let traced = symbol(card_in(&scanned, "py:core.py::helper", more));
+        let callers = traced.callers.unwrap_or_else(|| panic!("callers"));
+        let rows = callers
+            .rows
+            .iter()
+            .map(|group| (group.path.clone(), group.tier));
+        rows.collect::<Vec<_>>()
+    };
+    assert_eq!(rows(None), [("user.py".to_owned(), "imported")]);
+    let full = [
+        ("tests/test_core.py".to_owned(), "imported"),
+        ("user.py".to_owned(), "imported"),
+        ("a_user.py".to_owned(), "unique"),
+    ];
+    assert_eq!(rows(Some(Section::Callers)), full);
+}
+
 #[test]
 fn more_shows_one_section_alone_and_the_body_and_history_in_full() {
     let scanned = Scanned::new(&TESTED);

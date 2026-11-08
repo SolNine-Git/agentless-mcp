@@ -2,16 +2,16 @@
 //! last change from history, or one section in full. Each count is a total that the operation
 //! took before its cut, or a [`Tally::Floor`] when the list it counts was cut.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use graph::Tier;
 
 use super::change::last_change;
 use super::{
-    Callees, Callers, EdgeGroup, LAST_CHANGE_DEADLINE, SYMBOL_ROWS, Section, Similar, SymbolTrace,
-    Tally, Tests, TierSites, TierTotal, cap,
+    Callees, Callers, EdgeGroup, LAST_CHANGE_DEADLINE, LISTING_LIMIT, SYMBOL_ROWS, Section,
+    Similar, SimilarRow, SymbolTrace, Tally, Tests, TierSites, TierTotal, cap,
 };
-use crate::ops::limits::{DEFAULT_HISTORY_BUDGET, DEFAULT_HISTORY_LIMIT, MAX_LIMIT};
+use crate::ops::limits::{DEFAULT_HISTORY_BUDGET, DEFAULT_HISTORY_LIMIT};
 use crate::{
     Error, ExpandRequest, ExplainRequest, Explanation, HistoryRequest, HistoryResult, IntArg,
     Noted, Reading, RefGroup, RefsRequest, RefsResult, Services, SharedCaller, SymbolCard,
@@ -77,17 +77,15 @@ impl Sections<'_, '_> {
         }
         let request = RefsRequest {
             target: self.id.clone(),
-            limit: IntArg::from_usize(MAX_LIMIT),
+            limit: IntArg::from_usize(LISTING_LIMIT),
             shared_callers: self.wants(Section::Similar),
         };
         let found = refs(self.services, self.reading, &request);
         found.map_ok(|found| SymbolTrace {
-            callers: (self.wants(Section::Callers))
-                .then(|| callers(&found, cap(self.more, Section::Callers, SYMBOL_ROWS))),
+            callers: (self.wants(Section::Callers)).then(|| callers(&found, self.more)),
             tests: (self.wants(Section::Tests))
                 .then(|| tests(&found, cap(self.more, Section::Tests, SYMBOL_ROWS))),
-            similar: (self.wants(Section::Similar))
-                .then(|| similar(&found, cap(self.more, Section::Similar, SYMBOL_ROWS))),
+            similar: (self.wants(Section::Similar)).then(|| similar(&found, self.more)),
             ..traced
         })
     }
@@ -98,14 +96,11 @@ impl Sections<'_, '_> {
         }
         let request = ExplainRequest {
             target: self.id.clone(),
-            limit: IntArg::from_usize(MAX_LIMIT),
+            limit: IntArg::from_usize(LISTING_LIMIT),
         };
         let explained = explain(self.services, self.reading, &request);
         explained.map_ok(|explained| SymbolTrace {
-            callees: Some(callees(
-                &explained,
-                cap(self.more, Section::Callees, SYMBOL_ROWS),
-            )),
+            callees: Some(callees(&explained, self.more)),
             ..traced
         })
     }
@@ -176,12 +171,31 @@ fn binds(tier: &str) -> bool {
     (Tier::ORDER.iter()).any(|known| known.as_str() == tier && known.binds())
 }
 
-fn callers(found: &RefsResult, cap: usize) -> Callers {
+// The position of a tier in the precedence rule, strongest first.
+fn tier_at(tier: &str) -> usize {
+    (Tier::ORDER.iter())
+        .position(|known| known.as_str() == tier)
+        .unwrap_or(Tier::ORDER.len())
+}
+
+// Where a row stands in a section in full: the binding tiers together first, in the default
+// card's order, then the other tiers in tier order. The sorts that use it are stable.
+fn listing_rank(tier: &str) -> usize {
+    if binds(tier) { 0 } else { tier_at(tier) }
+}
+
+fn callers(found: &RefsResult, more: Option<Section>) -> Callers {
     let listing = &found.groups;
     let whole = listing.omitted() == 0;
-    let binding: Vec<&RefGroup> = (listing.rows.iter())
-        .filter(|group| binds(group.tier) && !is_test_path(&group.path))
-        .collect();
+    let listed: Vec<&RefGroup> = if more == Some(Section::Callers) {
+        let mut every: Vec<&RefGroup> = listing.rows.iter().collect();
+        every.sort_by_key(|group| listing_rank(group.tier));
+        every
+    } else {
+        (listing.rows.iter())
+            .filter(|group| binds(group.tier) && !is_test_path(&group.path))
+            .collect()
+    };
     let name_only: BTreeSet<&str> = (listing.rows.iter())
         .filter(|group| !binds(group.tier))
         .map(|group| group.path.as_str())
@@ -192,12 +206,11 @@ fn callers(found: &RefsResult, cap: usize) -> Callers {
         name_only_files: Tally::of(name_only.len(), whole),
         files: listing.files,
         tiers: whole.then(|| tier_sites(&listing.rows)),
-        rows: binding
-            .iter()
-            .take(cap)
+        rows: (listed.iter())
+            .take(cap(more, Section::Callers, SYMBOL_ROWS))
             .map(|group| (*group).clone())
             .collect(),
-        rows_total: Tally::of(binding.len(), whole),
+        rows_total: Tally::of(listed.len(), whole),
         coverage: found.coverage,
     }
 }
@@ -230,53 +243,78 @@ fn tests(found: &RefsResult, cap: usize) -> Tests {
     }
 }
 
-// A candidate ranks through a bound caller when one of its shared callers holds a binding-tier
-// site of the target.
-fn similar(found: &RefsResult, cap: usize) -> Similar {
+// A candidate's tier is the strongest tier at which one of its shared callers references the
+// target. A candidate ranks through a bound caller when that tier binds.
+fn similar(found: &RefsResult, more: Option<Section>) -> Similar {
     let listing = &found.groups;
-    let bound: BTreeSet<(&str, &str)> = (listing.rows.iter())
-        .filter(|group| binds(group.tier))
-        .flat_map(|group| {
-            let path = group.path.as_str();
-            group
-                .sites
-                .iter()
-                .map(move |site| (path, site.enclosing.as_str()))
+    let mut strongest: BTreeMap<(&str, &str), usize> = BTreeMap::new();
+    for group in &listing.rows {
+        let at = tier_at(group.tier);
+        for site in &group.sites {
+            let key = (group.path.as_str(), site.enclosing.as_str());
+            let held = strongest.entry(key).or_insert(at);
+            *held = (*held).min(at);
+        }
+    }
+    let shared = &found.shared;
+    let tiered: Vec<(&SharedCaller, &'static str)> = (shared.rows().iter())
+        .filter_map(|row| {
+            let callers = row.callers.iter();
+            let at = callers
+                .filter_map(|caller| {
+                    strongest.get(&(caller.path.as_str(), caller.qualname.as_str()))
+                })
+                .min()?;
+            Some((row, Tier::ORDER[*at].as_str()))
         })
         .collect();
-    let through_bound = |row: &&SharedCaller| {
-        (row.callers.iter())
-            .any(|caller| bound.contains(&(caller.path.as_str(), caller.qualname.as_str())))
-    };
-    let shared = &found.shared;
-    let ranked: Vec<&SharedCaller> = shared.rows().iter().filter(through_bound).collect();
+    let bound = tiered.iter().filter(|(_, tier)| binds(tier)).count();
     let whole = listing.omitted() == 0 && shared.rows().len() == shared.total();
+    let listed: Vec<(&SharedCaller, &'static str)> = if more == Some(Section::Similar) {
+        let mut every = tiered;
+        every.sort_by_key(|(_, tier)| listing_rank(tier));
+        every
+    } else {
+        let binding = tiered.into_iter().filter(|(_, tier)| binds(tier));
+        binding.take(SYMBOL_ROWS).collect()
+    };
+    let rows = listed.into_iter().map(|(candidate, tier)| SimilarRow {
+        candidate: candidate.clone(),
+        tier,
+    });
     Similar {
         total: shared.total(),
-        rows: ranked.iter().take(cap).map(|row| (*row).clone()).collect(),
-        bound_total: Tally::of(ranked.len(), whole),
+        rows: rows.collect(),
+        bound_total: Tally::of(bound, whole),
     }
 }
 
-fn callees(explained: &Explanation, cap: usize) -> Callees {
+// Fan-out lists its tiers strongest first, so a section in full keeps that order.
+fn callees(explained: &Explanation, more: Option<Section>) -> Callees {
+    let full = more == Some(Section::Callees);
     let tiers = (explained.fan_out.iter())
         .map(|group| TierTotal {
             tier: group.tier,
             total: group.total,
         })
         .collect();
-    let binding: Vec<&TierGroup> = (explained.fan_out.iter())
+    let bound: usize = (explained.fan_out.iter())
         .filter(|group| binds(group.tier))
-        .collect();
-    let bound: usize = binding.iter().map(|group| group.total).sum();
+        .map(|group| group.total)
+        .sum();
     let all: usize = explained.fan_out.iter().map(|group| group.total).sum();
-    let whole = binding.iter().all(|group| group.rows.len() == group.total);
-    let groups: Vec<EdgeGroup> = binding.into_iter().flat_map(by_file).collect();
+    let listed: Vec<&TierGroup> = (explained.fan_out.iter())
+        .filter(|group| full || binds(group.tier))
+        .collect();
+    let whole = listed.iter().all(|group| group.rows.len() == group.total);
+    let groups: Vec<EdgeGroup> = listed.into_iter().flat_map(by_file).collect();
     Callees {
         bound,
         name_only: all - bound,
         rows_total: Tally::of(groups.len(), whole),
-        rows: groups.into_iter().take(cap).collect(),
+        rows: (groups.into_iter())
+            .take(cap(more, Section::Callees, SYMBOL_ROWS))
+            .collect(),
         tiers,
     }
 }

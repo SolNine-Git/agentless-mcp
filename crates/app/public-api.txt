@@ -1377,7 +1377,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::trace::FolderTrace
 impl core::panic::unwind_safe::UnwindSafe for app::trace::FolderTrace
 pub struct app::trace::Similar
 pub app::trace::Similar::bound_total: app::trace::Tally
-pub app::trace::Similar::rows: alloc::vec::Vec<app::SharedCaller>
+pub app::trace::Similar::rows: alloc::vec::Vec<app::trace::SimilarRow>
 pub app::trace::Similar::total: usize
 impl core::clone::Clone for app::trace::Similar
 pub fn app::trace::Similar::clone(&self) -> Self
@@ -1393,6 +1393,23 @@ impl core::marker::Unpin for app::trace::Similar
 impl core::marker::UnsafeUnpin for app::trace::Similar
 impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Similar
 impl core::panic::unwind_safe::UnwindSafe for app::trace::Similar
+pub struct app::trace::SimilarRow
+pub app::trace::SimilarRow::candidate: app::SharedCaller
+pub app::trace::SimilarRow::tier: &'static str
+impl core::clone::Clone for app::trace::SimilarRow
+pub fn app::trace::SimilarRow::clone(&self) -> Self
+impl core::cmp::PartialEq for app::trace::SimilarRow
+pub fn app::trace::SimilarRow::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::SimilarRow
+pub fn app::trace::SimilarRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::SimilarRow
+impl core::marker::Freeze for app::trace::SimilarRow
+impl core::marker::Send for app::trace::SimilarRow
+impl core::marker::Sync for app::trace::SimilarRow
+impl core::marker::Unpin for app::trace::SimilarRow
+impl core::marker::UnsafeUnpin for app::trace::SimilarRow
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::SimilarRow
+impl core::panic::unwind_safe::UnwindSafe for app::trace::SimilarRow
 pub struct app::trace::SymbolTrace
 pub app::trace::SymbolTrace::body: core::option::Option<core::result::Result<app::SymbolCard, alloc::string::String>>
 pub app::trace::SymbolTrace::callees: core::option::Option<app::trace::Callees>
@@ -1529,6 +1546,7 @@ pub const app::trace::FILE_ROWS: usize
 pub const app::trace::FOLDER_DEPTH: usize
 pub const app::trace::FOLDER_ENTRIES: usize
 pub const app::trace::LAST_CHANGE_DEADLINE: core::time::Duration
+pub const app::trace::LISTING_LIMIT: usize
 pub const app::trace::MAX_TARGETS: usize
 pub const app::trace::MISS_LITERAL_FILES: usize
 pub const app::trace::MISS_USAGE_FILES: usize

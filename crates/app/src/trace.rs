@@ -13,7 +13,7 @@ use std::time::Duration;
 use git::RepoFile;
 
 use crate::bounds::within;
-use crate::ops::limits::FIND_USAGE_FILES;
+use crate::ops::limits::{FIND_USAGE_FILES, MAX_LIMIT};
 use crate::search::{FileRow, Place, walked_files};
 use crate::{
     CycleRow, EdgeRow, Error, HistoryEntry, HistoryResult, IntArg, Noted, Reading, RefGroup,
@@ -47,6 +47,8 @@ pub const FOLDER_ENTRIES: usize = 60;
 pub const MORE_TREE_DEPTH: usize = 4;
 /// The entries that `more=tree` shows.
 pub const MORE_TREE_ENTRIES: usize = 500;
+/// The most sites, edges or candidates that a symbol card's section lists with `more`.
+pub const LISTING_LIMIT: usize = MAX_LIMIT;
 /// The time that a symbol card or a file card waits for git to read its last change.
 pub const LAST_CHANGE_DEADLINE: Duration = Duration::from_secs(2);
 
@@ -175,9 +177,11 @@ pub struct Callers {
     pub files: usize,
     /// The sites and files of each tier, strongest first, or `None` when the listing was cut.
     pub tiers: Option<Vec<TierSites>>,
-    /// The binding-tier groups outside test paths, in path order, cut at the cap.
+    /// The groups that the card lists. By default: the binding-tier groups outside test paths, in
+    /// path order, cut at the cap. With `more`: every group that the listing kept, binding tiers
+    /// first, then the other tiers in tier order.
     pub rows: Vec<RefGroup>,
-    /// The binding-tier groups outside test paths.
+    /// The groups that `rows` lists before the cap.
     pub rows_total: Tally,
     /// How much of the repository the fan-in checked.
     pub coverage: crate::Coverage,
@@ -203,9 +207,10 @@ pub struct Callees {
     pub name_only: usize,
     /// The edges of each tier, strongest first.
     pub tiers: Vec<TierTotal>,
-    /// The binding-tier edges grouped by file and tier, in edge order, cut at the cap.
+    /// The edges grouped by file and tier, in edge order. By default: the binding tiers, cut at
+    /// the cap. With `more`: every tier, strongest first.
     pub rows: Vec<EdgeGroup>,
-    /// The binding-tier groups.
+    /// The groups that `rows` lists before the cap.
     pub rows_total: Tally,
 }
 
@@ -243,11 +248,23 @@ pub struct Tests {
 pub struct Similar {
     /// Every candidate that two or more callers share.
     pub total: usize,
-    /// The candidates that share a binding-tier caller, best first, cut at the cap.
-    pub rows: Vec<SharedCaller>,
+    /// The candidates that the card lists. By default: those that share a binding-tier caller,
+    /// best first, cut at the cap. With `more`: every candidate whose tier the listing shows,
+    /// binding tiers first, then the other tiers in tier order, each best first.
+    pub rows: Vec<SimilarRow>,
     /// The candidates that share a binding-tier caller. Zero means the ranking runs only through
     /// name-only callers.
     pub bound_total: Tally,
+}
+
+/// A candidate of the similar section, and the strongest tier at which one of the callers that
+/// it shares references the target.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SimilarRow {
+    /// The candidate.
+    pub candidate: SharedCaller,
+    /// The tier's wire value.
+    pub tier: &'static str,
 }
 
 /// The newest commit on a symbol's lines or on a file, or why the card has none.

@@ -285,15 +285,26 @@ impl<'a> TestsJson<'a> {
 #[derive(Clone, Serialize)]
 struct SimilarJson<'a> {
     total: usize,
-    rows: Vec<SharedRowJson<'a>>,
+    rows: Vec<SimilarRowJson<'a>>,
     bound_total: TallyJson,
+}
+
+#[derive(Clone, Serialize)]
+struct SimilarRowJson<'a> {
+    #[serde(flatten)]
+    candidate: SharedRowJson<'a>,
+    tier: &'static str,
 }
 
 impl<'a> SimilarJson<'a> {
     fn of(similar: &'a Similar) -> Self {
+        let rows = similar.rows.iter().map(|row| SimilarRowJson {
+            candidate: SharedRowJson::of(&row.candidate),
+            tier: row.tier,
+        });
         SimilarJson {
             total: similar.total,
-            rows: similar.rows.iter().map(SharedRowJson::of).collect(),
+            rows: rows.collect(),
             bound_total: TallyJson::of(similar.bound_total),
         }
     }

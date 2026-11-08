@@ -1,0 +1,7 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 16b6dc3c   dirty: 0 files   cache: none
+[py:pricing.py::format_money] @78-81  function
+  def format_money(amount: Decimal) -> str
+similar: 3 candidates
+  [py:pricing.py::PriceBook] @26  imported  2 shared callers
+  [py:inventory.py::Inventory] @44  imported  2 shared callers
+  [py:ledger.py::label] @9  unique  2 shared callers

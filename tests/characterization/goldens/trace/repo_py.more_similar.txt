@@ -2,5 +2,5 @@
 [py:pricing.py::format_money] @78-81  function
   def format_money(amount: Decimal) -> str
 similar: 2 candidates
-  [py:pricing.py::PriceBook] @26  2 shared callers
-  [py:inventory.py::Inventory] @44  2 shared callers
+  [py:pricing.py::PriceBook] @26  imported  2 shared callers
+  [py:inventory.py::Inventory] @44  imported  2 shared callers
