@@ -89,6 +89,7 @@ impl Server {
     ) -> Server {
         // The files of a root that a roots file adds are read at the first call into that root.
         let hooks = Hooks::new(config.hooks, &config.roots);
+        let graphs = KeptGraphs::new(Arc::clone(&services.clock));
         let inner = Inner {
             allowlist: Allowlist::new(config.roots, config.roots_files),
             launch: config.launch_dir,
@@ -97,7 +98,7 @@ impl Server {
             services,
             ports,
             hooks,
-            graphs: KeptGraphs::default(),
+            graphs,
         };
         let tools = listed_tools(inner.allowlist.root_count());
         Server {

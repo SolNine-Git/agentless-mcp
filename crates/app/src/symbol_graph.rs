@@ -3,6 +3,7 @@
 //! tiers, and the verbs of its relations.
 
 mod call;
+mod retention;
 
 use graph::{FileFacts, NameIndex, Relation, Resolver, Scopes, SymbolGraph, Tier};
 use kernel::Deadline;
