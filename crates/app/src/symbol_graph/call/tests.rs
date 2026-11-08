@@ -366,3 +366,21 @@ fn a_kept_state_holds_replaced_facts_of_at_most_its_share_of_the_sites() {
         .collect();
     assert_eq!(counts, [(1, 0), (1, 1), (2, 1)]);
 }
+
+#[test]
+fn a_scan_of_other_paths_replaces_no_facts_in_the_store() {
+    let mut stored = super::Stored::of(&[]);
+    let one = graph::FileFacts {
+        path: "a.py".to_owned(),
+        language: syntax::Language::Python,
+        line_count: 1,
+        facts: facts::Facts::default(),
+    };
+    let two = graph::FileFacts {
+        path: "b.py".to_owned(),
+        ..one.clone()
+    };
+    stored.add(&[&one], &[&one, &two]);
+    stored.add(&[&two], &[&one]);
+    assert_eq!(stored.replaced, 0);
+}

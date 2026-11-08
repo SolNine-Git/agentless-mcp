@@ -186,10 +186,15 @@ impl Stored {
         }
     }
 
+    // A scan of other paths replaces no file's facts; the update hands it to a full build.
     fn add(&mut self, before: &[&FileFacts], after: &[&FileFacts]) {
         self.scans += 1;
+        if before.len() != after.len() {
+            return;
+        }
         let pairs = before.iter().zip(after);
-        let replaced = pairs.filter(|(old, new)| !std::ptr::eq(**old, **new));
+        let replaced =
+            pairs.filter(|(old, new)| !std::ptr::eq(**old, **new) && old.path == new.path);
         self.replaced += replaced.map(|(old, _)| weight(old)).sum::<usize>();
     }
 
