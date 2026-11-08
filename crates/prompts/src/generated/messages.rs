@@ -2917,10 +2917,6 @@ pub const TRACE_FOLDER_ROW: Template<(Text, Count)> = Template::new(&[
 /// A template that takes `count`.
 pub const TRACE_HIDDEN: Template<Count> = Template::new(&[Piece::Value(0), Piece::Text(" hidden")]);
 
-/// A template that takes `kinds`.
-pub const TRACE_KINDS_HIDDEN: Template<Text> =
-    Template::new(&[Piece::Value(0), Piece::Text(" hidden")]);
-
 /// A template that takes (`sha`, `date`, `subject`).
 pub const TRACE_LAST_CHANGE: Template<(Text, Text, Text)> = Template::new(&[
     Piece::Text("last change: "),
@@ -2971,6 +2967,10 @@ pub const TRACE_LITERAL_NONE: &str = "No file holds it as text.";
 pub const TRACE_MORE_HINT: Template<Text> =
     Template::new(&[Piece::Text("(more="), Piece::Value(0), Piece::Text(")")]);
 
+/// A template that takes `count`.
+pub const TRACE_NAME_ONLY: Template<Count> =
+    Template::new(&[Piece::Value(0), Piece::Text(" name-only")]);
+
 /// A template that takes (`count`, `total`).
 pub const TRACE_NAME_ONLY_FILES: Template<(Count, Count)> = Template::new(&[
     Piece::Value(0),
@@ -2978,7 +2978,6 @@ pub const TRACE_NAME_ONLY_FILES: Template<(Count, Count)> = Template::new(&[
     Piece::Value(1),
     Piece::Text(" "),
     Piece::Choice(1, "file", "files"),
-    Piece::Text(" hidden"),
 ]);
 
 /// A template that takes (`count`, `total`).
@@ -2986,12 +2985,8 @@ pub const TRACE_NAME_ONLY_FILES_FLOOR: Template<(Count, Count)> = Template::new(
     Piece::Value(0),
     Piece::Text(" name-only in at least "),
     Piece::Value(1),
-    Piece::Text(" files hidden"),
+    Piece::Text(" files"),
 ]);
-
-/// A template that takes `count`.
-pub const TRACE_NAME_ONLY_HIDDEN: Template<Count> =
-    Template::new(&[Piece::Value(0), Piece::Text(" name-only hidden")]);
 
 /// A text that takes no values.
 pub const TRACE_NO_ANCHOR: &str = "no symbol of this file joins the name graph";
@@ -3069,6 +3064,10 @@ pub const TRACE_NOT_SCANNED: Template<Text> = Template::new(&[
     Piece::Value(0),
     Piece::Text(": the scan does not read this file. Read it or search it."),
 ]);
+
+/// A template that takes `text`.
+pub const TRACE_PART_HIDDEN: Template<Text> =
+    Template::new(&[Piece::Value(0), Piece::Text(" hidden")]);
 
 /// A template that takes `count`.
 pub const TRACE_ROWS_UNLISTED: Template<Count> =

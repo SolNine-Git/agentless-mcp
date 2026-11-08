@@ -321,7 +321,6 @@ pub const prompts::messages::TRACE_FILE_HEADER: prompts::Template<(prompts::Text
 pub const prompts::messages::TRACE_FOLDER_HEADER: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::TRACE_FOLDER_ROW: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::TRACE_HIDDEN: prompts::Template<prompts::Count>
-pub const prompts::messages::TRACE_KINDS_HIDDEN: prompts::Template<prompts::Text>
 pub const prompts::messages::TRACE_LAST_CHANGE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::messages::TRACE_LAST_CHANGE_NOT_READ: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_LAST_CHANGE_UNAVAILABLE: prompts::Template<prompts::Text>
@@ -329,9 +328,9 @@ pub const prompts::messages::TRACE_LINE_PAST_END: prompts::Template<prompts::Cou
 pub const prompts::messages::TRACE_LITERAL: prompts::Template<(prompts::Text, prompts::Count, prompts::Text)>
 pub const prompts::messages::TRACE_LITERAL_NONE: &str
 pub const prompts::messages::TRACE_MORE_HINT: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_NAME_ONLY: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_NAME_ONLY_FILES: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::TRACE_NAME_ONLY_FILES_FLOOR: prompts::Template<(prompts::Count, prompts::Count)>
-pub const prompts::messages::TRACE_NAME_ONLY_HIDDEN: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_NOT_PARSED: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::TRACE_NOT_RESOLVED: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_NOT_SCANNED: prompts::Template<prompts::Text>
@@ -343,6 +342,7 @@ pub const prompts::messages::TRACE_NO_SECTION_FILE: prompts::Template<(prompts::
 pub const prompts::messages::TRACE_NO_SECTION_FOLDER: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::TRACE_NO_SECTION_SYMBOL: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::TRACE_NO_SYMBOL_AT: &str
+pub const prompts::messages::TRACE_PART_HIDDEN: prompts::Template<prompts::Text>
 pub const prompts::messages::TRACE_ROWS_UNLISTED: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_ROWS_UNLISTED_FLOOR: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_SAME_CARD: prompts::Template<prompts::Count>

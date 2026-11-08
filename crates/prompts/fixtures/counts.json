@@ -575,8 +575,8 @@
       "arguments": {
         "count": 253
       },
-      "one": "253 name-only in 1 file hidden",
-      "many": "253 name-only in 2 files hidden"
+      "one": "253 name-only in 1 file",
+      "many": "253 name-only in 2 files"
     },
     "trace_similar": {
       "arguments": {},

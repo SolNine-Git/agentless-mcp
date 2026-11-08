@@ -10,7 +10,7 @@ use facts::{StableId, split_ordinal};
 use prompts::messages::{
     LISTING_ROW, LISTING_ROW_SYMBOLS, LISTING_ROW_UNREAD, TARGET_NO_LINE, TRACE_CYCLE_MEMBERS,
     TRACE_CYCLES, TRACE_DECLARES, TRACE_FILE_HEADER, TRACE_FOLDER_HEADER, TRACE_FOLDER_ROW,
-    TRACE_KINDS_HIDDEN, TRACE_MORE_HINT, TRACE_NO_ANCHOR, TRACE_NO_SYMBOL_AT, TRACE_ROWS_UNLISTED,
+    TRACE_MORE_HINT, TRACE_NO_ANCHOR, TRACE_NO_SYMBOL_AT, TRACE_PART_HIDDEN, TRACE_ROWS_UNLISTED,
     TRACE_SECTION_UNREAD, TRACE_TREE_UNLISTED,
 };
 use text::{is_word, one_line};
@@ -73,7 +73,7 @@ fn declares(declares: &Declares, more: Option<Section>) -> Vec<String> {
         })
         .collect();
     if !hidden.is_empty() {
-        parts.push(TRACE_KINDS_HIDDEN.render(&hidden.join(", ")));
+        parts.push(TRACE_PART_HIDDEN.render(&hidden.join(", ")));
     }
     let mut lines = vec![head(Section::Declares, &parts, more, !hidden.is_empty())];
     let rows: Vec<String> = declares.rows.iter().map(declared).collect();

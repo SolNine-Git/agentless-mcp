@@ -111,8 +111,8 @@ fn a_cut_section_counts_what_it_hides_and_points_at_more() {
     assert!(text.ends_with("  ... at least 2 more\n"), "{text}");
 }
 
-// The section in full lists its name-only rows, so its head hides none; the 3 rows hold 3 of the
-// 17 sites, so the listing stopped at its limit.
+// The section in full lists its name-only rows, so its head counts them and hides none; the 3
+// rows hold 3 of the 17 sites, so the listing stopped at its limit.
 #[test]
 fn the_section_that_more_names_hides_nothing_and_counts_what_its_listing_left_out() {
     let full = callers(Tally::Exact(4), Tally::Exact(3), CoverageStatus::Complete);
@@ -120,7 +120,10 @@ fn the_section_that_more_names_hides_nothing_and_counts_what_its_listing_left_ou
         symbol(|traced| traced.callers = Some(full)),
         Some(Section::Callers),
     );
-    assert!(text.contains("callers: 5 bound\n"), "{text}");
+    assert!(
+        text.contains("callers: 5 bound; 12 name-only in 4 files\n"),
+        "{text}"
+    );
     assert!(
         text.ends_with("  ... 14 more references not listed (limit 500)\n"),
         "{text}"

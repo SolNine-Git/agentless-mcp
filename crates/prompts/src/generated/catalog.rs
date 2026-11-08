@@ -1936,12 +1936,6 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 366] = [
     ),
     (
         "messages",
-        "trace_kinds_hidden",
-        &["kinds"],
-        messages::TRACE_KINDS_HIDDEN.pieces(),
-    ),
-    (
-        "messages",
         "trace_last_change",
         &["sha", "date", "subject"],
         messages::TRACE_LAST_CHANGE.pieces(),
@@ -1984,6 +1978,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 366] = [
     ),
     (
         "messages",
+        "trace_name_only",
+        &["count"],
+        messages::TRACE_NAME_ONLY.pieces(),
+    ),
+    (
+        "messages",
         "trace_name_only_files",
         &["count", "total"],
         messages::TRACE_NAME_ONLY_FILES.pieces(),
@@ -1993,12 +1993,6 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 366] = [
         "trace_name_only_files_floor",
         &["count", "total"],
         messages::TRACE_NAME_ONLY_FILES_FLOOR.pieces(),
-    ),
-    (
-        "messages",
-        "trace_name_only_hidden",
-        &["count"],
-        messages::TRACE_NAME_ONLY_HIDDEN.pieces(),
     ),
     (
         "messages",
@@ -2065,6 +2059,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 366] = [
         "trace_not_scanned",
         &["path"],
         messages::TRACE_NOT_SCANNED.pieces(),
+    ),
+    (
+        "messages",
+        "trace_part_hidden",
+        &["text"],
+        messages::TRACE_PART_HIDDEN.pieces(),
     ),
     (
         "messages",

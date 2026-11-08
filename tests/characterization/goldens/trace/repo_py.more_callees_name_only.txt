@@ -1,7 +1,7 @@
 // agentless-mcp receipt (repository data below)   repo: <REPO>   head: 16b6dc3c   dirty: 0 files   cache: none
 [py:ledger.py::ledger_line] @1-2  function
   def ledger_line(amount)
-callees: 1 bound
+callees: 1 bound; 3 name-only
   ledger.py  same-file  label @9
   pricing.py  unique  format_money @78
   rounding_a.py  ambiguous  round_cents @1

@@ -9,8 +9,8 @@ use app::{CoverageStatus, HistoryResult, ROW_INDENT, RefGroup, SymbolCard, locat
 use prompts::messages::{
     EXPLAIN_EDGES_UNLISTED, HISTORY_GIT_FAILED, HISTORY_NO_GIT, HISTORY_PATH_NOT_IN_HEAD,
     REFS_CANDIDATES_UNLISTED, REFS_UNLISTED, TRACE_BOUND, TRACE_HIDDEN, TRACE_LAST_CHANGE,
-    TRACE_LAST_CHANGE_NOT_READ, TRACE_LAST_CHANGE_UNAVAILABLE, TRACE_MORE_HINT,
-    TRACE_NAME_ONLY_FILES, TRACE_NAME_ONLY_FILES_FLOOR, TRACE_NAME_ONLY_HIDDEN, TRACE_NOT_RESOLVED,
+    TRACE_LAST_CHANGE_NOT_READ, TRACE_LAST_CHANGE_UNAVAILABLE, TRACE_MORE_HINT, TRACE_NAME_ONLY,
+    TRACE_NAME_ONLY_FILES, TRACE_NAME_ONLY_FILES_FLOOR, TRACE_NOT_RESOLVED, TRACE_PART_HIDDEN,
     TRACE_SECTION_UNREAD, TRACE_SIMILAR, TRACE_SIMILAR_NAME_ONLY, TRACE_SIMILAR_ROW,
     TRACE_TIER_UNCHECKED,
 };
@@ -84,11 +84,12 @@ fn callers_lines(callers: &Callers, more: Option<Section>) -> Vec<String> {
         return vec![none(Section::Callers)];
     }
     let mut parts = vec![TRACE_BOUND.render(callers.bound)];
-    if callers.name_only > 0 && more.is_none() {
-        parts.push(match callers.name_only_files {
+    if callers.name_only > 0 {
+        let counted = match callers.name_only_files {
             Tally::Exact(files) => TRACE_NAME_ONLY_FILES.render((callers.name_only, files)),
             Tally::Floor(files) => TRACE_NAME_ONLY_FILES_FLOOR.render((callers.name_only, files)),
-        });
+        };
+        parts.push(hidden_by_default(counted, more));
     }
     let hidden = callers.name_only > 0 || is_cut(callers.rows.len(), callers.rows_total);
     let mut lines = vec![head(Section::Callers, &parts, more, hidden)];
@@ -102,6 +103,16 @@ fn callers_lines(callers: &Callers, more: Option<Section>) -> Vec<String> {
         }));
     }
     lines
+}
+
+// The default card lists only the binding rows, so it hides the weaker ones that `part` counts;
+// a section in full lists them.
+fn hidden_by_default(part: String, more: Option<Section>) -> String {
+    if more.is_none() {
+        TRACE_PART_HIDDEN.render(&part)
+    } else {
+        part
+    }
 }
 
 // The line under a section in full whose listing stopped at its limit.
@@ -129,8 +140,9 @@ fn callees_lines(callees: &Callees, more: Option<Section>) -> Vec<String> {
         return vec![none(Section::Callees)];
     }
     let mut parts = vec![TRACE_BOUND.render(callees.bound)];
-    if callees.name_only > 0 && more.is_none() {
-        parts.push(TRACE_NAME_ONLY_HIDDEN.render(callees.name_only));
+    if callees.name_only > 0 {
+        let counted = TRACE_NAME_ONLY.render(callees.name_only);
+        parts.push(hidden_by_default(counted, more));
     }
     let hidden = callees.name_only > 0 || is_cut(callees.rows.len(), callees.rows_total);
     let mut lines = vec![head(Section::Callees, &parts, more, hidden)];

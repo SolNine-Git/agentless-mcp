@@ -2139,12 +2139,6 @@
       },
       "text": "9 hidden"
     },
-    "trace_kinds_hidden": {
-      "arguments": {
-        "kinds": "25 constants"
-      },
-      "text": "25 constants hidden"
-    },
     "trace_last_change": {
       "arguments": {
         "date": "2026-11-05",
@@ -2189,25 +2183,25 @@
       },
       "text": "(more=callers)"
     },
+    "trace_name_only": {
+      "arguments": {
+        "count": 3
+      },
+      "text": "3 name-only"
+    },
     "trace_name_only_files": {
       "arguments": {
         "count": 253,
         "total": 35
       },
-      "text": "253 name-only in 35 files hidden"
+      "text": "253 name-only in 35 files"
     },
     "trace_name_only_files_floor": {
       "arguments": {
         "count": 600,
         "total": 1
       },
-      "text": "600 name-only in at least 1 files hidden"
-    },
-    "trace_name_only_hidden": {
-      "arguments": {
-        "count": 3
-      },
-      "text": "3 name-only hidden"
+      "text": "600 name-only in at least 1 files"
     },
     "trace_no_anchor": {
       "arguments": {},
@@ -2275,6 +2269,12 @@
         "path": ".agentless-mcp.json"
       },
       "text": ".agentless-mcp.json: the scan does not read this file. Read it or search it."
+    },
+    "trace_part_hidden": {
+      "arguments": {
+        "text": "25 constants"
+      },
+      "text": "25 constants hidden"
     },
     "trace_rows_unlisted": {
       "arguments": {
