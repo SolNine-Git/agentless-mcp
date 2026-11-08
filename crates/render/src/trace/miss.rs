@@ -15,6 +15,9 @@ use text::{one_line, posix_name, split_suffix};
 use super::span;
 use crate::symbols::usage_text;
 
+// io's reason for a file over the cap starts with the word that the miss sentence already says.
+const SKIPPED_WORD: &str = "skipped: ";
+
 pub(super) fn candidates_lines(
     candidates: &CandidatesTrace,
     target: &str,
@@ -47,6 +50,7 @@ pub(super) fn miss_lines(miss: &Miss, target: &str) -> Vec<String> {
         }
         Miss::UnknownPath { path, endings } => vec![unknown_path(path, endings)],
         Miss::NotParsed { path, reason } => {
+            let reason = reason.strip_prefix(SKIPPED_WORD).unwrap_or(reason);
             vec![TRACE_NOT_PARSED.render((&one_line(path), &one_line(reason)))]
         }
         Miss::NoGrammar { path } => vec![no_grammar(path)],
