@@ -1,7 +1,7 @@
 //! The prompt map: on the first prompt of a session that names files or symbols of the
 //! repository, one sentence of context that names the files the map ranks first for them.
 
-mod seeds;
+pub(crate) mod seeds;
 
 use std::borrow::Cow;
 use std::ffi::OsStr;
@@ -87,7 +87,7 @@ fn marker_dir(env: &EnvConfig) -> PathBuf {
 }
 
 // The map of one prompt, as the command line's `map` makes it.
-fn in_process(
+pub(crate) fn in_process(
     services: &Services,
     root: &Path,
     request: &MapRequest,

@@ -1,7 +1,7 @@
 //! The ledger: which files a context holds a card for. A context is the main conversation or one
 //! subagent, and an entry's key holds the file's content hash, so an edit makes the card stale.
 //! Layout: `<sha256(session)>/<"main" or sha256(agent)>/<sha256(path, NUL, sha256(content))>`,
-//! one empty file per entry.
+//! one empty file per entry, and the pending subagent briefs in `<sha256(session)>/briefs/`.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -15,6 +15,7 @@ use crate::text::sha256_hex;
 
 const LEDGER_DIR: &str = "agentless_ledger";
 const MAIN: &str = "main";
+const BRIEFS: &str = "briefs";
 // The entries of one context. Past the cap a context gets no new card.
 pub(crate) const CAP: usize = 2_000;
 
@@ -39,6 +40,10 @@ fn context_dir(base: &Path, context: &Context) -> PathBuf {
     let agent = context.agent.as_deref();
     let name = agent.map_or_else(|| MAIN.to_owned(), |agent| sha256_hex(agent.as_bytes()));
     session_dir(base, &context.session).join(name)
+}
+
+pub(crate) fn briefs_dir(base: &Path, session: &str) -> PathBuf {
+    session_dir(base, session).join(BRIEFS)
 }
 
 // The entry's name: the digest of the canonical path, a NUL and the hex digest of the content.

@@ -122,6 +122,8 @@ fn a_hook_command_line_that_names_no_hook_is_refused() {
         &["hook", "read-card", "extra"],
         &["hook", "ledger-mark", "extra"],
         &["hook", "ledger-reset", "extra"],
+        &["hook", "brief-record", "extra"],
+        &["hook", "subagent-map", "extra"],
     ] {
         let ran = run(&tree, args, &[]);
         assert_eq!(
@@ -260,7 +262,13 @@ fn the_trace_hooks_on_an_empty_stdin_in_a_removed_directory_write_nothing() {
     let log = tree.join("gate.jsonl");
     let shown = log.to_str().expect("a UTF-8 log path");
     let tmp = tree.path().display().to_string();
-    let hooks = ["read-card", "ledger-mark", "ledger-reset"];
+    let hooks = [
+        "read-card",
+        "ledger-mark",
+        "brief-record",
+        "subagent-map",
+        "ledger-reset",
+    ];
     for hook in hooks {
         tree.create_dir("gone").expect("the start directory");
         let mut command = Command::new("sh");

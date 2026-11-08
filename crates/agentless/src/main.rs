@@ -34,9 +34,11 @@ fn main() -> ExitCode {
 // One hook: its subcommand name and its run.
 type HookRun = fn(&EnvConfig, &Services) -> u8;
 
-const HOOKS: [(&str, HookRun); 7] = [
+const HOOKS: [(&str, HookRun); 9] = [
     ("read-card", read_carded),
     ("ledger-mark", ledger_marked),
+    ("brief-record", brief_recorded),
+    ("subagent-map", subagent_mapped),
     ("prompt-map", prompt_mapped),
     ("erosion", erosion),
     ("ledger-reset", ledger_reset),
@@ -107,6 +109,22 @@ fn read_carded(env: &EnvConfig, services: &Services) -> u8 {
 fn ledger_marked(env: &EnvConfig, services: &Services) -> u8 {
     keep_panic_lines();
     hook::ledger_mark(env, services, &mut io::stdin().lock())
+}
+
+// The brief record returns no decision, so it writes nothing.
+fn brief_recorded(env: &EnvConfig, services: &Services) -> u8 {
+    keep_panic_lines();
+    hook::brief_record(env, services, &mut io::stdin().lock())
+}
+
+fn subagent_mapped(env: &EnvConfig, services: &Services) -> u8 {
+    keep_panic_lines();
+    hook::subagent_map(
+        env,
+        services,
+        &mut io::stdin().lock(),
+        &mut io::stdout().lock(),
+    )
 }
 
 fn ledger_reset(env: &EnvConfig, _services: &Services) -> u8 {

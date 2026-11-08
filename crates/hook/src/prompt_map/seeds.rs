@@ -4,6 +4,7 @@
 use std::collections::HashSet;
 
 use prompts::messages::PROMPT_MAP_CONTEXT;
+use prompts::{Template, Text};
 use text::{is_word, strip};
 
 const MAX_SEEDS: usize = 12;
@@ -15,7 +16,17 @@ pub(crate) const MAX_FILES: usize = 2;
 const SHOWN_NAMES: usize = 4;
 pub(crate) const MAX_CONTEXT_BYTES: usize = 768;
 
+// The seeds of a text, and the repository files that it names, in order.
+pub(crate) struct Seeded {
+    pub(crate) seeds: Vec<String>,
+    pub(crate) files: Vec<String>,
+}
+
 pub(crate) fn seeds(prompt: &str, is_file: &dyn Fn(&str) -> bool) -> Vec<String> {
+    seeded(prompt, is_file).seeds
+}
+
+pub(crate) fn seeded(prompt: &str, is_file: &dyn Fn(&str) -> bool) -> Seeded {
     let file = |rel: &str| below_root(rel) && is_file(rel);
     let mut paths: Vec<&str> = path_tokens(prompt)
         .into_iter()
@@ -36,26 +47,42 @@ pub(crate) fn seeds(prompt: &str, is_file: &dyn Fn(&str) -> bool) -> Vec<String>
             ticked.push(token);
         }
     }
+    let mut named = HashSet::new();
+    let files = (paths.iter())
+        .filter(|path| named.insert(**path))
+        .map(|path| (*path).to_owned())
+        .collect();
     let words = [camel_case(prompt), snake_case(prompt)]
         .into_iter()
         .flatten();
-    let named = words.filter(|word| word.len() >= MIN_TOKEN);
+    let words = words.filter(|word| word.len() >= MIN_TOKEN);
     let mut seen = HashSet::new();
-    (paths.into_iter().chain(ticked).chain(named))
+    let seeds = (paths.into_iter().chain(ticked).chain(words))
         .filter(|seed| seen.insert(*seed))
         .take(MAX_SEEDS)
         .map(str::to_owned)
-        .collect()
+        .collect();
+    Seeded { seeds, files }
 }
 
 pub(crate) fn context_text(names: &[String], files: &[String]) -> Option<String> {
+    sentence(&PROMPT_MAP_CONTEXT, names, files)
+}
+
+// The names, then the files, in the sentence of `template`: two files, or one when two make the
+// sentence too long.
+pub(crate) fn sentence(
+    template: &Template<(Text, Text)>,
+    names: &[String],
+    files: &[String],
+) -> Option<String> {
     if names.is_empty() || files.is_empty() {
         return None;
     }
     let names = joined(names, SHOWN_NAMES, ", ");
     [MAX_FILES, 1]
         .into_iter()
-        .map(|kept| PROMPT_MAP_CONTEXT.render((joined(files, kept, " and ").as_str(), &names)))
+        .map(|kept| template.render((joined(files, kept, " and ").as_str(), &names)))
         .find(|text| text.len() <= MAX_CONTEXT_BYTES)
 }
 

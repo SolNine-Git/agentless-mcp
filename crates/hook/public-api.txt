@@ -20,6 +20,7 @@ impl core::marker::Unpin for hook::Output
 impl core::marker::UnsafeUnpin for hook::Output
 impl core::panic::unwind_safe::RefUnwindSafe for hook::Output
 impl core::panic::unwind_safe::UnwindSafe for hook::Output
+pub fn hook::brief_record(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read) -> u8
 pub fn hook::erosion(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read) -> hook::Output
 pub fn hook::gate_report(&str, core::option::Option<&str>, core::option::Option<&str>, &str) -> hook::Output
 pub fn hook::ledger_mark(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read) -> u8
@@ -27,3 +28,4 @@ pub fn hook::ledger_reset(&app::env::EnvConfig, &mut dyn alloc::io::read::Read) 
 pub fn hook::prompt_map(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read, &mut dyn core::io::write::Write) -> u8
 pub fn hook::read_card(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read, &mut dyn core::io::write::Write) -> u8
 pub fn hook::retired(&mut dyn alloc::io::read::Read) -> u8
+pub fn hook::subagent_map(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read, &mut dyn core::io::write::Write) -> u8
