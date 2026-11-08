@@ -9,7 +9,7 @@ use kernel::Deadline;
 
 use crate::Error;
 
-pub use call::KeptGraphs;
+pub use call::{Builds, KeptGraphs};
 pub(crate) use call::{
     CallGraph, CallScan, Keeping, over_call_scan, over_walked_scan, with_call_graph,
 };

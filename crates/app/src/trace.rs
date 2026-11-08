@@ -22,7 +22,7 @@ use crate::{
 };
 use resolve::Resolved;
 
-pub use crate::symbol_graph::KeptGraphs;
+pub use crate::symbol_graph::{Builds, KeptGraphs};
 pub use section::{CardKind, Section};
 
 /// The most targets that one trace call takes.

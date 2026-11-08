@@ -27,10 +27,12 @@ const WAIT: Duration = Duration::from_millis(10);
 // The files that one scan thread compares at a time when a kept graph checks a call's scan.
 const COMPARED_FILES: usize = 64;
 
-// One call's scan: the files with facts, which a kept graph shares, and the files passed over.
+// One call's scan: the files with facts, which a kept graph shares, the files passed over, and the
+// warnings that each operation over the scan reports, as a scan of its own would give them.
 pub(crate) struct CallScan {
     pub(crate) files: Arc<Vec<FileFacts>>,
     pub(crate) skipped: Vec<Skipped>,
+    pub(crate) warnings: Vec<String>,
 }
 
 // Scans the repository once and gives the scan to `answer`. The scan's warnings come first.
@@ -40,10 +42,12 @@ pub(crate) fn over_call_scan<T>(
     answer: impl FnOnce(&CallScan) -> Noted<Result<T, Error>>,
 ) -> Noted<Result<T, Error>> {
     let loaded = RepoFacts::load(services, reading);
+    let warnings = loaded.diagnostics.clone();
     let scanned = loaded.map(|facts| {
         facts.map(|facts| CallScan {
             files: Arc::new(facts.files),
             skipped: facts.skipped,
+            warnings,
         })
     });
     scanned.then_ok(|scan| answered_over(scan, answer))
@@ -67,23 +71,26 @@ pub(crate) fn over_walked_scan<T>(
                 scanned.map(|(kept, skipped)| {
                     let files = Arc::clone(&kept.files);
                     graphs.keep(kept_root, kept);
-                    CallScan { files, skipped }
+                    (files, skipped)
                 })
             })
         }
         Keeping::Own | Keeping::Thread(_) => {
             let scanned = scan_walked(root, files, source, deadline);
-            scanned.map(|scanned| {
-                scanned.map(|facts| CallScan {
-                    files: Arc::new(facts.files),
-                    skipped: facts.skipped,
-                })
-            })
+            scanned.map(|scanned| scanned.map(|facts| (Arc::new(facts.files), facts.skipped)))
         }
     };
     let mut diagnostics = warnings.to_vec();
     diagnostics.extend(scanned.diagnostics);
-    let value = scanned.value.map_err(Error::from);
+    let warnings = diagnostics.clone();
+    let value = scanned
+        .value
+        .map_err(Error::from)
+        .map(|(files, skipped)| CallScan {
+            files,
+            skipped,
+            warnings,
+        });
     Noted { value, diagnostics }.then_ok(|scan| answered_over(scan, answer))
 }
 
@@ -94,20 +101,27 @@ pub(crate) enum Keeping<'a> {
     Own,
     // The server keeps the graph of the root on the root's graph thread.
     Server(&'a KeptGraphs, &'a Path),
-    // The graph thread builds it, and counts the build.
-    Thread(&'a AtomicUsize),
+    // The graph thread builds it, and counts each build.
+    Thread(&'a Counts),
 }
 
-// The name index and the resolved graph of one scan. The first answer that needs either builds
-// it, and every later answer of the call reads the same one.
+// The name index, import scopes, resolver and resolved graph of one scan. The first answer that
+// needs one builds it, and every later answer of the call reads the same one.
 #[derive(Clone, Copy)]
 pub(crate) struct CallGraph<'a> {
     files: &'a Arc<Vec<FileFacts>>,
-    index: &'a OnceCell<NameIndex<'a>>,
-    scopes: &'a OnceCell<Scopes<'a>>,
-    graph: &'a OnceCell<Result<SymbolGraph<'a>, Stopped>>,
+    built: &'a Built<'a>,
     deadline: Option<&'a Deadline>,
     keeping: Keeping<'a>,
+}
+
+// What a call graph builds from its files. The resolver and the graph borrow the index and scopes.
+#[derive(Default)]
+struct Built<'a> {
+    index: OnceCell<NameIndex<'a>>,
+    scopes: OnceCell<Scopes<'a>>,
+    resolver: OnceCell<Resolver<'a>>,
+    graph: OnceCell<Result<SymbolGraph<'a>, Stopped>>,
 }
 
 // Gives `answer` the call graph of `files`, which builds nothing until an answer needs it.
@@ -117,37 +131,19 @@ pub(crate) fn with_call_graph<T>(
     keeping: Keeping<'_>,
     answer: impl FnOnce(&CallGraph<'_>) -> T,
 ) -> T {
-    let (index, scopes, graph) = (OnceCell::new(), OnceCell::new(), OnceCell::new());
+    let built = Built::default();
     answer(&CallGraph {
         files,
-        index: &index,
-        scopes: &scopes,
-        graph: &graph,
+        built: &built,
         deadline,
         keeping,
     })
 }
 
 impl<'a> CallGraph<'a> {
-    // `answer` over the scanned files and their name index.
-    pub(crate) fn indexed<R: Send + 'static>(
-        &self,
-        answer: impl FnOnce(&[FileFacts], &NameIndex<'_>) -> R + Send + 'static,
-    ) -> Noted<Result<R, Error>> {
-        self.over(move |graph| Ok(answer(graph.files, graph.index())))
-    }
-
-    // `answer` over the name index and the resolved graph.
-    pub(crate) fn answered<R: Send + 'static>(
-        &self,
-        answer: impl FnOnce(&NameIndex<'_>, &SymbolGraph<'_>) -> R + Send + 'static,
-    ) -> Noted<Result<R, Error>> {
-        self.over(move |graph| graph.graph().map(|built| answer(graph.index(), built)))
-    }
-
     // `work` on the root's graph thread when the server keeps the graph, else on this call's own
     // graph. A thread that the system refuses leaves the work to the call, with the reason.
-    fn over<R: Send + 'static>(
+    pub(crate) fn over<R: Send + 'static>(
         &self,
         work: impl FnOnce(&CallGraph<'_>) -> Result<R, Error> + Send + 'static,
     ) -> Noted<Result<R, Error>> {
@@ -166,30 +162,81 @@ impl<'a> CallGraph<'a> {
         noted.map(|()| awaited(&replied, self.deadline).map_err(Error::from)?)
     }
 
-    fn index(&self) -> &'a NameIndex<'a> {
+    pub(crate) fn files(&self) -> &'a [FileFacts] {
+        self.files
+    }
+
+    // The call's deadline, or none on a graph thread, where the waiting call checks it.
+    pub(crate) fn deadline(&self) -> Option<&'a Deadline> {
+        self.deadline
+    }
+
+    pub(crate) fn index(&self) -> &'a NameIndex<'a> {
         let files = self.files;
-        self.index.get_or_init(|| NameIndex::build(files))
+        self.built.index.get_or_init(|| {
+            self.counted(|counts| &counts.indexes);
+            NameIndex::build(files)
+        })
+    }
+
+    pub(crate) fn scopes(&self) -> &'a Scopes<'a> {
+        let files = self.files;
+        self.built.scopes.get_or_init(|| {
+            self.counted(|counts| &counts.scopes);
+            Scopes::build(files)
+        })
+    }
+
+    pub(crate) fn resolver(&self) -> &'a Resolver<'a> {
+        self.built.resolver.get_or_init(|| {
+            self.counted(|counts| &counts.resolvers);
+            Resolver::new(self.index(), self.scopes())
+        })
     }
 
     // A stopped build stops every later answer too, as the deadline it ran under has passed.
-    fn graph(&self) -> Result<&'a SymbolGraph<'a>, Error> {
-        let (files, scopes) = (self.files, self.scopes);
-        let built = self.graph.get_or_init(|| {
-            if let Keeping::Thread(builds) = self.keeping {
-                builds.fetch_add(1, Ordering::Relaxed);
-            }
-            let scopes = scopes.get_or_init(|| Scopes::build(files));
-            SymbolGraph::build(&Resolver::new(self.index(), scopes), self.deadline)
+    pub(crate) fn graph(&self) -> Result<&'a SymbolGraph<'a>, Error> {
+        let built = self.built.graph.get_or_init(|| {
+            self.counted(|counts| &counts.graphs);
+            SymbolGraph::build(self.resolver(), self.deadline)
         });
         built.as_ref().map_err(|stopped| Error::from(*stopped))
     }
+
+    fn counted(&self, count: impl FnOnce(&Counts) -> &AtomicUsize) {
+        if let Keeping::Thread(counts) = self.keeping {
+            count(counts).fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// How many times the kept graphs built each part, over every root.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Builds {
+    /// The name indexes.
+    pub indexes: usize,
+    /// The import scopes.
+    pub scopes: usize,
+    /// The resolvers.
+    pub resolvers: usize,
+    /// The resolved graphs.
+    pub graphs: usize,
+}
+
+// The counts of `Builds`, which the graph threads add to.
+#[derive(Debug, Default)]
+pub(crate) struct Counts {
+    indexes: AtomicUsize,
+    scopes: AtomicUsize,
+    resolvers: AtomicUsize,
+    graphs: AtomicUsize,
 }
 
 /// The facts, name index and resolved graph of each root, kept between a server's trace calls.
 #[derive(Default)]
 pub struct KeptGraphs {
     roots: Mutex<HashMap<PathBuf, KeptRoot>>,
-    builds: Arc<AtomicUsize>,
+    builds: Arc<Counts>,
 }
 
 impl std::fmt::Debug for KeptGraphs {
@@ -211,10 +258,17 @@ struct KeptRoot {
 }
 
 impl KeptGraphs {
-    /// Returns how many resolved graphs the server built, over every root.
+    /// Returns how many times the server built each part of a graph, over every root.
     #[must_use]
-    pub fn builds(&self) -> usize {
-        self.builds.load(Ordering::Relaxed)
+    pub fn builds(&self) -> Builds {
+        let count = |counted: &AtomicUsize| counted.load(Ordering::Relaxed);
+        let counts = &self.builds;
+        Builds {
+            indexes: count(&counts.indexes),
+            scopes: count(&counts.scopes),
+            resolvers: count(&counts.resolvers),
+            graphs: count(&counts.graphs),
+        }
     }
 
     // Sends `job` to the graph thread of `root`, started at the first job of the root or after
@@ -315,7 +369,7 @@ fn awaited<R>(
     }
 }
 
-fn started(builds: &Arc<AtomicUsize>) -> std::io::Result<Sender<Job>> {
+fn started(builds: &Arc<Counts>) -> std::io::Result<Sender<Job>> {
     let (thread, jobs) = mpsc::channel();
     let builds = Arc::clone(builds);
     let spawned = thread::Builder::new().name("agentless-graph".to_owned());
@@ -324,7 +378,7 @@ fn started(builds: &Arc<AtomicUsize>) -> std::io::Result<Sender<Job>> {
 }
 
 // The thread of one root: the jobs in order, until the server drops its end of the channel.
-fn served(jobs: &Receiver<Job>, builds: &AtomicUsize) {
+fn served(jobs: &Receiver<Job>, builds: &Counts) {
     let mut next = jobs.recv().ok();
     while let Some(job) = next {
         next = held(job, jobs, builds);
@@ -333,7 +387,7 @@ fn served(jobs: &Receiver<Job>, builds: &AtomicUsize) {
 
 // Answers the first job and each later job whose scan is the same over one graph, and returns
 // the first job whose scan differs. No deadline: a call that stops leaves its build to the next.
-fn held(first: Job, jobs: &Receiver<Job>, builds: &AtomicUsize) -> Option<Job> {
+fn held(first: Job, jobs: &Receiver<Job>, builds: &Counts) -> Option<Job> {
     let files = Arc::clone(&first.files);
     with_call_graph(&files, None, Keeping::Thread(builds), |graph| {
         first.run(graph);

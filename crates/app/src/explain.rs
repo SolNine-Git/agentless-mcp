@@ -159,19 +159,20 @@ fn graph_explained(
     let skipped = skipped.to_vec();
     let root = reading.repo.root.clone();
     let target = target.to_owned();
-    graph.answered(move |index, built| {
+    graph.over(move |graph| {
+        let built = graph.graph()?;
         let scope = Scope {
-            index,
+            index: graph.index(),
             skipped: &skipped,
             root: &root,
         };
         let explained = explanation(&scope, built, &target, limit);
         let coverage = Coverage::of(&explained.binding, &skipped);
-        Explanation {
+        Ok(Explanation {
             coverage,
             skipped,
             ..explained
-        }
+        })
     })
 }
 

@@ -14,12 +14,13 @@ use super::{
     FOLDER_ENTRIES, FileLinks, FileTrace, FolderEntry, FolderTrace, LAST_CHANGE_DEADLINE, Linked,
     MORE_TREE_DEPTH, MORE_TREE_ENTRIES, Section, Tally, cap,
 };
+use crate::cycles::cycles_in;
 use crate::explain::explain_in;
 use crate::ops::limits::MAX_LIMIT;
 use crate::search::{Place, file_row};
 use crate::{
-    CyclesRequest, Error, ExplainRequest, ImportRow, IntArg, Noted, Reading, Services, SymbolCard,
-    cycles, is_test_path,
+    CyclesRequest, Error, ExplainRequest, ImportRow, IntArg, Noted, Reading, SymbolCard,
+    is_test_path,
 };
 use kernel::Bounded;
 
@@ -41,7 +42,7 @@ pub(super) fn file_trace(
             Noted::new(Ok(traced))
         }
     });
-    let traced = traced.then_ok(|traced| with_cycles(services, reading, traced, more));
+    let traced = traced.then_ok(|traced| with_cycles(call, traced, more));
     traced.map_ok(|traced| {
         let change = (more.is_none())
             .then(|| file_change(services, reading, &traced.path, LAST_CHANGE_DEADLINE));
@@ -73,8 +74,7 @@ fn bare(found: &FoundFile, lines: u32, more: Option<Section>) -> FileTrace {
 }
 
 fn with_cycles(
-    services: &Services,
-    reading: &Reading<'_>,
+    call: &Call<'_, '_, '_>,
     traced: FileTrace,
     more: Option<Section>,
 ) -> Noted<Result<FileTrace, Error>> {
@@ -84,8 +84,8 @@ fn with_cycles(
     let request = CyclesRequest {
         limit: IntArg::from_usize(MAX_LIMIT),
     };
-    cycles(services, reading, &request).map_ok(|report| FileTrace {
-        cycles: Some(holding(&report.cycles, &traced.path, more)),
+    cycles_in(&request, call.graph, call.scan).map_ok(|cycles| FileTrace {
+        cycles: Some(holding(&cycles, &traced.path, more)),
         ..traced
     })
 }

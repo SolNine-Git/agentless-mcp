@@ -5,10 +5,11 @@ mod shared;
 mod sites;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::Path;
 
 use facts::{Declared, Role};
 use graph::{Definition, NameIndex, Resolver, Scopes, Site, TargetForm, references_to};
-use kernel::Bounded;
+use kernel::{Bounded, Deadline};
 
 use crate::bounds::within;
 use crate::detached::answered_over;
@@ -18,6 +19,7 @@ use crate::endpoints::{
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::RepoFacts;
 use crate::span::{Missed, SymbolSpan, data_key_span};
+use crate::symbol_graph::{CallGraph, CallScan};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
 
 /// A refs request: the target, the most sites, and whether to rank the shared callers.
@@ -165,20 +167,18 @@ pub fn refs(
     reading: &Reading<'_>,
     request: &RefsRequest,
 ) -> Noted<Result<RefsResult, Error>> {
-    let limit = match within(&request.limit, 1, MAX_LIMIT, "limit") {
-        Ok(limit) => limit,
-        Err(error) => return Noted::new(Err(error)),
-    };
-    if let Some(found) = data_key_span(reading, &request.target) {
-        return found.map(|span| Ok(keyed(request, limit, span)));
-    }
-    let loaded = RepoFacts::load(services, reading);
-    loaded.map(|facts| {
-        facts.and_then(|facts| answered_over(facts, |facts| fan_in(facts, reading, request, limit)))
+    with_limit(reading, request, |limit| {
+        let loaded = RepoFacts::load(services, reading);
+        loaded.map(|facts| {
+            facts.and_then(|facts| {
+                answered_over(facts, |facts| scanned(facts, reading, request, limit))
+            })
+        })
     })
 }
 
-fn fan_in(
+// The fan-in over a resolver of the scan's own.
+fn scanned(
     facts: &RepoFacts,
     reading: &Reading<'_>,
     request: &RefsRequest,
@@ -186,17 +186,85 @@ fn fan_in(
 ) -> Result<RefsResult, Error> {
     let index = NameIndex::build(&facts.files);
     let scopes = Scopes::build(&facts.files);
-    let resolver = Resolver::new(&index, &scopes);
-    let scope = Scope {
-        index: &index,
+    let fan = FanIn {
+        resolver: &Resolver::new(&index, &scopes),
         skipped: &facts.skipped,
         root: &reading.repo.root,
+        stoplist: &reading.repo.config.stoplist,
+        deadline: reading.deadline,
+    };
+    fan_in(&fan, request, limit)
+}
+
+// Lists the sites as `refs` does, over the graph that one trace call reads for all its cards. The
+// warnings of the call's scan come first, as the scan of `refs` gives them.
+pub(crate) fn refs_in(
+    reading: &Reading<'_>,
+    request: &RefsRequest,
+    graph: &CallGraph<'_>,
+    scan: &CallScan,
+) -> Noted<Result<RefsResult, Error>> {
+    with_limit(reading, request, |limit| {
+        let (skipped, root) = (scan.skipped.clone(), reading.repo.root.clone());
+        let stoplist = reading.repo.config.stoplist.clone();
+        let request = request.clone();
+        let answered = graph.over(move |graph| {
+            let fan = FanIn {
+                resolver: graph.resolver(),
+                skipped: &skipped,
+                root: &root,
+                stoplist: &stoplist,
+                deadline: graph.deadline(),
+            };
+            fan_in(&fan, &request, limit)
+        });
+        let mut diagnostics = scan.warnings.clone();
+        diagnostics.extend(answered.diagnostics);
+        Noted {
+            value: answered.value,
+            diagnostics,
+        }
+    })
+}
+
+// A refused limit and a data key need no scan; any other request gets its limit to `fanned`.
+fn with_limit(
+    reading: &Reading<'_>,
+    request: &RefsRequest,
+    fanned: impl FnOnce(usize) -> Noted<Result<RefsResult, Error>>,
+) -> Noted<Result<RefsResult, Error>> {
+    let limit = match within(&request.limit, 1, MAX_LIMIT, "limit") {
+        Ok(limit) => limit,
+        Err(error) => return Noted::new(Err(error)),
+    };
+    if let Some(found) = data_key_span(reading, &request.target) {
+        return found.map(|span| Ok(keyed(request, limit, span)));
+    }
+    fanned(limit)
+}
+
+// What one fan-in reads: the resolver of the scan, the files it passed over, the repository's
+// root and stoplist, and the deadline.
+struct FanIn<'f, 'a> {
+    resolver: &'f Resolver<'a>,
+    skipped: &'f [Skipped],
+    root: &'f Path,
+    stoplist: &'f BTreeSet<String>,
+    deadline: Option<&'f Deadline>,
+}
+
+fn fan_in(fan: &FanIn<'_, '_>, request: &RefsRequest, limit: usize) -> Result<RefsResult, Error> {
+    let (resolver, index) = (fan.resolver, fan.resolver.index());
+    let scope = Scope {
+        index,
+        skipped: fan.skipped,
+        root: fan.root,
     };
     let bound = bind(&scope, &request.target, limit, &TARGET_WORDING);
     let scanned = RefsResult {
-        coverage: Coverage::of(&bound.binding, &facts.skipped),
-        skipped: facts.skipped.clone(),
-        scanned: Some(facts.files.len()),
+        coverage: Coverage::of(&bound.binding, fan.skipped),
+        skipped: fan.skipped.to_vec(),
+        scanned: Some(index.files().len()),
         ..nothing_listed(request, limit, bound.binding.clone())
     };
     if bound.binding.status == BindingStatus::NotFound {
@@ -205,10 +273,10 @@ fn fan_in(
     let target_ids: BTreeSet<String> = (bound.definitions.iter())
         .map(|definition| definition.stable_id().to_string())
         .collect();
-    let spellings = spellings(&resolver, &bound.definitions, &target_ids);
+    let spellings = spellings(resolver, &bound.definitions, &target_ids);
     let sites = dedupe(&spellings);
     let names = names_by_path(&spellings);
-    let tiers = sites::site_tiers(&sites, &names, &resolver, &target_ids);
+    let tiers = sites::site_tiers(&sites, &names, resolver, &target_ids);
     let kept = round_robin(&sites, limit);
     let groups = RefListing {
         rows: sites::group_sites(&kept, &tiers),
@@ -218,8 +286,7 @@ fn fan_in(
         files: sites.iter().map(Site::path).collect::<BTreeSet<_>>().len(),
     };
     let ranked = if request.shared_callers {
-        let stoplist = &reading.repo.config.stoplist;
-        shared::shared_callers(&sites, &target_ids, &index, stoplist, reading.deadline)?
+        shared::shared_callers(&sites, &target_ids, index, fan.stoplist, fan.deadline)?
     } else {
         Vec::new()
     };

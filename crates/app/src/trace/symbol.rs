@@ -13,10 +13,11 @@ use super::{
 };
 use crate::explain::explain_in;
 use crate::ops::limits::{DEFAULT_HISTORY_BUDGET, DEFAULT_HISTORY_LIMIT};
+use crate::refs::refs_in;
 use crate::{
     Error, ExpandRequest, ExplainRequest, Explanation, HistoryRequest, HistoryResult, IntArg,
     Noted, RefGroup, RefsRequest, RefsResult, SharedCaller, SymbolCard, TierGroup, expand, history,
-    is_test_path, refs,
+    is_test_path,
 };
 
 // The sections that a default card holds and that `more` can also name alone.
@@ -78,7 +79,8 @@ impl Sections<'_, '_, '_, '_> {
             limit: IntArg::from_usize(LISTING_LIMIT),
             shared_callers: self.wants(Section::Similar),
         };
-        let found = refs(self.call.services, self.call.reading, &request);
+        let call = self.call;
+        let found = refs_in(call.reading, &request, call.graph, call.scan);
         found.map_ok(|found| SymbolTrace {
             callers: (self.wants(Section::Callers)).then(|| callers(&found, self.more)),
             tests: (self.wants(Section::Tests))

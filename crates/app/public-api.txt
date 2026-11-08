@@ -1190,6 +1190,29 @@ impl core::marker::Unpin for app::trace::Tally
 impl core::marker::UnsafeUnpin for app::trace::Tally
 impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Tally
 impl core::panic::unwind_safe::UnwindSafe for app::trace::Tally
+pub struct app::trace::Builds
+pub app::trace::Builds::graphs: usize
+pub app::trace::Builds::indexes: usize
+pub app::trace::Builds::resolvers: usize
+pub app::trace::Builds::scopes: usize
+impl core::clone::Clone for app::trace::Builds
+pub fn app::trace::Builds::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::Builds
+impl core::cmp::PartialEq for app::trace::Builds
+pub fn app::trace::Builds::eq(&self, &Self) -> bool
+impl core::default::Default for app::trace::Builds
+pub fn app::trace::Builds::default() -> Self
+impl core::fmt::Debug for app::trace::Builds
+pub fn app::trace::Builds::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::trace::Builds
+impl core::marker::StructuralPartialEq for app::trace::Builds
+impl core::marker::Freeze for app::trace::Builds
+impl core::marker::Send for app::trace::Builds
+impl core::marker::Sync for app::trace::Builds
+impl core::marker::Unpin for app::trace::Builds
+impl core::marker::UnsafeUnpin for app::trace::Builds
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Builds
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Builds
 pub struct app::trace::Callees
 pub app::trace::Callees::bound: usize
 pub app::trace::Callees::name_only: usize
@@ -1378,7 +1401,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::trace::FolderTrace
 impl core::panic::unwind_safe::UnwindSafe for app::trace::FolderTrace
 pub struct app::trace::KeptGraphs
 impl app::trace::KeptGraphs
-pub fn app::trace::KeptGraphs::builds(&self) -> usize
+pub fn app::trace::KeptGraphs::builds(&self) -> app::trace::Builds
 impl core::default::Default for app::trace::KeptGraphs
 pub fn app::trace::KeptGraphs::default() -> Self
 impl core::fmt::Debug for app::trace::KeptGraphs

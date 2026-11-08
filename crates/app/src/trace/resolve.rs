@@ -71,19 +71,19 @@ pub(super) fn resolved(
     let paths: Vec<String> = walk.iter().map(|file| file.path.clone()).collect();
     let (skipped, root) = (scan.skipped.clone(), reading.repo.root.clone());
     let targets = targets.to_vec();
-    graph.indexed(move |files, index| {
+    graph.over(move |graph| {
         let walked = Walked::new(&paths);
         let scope = Scope {
-            index,
+            index: graph.index(),
             skipped: &skipped,
             root: &root,
         };
         let resolver = Resolver {
             scope: &scope,
             walked: &walked,
-            files,
+            files: graph.files(),
         };
-        targets.iter().map(|target| resolver.one(target)).collect()
+        Ok(targets.iter().map(|target| resolver.one(target)).collect())
     })
 }
 

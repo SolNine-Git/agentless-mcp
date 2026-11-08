@@ -4,6 +4,7 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use app::trace::Builds;
 use kernel::testing::PinnedClock;
 use serde_json::json;
 
@@ -27,6 +28,16 @@ fn traced(server: &Server, target: &serde_json::Value) -> ToolAnswer {
     server.answer("trace", json!({ "target": target }).as_object().cloned())
 }
 
+// One build of each part of a graph, `times` over.
+fn built(times: usize) -> Builds {
+    Builds {
+        indexes: times,
+        scopes: times,
+        resolvers: times,
+        graphs: times,
+    }
+}
+
 #[test]
 fn a_kept_graph_is_built_once_until_a_file_changes() {
     let sandbox = probe();
@@ -35,14 +46,14 @@ fn a_kept_graph_is_built_once_until_a_file_changes() {
     let second = traced(&server, &json!("alpha"));
     assert!(!first.is_error, "{}", first.text);
     assert_eq!(second, first);
-    assert_eq!(server.inner.graphs.builds(), 1);
+    assert_eq!(server.inner.graphs.builds(), built(1));
     sandbox.step(&[
         "write",
         "repo/pkg/mod.py",
         "def alpha():\n    return beta()\n\n\ndef beta():\n    return gamma()\n\n\ndef gamma():\n    return 1\n",
     ]);
     let edited = traced(&server, &json!("beta"));
-    assert_eq!(server.inner.graphs.builds(), 2);
+    assert_eq!(server.inner.graphs.builds(), built(2));
     assert_eq!(edited, traced(&pinned(&sandbox), &json!("beta")));
     assert!(edited.text.contains("gamma"), "{}", edited.text);
 }
@@ -51,7 +62,10 @@ fn a_kept_graph_is_built_once_until_a_file_changes() {
 fn every_card_of_one_call_reads_one_kept_graph() {
     let sandbox = probe();
     let server = pinned(&sandbox);
-    let answer = traced(&server, &json!(["alpha", "beta", "pkg/mod.py"]));
+    let targets = json!(["alpha", "beta", "pkg/mod.py"]);
+    let answer = traced(&server, &targets);
     assert!(!answer.is_error, "{}", answer.text);
-    assert_eq!(server.inner.graphs.builds(), 1);
+    assert_eq!(server.inner.graphs.builds(), built(1));
+    assert_eq!(traced(&server, &targets), answer);
+    assert_eq!(server.inner.graphs.builds(), built(1));
 }
