@@ -187,7 +187,7 @@ pub(crate) fn service(server: &Server, bound: IpAddr) -> (Mcp, impl FnOnce()) {
     // A session lives until its DELETE or the stop.
     manager.session_config.keep_alive = None;
     manager.session_config.sse_retry = None;
-    let mcp = StreamableHttpService::new(move || Ok(server.clone()), Arc::new(manager), config);
+    let mcp = StreamableHttpService::new(move || Ok(server.session()), Arc::new(manager), config);
     (mcp, move || sessions.cancel())
 }
 

@@ -1,16 +1,13 @@
-//! The MCP tool surface as data: the tools in list order, their parameters, the operation tables,
-//! and the tools/list entry of each tool.
+//! The MCP tool surface as data: the tools in list order, their parameters, and the tools/list
+//! entry of each tool.
 
 use json::JsonValue;
 use prompts::parameter_descriptions as parameter;
 use prompts::tool_descriptions as described;
 use text::CodePointString;
 
-use crate::ops::limits::{
-    MAX_BUDGET, MAX_CONTEXT_LINES, MAX_DIAGRAM_EDGES, MAX_DIAGRAM_NODES, MAX_LIMIT, MAX_RESOLUTION,
-    MAX_TREE_DEPTH, MAX_TREE_ENTRIES, MIN_BUDGET,
-};
-use crate::ops::{GRANULARITY_NAMES, KIND_NAMES};
+use crate::search::{MAX_SEARCH_CONTEXT, MAX_SEARCH_LIMIT};
+use crate::trace::MAX_TARGETS;
 
 /// One tool of the surface.
 #[derive(Debug)]
@@ -38,6 +35,8 @@ pub enum Effect {
     ReadOnly,
 }
 
+// No tool has an operation table now. The retired `gate-mark` hook still reads `Calls` and
+// `localizes`, so both stay until that hook goes.
 /// How a call to a tool selects its work.
 #[derive(Debug)]
 pub enum Calls {
@@ -140,34 +139,32 @@ pub enum RootCount {
 }
 
 /// The tools in the order that a tools/list answer gives them.
-pub static TOOLS: [&Tool; 7] = [
-    &FIND_REFERENCING_SYMBOLS,
-    &HISTORY,
-    &CAPABILITIES,
-    &ORIENT,
-    &GRAPH,
-    &SYMBOLS,
-    &READ,
+pub static TOOLS: [&Tool; 2] = [&TRACE, &SEARCH];
+
+/// The values of the trace tool's `more`, in the order of [`crate::trace::Section::ALL`].
+pub const MORE_SECTIONS: [&str; 12] = [
+    "candidates",
+    "callers",
+    "callees",
+    "tests",
+    "similar",
+    "history",
+    "body",
+    "declares",
+    "imports",
+    "importers",
+    "cycles",
+    "tree",
 ];
 
-// The description of the symbol kind type, which the kind parameter's schema carries.
-const KIND_DESCRIPTION: &str = "Classification of extracted AST symbols.";
-
-const TEXTS: Shape = list(&Shape::Text, None, None);
-const FOCUS: Shape = Shape::AnyOf(&[Shape::Text, TEXTS]);
-// One [start, end] pair, or a list of them: no value fits both, so the order sets only the
-// order of a refusal's problems.
-const LINES: Shape = Shape::AnyOf(&[LINE_RANGE, LINE_RANGES]);
-// One or more [start, end] pairs of 1-based line numbers.
-const LINE_RANGES: Shape = list(&LINE_RANGE, Some(1), None);
-const LINE_RANGE: Shape = list(&LINE_NUMBER, Some(2), Some(2));
-const LINE_NUMBER: Shape = Shape::Int {
-    minimum: 1,
-    maximum: None,
-};
-const LIMIT: Shape = int(1, MAX_LIMIT);
-const BUDGET: Shape = int(MIN_BUDGET, MAX_BUDGET);
-const CONTEXT_LINES: Shape = int(0, MAX_CONTEXT_LINES);
+const TARGETS: Shape = Shape::AnyOf(&[
+    Shape::Text,
+    Shape::Array {
+        items: &Shape::Text,
+        min_items: Some(1),
+        max_items: Some(MAX_TARGETS),
+    },
+]);
 
 const REPO_ROOT: Param = optional("repo_root", Shape::Text, parameter::REPO_ROOT);
 
@@ -175,14 +172,6 @@ const fn int(minimum: usize, maximum: usize) -> Shape {
     Shape::Int {
         minimum,
         maximum: Some(maximum),
-    }
-}
-
-const fn list(items: &'static Shape, min_items: Option<usize>, max_items: Option<usize>) -> Shape {
-    Shape::Array {
-        items,
-        min_items,
-        max_items,
     }
 }
 
@@ -200,247 +189,54 @@ const fn param(
     }
 }
 
-const fn required(name: &'static str, description: &'static str) -> Param {
-    param(name, Shape::Text, Presence::Required, description)
-}
-
 const fn optional(name: &'static str, shape: Shape, description: &'static str) -> Param {
     param(name, shape, Presence::Nullable, description)
 }
 
-const fn switch(name: &'static str, description: &'static str) -> Param {
-    param(name, Shape::Bool, Presence::DefaultFalse, description)
-}
-
-const fn operation(
-    name: &'static str,
-    accepted: &'static [&'static str],
-    required: &'static [&'static str],
-) -> Operation {
-    Operation {
-        name,
-        accepted,
-        required,
-        localizes: false,
-    }
-}
-
-// An operation whose call shows where code lives.
-const fn localizing(
-    name: &'static str,
-    accepted: &'static [&'static str],
-    required: &'static [&'static str],
-) -> Operation {
-    Operation {
-        localizes: true,
-        ..operation(name, accepted, required)
-    }
-}
-
-static FIND_REFERENCING_SYMBOLS: Tool = Tool {
-    name: "find_referencing_symbols",
-    title: "Find referencing symbols",
-    description: described::FIND_REFERENCING_SYMBOLS,
+static TRACE: Tool = Tool {
+    name: "trace",
+    title: "Trace",
+    description: described::TRACE,
     effect: Effect::ReadOnly,
     always_load: true,
     params: &[
-        required("target", parameter::REFERENCE_TARGET),
+        param(
+            "target",
+            TARGETS,
+            Presence::Required,
+            parameter::TRACE_TARGET,
+        ),
         REPO_ROOT,
-        optional("limit", LIMIT, parameter::REFERENCE_LIMIT),
-        switch("shared_callers", parameter::SHARED_CALLERS),
+        optional(
+            "more",
+            Shape::Literal(&MORE_SECTIONS),
+            parameter::TRACE_MORE,
+        ),
     ],
     calls: Calls::Single { localizes: true },
 };
 
-static HISTORY: Tool = Tool {
-    name: "history",
-    title: "History",
-    description: described::HISTORY,
+static SEARCH: Tool = Tool {
+    name: "search",
+    title: "Search",
+    description: described::SEARCH,
     effect: Effect::ReadOnly,
-    always_load: false,
+    always_load: true,
     params: &[
-        required("target", parameter::HISTORY_TARGET),
+        optional("pattern", Shape::Text, parameter::SEARCH_PATTERN),
         REPO_ROOT,
-        optional("limit", LIMIT, parameter::HISTORY_LIMIT),
-        optional("budget", BUDGET, parameter::HISTORY_BUDGET),
+        optional("files", Shape::Text, parameter::SEARCH_FILES),
+        optional("path", Shape::Text, parameter::SEARCH_PATH),
+        optional("ignore_case", Shape::Bool, parameter::SEARCH_IGNORE_CASE),
+        optional(
+            "context",
+            int(0, MAX_SEARCH_CONTEXT),
+            parameter::SEARCH_CONTEXT,
+        ),
+        optional("limit", int(1, MAX_SEARCH_LIMIT), parameter::SEARCH_LIMIT),
     ],
     calls: Calls::Single { localizes: false },
 };
-
-static CAPABILITIES: Tool = Tool {
-    name: "capabilities",
-    title: "Capabilities",
-    description: described::CAPABILITIES,
-    effect: Effect::ReadOnly,
-    always_load: false,
-    params: &[REPO_ROOT],
-    calls: Calls::Single { localizes: false },
-};
-
-static ORIENT: Tool = Tool {
-    name: "orient",
-    title: "Orient",
-    description: described::ORIENT,
-    effect: Effect::ReadOnly,
-    always_load: true,
-    params: &ORIENT_PARAMS,
-    calls: Calls::Operations(&[localizing(
-        "map",
-        &["focus", "budget", "limit", "granularity"],
-        &[],
-    )]),
-};
-
-const ORIENT_PARAMS: [Param; 6] = [
-    required("operation", parameter::ORIENT_OPERATION),
-    REPO_ROOT,
-    optional("focus", FOCUS, parameter::ORIENT_FOCUS),
-    optional("budget", BUDGET, parameter::MAP_BUDGET),
-    optional(
-        "granularity",
-        Shape::Literal(&GRANULARITY_NAMES),
-        parameter::MAP_GRANULARITY,
-    ),
-    optional("limit", LIMIT, parameter::ORIENT_LIMIT),
-];
-
-static GRAPH: Tool = Tool {
-    name: "graph",
-    title: "Graph",
-    description: described::GRAPH,
-    effect: Effect::ReadOnly,
-    always_load: false,
-    params: &GRAPH_PARAMS,
-    calls: Calls::Operations(&[
-        operation("communities", &["resolution", "limit"], &[]),
-        operation("cycles", &["limit"], &[]),
-        operation("health", &["limit"], &[]),
-        operation(
-            "diagram",
-            &[
-                "focus",
-                "max_nodes",
-                "max_edges",
-                "group_by_communities",
-                "resolution",
-            ],
-            &[],
-        ),
-        localizing(
-            "path",
-            &["source", "target", "include_unique", "include_ambiguous"],
-            &["source", "target"],
-        ),
-    ]),
-};
-
-const GRAPH_PARAMS: [Param; 12] = [
-    required("operation", parameter::GRAPH_OPERATION),
-    REPO_ROOT,
-    optional("focus", FOCUS, parameter::GRAPH_FOCUS),
-    optional("resolution", RESOLUTION, parameter::COMMUNITY_RESOLUTION),
-    optional("limit", LIMIT, parameter::GRAPH_LIMIT),
-    optional("source", Shape::Text, parameter::PATH_SOURCE),
-    optional("target", Shape::Text, parameter::PATH_TARGET),
-    optional("include_unique", Shape::Bool, parameter::INCLUDE_UNIQUE),
-    optional(
-        "include_ambiguous",
-        Shape::Bool,
-        parameter::INCLUDE_AMBIGUOUS,
-    ),
-    optional(
-        "max_nodes",
-        int(1, MAX_DIAGRAM_NODES),
-        parameter::DIAGRAM_MAX_NODES,
-    ),
-    optional(
-        "max_edges",
-        int(0, MAX_DIAGRAM_EDGES),
-        parameter::DIAGRAM_MAX_EDGES,
-    ),
-    optional(
-        "group_by_communities",
-        Shape::Bool,
-        parameter::GROUP_BY_COMMUNITIES,
-    ),
-];
-
-const RESOLUTION: Shape = Shape::Number {
-    exclusive_minimum: 0,
-    maximum: MAX_RESOLUTION,
-};
-
-static SYMBOLS: Tool = Tool {
-    name: "symbols",
-    title: "Symbols",
-    description: described::SYMBOLS,
-    effect: Effect::ReadOnly,
-    always_load: true,
-    params: &SYMBOLS_PARAMS,
-    calls: Calls::Operations(&[
-        localizing("find", &["name", "kind", "limit"], &["name"]),
-        localizing("overview", &["paths", "docstrings"], &["paths"]),
-        localizing("expand", &["stable_ids", "limit"], &["stable_ids"]),
-        localizing("explain", &["target", "limit"], &["target"]),
-        operation(
-            "locate",
-            &["path", "locations", "context_lines"],
-            &["path", "locations"],
-        ),
-    ]),
-};
-
-const SYMBOLS_PARAMS: [Param; 12] = [
-    required("operation", parameter::SYMBOLS_OPERATION),
-    REPO_ROOT,
-    optional("name", Shape::Text, parameter::FIND_NAME),
-    optional("kind", KIND, parameter::SYMBOL_KIND),
-    optional("limit", LIMIT, parameter::SYMBOLS_LIMIT),
-    optional("paths", TEXTS, parameter::OVERVIEW_PATHS),
-    optional("docstrings", Shape::Bool, parameter::DOCSTRINGS),
-    optional("stable_ids", TEXTS, parameter::STABLE_IDS),
-    optional("target", Shape::Text, parameter::EXPLAIN_TARGET),
-    optional("path", Shape::Text, parameter::FILE_PATH),
-    optional("locations", TEXTS, parameter::LOCATIONS),
-    optional("context_lines", CONTEXT_LINES, parameter::CONTEXT_LINES),
-];
-
-const KIND: Shape = Shape::Enum {
-    names: &KIND_NAMES,
-    description: KIND_DESCRIPTION,
-};
-
-static READ: Tool = Tool {
-    name: "read",
-    title: "Read",
-    description: described::READ,
-    effect: Effect::ReadOnly,
-    always_load: true,
-    params: &READ_PARAMS,
-    calls: Calls::Operations(&[
-        localizing(
-            "slice",
-            &["path", "lines", "context_lines", "whole_file"],
-            &["path"],
-        ),
-        operation("dir", &["path", "depth", "max_entries"], &[]),
-    ]),
-};
-
-const READ_PARAMS: [Param; 8] = [
-    required("operation", parameter::READ_OPERATION),
-    REPO_ROOT,
-    optional("path", Shape::Text, parameter::READ_PATH),
-    optional("lines", LINES, parameter::SLICE_LINES),
-    optional("context_lines", CONTEXT_LINES, parameter::CONTEXT_LINES),
-    optional("whole_file", Shape::Bool, parameter::WHOLE_FILE),
-    optional("depth", int(1, MAX_TREE_DEPTH), parameter::TREE_DEPTH),
-    optional(
-        "max_entries",
-        int(1, MAX_TREE_ENTRIES),
-        parameter::TREE_MAX_ENTRIES,
-    ),
-];
 
 impl Tool {
     /// Returns the operation named `name`, or `None` when the tool has no such operation.

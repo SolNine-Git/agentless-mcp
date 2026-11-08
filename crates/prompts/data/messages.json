@@ -40,7 +40,7 @@
   "walk_listing_capped": "walk refused: git listed more than {bytes} bytes of names under {root}",
   "walk_unlisted": "{root} cannot be listed the way its .gitignore asks: {note}",
   "walk_refused_cli": "{reason}. No flag changes a walk bound. Set --repo to a subdirectory, and the walk covers only that subtree.",
-  "walk_refused_mcp": "{reason}. No argument changes a walk bound. read dir walks only the directory that its path names. symbols overview, expand and locate, read slice and history do not walk the root.",
+  "walk_refused_mcp": "{reason}. No argument changes a walk bound. Serve a subdirectory with --root, and the walk covers only that subtree.",
   "caps_walk_bytes": "note: max_walk_bytes counts only the files that a scan reads, each with a suffix from the extensions list and at most max_file_bytes bytes",
   "map_unresolved_seeds": "// note: these focus seeds matched no file, no symbol, and no name spelled in five or fewer non-test files of this repository, so the ranking below is not focused on them: {seeds}. Check the spelling, or seed with a file path from the tree.",
   "scan_skipped_files": "// warning: {count} {count:file was|files were} skipped and {count:is|are} absent from this answer: {listed}. A symbol in a skipped file reads as missing here even though it may exist in the repository.",

@@ -11,8 +11,7 @@ use tokio::io::{
     AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream, Lines, ReadHalf, WriteHalf,
 };
 
-use super::calls::{built, masked, reference, run_named};
-use super::{Kept, Sandbox, quiet_ports};
+use super::{Kept, Sandbox, probe, quiet_ports};
 use crate::dispatch::UNPLANNED;
 use crate::offload::{Job, Offload};
 use crate::{Arming, Ports, Server, ServerConfig};
@@ -87,6 +86,7 @@ fn config_of(sandbox: &Sandbox, concurrency: usize) -> ServerConfig {
         max_concurrency: concurrency,
         call_limit: super::CALL_LIMIT,
         recache_grace: super::RECACHE_GRACE,
+        hooks: None,
     }
 }
 
@@ -94,17 +94,11 @@ fn server_of(sandbox: &Sandbox, concurrency: usize, ports: Ports) -> Server {
     Server::new(config_of(sandbox, concurrency), sandbox.services(), ports)
 }
 
-fn probe() -> (Json, Sandbox) {
-    let run = run_named("probe");
-    let sandbox = built(&run);
-    (run, sandbox)
-}
-
 // The tools/list answer is the reference surface, key order and number forms included, and its
 // line is the compact form of that surface byte for byte.
 #[tokio::test(flavor = "multi_thread")]
 async fn tools_list_is_the_reference_surface() {
-    let (_, sandbox) = probe();
+    let sandbox = probe();
     let mut wire = Wire::start(server_of(&sandbox, 8, quiet_ports()));
     wire.initialized("2025-06-18").await;
     let line = wire.request(2, "tools/list", json!({})).await;
@@ -120,7 +114,7 @@ async fn tools_list_is_the_reference_surface() {
 // protocol version the reference knows echoes, and any other falls back to the newest.
 #[tokio::test(flavor = "multi_thread")]
 async fn initialize_answers_with_the_reference_capabilities() {
-    let (_, sandbox) = probe();
+    let sandbox = probe();
     let capabilities = json!({"experimental": {}, "prompts": {"listChanged": false}, "resources": {"subscribe": false, "listChanged": false}, "tools": {"listChanged": true}, "extensions": {"io.modelcontextprotocol/ui": {}}});
     for (asked, answered) in [
         ("2024-11-05", "2024-11-05"),
@@ -140,7 +134,7 @@ async fn initialize_answers_with_the_reference_capabilities() {
 // Each line equals the reference answer of the stdio probe, the id aside.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_protocol_answers_are_the_reference_answers() {
-    let (_, sandbox) = probe();
+    let sandbox = probe();
     let mut wire = Wire::start(server_of(&sandbox, 8, quiet_ports()));
     wire.initialized("2025-06-18").await;
     let unknown = r#"{"jsonrpc":"2.0","id":7,"error":{"code":-32602,"message":"Invalid request parameters","data":""}}"#;
@@ -172,7 +166,7 @@ async fn the_protocol_answers_are_the_reference_answers() {
     };
     let completion = json!({"ref": {"type": "ref/prompt", "name": "x"}, "argument": {"name": "a", "value": "b"}});
     for (id, method, params, want) in [
-        (8, "tools/call", json!({"name": "orient", "arguments": [1]}), invalid(8)),
+        (8, "tools/call", json!({"name": "trace", "arguments": [1]}), invalid(8)),
         (9, "tools/call", json!({"arguments": {}}), invalid(9)),
         (10, "completion/complete", completion, not_found(10)),
         (11, "resources/read", json!({"uri": "file:///x"}), r#"{"jsonrpc":"2.0","id":11,"error":{"code":-32002,"message":"Resource not found: Unknown resource: 'file:///x'"}}"#.to_owned()),
@@ -188,7 +182,7 @@ async fn the_protocol_answers_are_the_reference_answers() {
 // handler would name a deprecated rmcp type (logging/setLevel, which initialize leaves out).
 #[tokio::test(flavor = "multi_thread")]
 async fn the_deviating_protocol_answers_are_the_recorded_ones() {
-    let (_, sandbox) = probe();
+    let sandbox = probe();
     let mut wire = Wire::start(server_of(&sandbox, 8, quiet_ports()));
     wire.initialized("2025-06-18").await;
     let discover = "request _meta is missing or has malformed required fields: \
@@ -219,24 +213,30 @@ async fn the_deviating_protocol_answers_are_the_recorded_ones() {
     }
 }
 
-// A tools/call answer is one text block with its error flag, in the reference key order.
+// A tools/call answer is one text block with its error flag, in the reference key order: the
+// text of the call's own answer, an ordinary miss, and a refusal.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_tool_answer_is_one_text_block_with_its_error_flag() {
-    let (run, sandbox) = probe();
-    let mut wire = Wire::start(server_of(&sandbox, 8, quiet_ports()));
+    let sandbox = probe();
+    let server = server_of(&sandbox, 8, quiet_ports());
+    let mut wire = Wire::start(server.clone());
     wire.initialized("2025-06-18").await;
-    let call = json!({"name": "read", "arguments": {"operation": "dir"}});
-    let line = wire.request(2, "tools/call", call).await;
-    let text = &parsed(&line)["result"]["content"][0]["text"];
-    let normalised = sandbox.normalised(text.as_str().expect("a text"));
-    let want = reference(&run, "read", &json!({"operation": "dir"}));
-    assert_eq!(masked(&normalised), want);
-    let shape = json!({"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": text}], "isError": false}});
-    assert_eq!(line, shape.to_string());
-    let refused = wire
-        .request(3, "tools/call", json!({"name": "orient", "arguments": {}}))
-        .await;
-    assert_eq!(parsed(&refused)["result"]["isError"], true);
+    for (id, arguments, error) in [
+        (2, json!({"target": "alpha"}), false),
+        (3, json!({"target": "zz_no_such"}), false),
+        (4, json!({}), true),
+    ] {
+        let call = json!({"name": "trace", "arguments": arguments});
+        let line = wire.request(id, "tools/call", call).await;
+        let text = &parsed(&line)["result"]["content"][0]["text"];
+        let direct = server.answer("trace", arguments.as_object().cloned());
+        assert_eq!(
+            (text.as_str(), error),
+            (Some(direct.text.as_str()), direct.is_error)
+        );
+        let shape = json!({"jsonrpc": "2.0", "id": id, "result": {"content": [{"type": "text", "text": text}], "isError": error}});
+        assert_eq!(line, shape.to_string());
+    }
 }
 
 // The background index of the gate tests: each call reports that it started, then waits for the
@@ -281,14 +281,14 @@ fn held_ports(arming: Arc<Held>) -> Ports {
 }
 
 fn find(id: u64) -> Json {
-    json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": {"name": "symbols", "arguments": {"operation": "find", "name": "alpha"}}})
+    json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": {"name": "trace", "arguments": {"target": "alpha"}}})
 }
 
 // With one permit, a second call starts only after the first ends; with two, both work at once.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_gate_holds_calls_beyond_its_permits() {
     for (permits, second_starts_early) in [(1, false), (2, true)] {
-        let (_, sandbox) = probe();
+        let sandbox = probe();
         let (arming, started, release) = held();
         let mut wire = Wire::start(server_of(&sandbox, permits, held_ports(arming)));
         wire.initialized("2025-06-18").await;
@@ -317,7 +317,7 @@ async fn the_gate_holds_calls_beyond_its_permits() {
 // A cancelled call sends no answer, and its permit frees when its thread reaches a checkpoint.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_cancelled_call_frees_its_permit_at_its_next_checkpoint() {
-    let (_, sandbox) = probe();
+    let sandbox = probe();
     let (arming, started, release) = held();
     let mut wire = Wire::start(server_of(&sandbox, 1, held_ports(arming)));
     wire.initialized("2025-06-18").await;
@@ -362,7 +362,7 @@ impl Offload for Refusing {
 // the unplanned-error text; the server keeps answering.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_panicking_or_refused_thread_answers_as_an_unplanned_failure() {
-    let (_, sandbox) = probe();
+    let sandbox = probe();
     let ports = Ports {
         arming: Arc::new(Panicking),
         log: Arc::new(Kept::default()),

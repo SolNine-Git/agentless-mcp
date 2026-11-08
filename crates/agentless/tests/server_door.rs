@@ -1,8 +1,10 @@
 //! The agentless-mcp-server door: the thin binary runs its sibling under the server's name, which
-//! parses the server's command line and serves one stdio session.
+//! parses the server's command line and serves one stdio session, with the hook note on its first
+//! answer.
 
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
+use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
@@ -14,7 +16,9 @@ use serde_json::{Value, json};
 const DOOR: &str = env!("CARGO_BIN_EXE_agentless-mcp-server");
 const BINARY: &str = env!("CARGO_BIN_EXE_agentless-mcp");
 const DEADLINE: Duration = Duration::from_secs(30);
-const MAPPING: &str = "| v1 tool (behind `--surface v1`) | v2 call |";
+const SURFACE_REFUSED: &str = "agentless-mcp-server: error: --surface is no longer served: this \
+     release publishes trace and search only. Drop --surface.\n";
+const ALL_MISSING: &str = "hooks: 7 of 7 agentless hook entries are missing";
 
 struct Ran {
     code: Option<i32>,
@@ -29,11 +33,16 @@ fn sandbox() -> Tree {
     tree
 }
 
+// The settings folder is below the tree, so no test reads the user's own settings.
 fn env(tree: &Tree) -> Vec<(OsString, OsString)> {
     let mut vars = io::testing::hermetic_env(&tree.path().join("home"));
     vars.push((
         OsString::from("AGENTLESS_MCP_NO_AUTO_INDEX"),
         OsString::from("1"),
+    ));
+    vars.push((
+        OsString::from("CLAUDE_CONFIG_DIR"),
+        tree.path().join("config").into_os_string(),
     ));
     vars
 }
@@ -87,20 +96,19 @@ fn the_door_refuses_a_command_line_with_the_reference_text() {
     assert!(ran.err.ends_with(report), "{}", ran.err);
 }
 
-// The refusal of a removed surface names the guide section, and that section answers.
+// The server publishes one surface, so --surface of any value is refused at start-up.
 #[test]
-fn the_guide_section_of_the_surface_refusal_answers() {
+fn the_door_refuses_every_surface() {
     let tree = sandbox();
-    let refused = run(DOOR, &tree, &["--surface", "v1"]);
-    assert_eq!(refused.code, Some(2));
-    assert!(
-        refused
-            .err
-            .contains("agentless-mcp guide --section the-two-surfaces.")
-    );
-    let guide = run(BINARY, &tree, &["guide", "--section", "the-two-surfaces"]);
-    assert_eq!(guide.code, Some(0), "{}", guide.err);
-    assert!(guide.out.contains(MAPPING), "{}", guide.out);
+    for surface in ["v1", "v2", "both", "trace"] {
+        let refused = run(DOOR, &tree, &["--surface", surface]);
+        assert_eq!(
+            (refused.code, refused.out.as_str()),
+            (Some(2), ""),
+            "{surface}"
+        );
+        assert!(refused.err.contains(SURFACE_REFUSED), "{}", refused.err);
+    }
 }
 
 fn request(id: u64, method: &str, params: &Value) -> String {
@@ -143,54 +151,137 @@ fn ended_while_pinged(child: &mut Child, stdin: &mut ChildStdin) -> Option<i32> 
     panic!("the server did not end with its output closed");
 }
 
-// One stdio session through the thin binary: initialize, the tool list, one call, then the end of
-// input ends the server with 0.
+// One stdio session of the door: the requests go in on stdin, and each answer is one line.
+struct Session {
+    child: Child,
+    stdin: Option<ChildStdin>,
+    lines: mpsc::Receiver<String>,
+    id: u64,
+}
+
+impl Session {
+    fn start(tree: &Tree, args: &[&str]) -> Session {
+        let mut child = Command::new(DOOR)
+            .args(args)
+            .current_dir(tree.path())
+            .env_clear()
+            .envs(env(tree))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("a started server");
+        let stdout = child.stdout.take().expect("a stdout pipe");
+        let (sender, lines) = mpsc::channel();
+        thread::spawn(move || forwarded(stdout, &sender));
+        let stdin = child.stdin.take();
+        let mut session = Session {
+            child,
+            stdin,
+            lines,
+            id: 0,
+        };
+        let hello = json!({
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "door", "version": "0"},
+        });
+        let initialized = session.request("initialize", &hello);
+        assert_eq!(initialized["result"]["serverInfo"]["name"], "agentless-mcp");
+        let notice = json!({"jsonrpc": "2.0", "method": "notifications/initialized"});
+        session.write(&format!("{notice}\n"));
+        session
+    }
+
+    fn write(&mut self, text: &str) {
+        let stdin = self.stdin.as_mut().expect("an open input");
+        stdin.write_all(text.as_bytes()).expect("a written request");
+    }
+
+    fn request(&mut self, method: &str, params: &Value) -> Value {
+        self.id += 1;
+        self.write(&request(self.id, method, params));
+        let line = self.lines.recv_timeout(DEADLINE).expect("an answer");
+        serde_json::from_str::<Value>(&line).expect("a JSON answer")
+    }
+
+    // The text of a tool call and its error flag.
+    fn call(&mut self, tool: &str, arguments: &Value) -> (String, bool) {
+        let called = self.request("tools/call", &json!({"name": tool, "arguments": arguments}));
+        let text = called["result"]["content"][0]["text"].as_str();
+        let error = called["result"]["isError"].as_bool();
+        (
+            text.expect("a text answer").to_owned(),
+            error.expect("an error flag"),
+        )
+    }
+
+    // The end of input ends the server, and the exit code says how.
+    fn ended(mut self) -> Option<i32> {
+        drop(self.stdin.take());
+        ended(&mut self.child)
+    }
+}
+
+// Sends each line of `stdout` until the receiver goes.
+fn forwarded(stdout: impl Read, sender: &mpsc::Sender<String>) {
+    for line in BufReader::new(stdout).lines() {
+        if sender.send(line.expect("a line")).is_err() {
+            return;
+        }
+    }
+}
+
+// One stdio session through the thin binary: initialize, the tool list, the first call with the
+// hook note, then the end of input ends the server with 0.
 #[test]
 fn the_door_serves_one_stdio_session() {
     let tree = sandbox();
-    let mut child = Command::new(DOOR)
-        .args(["--allow-client-roots", "--root", "repo"])
-        .current_dir(tree.path())
-        .env_clear()
-        .envs(env(&tree))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("a started server");
-    let stdout = child.stdout.take().expect("a stdout pipe");
-    let (sender, lines) = mpsc::channel();
-    thread::spawn(move || {
-        for line in BufReader::new(stdout).lines() {
-            if sender.send(line.expect("a line")).is_err() {
-                return;
-            }
+    let mut session = Session::start(&tree, &["--allow-client-roots", "--root", "repo"]);
+    let listed = session.request("tools/list", &json!({}));
+    let names: Vec<&str> = (listed["result"]["tools"].as_array().into_iter().flatten())
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+    assert_eq!(names, ["trace", "search"]);
+    let (first, error) = session.call("search", &json!({"files": "*"}));
+    assert!(!error && first.contains(ALL_MISSING), "{first}");
+    let (second, _) = session.call("search", &json!({"files": "*"}));
+    assert!(!second.contains("hooks: "), "{second}");
+    assert_eq!(session.ended(), Some(0));
+}
+
+// The entries that `hook install` writes for this binary are current, so the door gives no note.
+#[test]
+fn a_door_with_current_hook_entries_gives_no_note() {
+    let tree = sandbox();
+    tree.create_dir("config").expect("a settings folder");
+    let binary = io::resolve(Path::new(BINARY)).expect("the binary's path");
+    let mut events: Vec<(&str, Vec<Value>)> = Vec::new();
+    for entry in app::hooks::entries(app::hooks::DEFAULT_SERVER_NAME) {
+        let command = app::hooks::command(&binary.display().to_string(), entry.hook);
+        let handler = json!({"type": "command", "command": command, "timeout": entry.timeout});
+        let mut group = json!({"hooks": [handler]});
+        if let Some(matcher) = &entry.matcher {
+            group["matcher"] = json!(matcher);
         }
-    });
-    let mut stdin = child.stdin.take().expect("a stdin pipe");
-    let hello = json!({
-        "protocolVersion": "2025-06-18",
-        "capabilities": {},
-        "clientInfo": {"name": "door", "version": "0"},
-    });
-    let mut answer = |text: String| {
-        stdin.write_all(text.as_bytes()).expect("a written request");
-        let line = lines.recv_timeout(DEADLINE).expect("an answer");
-        serde_json::from_str::<Value>(&line).expect("a JSON answer")
-    };
-    let initialized = answer(request(1, "initialize", &hello));
-    assert_eq!(initialized["result"]["serverInfo"]["name"], "agentless-mcp");
-    let notice = json!({"jsonrpc": "2.0", "method": "notifications/initialized"});
-    let listed = answer(format!(
-        "{notice}\n{}",
-        request(2, "tools/list", &json!({}))
-    ));
-    assert_eq!(listed["result"]["tools"].as_array().map(Vec::len), Some(7));
-    let call = json!({"name": "capabilities", "arguments": {}});
-    let called = answer(request(3, "tools/call", &call));
-    assert_eq!(called["result"]["isError"], false, "{called}");
-    drop(stdin);
-    assert_eq!(ended(&mut child), Some(0));
+        match events
+            .iter_mut()
+            .find(|(event, _)| *event == entry.event.as_str())
+        {
+            Some((_, groups)) => groups.push(group),
+            None => events.push((entry.event.as_str(), vec![group])),
+        }
+    }
+    let hooks: serde_json::Map<String, Value> = (events.into_iter())
+        .map(|(event, groups)| (event.to_owned(), Value::Array(groups)))
+        .collect();
+    let settings = json!({"hooks": hooks}).to_string();
+    tree.write_file("config/settings.json", settings)
+        .expect("a settings file");
+    let mut session = Session::start(&tree, &["--root", "repo"]);
+    let (first, error) = session.call("search", &json!({"files": "*"}));
+    assert!(!error && !first.contains("hooks"), "{first}");
+    assert_eq!(session.ended(), Some(0));
 }
 
 // The client closes its end of the server's output after the initialize answer and keeps the input

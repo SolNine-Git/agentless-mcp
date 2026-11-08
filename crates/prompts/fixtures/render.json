@@ -2399,7 +2399,7 @@
       "arguments": {
         "reason": "walk refused: more than 20000 files under /srv/app"
       },
-      "text": "walk refused: more than 20000 files under /srv/app. No argument changes a walk bound. read dir walks only the directory that its path names. symbols overview, expand and locate, read slice and history do not walk the root."
+      "text": "walk refused: more than 20000 files under /srv/app. No argument changes a walk bound. Serve a subdirectory with --root, and the walk covers only that subtree."
     },
     "walk_too_deep": {
       "arguments": {

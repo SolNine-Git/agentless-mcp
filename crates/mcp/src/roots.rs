@@ -162,7 +162,7 @@ impl RootsFile {
     }
 }
 
-fn stat_key(path: &Path) -> OsResult<(i128, u64)> {
+pub(crate) fn stat_key(path: &Path) -> OsResult<(i128, u64)> {
     let metadata = fs::metadata(path)?;
     let nanos = i128::from(metadata.mtime()) * 1_000_000_000 + i128::from(metadata.mtime_nsec());
     Ok((nanos, metadata.size()))

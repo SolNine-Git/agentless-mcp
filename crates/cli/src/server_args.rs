@@ -7,6 +7,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use app::{EnvConfig, IntArg};
+use prompts::messages::SURFACE_REFUSED;
 use text::CodePointString;
 
 use crate::Streams;
@@ -35,10 +36,8 @@ const NO_AUTO_INDEX_HELP: &str = "do not refresh a stale tag cache in the backgr
 const NO_AUTO_RESTART_HELP: &str = "do not restart the HTTP server when its installed package \
      changes; the process then serves the code it loaded at startup until restarted by hand \
      (AGENTLESS_MCP_NO_AUTO_RESTART in the environment does the same)";
-// DV2: the reference help named the removed surfaces and the framework of the Python server.
-const SURFACE_HELP: &str = "which tool surface to publish: v2, the seven consolidated \
-     intent-shaped tools, is the only one. v1 and both were removed in 0.11.0 and are refused at \
-     startup";
+const SURFACE_HELP: &str = "removed: every value is refused at startup, because this server \
+     publishes the trace and search tools only";
 const TRANSPORT_HELP: &str = "how the server talks to its client: stdio (the default) for a \
      client that launches this process, http for one long-lived server several clients share \
      over the streamable-http transport";
@@ -50,8 +49,6 @@ const CALL_LIMIT_HELP: &str = "how long one tool call may work before it stops w
      a call the client cancels also stops. Default 30";
 const GRACE_HELP: &str = "extra time a call may spend parsing files the tag cache does not \
      hold, on top of --call-limit. Default 60";
-const SURFACES: &[&str] = &["v1", "v2", "both"];
-const SURFACE: &str = "v2";
 const TRANSPORTS: &[&str] = &["stdio", "http"];
 const STDIO: &str = "stdio";
 const DEFAULT_HOST: &str = "127.0.0.1";
@@ -157,7 +154,7 @@ fn parser() -> Parser {
                 "no_auto_restart",
                 NO_AUTO_RESTART_HELP,
             ),
-            chosen(&["--surface"], "surface", SURFACES, SURFACE_HELP),
+            valued(&["--surface"], "surface", "SURFACE", SURFACE_HELP, TEXT),
             chosen(&["--transport"], "transport", TRANSPORTS, TRANSPORT_HELP),
             valued(&["--host"], "host", "ADDR", HOST_HELP, TEXT),
             valued(&["--port"], "port", "N", PORT_HELP, int_value),
@@ -435,16 +432,11 @@ fn limits(namespace: &Namespace) -> Result<(f64, f64), String> {
     Ok((limit, grace))
 }
 
-// DV3: 0.11.0 serves the v2 tools only.
+// The server publishes one surface, so a --surface of any value is refused.
 fn surface(namespace: &Namespace) -> Result<(), String> {
     match namespace.text("surface") {
-        Some(arg) if arg.text != SURFACE => Err(format!(
-            "--surface {} is no longer served: 0.11.0 removed the v1 tools. Drop --surface, or \
-             pass --surface v2. The v1-to-v2 mapping table is in the agent guide: agentless-mcp \
-             guide --section the-two-surfaces.",
-            arg.text
-        )),
-        _ => Ok(()),
+        Some(_) => Err(SURFACE_REFUSED.to_owned()),
+        None => Ok(()),
     }
 }
 

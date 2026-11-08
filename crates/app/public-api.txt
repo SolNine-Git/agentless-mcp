@@ -968,7 +968,8 @@ impl core::marker::Unpin for app::surface::Tool
 impl core::marker::UnsafeUnpin for app::surface::Tool
 impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Tool
 impl core::panic::unwind_safe::UnwindSafe for app::surface::Tool
-pub static app::surface::TOOLS: [&app::surface::Tool; 7]
+pub const app::surface::MORE_SECTIONS: [&str; 12]
+pub static app::surface::TOOLS: [&app::surface::Tool; 2]
 pub fn app::surface::tool_entry(&app::surface::Tool, app::surface::RootCount) -> json::parse::JsonValue
 pub mod app::trace
 pub enum app::trace::Card

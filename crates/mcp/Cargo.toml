@@ -1,6 +1,6 @@
 [package]
 name = "mcp"
-description = "The MCP server: the v2 tool list, argument validation, the call dispatch, the repository allowlist, the stdio and HTTP transports, the background index, and the restart on upgrade."
+description = "The MCP server: the trace and search tools, argument validation, the call dispatch, the repository allowlist, the hook note, the stdio and HTTP transports, the background index, and the restart on upgrade."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,7 +13,6 @@ workspace = true
 
 [dependencies]
 app = { path = "../app" }
-facts = { path = "../facts" }
 git = { path = "../git" }
 http-body-util.workspace = true
 hyper.workspace = true

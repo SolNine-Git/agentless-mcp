@@ -3,15 +3,13 @@ use std::fs;
 use std::path::Path;
 
 use json::JsonValue;
-use text::CodePointString;
 use text::testing::cases;
 
-use super::{Calls, Operation, Presence, RootCount, Shape, TOOLS, Tool, tool_entry};
+use super::{Calls, MORE_SECTIONS, Presence, RootCount, Shape, TOOLS, tool_entry};
+use crate::trace::Section;
 
 const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 const FIXTURE: &str = "surface/surface";
-// Every operation of a tool takes these, so no table row lists them.
-const UNIVERSAL: [&str; 2] = ["operation", "repo_root"];
 
 // The tools section, read with its key order and its number forms kept.
 fn reference_tools() -> Vec<JsonValue> {
@@ -31,13 +29,6 @@ fn reference_tools() -> Vec<JsonValue> {
         .unwrap_or_else(|| panic!("{shown}: no tools section"))
 }
 
-fn operations(tool: &Tool) -> &'static [Operation] {
-    match tool.calls {
-        Calls::Single { .. } => &[],
-        Calls::Operations(operations) => operations,
-    }
-}
-
 #[test]
 fn each_tool_entry_is_the_reference_entry() {
     let reference = reference_tools();
@@ -51,26 +42,6 @@ fn each_tool_entry_is_the_reference_entry() {
             json::value_text(&entry),
             json::value_text(expected)
         );
-    }
-}
-
-#[test]
-fn the_operation_tables_are_the_reference_tables() {
-    let reference: Vec<(String, String, Vec<String>, Vec<String>)> =
-        cases(MANIFEST_DIR, FIXTURE, "operations");
-    let table: Vec<(&str, &Operation)> = TOOLS
-        .iter()
-        .flat_map(|tool| {
-            operations(tool)
-                .iter()
-                .map(|operation| (tool.name, operation))
-        })
-        .collect();
-    assert_eq!(table.len(), reference.len());
-    for ((tool, operation), (name, row, accepted, required)) in table.iter().zip(&reference) {
-        assert_eq!((*tool, operation.name), (name.as_str(), row.as_str()));
-        assert_eq!(operation.accepted, &accepted[..], "{name}.{row}");
-        assert_eq!(operation.required, &required[..], "{name}.{row}");
     }
 }
 
@@ -90,40 +61,14 @@ fn localizes_follows_the_reference_unlock_rule() {
 }
 
 #[test]
-fn each_operation_names_only_parameters_of_its_tool() {
-    for tool in TOOLS.iter().filter(|tool| !operations(tool).is_empty()) {
-        let declared: BTreeSet<&str> = tool.params.iter().map(|param| param.name).collect();
-        let accepted: BTreeSet<&str> = operations(tool)
-            .iter()
-            .flat_map(|operation| operation.accepted.iter().copied())
-            .collect();
-        assert!(accepted.is_subset(&declared), "{}", tool.name);
-        let rest: Vec<&str> = declared.difference(&accepted).copied().collect();
-        assert!(
-            rest.iter().all(|name| UNIVERSAL.contains(name)),
-            "{}: {rest:?}",
-            tool.name
-        );
-        for operation in operations(tool) {
-            assert!(
-                operation
-                    .required
-                    .iter()
-                    .all(|name| operation.accepted.contains(name)),
-                "{}.{}",
-                tool.name,
-                operation.name
-            );
-        }
-    }
-}
-
-#[test]
-fn a_tool_selects_by_operation_exactly_when_it_has_a_table() {
+fn no_tool_has_an_operation_table_and_the_tool_names_are_distinct() {
+    let names: BTreeSet<&str> = TOOLS.iter().map(|tool| tool.name).collect();
+    assert_eq!(names.len(), TOOLS.len());
     for tool in TOOLS {
-        let selects = tool.params.iter().any(|param| param.name == "operation");
-        assert_eq!(selects, !operations(tool).is_empty(), "{}", tool.name);
+        assert!(matches!(tool.calls, Calls::Single { .. }), "{}", tool.name);
+        assert!(tool.operation("map").is_none(), "{}", tool.name);
         for param in tool.params {
+            assert_ne!(param.name, "operation", "{}", tool.name);
             if param.presence == Presence::DefaultFalse {
                 assert_eq!(param.shape, Shape::Bool, "{}.{}", tool.name, param.name);
             }
@@ -132,27 +77,8 @@ fn a_tool_selects_by_operation_exactly_when_it_has_a_table() {
 }
 
 #[test]
-fn operation_finds_each_row_and_the_tool_names_are_distinct() {
-    let names: BTreeSet<&str> = TOOLS.iter().map(|tool| tool.name).collect();
-    assert_eq!(names.len(), TOOLS.len());
-    for tool in TOOLS {
-        for operation in operations(tool) {
-            let found = tool.operation(operation.name);
-            assert!(found.is_some_and(|found| std::ptr::eq(found, operation)));
-        }
-        assert!(tool.operation("no_such_operation").is_none());
-    }
-}
-
-// A refusal names the one tool that has an operation, so no two tools share an operation name.
-#[test]
-fn each_operation_name_belongs_to_one_tool() {
-    let names: Vec<&str> = TOOLS
-        .iter()
-        .flat_map(|tool| operations(tool).iter().map(|operation| operation.name))
-        .collect();
-    let distinct: BTreeSet<&str> = names.iter().copied().collect();
-    assert_eq!(distinct.len(), names.len(), "{names:?}");
+fn the_more_values_are_the_trace_sections_in_order() {
+    assert_eq!(MORE_SECTIONS, Section::ALL.map(Section::as_str));
 }
 
 // With several roots each schema lists `repo_root` after the parameter that a call gives first,
@@ -205,39 +131,20 @@ fn member_mut<'v>(value: &'v mut JsonValue, key: &str) -> &'v mut JsonValue {
 }
 
 #[test]
-fn the_lines_schema_takes_one_pair_or_a_list_of_pairs() {
-    let read = TOOLS.iter().find(|tool| tool.name == "read");
-    let entry = tool_entry(read.expect("the read tool"), RootCount::One);
-    let lines = member(member(member(&entry, "inputSchema"), "properties"), "lines");
-    let pair = r#"{"items": {"minimum": 1, "type": "integer"}, "maxItems": 2, "minItems": 2, "type": "array"}"#;
-    let choices = format!(r#"[{pair}, {{"items": {pair}, "minItems": 1, "type": "array"}}]"#);
-    let want = json::parse(&choices).expect("a JSON schema");
-    assert!(
-        *member(lines, "anyOf") == want,
-        "{}",
-        json::value_text(lines)
+fn the_target_schema_takes_one_name_or_a_list_of_one_to_eight() {
+    let trace = TOOLS.iter().find(|tool| tool.name == "trace");
+    let entry = tool_entry(trace.expect("the trace tool"), RootCount::One);
+    let target = member(
+        member(member(&entry, "inputSchema"), "properties"),
+        "target",
     );
-}
-
-#[test]
-fn each_operation_enum_is_the_operation_table() {
-    for tool in TOOLS.iter().filter(|tool| !operations(tool).is_empty()) {
-        let entry = tool_entry(tool, RootCount::One);
-        let operation = member(
-            member(member(&entry, "inputSchema"), "properties"),
-            "operation",
-        );
-        let names = operations(tool)
-            .iter()
-            .map(|operation| JsonValue::Str(CodePointString::from(operation.name)));
-        let want = JsonValue::Array(names.collect());
-        assert!(
-            *member(operation, "enum") == want,
-            "{}: {}",
-            tool.name,
-            json::value_text(operation)
-        );
-    }
+    let list = r#"{"items": {"type": "string"}, "maxItems": 8, "minItems": 1, "type": "array"}"#;
+    let want = json::parse(&format!(r#"[{{"type": "string"}}, {list}]"#)).expect("a JSON schema");
+    assert!(
+        *member(target, "anyOf") == want,
+        "{}",
+        json::value_text(target)
+    );
 }
 
 // An optional parameter publishes its own shape: no null choice and no null default.

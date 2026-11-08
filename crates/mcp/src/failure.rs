@@ -32,8 +32,7 @@ mod tests {
         let reason = "walk refused: more than 2 files under /r".to_owned();
         let refused = Failure::from(app::Error::Kind(kernel::Error::WalkBoundExceeded(reason)));
         let expected = "walk refused: more than 2 files under /r. No argument changes a walk bound. \
-                        read dir walks only the directory that its path names. symbols overview, \
-                        expand and locate, read slice and history do not walk the root.";
+                        Serve a subdirectory with --root, and the walk covers only that subtree.";
         assert_eq!(refused, Failure::Refused(expected.to_owned()));
         let other = kernel::Error::RepoResolution("not a directory: /r".to_owned());
         let other = Failure::from(app::Error::Kind(other));

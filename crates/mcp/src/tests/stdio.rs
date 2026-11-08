@@ -100,7 +100,7 @@ async fn a_write_that_fails_after_the_input_ends_leaves_the_session_closed() {
         &json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
     )
     .await;
-    let call = json!({"name": "read", "arguments": {"operation": "dir"}});
+    let call = json!({"name": "search", "arguments": {"files": "*"}});
     sent(
         &mut input,
         &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": call}),

@@ -3197,9 +3197,8 @@ pub const WALK_REFUSED_CLI: Template<Text> = Template::new(&[
 pub const WALK_REFUSED_MCP: Template<Text> = Template::new(&[
     Piece::Value(0),
     Piece::Text(
-        ". No argument changes a walk bound. read dir walks only the \
-        directory that its path names. symbols overview, expand and \
-        locate, read slice and history do not walk the root.",
+        ". No argument changes a walk bound. Serve a subdirectory with \
+        --root, and the walk covers only that subtree.",
     ),
 ]);
 

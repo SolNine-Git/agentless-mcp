@@ -1,56 +1,71 @@
 //! One call's answer: the allowlist and the selected repository, its session, the background index,
-//! then the operation and the text of its view under the receipt.
+//! then the tool's work and the text of its answer under the receipt.
 
-mod graph;
-mod orient;
-mod read;
-mod shared;
-mod symbols;
+mod search;
+mod trace;
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 
-use app::{Noted, Reading, Session};
+use app::{Reading, Session};
+use git::Snapshot;
 use kernel::Deadline;
 use render::{Receipt, View};
 
 use crate::dispatch::{Call, Inner};
 use crate::failure::Failure;
+use crate::hooks::SessionNote;
 use crate::roots::{Anchor, Selection, selected, unauthorised};
 
-// What an operation reads: the services, the session, its reading and the allowed roots.
+// What a tool reads: the services, the session, its reading, the allowed roots and the claim of
+// the client session on the hook note.
 pub(crate) struct Context<'a> {
     pub(crate) inner: &'a Inner,
     pub(crate) reading: Reading<'a>,
     pub(crate) session: &'a Session,
     pub(crate) allowed: &'a [PathBuf],
+    pub(crate) note: &'a SessionNote,
 }
 
 impl Context<'_> {
-    // The text of an operation's view, after its warnings go to the log.
-    pub(crate) fn viewed<V: View>(
-        &self,
-        outcome: Noted<Result<V, app::Error>>,
-    ) -> Result<String, Failure> {
-        self.logged(&outcome.diagnostics);
-        let view = outcome.value?;
-        Ok(self.rendered(|receipt| render::text(receipt, &view)))
-    }
-
     pub(crate) fn logged(&self, diagnostics: &[String]) {
         for line in diagnostics {
             self.inner.ports.log.line(line);
         }
     }
 
-    // The text that `render` makes under the receipt, whose cache field reads as of now. The
-    // allowlist holds each root once, so its length is the count of selectable roots.
-    pub(crate) fn rendered(&self, render: impl FnOnce(&Receipt<'_>) -> String) -> String {
+    // The text of `view` under the receipt, whose cache field reads as of now. The allowlist holds
+    // each root once, so its length is the count of selectable roots.
+    pub(crate) fn rendered(&self, view: &impl View) -> String {
         let cache = self.cache_field();
         let session = self.session;
-        let receipt = Receipt::new(&session.repo, &session.snapshot, &cache)
+        let snapshot = self.noted_snapshot();
+        let receipt = Receipt::new(&session.repo, &snapshot, &cache)
             .counted_by(&*self.inner.services.counter)
             .among(self.allowed.len());
-        render(&receipt)
+        render::text(&receipt, view)
+    }
+
+    // The first answer of a client session carries the hook note, when there is one, after the
+    // notes of the git state.
+    fn noted_snapshot(&self) -> Cow<'_, Snapshot> {
+        let snapshot = &self.session.snapshot;
+        let first = self.note.claim();
+        let Some(hooks) = first
+            .then(|| self.inner.hooks.note(&self.session.repo.root))
+            .flatten()
+        else {
+            return Cow::Borrowed(snapshot);
+        };
+        let note = if snapshot.note.is_empty() {
+            hooks
+        } else {
+            format!("{}; {hooks}", snapshot.note)
+        };
+        Cow::Owned(Snapshot {
+            note,
+            ..snapshot.clone()
+        })
     }
 
     // While a background refresh of the database runs, the cache field names it in place of the
@@ -69,27 +84,23 @@ impl Context<'_> {
 pub(crate) fn answer(
     inner: &Inner,
     call: &Call,
-    deadline: Option<&Deadline>,
+    deadline: &Deadline,
+    note: &SessionNote,
 ) -> Result<String, Failure> {
     let allowed = inner.allowlist.current()?;
     let session = opened(inner, call, &allowed)?;
-    let reading = Reading::of(&session);
     let context = Context {
         inner,
-        reading: deadline.map_or(reading, |deadline| reading.with_deadline(deadline)),
+        reading: Reading::of(&session).with_deadline(deadline),
         session: &session,
         allowed: &allowed,
+        note,
     };
     match call.tool.name {
-        "capabilities" => shared::capabilities(&context),
-        "find_referencing_symbols" => shared::refs(&context, &call.arguments),
-        "history" => shared::history(&context, &call.arguments),
-        "orient" => orient::answer(&context, call),
-        "graph" => graph::answer(&context, call),
-        "symbols" => symbols::answer(&context, call),
-        "read" => read::answer(&context, call),
+        "trace" => trace::answer(&context, &call.arguments),
+        "search" => search::answer(&context, &call.arguments),
         other => Err(Failure::Unplanned(format!(
-            "no operation answers the tool {other}"
+            "no step answers the tool {other}"
         ))),
     }
 }
