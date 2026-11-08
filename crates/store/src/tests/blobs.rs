@@ -25,8 +25,8 @@ const TEXTS: [(&str, &str); 4] = [
 
 // A stored row is served while FACTS_VERSION holds, so these blobs change only with a bump.
 const PINNED: (u32, &str) = (
-    13,
-    "b075c424ddf4c5c8109841e8daaaeae0d67d597f962d89ee4fde694b7e06a6fe",
+    14,
+    "f5f32f1605331e28260e303eeb621239cf3fd61c3fe41e45d69c3a8c985fc42c",
 );
 
 fn blob_digest() -> String {

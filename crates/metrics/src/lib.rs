@@ -1,8 +1,10 @@
-//! Complexity units, source line counts, and clone blocks with their keys, from one parse.
+//! Complexity units with their action names, source line counts, and clone blocks with their
+//! keys, from one parse.
 
 mod clones;
 mod digest;
 mod kinds;
+mod names;
 mod sloc;
 mod stream;
 mod sum;
@@ -32,11 +34,14 @@ pub const MIN_INSTANCES: usize = 2;
 // SLOC rule reproduces.
 const STAMP: &str = "2/py3.13";
 
-/// The units, clone blocks, and SLOC lines of one parsed file.
+/// The units, their action names, clone blocks, and SLOC lines of one parsed file.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileMetrics {
     /// The units by start byte.
     pub units: Vec<Unit>,
+    /// The action names of each unit, in the order of `units`: the names that it calls and the
+    /// fields that it reads, each once, sorted.
+    pub actions: Vec<Vec<String>>,
     /// The clone blocks by start line, the outer block first.
     pub blocks: Vec<Block>,
     /// The sorted numbers of the lines that hold code.
@@ -155,7 +160,7 @@ pub const CLONE_REASONS: Reasons = Reasons {
     tokenizer: &messages::CLONE_TOKENIZER_REJECTS,
 };
 
-/// Measures the units, clone blocks, and SLOC lines of one parsed file.
+/// Measures the units, their action names, clone blocks, and SLOC lines of one parsed file.
 ///
 /// # Errors
 ///
@@ -163,8 +168,10 @@ pub const CLONE_REASONS: Reasons = Reasons {
 /// tokenizer rejects a Python source.
 pub fn measure(parsed: &Parsed) -> Result<FileMetrics, Unmeasurable> {
     let (spec, kinds, sloc_lines) = checked(parsed)?;
+    let units = units::units(parsed, spec, &kinds, &sloc_lines);
     Ok(FileMetrics {
-        units: units::units(parsed, spec, &kinds, &sloc_lines),
+        actions: names::actions(parsed, spec, &units),
+        units,
         blocks: clones::blocks(parsed, spec, &kinds, &sloc_lines),
         sloc_lines,
     })
@@ -205,6 +212,12 @@ impl Measurable {
     #[must_use]
     pub fn units(&self) -> Vec<Unit> {
         units::units(&self.parsed, self.spec, &self.kinds, &self.sloc_lines)
+    }
+
+    /// Returns the action names of each of `units`, which [`Measurable::units`] gave, in order.
+    #[must_use]
+    pub fn actions(&self, units: &[Unit]) -> Vec<Vec<String>> {
+        names::actions(&self.parsed, self.spec, units)
     }
 
     /// Returns the clone blocks by start line, the outer block first.
