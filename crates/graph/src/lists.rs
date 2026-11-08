@@ -10,52 +10,44 @@ pub(crate) fn merged<T>(
     added: Vec<T>,
     order: impl Fn(&T, &T) -> Ordering,
 ) -> (Vec<usize>, Vec<usize>) {
-    let old = std::mem::take(held);
-    let mut to = vec![usize::MAX; old.len()];
-    let mut gone = removed.iter().copied().peekable();
-    let mut kept: Vec<T> = Vec::with_capacity(old.len());
-    let mut kept_from: Vec<usize> = Vec::with_capacity(old.len());
-    for (at, item) in old.into_iter().enumerate() {
-        if gone.next_if_eq(&at).is_some() {
-            continue;
-        }
-        kept.push(item);
-        kept_from.push(at);
-    }
+    let gone = |at: usize| removed.binary_search(&at).is_ok();
     let points: Vec<Option<usize>> = (added.iter())
         .map(|item| {
-            let point = kept.partition_point(|held| order(held, item) == Ordering::Less);
-            let equal = kept
-                .get(point)
-                .is_some_and(|held| order(held, item) == Ordering::Equal);
+            let point = held.partition_point(|held| order(held, item) == Ordering::Less);
+            let equal = (held.get(point))
+                .is_some_and(|held| order(held, item) == Ordering::Equal && !gone(point));
             (!equal).then_some(point)
         })
         .collect();
-    let mut fresh = added
+    let mut fresh = (added.into_iter().zip(points))
+        .filter_map(|(item, point)| Some((item, point?)))
+        .peekable();
+    let first = [removed.first(), fresh.peek().map(|(_, point)| point)];
+    let first = first
         .into_iter()
-        .zip(points)
-        .filter_map(|(item, point)| Some((item, point?)));
+        .flatten()
+        .min()
+        .map_or(held.len(), |at| *at);
+    let mut to: Vec<usize> = (0..held.len()).collect();
+    let tail = held.split_off(first);
+    let mut gone = removed.iter().copied().peekable();
     let mut placed = Vec::new();
-    let mut out: Vec<T> = Vec::with_capacity(kept.len());
-    let mut next = fresh.next();
-    for (index, (item, from)) in kept.into_iter().zip(kept_from).enumerate() {
-        while let Some((_, point)) = &next
-            && *point == index
-        {
-            let (item, _) = next.take().expect("the loop holds an item");
-            placed.push(out.len());
-            out.push(item);
-            next = fresh.next();
+    for (at, item) in (first..).zip(tail) {
+        while let Some((item, _)) = fresh.next_if(|(_, point)| *point == at) {
+            placed.push(held.len());
+            held.push(item);
         }
-        to[from] = out.len();
-        out.push(item);
+        if gone.next_if_eq(&at).is_some() {
+            to[at] = usize::MAX;
+            continue;
+        }
+        to[at] = held.len();
+        held.push(item);
     }
-    while let Some((item, _)) = next {
-        placed.push(out.len());
-        out.push(item);
-        next = fresh.next();
+    for (item, _) in fresh {
+        placed.push(held.len());
+        held.push(item);
     }
-    *held = out;
     (to, placed)
 }
 

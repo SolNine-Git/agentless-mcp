@@ -110,6 +110,11 @@ struct Kept {
 // Each key with every qualifier it was resolved under, and what it resolved to.
 type Memo = HashMap<Key, Vec<(Box<str>, Option<Kept>)>>;
 
+/// The resolutions that a resolver kept, apart from the parts it read.
+pub struct Answers {
+    _held: Memo,
+}
+
 /// Resolves names against one scan's name index and import scopes, which it borrows for `'r`; what
 /// it resolves to lives as long as the scan, `'a`.
 pub struct Resolver<'r, 'a> {
@@ -138,6 +143,15 @@ impl<'r, 'a> Resolver<'r, 'a> {
             scopes,
             resolved: Mutex::new(HashMap::new()),
             walks: AtomicUsize::new(0),
+        }
+    }
+
+    /// Take what the resolver resolved, which outlives the parts it borrowed, for a caller that
+    /// frees it elsewhere; the resolver resolves again what it needs.
+    #[must_use]
+    pub fn take_answers(&self) -> Answers {
+        Answers {
+            _held: std::mem::take(&mut *self.memo()),
         }
     }
 

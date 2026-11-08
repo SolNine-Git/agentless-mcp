@@ -85,10 +85,9 @@ pub fn update<'s>(
     let (Some(index), Some((scopes, rebound))) = (index, scopes) else {
         return Ok(Resolved::default());
     };
-    let restated = (rebound.iter()).any(|(at, old)| old.statements != scopes.at(*at).statements);
-    if let Some(imports) = imports.filter(|_| restated) {
-        *imports = SymbolGraph::imports(scopes);
-        if let Some(cycles) = cycles {
+    if let Some(imports) = imports {
+        let paired = imports.reimported(scopes, &rebound);
+        if let Some(cycles) = cycles.filter(|_| paired) {
             *cycles = import_cycles(imports);
         }
     }
@@ -151,7 +150,7 @@ impl<'s> Linked<'_, 's> {
         let nodes = Nodes::new(self.after, true);
         let relinked = graph.relinked(&nodes, self.resolver, self.before, self.affected);
         let sites = relinked.sites();
-        let names = relinked.names();
+        let names = relinked.names().to_vec();
         let tally = degrees.map(|degrees| (graph.degrees_of(names.iter().copied()), degrees));
         graph.relink(relinked, self.before, self.affected);
         graph.recount(self.resolver.scopes(), rebound);

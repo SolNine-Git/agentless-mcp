@@ -783,7 +783,7 @@ impl Jobs<'_> {
             gated(self.builds, || graph.prebuild());
             finished.store(true, Ordering::Release);
         };
-        thread::scope(|scope| {
+        let next = thread::scope(|scope| {
             let mut prebuilding = None;
             let mut start = || {
                 prebuilding.get_or_insert_with(|| io::spawn_or_run(scope, &prebuild));
@@ -793,7 +793,12 @@ impl Jobs<'_> {
                 waited(self.builds);
             }
             next
-        })
+        });
+        // A full build's resolver holds every resolution of the scan, which takes long to free.
+        if let Some(resolver) = resolver.get() {
+            drop_detached(resolver.take_answers());
+        }
+        next
     }
 
     // Runs `first` and each later job whose scan is the same, and returns the first job of

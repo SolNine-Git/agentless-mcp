@@ -183,6 +183,14 @@ impl<'a> core::marker::Unpin for graph::AmbiguousReference<'a>
 impl<'a> core::marker::UnsafeUnpin for graph::AmbiguousReference<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::AmbiguousReference<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::AmbiguousReference<'a>
+pub struct graph::Answers
+impl core::marker::Freeze for graph::Answers
+impl core::marker::Send for graph::Answers
+impl core::marker::Sync for graph::Answers
+impl core::marker::Unpin for graph::Answers
+impl core::marker::UnsafeUnpin for graph::Answers
+impl core::panic::unwind_safe::RefUnwindSafe for graph::Answers
+impl core::panic::unwind_safe::UnwindSafe for graph::Answers
 pub struct graph::Community<'a>
 pub graph::Community::internal_weight: f64
 pub graph::Community::label: alloc::string::String
@@ -597,6 +605,7 @@ pub fn graph::Resolver<'r, 'a>::new(&'r graph::NameIndex<'a>, &'r graph::Scopes<
 pub fn graph::Resolver<'r, 'a>::resolve(&self, &str, &str) -> core::option::Option<graph::Resolution<'a>>
 pub fn graph::Resolver<'r, 'a>::resolved_sites<'s>(&'s self, &'a graph::FileFacts, core::option::Option<&'s alloc::collections::btree::set::BTreeSet<&str>>) -> impl core::iter::traits::iterator::Iterator<Item = (&'a facts::values::Ref, graph::Resolution<'a>)> + 's
 pub fn graph::Resolver<'r, 'a>::scopes(&self) -> &'r graph::Scopes<'a>
+pub fn graph::Resolver<'r, 'a>::take_answers(&self) -> graph::Answers
 pub fn graph::Resolver<'r, 'a>::through_imports(&self, &str, &str) -> alloc::vec::Vec<graph::Definition<'a>>
 impl<'r, 'a> !core::marker::Freeze for graph::Resolver<'r, 'a>
 impl<'r, 'a> core::marker::Send for graph::Resolver<'r, 'a>

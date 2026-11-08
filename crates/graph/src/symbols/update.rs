@@ -31,6 +31,8 @@ pub(crate) struct Relinked<'n, 'a> {
     removed_edges: Vec<usize>,
     removed_ambiguous: Vec<usize>,
     chosen: BTreeMap<&'a str, Chosen<'a>>,
+    // The names whose ambiguous references or candidate nodes differ after the update.
+    tallied: Vec<&'a str>,
 }
 
 impl<'a> Relinked<'_, 'a> {
@@ -39,9 +41,9 @@ impl<'a> Relinked<'_, 'a> {
         self.parts.sites
     }
 
-    // The names whose ambiguous references or candidates the update changes.
-    pub(crate) fn names(&self) -> Vec<&'a str> {
-        self.chosen.keys().copied().collect()
+    // The names whose ambiguous edges the update changes.
+    pub(crate) fn names(&self) -> &[&'a str] {
+        &self.tallied
     }
 }
 
@@ -61,18 +63,64 @@ impl<'a> SymbolGraph<'a> {
             linked(&mut parts, resolver, at, wanted.as_ref(), affected);
         }
         let (removed_edges, removed_ambiguous) = self.removed(before, &touched);
+        parts.ambiguous.sort_by(AmbiguousReference::cmp_total);
+        parts.ambiguous.dedup();
         let mut changing: BTreeSet<&'a str> = affected.names.clone();
         changing.extend(parts.ambiguous.iter().map(AmbiguousReference::name));
         changing.extend(removed_ambiguous.iter().map(|&at| self.ambiguous[at].name));
-        let chosen = (changing.into_iter())
+        let chosen: BTreeMap<&'a str, Chosen<'a>> = (changing.into_iter())
             .map(|name| (name, self.chosen(name, &parts, resolver, affected)))
             .collect();
+        let tallied = self.tallied(&chosen, &parts.ambiguous, &removed_ambiguous);
         Relinked {
             parts,
             removed_edges,
             removed_ambiguous,
             chosen,
+            tallied,
         }
+    }
+
+    // The chosen names whose degrees can change: the source nodes of their ambiguous references,
+    // sorted `added` against the kept ones at `removed`, or the nodes of their candidates.
+    fn tallied(
+        &self,
+        chosen: &BTreeMap<&'a str, Chosen<'a>>,
+        added: &[AmbiguousReference<'a>],
+        removed: &[usize],
+    ) -> Vec<&'a str> {
+        let mut referenced: BTreeMap<&str, (Vec<&str>, Vec<&str>)> = BTreeMap::new();
+        for &at in removed {
+            let reference = &self.ambiguous[at];
+            let held = referenced.entry(reference.name).or_default();
+            held.0.push(reference.source.node());
+        }
+        for reference in added {
+            let held = referenced.entry(reference.name).or_default();
+            held.1.push(reference.source.node());
+        }
+        let nodes = |targets: &[Endpoint<'_>]| -> Vec<String> {
+            targets
+                .iter()
+                .map(|target| target.node().to_owned())
+                .collect()
+        };
+        let old = |name: &str| {
+            self.candidate_names
+                .get(name)
+                .map(|&at| nodes(&self.candidates[at].1))
+        };
+        let differs = |name: &&'a str, choice: &Chosen<'a>| {
+            let refs = referenced.get(*name).is_some_and(|(was, is)| was != is);
+            let targets = match choice {
+                Chosen::Kept => false,
+                Chosen::Gone => old(name).is_some(),
+                Chosen::New(_, targets) => old(name) != Some(nodes(targets)),
+            };
+            refs || targets
+        };
+        let changed = chosen.iter().filter(|(name, choice)| differs(name, choice));
+        changed.map(|(name, _)| *name).collect()
     }
 
     // Puts the links of `relinked` in place of the links they replace, and moves the endpoints of
@@ -88,6 +136,7 @@ impl<'a> SymbolGraph<'a> {
             removed_edges,
             removed_ambiguous,
             chosen,
+            tallied: _,
         } = relinked;
         parts.edges.sort_by(SymbolEdge::cmp_total);
         parts.edges.dedup();
@@ -99,8 +148,6 @@ impl<'a> SymbolGraph<'a> {
             SymbolEdge::cmp_total,
         );
         self.retarget(&to, added);
-        parts.ambiguous.sort_by(AmbiguousReference::cmp_total);
-        parts.ambiguous.dedup();
         let ambiguous = std::mem::take(&mut parts.ambiguous);
         let order = AmbiguousReference::cmp_total;
         let (to, added) = merged(&mut self.ambiguous, &removed_ambiguous, ambiguous, order);
@@ -117,6 +164,47 @@ impl<'a> SymbolGraph<'a> {
         }
         self.rechosen(chosen);
         self.refreshed(&affected.moved);
+    }
+
+    // Puts the import edges of each file whose statement rows changed in place of its old ones,
+    // in an import graph. Returns whether a pair of importing and imported files changed.
+    pub(crate) fn reimported(
+        &mut self,
+        scopes: &Scopes<'a>,
+        rebound: &[(usize, ImportScope<'a>)],
+    ) -> bool {
+        let restated: Vec<usize> = (rebound.iter())
+            .filter(|(at, old)| old.statements != scopes.at(*at).statements)
+            .map(|(at, _)| *at)
+            .collect();
+        let files = scopes.files();
+        let nodes = Nodes::new(files, false);
+        let mut parts = Parts::new(&nodes);
+        let mut removed = Vec::new();
+        for &at in &restated {
+            parts.import_edges(scopes, at);
+            removed.extend(run(&self.edges, |edge| edge.source.node(), &files[at].path));
+        }
+        removed.sort_unstable();
+        let pairs =
+            |edges: &mut dyn Iterator<Item = &SymbolEdge<'a>>| -> BTreeSet<(&'a str, &'a str)> {
+                edges
+                    .map(|edge| (edge.source.path, edge.target.path))
+                    .collect()
+            };
+        let before = pairs(&mut removed.iter().map(|&at| &self.edges[at]));
+        parts.edges.sort_by(SymbolEdge::cmp_total);
+        parts.edges.dedup();
+        let after = pairs(&mut parts.edges.iter());
+        let (to, added) = merged(
+            &mut self.edges,
+            &removed,
+            parts.edges,
+            SymbolEdge::cmp_total,
+        );
+        self.retarget(&to, added);
+        self.recount(scopes, rebound);
+        before != after
     }
 
     // The unresolved counts after the scopes of `rebound` changed, each with its scope before.
