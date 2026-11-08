@@ -4,10 +4,11 @@
 use app::trace::{Callees, Callers, Change, Section, Similar, SymbolTrace, Tally, Tests};
 use app::{CoverageStatus, HistoryResult, ROW_INDENT, RefGroup, SymbolCard, locator};
 use prompts::messages::{
-    TRACE_BOUND, TRACE_HIDDEN, TRACE_LAST_CHANGE, TRACE_LAST_CHANGE_NOT_READ,
-    TRACE_LAST_CHANGE_UNAVAILABLE, TRACE_MORE_HINT, TRACE_NAME_ONLY_FILES,
-    TRACE_NAME_ONLY_FILES_FLOOR, TRACE_NAME_ONLY_HIDDEN, TRACE_NOT_RESOLVED, TRACE_SECTION_UNREAD,
-    TRACE_SIMILAR, TRACE_SIMILAR_NAME_ONLY, TRACE_SIMILAR_ROW, TRACE_TIER_UNCHECKED,
+    HISTORY_GIT_FAILED, HISTORY_NO_GIT, HISTORY_PATH_NOT_IN_HEAD, TRACE_BOUND, TRACE_HIDDEN,
+    TRACE_LAST_CHANGE, TRACE_LAST_CHANGE_NOT_READ, TRACE_LAST_CHANGE_UNAVAILABLE, TRACE_MORE_HINT,
+    TRACE_NAME_ONLY_FILES, TRACE_NAME_ONLY_FILES_FLOOR, TRACE_NAME_ONLY_HIDDEN, TRACE_NOT_RESOLVED,
+    TRACE_SECTION_UNREAD, TRACE_SIMILAR, TRACE_SIMILAR_NAME_ONLY, TRACE_SIMILAR_ROW,
+    TRACE_TIER_UNCHECKED,
 };
 use text::one_line;
 
@@ -46,7 +47,8 @@ pub(super) fn symbol_lines(traced: &SymbolTrace, more: Option<Section>) -> Vec<S
         lines.extend(similar_lines(similar, more));
     }
     lines.extend(traced.callers.as_ref().and_then(not_resolved));
-    lines.extend((traced.change.as_ref()).map(|change| change_line(change, more)));
+    let further = more.is_none().then_some(Section::History);
+    lines.extend((traced.change.as_ref()).map(|change| change_line(change, &card.path, further)));
     lines.extend(
         traced
             .history
@@ -169,15 +171,14 @@ fn not_resolved(callers: &Callers) -> Option<String> {
         .then(|| TRACE_NOT_RESOLVED.render(callers.coverage.skipped_code_files))
 }
 
-// The commit, or why git gave none. A default card points at the history that `more` reads.
-pub(super) fn change_line(change: &Change, more: Option<Section>) -> String {
-    let hinted = |line: String| match more {
-        None => format!(
-            "{line}  {}",
-            TRACE_MORE_HINT.render(Section::History.as_str())
-        ),
-        Some(_) => line,
+// The commit of the card at `path`, or why git gave none, with the hint at the section that
+// `more` reads further, if the card has one. A file's reasons are worded as history words them.
+pub(super) fn change_line(change: &Change, path: &str, further: Option<Section>) -> String {
+    let hinted = |line: String| match further {
+        Some(section) => format!("{line}  {}", TRACE_MORE_HINT.render(section.as_str())),
+        None => line,
     };
+    let unread = |reason: &str| TRACE_LAST_CHANGE_UNAVAILABLE.render(&one_line(reason));
     match change {
         Change::Commit(entry) => {
             let day = entry.authored.get(..DAY).unwrap_or(&entry.authored);
@@ -192,7 +193,10 @@ pub(super) fn change_line(change: &Change, more: Option<Section>) -> String {
             let seconds = usize::try_from(*seconds).unwrap_or(usize::MAX);
             hinted(TRACE_LAST_CHANGE_NOT_READ.render(seconds))
         }
-        Change::Unavailable(reason) => TRACE_LAST_CHANGE_UNAVAILABLE.render(&one_line(reason)),
+        Change::NoCommit => unread(&HISTORY_PATH_NOT_IN_HEAD.render(path)),
+        Change::NotRepository { note } => unread(&HISTORY_NO_GIT.render(note)),
+        Change::Failed(note) => unread(&HISTORY_GIT_FAILED.render(note)),
+        Change::Unavailable(reason) => unread(reason),
     }
 }
 

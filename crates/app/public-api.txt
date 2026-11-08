@@ -1020,8 +1020,12 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::trace::CardKind
 impl core::panic::unwind_safe::UnwindSafe for app::trace::CardKind
 pub enum app::trace::Change
 pub app::trace::Change::Commit(app::HistoryEntry)
+pub app::trace::Change::Failed(alloc::string::String)
+pub app::trace::Change::NoCommit
 pub app::trace::Change::NotRead
 pub app::trace::Change::NotRead::seconds: u64
+pub app::trace::Change::NotRepository
+pub app::trace::Change::NotRepository::note: alloc::string::String
 pub app::trace::Change::Unavailable(alloc::string::String)
 impl core::clone::Clone for app::trace::Change
 pub fn app::trace::Change::clone(&self) -> Self
@@ -1323,6 +1327,7 @@ impl core::marker::UnsafeUnpin for app::trace::FileLinks
 impl core::panic::unwind_safe::RefUnwindSafe for app::trace::FileLinks
 impl core::panic::unwind_safe::UnwindSafe for app::trace::FileLinks
 pub struct app::trace::FileTrace
+pub app::trace::FileTrace::change: core::option::Option<app::trace::Change>
 pub app::trace::FileTrace::cycles: core::option::Option<app::trace::Cycles>
 pub app::trace::FileTrace::declares: core::option::Option<app::trace::Declares>
 pub app::trace::FileTrace::id_prefix: &'static str

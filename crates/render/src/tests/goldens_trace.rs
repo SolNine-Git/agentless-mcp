@@ -192,6 +192,7 @@ fn trace_request(arguments: &Value) -> TraceRequest {
 fn late(trace: &Trace) -> bool {
     (trace.cards.iter()).any(|traced| match &traced.outcome {
         Outcome::Card(Card::Symbol(card)) => matches!(card.change, Some(Change::NotRead { .. })),
+        Outcome::Card(Card::File(card)) => matches!(card.change, Some(Change::NotRead { .. })),
         _ => false,
     })
 }

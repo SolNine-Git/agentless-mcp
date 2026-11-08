@@ -7,11 +7,12 @@ use std::path::Path;
 use facts::line_count;
 use git::RepoFile;
 
+use super::change::file_change;
 use super::resolve::FoundFile;
 use super::{
     Cycles, Declares, FILE_CYCLES, FILE_DECLARATIONS, FILE_ROWS, FOLDER_DEPTH, FOLDER_ENTRIES,
-    FileLinks, FileTrace, FolderEntry, FolderTrace, Linked, MORE_TREE_DEPTH, MORE_TREE_ENTRIES,
-    Section, Tally, cap,
+    FileLinks, FileTrace, FolderEntry, FolderTrace, LAST_CHANGE_DEADLINE, Linked, MORE_TREE_DEPTH,
+    MORE_TREE_ENTRIES, Section, Tally, cap,
 };
 use crate::ops::limits::MAX_LIMIT;
 use crate::search::{Place, file_row};
@@ -39,7 +40,12 @@ pub(super) fn file_trace(
             Noted::new(Ok(traced))
         }
     });
-    traced.then_ok(|traced| with_cycles(services, reading, traced, more))
+    let traced = traced.then_ok(|traced| with_cycles(services, reading, traced, more));
+    traced.map_ok(|traced| {
+        let change = (more.is_none())
+            .then(|| file_change(services, reading, &traced.path, LAST_CHANGE_DEADLINE));
+        FileTrace { change, ..traced }
+    })
 }
 
 // Whether a file card computes `section`: every section by default, or the one `more` names.
@@ -61,6 +67,7 @@ fn bare(found: &FoundFile, lines: u32, more: Option<Section>) -> FileTrace {
         importers: None,
         tests: None,
         cycles: None,
+        change: None,
     }
 }
 

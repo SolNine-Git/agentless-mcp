@@ -9,3 +9,4 @@ importers: 1
 tests: none
 cycles: in 1 import cycle of 2 files
   billing/invoice.py -> billing/ledger.py -> billing/invoice.py
+last change: 47e14e8d 2026-02-01 fixture

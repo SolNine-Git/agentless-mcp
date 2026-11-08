@@ -179,25 +179,62 @@ fn a_cut_candidates_card_counts_the_rest_and_points_at_more() {
     assert_eq!(text, expected);
 }
 
-#[test]
-fn a_file_with_no_anchor_says_its_imports_were_not_read() {
-    let file = FileTrace {
+fn file(edit: impl FnOnce(&mut FileTrace)) -> Card {
+    let mut traced = FileTrace {
         path: "pkg/__init__.py".to_owned(),
         language: "python",
         lines: 2,
         id_prefix: "py",
         no_symbol_at: None,
         declares: None,
-        imports: Some(Linked::NoAnchor),
+        imports: None,
         importers: None,
         tests: None,
         cycles: None,
+        change: None,
     };
-    let text = text_of(Card::File(Box::new(file)), Some(Section::Imports));
+    edit(&mut traced);
+    Card::File(Box::new(traced))
+}
+
+#[test]
+fn a_file_with_no_anchor_says_its_imports_were_not_read() {
+    let file = file(|traced| traced.imports = Some(Linked::NoAnchor));
+    let text = text_of(file, Some(Section::Imports));
     assert!(
         text.ends_with("imports: not read: no symbol of this file joins the name graph\n"),
         "{text}"
     );
+}
+
+// A file card has no history section, so no line points at one.
+#[test]
+fn a_file_card_says_why_git_gave_no_last_change() {
+    let cases = [
+        (
+            Change::NoCommit,
+            "last change: not read: unsatisfiable: pkg/__init__.py is not in HEAD (untracked, \
+             ignored, or only staged). Commit it, or ask about a tracked file.\n",
+        ),
+        (
+            Change::NotRepository {
+                note: "/r is not inside a git repository".to_owned(),
+            },
+            "last change: not read: history needs git: /r is not inside a git repository\n",
+        ),
+        (
+            Change::Failed("git log exited 128: fatal: bad".to_owned()),
+            "last change: not read: git could not answer: git log exited 128: fatal: bad\n",
+        ),
+        (
+            Change::NotRead { seconds: 2 },
+            "last change: not read in 2 s\n",
+        ),
+    ];
+    for (change, expected) in cases {
+        let text = text_of(file(|traced| traced.change = Some(change)), None);
+        assert!(text.ends_with(expected), "{text}");
+    }
 }
 
 #[test]

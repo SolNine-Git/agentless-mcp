@@ -1,13 +1,17 @@
+use std::path::Path;
 use std::time::Duration;
 
-use super::change::last_change;
+use store::FactSource;
+
+use super::change::{file_change, last_change};
 use super::{
     CANDIDATE_ROWS, Card, CardKind, Change, FileTrace, FolderEntry, Linked, Miss, Outcome, Section,
     SymbolTrace, Tally, Trace, TraceRequest, trace,
 };
-use crate::Reading;
 use crate::endpoints::scanned::{LINKED, Scanned, TESTED};
 use crate::search::{Measure, Place};
+use crate::testing::Sandbox;
+use crate::{Reading, Repo};
 
 // The scanned repository read with its git state, which history needs.
 fn with_git<T>(scanned: &Scanned, read: impl FnOnce(&Reading<'_>) -> T) -> T {
@@ -319,6 +323,48 @@ fn the_last_change_is_the_newest_commit_on_the_span() {
         panic!("a commit: {change:?}");
     };
     assert_eq!(entry.subject, "fixture");
+}
+
+#[test]
+fn a_default_file_card_reads_the_newest_commit_on_the_file_and_more_does_not() {
+    let scanned = Scanned::new(&MIXED);
+    let traced = file(card_in(&scanned, "pkg/jobs.py", None));
+    match &traced.change {
+        Some(Change::Commit(entry)) => assert_eq!(entry.subject, "fixture"),
+        late => assert!(matches!(late, Some(Change::NotRead { .. })), "{late:?}"),
+    }
+    let only = file(card_in(&scanned, "pkg/jobs.py", Some(Section::Declares)));
+    assert_eq!(only.change, None);
+}
+
+#[test]
+fn a_file_that_no_commit_touched_and_a_root_outside_git_have_their_own_change() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repo("repo", &[("a.py", "a = 1\n")]);
+    sandbox.put("repo/new.py", "b = 2\n");
+    let plain = sandbox.mkdir("plain");
+    sandbox.put("plain/c.py", "c = 3\n");
+    let services = sandbox.services(&root);
+    let change_at = |dir: &Path, path: &str| {
+        let repo = Repo::load(&services, dir).unwrap_or_else(|error| panic!("{error}"));
+        let snapshot = services
+            .git
+            .snapshot(dir, services.git.root(dir).as_deref());
+        let source = FactSource::parsing();
+        let reading = Reading {
+            repo: &repo,
+            snapshot: &snapshot,
+            facts: &source,
+            deadline: None,
+        };
+        file_change(&services, &reading, path, Duration::from_secs(30))
+    };
+    assert_eq!(change_at(&root, "new.py"), Change::NoCommit);
+    let outside = change_at(&plain, "c.py");
+    let Change::NotRepository { note } = &outside else {
+        panic!("no repository: {outside:?}");
+    };
+    assert!(note.contains("is not inside a git repository"), "{note}");
 }
 
 #[test]

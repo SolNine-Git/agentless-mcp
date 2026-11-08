@@ -317,6 +317,13 @@
           "count": 0,
           "complete": true
         }
+      },
+      "last_change": {
+        "commit": {
+          "sha": "f5f252187928e7028e1c825f36c6a15c81c9162e",
+          "authored": "2026-02-01T00:00:00Z",
+          "subject": "fixture"
+        }
       }
     },
     {

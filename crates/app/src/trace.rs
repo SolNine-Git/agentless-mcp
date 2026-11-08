@@ -47,7 +47,7 @@ pub const FOLDER_ENTRIES: usize = 60;
 pub const MORE_TREE_DEPTH: usize = 4;
 /// The entries that `more=tree` shows.
 pub const MORE_TREE_ENTRIES: usize = 500;
-/// The time that a symbol card waits for git to read its last change.
+/// The time that a symbol card or a file card waits for git to read its last change.
 pub const LAST_CHANGE_DEADLINE: Duration = Duration::from_secs(2);
 
 /// A trace request: the targets, in the caller's order, and the one section to show in full.
@@ -250,7 +250,7 @@ pub struct Similar {
     pub bound_total: Tally,
 }
 
-/// The newest commit on a symbol's lines, or why the card has none.
+/// The newest commit on a symbol's lines or on a file, or why the card has none.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Change {
     /// The commit.
@@ -260,6 +260,15 @@ pub enum Change {
         /// The deadline.
         seconds: u64,
     },
+    /// No commit in HEAD's history touched the file: HEAD does not hold it, or has no commit.
+    NoCommit,
+    /// No git repository holds the root.
+    NotRepository {
+        /// The snapshot's note on what git could not read.
+        note: String,
+    },
+    /// Git failed another way. The note says why.
+    Failed(String),
     /// The history refusal's text, such as no git or no commit.
     Unavailable(String),
 }
@@ -287,6 +296,8 @@ pub struct FileTrace {
     pub tests: Option<Linked<FileLinks>>,
     /// The import cycles that the file is in.
     pub cycles: Option<Cycles>,
+    /// The newest commit that touched the file. Only a default card reads it.
+    pub change: Option<Change>,
 }
 
 /// A file's declarations: the count of each kind and the rows the cap kept.

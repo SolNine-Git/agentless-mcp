@@ -384,7 +384,7 @@ fn no_commits(span: &SymbolSpan, capped: bool) -> String {
 }
 
 // The body without its leading and trailing blank lines.
-fn entry(commit: git::Commit) -> HistoryEntry {
+pub(crate) fn entry(commit: git::Commit) -> HistoryEntry {
     let lines = splitlines(&commit.body, false);
     let blank = |line: &&str| strip(line).is_empty();
     let first = lines

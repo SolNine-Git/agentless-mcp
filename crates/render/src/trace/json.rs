@@ -310,6 +310,14 @@ enum ChangeJson<'a> {
     NotRead {
         seconds: u64,
     },
+    // An object like every other outcome, so a reader keys on the outcome's name alone.
+    NoCommit {},
+    NotRepository {
+        note: &'a str,
+    },
+    Failed {
+        note: &'a str,
+    },
     Unavailable {
         reason: &'a str,
     },
@@ -324,6 +332,9 @@ impl<'a> ChangeJson<'a> {
                 subject: &entry.subject,
             },
             Change::NotRead { seconds } => ChangeJson::NotRead { seconds: *seconds },
+            Change::NoCommit => ChangeJson::NoCommit {},
+            Change::NotRepository { note } => ChangeJson::NotRepository { note },
+            Change::Failed(note) => ChangeJson::Failed { note },
             Change::Unavailable(reason) => ChangeJson::Unavailable { reason },
         }
     }
@@ -347,6 +358,8 @@ struct FileJson<'a> {
     tests: Option<LinkedJson<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cycles: Option<CyclesJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_change: Option<ChangeJson<'a>>,
 }
 
 impl<'a> FileJson<'a> {
@@ -362,6 +375,7 @@ impl<'a> FileJson<'a> {
             importers: file.importers.as_ref().map(LinkedJson::of),
             tests: file.tests.as_ref().map(LinkedJson::of),
             cycles: file.cycles.as_ref().map(CyclesJson::of),
+            last_change: file.change.as_ref().map(ChangeJson::of),
         }
     }
 }

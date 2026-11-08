@@ -1,11 +1,13 @@
 //! A symbol card's last change: one `git log -L` commit, read on its own thread so that the card
 //! waits for it no longer than its deadline. A late git keeps running until its own time limit.
+//! A file card's last change: one `git log -1` commit, which git stops at the deadline itself.
 
 use std::panic;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use git::LastCommit;
 use store::FactSource;
 
 use super::Change;
@@ -80,6 +82,25 @@ fn awaited(receiver: &Receiver<Change>, handle: JoinHandle<()>, wait: Duration) 
             Err(payload) => panic::resume_unwind(payload),
             Ok(()) => unreachable!("the history thread sends before it ends"),
         },
+    }
+}
+
+pub(super) fn file_change(
+    services: &Services,
+    reading: &Reading<'_>,
+    path: &str,
+    wait: Duration,
+) -> Change {
+    match services.git.last_commit(&reading.repo.root, path, wait) {
+        LastCommit::Found(commit) => Change::Commit(crate::history::entry(commit)),
+        LastCommit::NoCommit => Change::NoCommit,
+        LastCommit::NotRepository => Change::NotRepository {
+            note: reading.snapshot.note.clone(),
+        },
+        LastCommit::TimedOut => Change::NotRead {
+            seconds: wait.as_secs(),
+        },
+        LastCommit::Failed(note) => Change::Failed(note),
     }
 }
 

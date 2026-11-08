@@ -8,3 +8,4 @@ importers: 2
   inventory.ts @5, reports.ts @6
 tests: none
 cycles: none
+last change: 45d898f1 2026-02-01 fixture

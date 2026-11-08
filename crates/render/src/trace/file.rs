@@ -15,6 +15,7 @@ use prompts::messages::{
 };
 use text::{is_word, one_line};
 
+use super::symbol::change_line;
 use super::{head, is_cut, item_lines, none, tally};
 use crate::cycles::chain;
 use crate::views::QUALIFIED_NAME;
@@ -49,6 +50,8 @@ pub(super) fn file_lines(file: &FileTrace, more: Option<Section>) -> Vec<String>
         }
     }
     lines.extend((file.cycles.as_ref()).map_or_else(Vec::new, |found| cycles(found, more)));
+    // A file card has no history section for a hint to name.
+    lines.extend((file.change.as_ref()).map(|change| change_line(change, &file.path, None)));
     lines
 }
 

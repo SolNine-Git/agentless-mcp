@@ -21,6 +21,7 @@ imports: 2
 importers: none
 tests: none
 cycles: none
+last change: f5f25218 2026-02-01 fixture
 
 target: format_money
 same card as target 1
