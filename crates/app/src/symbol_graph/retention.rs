@@ -19,9 +19,9 @@ pub(super) struct Retention {
 // more. A kept state holds at most `scans` scans, and replaced facts of at most `replaced` percent
 // of its sites, before a full build frees them.
 pub(super) const UPDATED: Updates = Updates {
-    sites: 20,
-    scans: 64,
-    replaced: 10,
+    sites: 70,
+    scans: 50,
+    replaced: 8,
 };
 
 #[derive(Clone, Copy, Debug)]
