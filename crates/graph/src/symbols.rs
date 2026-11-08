@@ -576,3 +576,6 @@ fn distinct_endpoints<'a>(nodes: &Nodes<'a>, resolution: &Resolution<'a>) -> Vec
     }
     endpoints
 }
+
+#[cfg(test)]
+mod canonical;

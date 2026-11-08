@@ -56,3 +56,6 @@ impl<'a> Aliases<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod canonical;

@@ -541,3 +541,6 @@ fn groups<'c, 'a>(
         .iter()
         .map(|&(path, start, end)| (path, &known.ordered[start..end]))
 }
+
+#[cfg(test)]
+mod canonical;

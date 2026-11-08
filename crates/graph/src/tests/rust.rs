@@ -11,7 +11,7 @@ use crate::paths::PathIndex;
 use crate::rust_paths::RustTree;
 use crate::{FileFacts, NameIndex, Resolver, Scopes, Tier};
 
-pub(super) fn scanned(files: &[(&str, &str)]) -> Vec<FileFacts> {
+pub(crate) fn scanned(files: &[(&str, &str)]) -> Vec<FileFacts> {
     let each = files.iter().map(|(path, text)| {
         let language = Language::from_path(path).expect("a known language");
         let parsed = syntax::parse(language, Arc::from(*text)).expect("the text parses");

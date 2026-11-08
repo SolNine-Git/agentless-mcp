@@ -604,3 +604,6 @@ fn dotted(module: &str, member: &str) -> String {
         format!("{module}.{member}")
     }
 }
+
+#[cfg(test)]
+mod canonical;

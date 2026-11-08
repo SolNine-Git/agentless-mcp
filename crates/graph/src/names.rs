@@ -260,3 +260,6 @@ pub fn name_multiplier(name: &str, stoplist: &BTreeSet<String>) -> f64 {
 pub fn common_name_damping(spread: u32) -> f64 {
     1.0 + (1.0 + f64::from(spread)).ln()
 }
+
+#[cfg(test)]
+mod canonical;
