@@ -35,6 +35,9 @@ const HOOK_WORD: &str = "hook";
 const COMMAND_TYPE: &str = "command";
 // A matcher that every tool or source matches, as Claude Code reads one.
 const MATCH_ALL: [&str; 2] = ["", "*"];
+// The ledger-mark matcher is `mcp__<server name>__trace`.
+const TRACE_PREFIX: &str = "mcp__";
+const TRACE_SUFFIX: &str = "__trace";
 
 /// A hook that the installed binary serves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -140,7 +143,7 @@ impl Hook {
     fn matcher(self, server_name: &str) -> Option<String> {
         let matcher = match self {
             Hook::ReadCard => "Read|Bash",
-            Hook::LedgerMark => return Some(format!("mcp__{server_name}__trace")),
+            Hook::LedgerMark => return Some(format!("{TRACE_PREFIX}{server_name}{TRACE_SUFFIX}")),
             Hook::BriefRecord => "Agent",
             Hook::Erosion => "Write|Edit",
             Hook::LedgerReset => "compact",
@@ -300,11 +303,20 @@ pub fn named(handler: &Handler) -> Option<Named> {
     agentless(handler).map(|(named, _)| named)
 }
 
-/// Compares `handlers` with the entry table of `server_name`. `own` is the canonical path of the
+/// The MCP server name that a comparison reads in the `ledger-mark` matcher.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ServerName<'a> {
+    /// This name only, as `hook install --server-name` gave it.
+    Exact(&'a str),
+    /// Any name: the server cannot know the name that its client registered it under.
+    Any,
+}
+
+/// Compares `handlers` with the entry table of `server`. `own` is the canonical path of the
 /// binary that compares. An agentless handler is a command `<path> hook <name>` whose path's file
 /// name is [`BINARY_NAME`] and whose name is a current or retired hook; no other is read.
 #[must_use]
-pub fn compare(handlers: &[Handler], own: &str, server_name: &str) -> HookStatus {
+pub fn compare(handlers: &[Handler], own: &str, server: ServerName<'_>) -> HookStatus {
     let mut current: Vec<(Hook, Found)> = Vec::new();
     let mut retired: Vec<RetiredEntry> = Vec::new();
     for handler in handlers {
@@ -320,13 +332,17 @@ pub fn compare(handlers: &[Handler], own: &str, server_name: &str) -> HookStatus
             Named::Current(_) => {}
         }
     }
-    let rows = (entries(server_name).into_iter())
+    let shown = match server {
+        ServerName::Exact(name) => name,
+        ServerName::Any => DEFAULT_SERVER_NAME,
+    };
+    let rows = (entries(shown).into_iter())
         .map(|entry| {
             let found: Vec<Found> = (current.iter())
                 .filter(|(hook, _)| *hook == entry.hook)
                 .map(|(_, found)| found.clone())
                 .collect();
-            let state = state(&entry, found, own);
+            let state = state(&entry, found, own, server);
             RowStatus { entry, state }
         })
         .collect();
@@ -362,7 +378,7 @@ fn found(handler: &Handler, path: String) -> Found {
 }
 
 // A handler that two settings files define runs once, so a copy is one handler.
-fn state(entry: &Entry, found: Vec<Found>, own: &str) -> EntryState {
+fn state(entry: &Entry, found: Vec<Found>, own: &str, server: ServerName<'_>) -> EntryState {
     let [only] = found.as_slice() else {
         return if found.is_empty() {
             EntryState::Missing
@@ -371,13 +387,28 @@ fn state(entry: &Entry, found: Vec<Found>, own: &str) -> EntryState {
         };
     };
     let shaped = only.event == entry.event.as_str()
-        && only.matcher == entry.matcher
+        && matcher_fits(entry, only.matcher.as_deref(), server)
         && only.timeout == Some(f64::from(entry.timeout));
     match (shaped, only.path == own) {
         (false, _) => EntryState::Stale(found),
         (true, true) => EntryState::Current,
         (true, false) => EntryState::OtherPath(only.path.clone()),
     }
+}
+
+fn matcher_fits(entry: &Entry, matcher: Option<&str>, server: ServerName<'_>) -> bool {
+    if server == ServerName::Any && entry.hook == Hook::LedgerMark {
+        return matcher.and_then(trace_server).is_some();
+    }
+    matcher == entry.matcher.as_deref()
+}
+
+// The server name of a ledger-mark matcher, `mcp__<name>__trace`.
+fn trace_server(matcher: &str) -> Option<&str> {
+    let name = matcher
+        .strip_prefix(TRACE_PREFIX)?
+        .strip_suffix(TRACE_SUFFIX)?;
+    (!name.is_empty()).then_some(name)
 }
 
 #[cfg(test)]

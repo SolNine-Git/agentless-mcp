@@ -179,6 +179,25 @@ impl core::marker::Unpin for app::hooks::Retired
 impl core::marker::UnsafeUnpin for app::hooks::Retired
 impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Retired
 impl core::panic::unwind_safe::UnwindSafe for app::hooks::Retired
+pub enum app::hooks::ServerName<'a>
+pub app::hooks::ServerName::Any
+pub app::hooks::ServerName::Exact(&'a str)
+impl<'a> core::clone::Clone for app::hooks::ServerName<'a>
+pub fn app::hooks::ServerName<'a>::clone(&self) -> Self
+impl<'a> core::cmp::Eq for app::hooks::ServerName<'a>
+impl<'a> core::cmp::PartialEq for app::hooks::ServerName<'a>
+pub fn app::hooks::ServerName<'a>::eq(&self, &Self) -> bool
+impl<'a> core::fmt::Debug for app::hooks::ServerName<'a>
+pub fn app::hooks::ServerName<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for app::hooks::ServerName<'a>
+impl<'a> core::marker::StructuralPartialEq for app::hooks::ServerName<'a>
+impl<'a> core::marker::Freeze for app::hooks::ServerName<'a>
+impl<'a> core::marker::Send for app::hooks::ServerName<'a>
+impl<'a> core::marker::Sync for app::hooks::ServerName<'a>
+impl<'a> core::marker::Unpin for app::hooks::ServerName<'a>
+impl<'a> core::marker::UnsafeUnpin for app::hooks::ServerName<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for app::hooks::ServerName<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for app::hooks::ServerName<'a>
 pub struct app::hooks::Entry
 pub app::hooks::Entry::event: app::hooks::Event
 pub app::hooks::Entry::hook: app::hooks::Hook
@@ -316,7 +335,7 @@ pub const app::hooks::READ_CARD_DEADLINE: core::time::Duration
 pub const app::hooks::SETTINGS_FILE: &str
 pub const app::hooks::TIMEOUT_FACTOR: u32
 pub fn app::hooks::command(&str, app::hooks::Hook) -> alloc::string::String
-pub fn app::hooks::compare(&[app::hooks::Handler], &str, &str) -> app::hooks::HookStatus
+pub fn app::hooks::compare(&[app::hooks::Handler], &str, app::hooks::ServerName<'_>) -> app::hooks::HookStatus
 pub fn app::hooks::entries(&str) -> alloc::vec::Vec<app::hooks::Entry>
 pub fn app::hooks::handlers(&json::parse::JsonValue) -> core::result::Result<alloc::vec::Vec<app::hooks::Handler>, app::hooks::HooksShape>
 pub fn app::hooks::named(&app::hooks::Handler) -> core::option::Option<app::hooks::Named>

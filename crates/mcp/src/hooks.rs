@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use app::EnvConfig;
 use app::hooks::{
-    DEFAULT_SERVER_NAME, EntryState, Handler, HookStatus, SETTINGS_FILE, compare,
-    settings_handlers, user_settings,
+    EntryState, Handler, HookStatus, SETTINGS_FILE, ServerName, compare, settings_handlers,
+    user_settings,
 };
 use prompts::messages::{
     HOOKS_MISSING, HOOKS_NOTE, HOOKS_OTHER_PATH, HOOKS_RETIRED, HOOKS_RETIRED_MORE, HOOKS_STALE,
@@ -91,7 +91,7 @@ impl Hooks {
         match self.handlers(check, root) {
             Ok(found) => {
                 let own = check.binary.to_string_lossy();
-                let status = compare(&found, &own, DEFAULT_SERVER_NAME);
+                let status = compare(&found, &own, ServerName::Any);
                 status_note(&resolved(status, &check.binary), &own)
             }
             Err((path, error)) => Some(HOOKS_UNREADABLE.render((&path, &error))),

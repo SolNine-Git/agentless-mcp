@@ -3,7 +3,8 @@ use std::path::PathBuf;
 
 use super::{
     DEFAULT_SERVER_NAME, EntryState, Event, Expected, Found, Handler, Hook, HookStatus, HooksShape,
-    Named, Retired, command, compare, entries, handlers, named, settings_handlers, user_settings,
+    Named, Retired, ServerName, command, compare, entries, handlers, named, settings_handlers,
+    user_settings,
 };
 use crate::EnvConfig;
 
@@ -30,7 +31,7 @@ const OLD_RELEASE: &str = r#"{
 fn status(settings: &str, server_name: &str) -> HookStatus {
     let value = json::parse(settings).unwrap_or_else(|error| panic!("{error}"));
     let read = handlers(&value).unwrap_or_else(|shape| panic!("{shape:?}"));
-    compare(&read, OWN, server_name)
+    compare(&read, OWN, ServerName::Exact(server_name))
 }
 
 fn state_of(status: &HookStatus, hook: Hook) -> &EntryState {
@@ -206,7 +207,7 @@ fn a_path_with_a_space_is_quoted_and_reads_back_as_the_same_path() {
     );
     let value = json::parse(&settings).unwrap_or_else(|error| panic!("{error}"));
     let read = handlers(&value).unwrap_or_else(|shape| panic!("{shape:?}"));
-    let read = compare(&read, spaced, "agentless");
+    let read = compare(&read, spaced, ServerName::Exact("agentless"));
     assert_eq!(state_of(&read, Hook::PromptMap), &EntryState::Current);
 }
 
@@ -325,4 +326,30 @@ fn a_settings_document_of_another_shape_names_the_json_path_and_the_type() {
     }
     let other = json::parse(r#"{"model": "opus"}"#).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(settings_handlers(&other), Ok(Vec::new()));
+}
+
+// The server cannot know the name its client registered it under, so under any name a ledger-mark
+// matcher fits when it names the trace tool of some server.
+#[test]
+fn under_any_server_name_a_trace_matcher_of_any_server_is_current() {
+    let read = |settings: &str| {
+        let value = json::parse(settings).unwrap_or_else(|error| panic!("{error}"));
+        handlers(&value).unwrap_or_else(|shape| panic!("{shape:?}"))
+    };
+    let tools = read(&installed("tools"));
+    assert!(compare(&tools, OWN, ServerName::Any).is_current());
+    let exact = compare(&tools, OWN, ServerName::Exact(DEFAULT_SERVER_NAME));
+    assert!(matches!(
+        state_of(&exact, Hook::LedgerMark),
+        EntryState::Stale(_)
+    ));
+    for matcher in ["mcp____trace", "mcp__tools__search", "trace"] {
+        let other = installed("tools").replace("mcp__tools__trace", matcher);
+        let status = compare(&read(&other), OWN, ServerName::Any);
+        let state = state_of(&status, Hook::LedgerMark);
+        assert!(
+            matches!(state, EntryState::Stale(_)),
+            "{matcher}: {state:?}"
+        );
+    }
 }

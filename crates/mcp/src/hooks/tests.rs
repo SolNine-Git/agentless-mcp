@@ -234,6 +234,19 @@ fn a_file_that_cannot_be_read_makes_the_state_unknown() {
     assert_eq!(rig.note(&hooks).as_deref(), Some(ALL_MISSING));
 }
 
+// The server cannot know the name its client registered it under, so a trace matcher of any
+// server name is current.
+#[test]
+fn a_ledger_mark_matcher_of_another_server_name_is_current() {
+    let rig = Rig::new();
+    let binary = rig.binary.display().to_string();
+    let renamed =
+        installed(&binary, &Hook::ALL).replace("mcp__agentless__trace", "mcp__tools__trace");
+    rig.write("config/settings.json", &renamed);
+    let hooks = Hooks::new(Some(rig.check()), std::slice::from_ref(&rig.root));
+    assert_eq!(rig.note(&hooks), None);
+}
+
 // The read at start-up holds while a file's (mtime, size) holds; a change is read again.
 #[test]
 fn a_changed_file_is_read_again() {

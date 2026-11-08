@@ -360,6 +360,19 @@ fn status_names_each_entry_and_exits_1_until_every_entry_is_current() {
 }
 
 #[test]
+fn status_compares_the_server_name_that_it_is_given() {
+    let rig = Rig::new();
+    drop(rig.install(&["--server-name", "tools"]));
+    let named = rig.status(&["--server-name", "tools"]);
+    let default = rig.status(&[]);
+
+    assert_eq!(named.code, 0, "{}", named.stdout);
+    let stale = "ledger-mark: stale: the entry differs from the table of this binary\n";
+    assert_eq!(default.code, 1);
+    assert!(default.stdout.contains(stale), "{}", default.stdout);
+}
+
+#[test]
 fn status_reads_the_project_and_local_files_and_reports_one_it_cannot_read() {
     let rig = Rig::new();
     drop(rig.install(&["--scope", "project"]));

@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use app::EnvConfig;
 use app::hooks::{
     self, BINARY_NAME, CONFIG_DIR_VARIABLE, DEFAULT_SERVER_NAME, EntryState, Handler, HookStatus,
-    Misshaped, Retired, SETTINGS_FILE,
+    Misshaped, Retired, SETTINGS_FILE, ServerName,
 };
 use json::JsonValue;
 use prompts::messages::{
@@ -40,7 +40,7 @@ const INSTALL: Takes = Takes {
 const STATUS: Takes = Takes {
     command: "status",
     scope: false,
-    server_name: false,
+    server_name: true,
     dry_run: false,
 };
 const UNINSTALL: Takes = Takes {
@@ -192,7 +192,8 @@ pub(crate) fn statused(args: &[OsString], env: &EnvConfig, binary: &str) -> Outp
         }
     }
     let readable = lines.is_empty();
-    let status = hooks::compare(&handlers, binary, DEFAULT_SERVER_NAME);
+    let server = (options.server_name.as_deref()).unwrap_or(DEFAULT_SERVER_NAME);
+    let status = hooks::compare(&handlers, binary, ServerName::Exact(server));
     lines.extend(status_lines(&status));
     Output {
         code: if readable && status.is_current() {
