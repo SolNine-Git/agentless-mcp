@@ -1,0 +1,12 @@
+{
+  "hook": "prompt-map",
+  "fixture": "repo_py",
+  "payload": {
+    "session_id": "session-1",
+    "transcript_path": "/home/user/.claude/projects/repo/session-1.jsonl",
+    "cwd": "<REPO>",
+    "permission_mode": "default",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "The wholesale total of `stock_value` in reports.py is off by a cent. Fix it."
+  }
+}

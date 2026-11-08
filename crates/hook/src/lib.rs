@@ -35,6 +35,8 @@ mod verdict;
 mod worker;
 
 #[cfg(test)]
+mod goldens;
+#[cfg(test)]
 mod testing;
 
 use std::ffi::OsStr;
