@@ -2395,6 +2395,85 @@ pub const REPO_REFUSED_NOT_ALLOWED: Template<Text> = Template::new(&[
     Piece::Value(0),
 ]);
 
+/// A text that takes no values.
+pub const REUSE_CANDIDATES_COMPARED: &str = "no function";
+
+/// A template that takes (`path`, `target`, `name`, `line`, `count`, `listed`).
+pub const REUSE_CANDIDATES_FOUND: Template<(Text, Text, Text, Count, Count, Text)> =
+    Template::new(&[
+        Piece::Text("`"),
+        Piece::Value(1),
+        Piece::Text("` at "),
+        Piece::Value(0),
+        Piece::Text(":"),
+        Piece::Value(3),
+        Piece::Text(" calls and reads "),
+        Piece::Value(4),
+        Piece::Text(" of the same "),
+        Piece::Choice(4, "name", "names"),
+        Piece::Text(" as `"),
+        Piece::Value(2),
+        Piece::Text("`: "),
+        Piece::Value(5),
+        Piece::Text(". Read `"),
+        Piece::Value(1),
+        Piece::Text("` before you keep a second copy."),
+    ]);
+
+/// A template that takes `score`.
+pub const REUSE_CANDIDATES_FOUND_EVIDENCE: Template<Text> =
+    Template::new(&[Piece::Text("score "), Piece::Value(0)]);
+
+/// A template that takes (`paths`, `count`, `total`).
+pub const REUSE_CANDIDATES_GAPS: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Text("not checked: reuse_candidates did not read "),
+    Piece::Value(1),
+    Piece::Text(" of "),
+    Piece::Value(2),
+    Piece::Text(
+        " repository files, so it does not compare a function with the \
+        functions in them: ",
+    ),
+    Piece::Value(0),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const REUSE_CANDIDATES_GAPS_EVIDENCE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("first: "),
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(1),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const REUSE_CANDIDATES_NEW_NOT_MEASURED: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("not checked: reuse_candidates did not compare "),
+    Piece::Value(0),
+    Piece::Text(", because its text after the change cannot be measured. "),
+    Piece::Value(1),
+]);
+
+/// A text that takes no values.
+pub const REUSE_CANDIDATES_NO_TAG_CACHE: &str = "not checked: in the hook form, reuse_candidates \
+        reads the functions of the repository from the tag cache only, \
+        and this run has no tag cache. Run agentless-mcp index on the \
+        repository to turn the check on.";
+
+/// A text that takes no values.
+pub const REUSE_CANDIDATES_NO_TAG_CACHE_EVIDENCE: &str = "no tag cache";
+
+/// A template that takes (`path`, `reason`).
+pub const REUSE_CANDIDATES_OLD_NOT_MEASURED: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("not checked: reuse_candidates did not compare "),
+    Piece::Value(0),
+    Piece::Text(", because its text before the change cannot be measured. "),
+    Piece::Value(1),
+]);
+
+/// A text that takes no values.
+pub const REUSE_CANDIDATES_READS: &str = "the action names of every function";
+
 /// A template that takes `file`.
 pub const ROOTS_FILE_HINT: Template<Text> = Template::new(&[
     Piece::Text(

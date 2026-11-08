@@ -11,6 +11,7 @@ use syntax::Language;
 
 use crate::pairs::Stored;
 use crate::repo::root_text;
+use crate::reuse::StoredUnits;
 use crate::scan;
 use crate::{Error, Noted, Repo, Services};
 
@@ -65,6 +66,18 @@ impl Tags {
             store::Lookup::Unmeasured(reason) => Stored::Unmeasured(reason),
             store::Lookup::Miss => Stored::Miss,
             store::Lookup::Unreadable(failure) => Stored::Unreadable(failure.to_string()),
+        }
+    }
+
+    // The stored symbols and measured units of one file's text, which reuse_candidates reads.
+    pub(crate) fn stored_units(&self, path: &str, text: &str, language: Language) -> StoredUnits {
+        let Some(db) = &self.db else {
+            return StoredUnits::Miss;
+        };
+        match db.units_for(path, text, language) {
+            store::UnitLookup::Hit(symbols, metrics) => StoredUnits::Hit(symbols, metrics),
+            store::UnitLookup::Miss => StoredUnits::Miss,
+            store::UnitLookup::Unreadable(failure) => StoredUnits::Unreadable(failure.to_string()),
         }
     }
 }

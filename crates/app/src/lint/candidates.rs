@@ -24,6 +24,7 @@ use patchcheck::{CHECK_NEAR_DUPLICATES, PatchBaseline};
 use super::{BlockSource, LintReport, candidate, empty, with_rows};
 use crate::pair_runs::{IndexOf, Reported};
 use crate::pairs::{Judged, built_index};
+use crate::reuse::ReuseSource;
 use crate::scan::RepoFacts;
 use crate::{Error, Noted, Reading, Services, Session};
 use admission::{checkable, oriented, unread_row};
@@ -65,9 +66,11 @@ pub fn lint_candidates(
 ) -> Noted<Result<LintReport, Error>> {
     let tags = &session.tags;
     let mut lookup = |path: &str, text: &str, language| tags.stored(path, text, language);
+    let mut units = |path: &str, text: &str, language| tags.stored_units(path, text, language);
     let source = BlockSource {
         cached: tags.cached(),
         lookup: &mut lookup,
+        units: &mut units,
     };
     candidates_with(services, &Reading::of(session), source, request)
 }
@@ -80,7 +83,7 @@ pub(crate) fn candidates_with(
     request: &CandidatesRequest,
 ) -> Noted<Result<LintReport, Error>> {
     let warnings = RefCell::new(Vec::new());
-    let BlockSource { lookup, .. } = source;
+    let BlockSource { lookup, units, .. } = source;
     let root = &reading.repo.root;
     let mut shared: Option<Rc<CloneIndex>> = None;
     let mut index = |measured: &[&Pair]| -> Result<Rc<CloneIndex>, Error> {
@@ -93,11 +96,19 @@ pub(crate) fn candidates_with(
         shared = Some(Rc::clone(&index));
         Ok(index)
     };
+    let mut reuse = ReuseSource {
+        services,
+        root,
+        no_tag_cache: false,
+        units,
+        warnings: &warnings,
+    };
     let mut judge = Judge {
         root,
         config: &reading.repo.config,
         checks: &request.checks,
         index: &mut index,
+        reuse: &mut reuse,
     };
     let report = if request.checks.patch_checks() {
         let scan = RepoFacts::load(services, reading);
@@ -161,6 +172,7 @@ struct Judge<'a, 'i> {
     config: &'a io::ProjectConfig,
     checks: &'a CheckSelection,
     index: &'a mut IndexOf<'i>,
+    reuse: &'a mut ReuseSource<'i>,
 }
 
 impl Judge<'_, '_> {
@@ -208,6 +220,7 @@ impl Judge<'_, '_> {
         let run = tree::Run {
             index: &mut *self.index,
             reported: &Reported::new(),
+            reuse: &mut *self.reuse,
         };
         let paired = pair_rows(&admitted.edits, &mut reads, selection, self.config, run)?;
         Ok(with_rows(admitted.rows, paired))
@@ -221,6 +234,7 @@ impl Judge<'_, '_> {
         let run = tree::Run {
             index: &mut *self.index,
             reported,
+            reuse: &mut *self.reuse,
         };
         pair_rows(edits, &mut reads, selection, self.config, run)
     }

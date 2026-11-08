@@ -1,0 +1,121 @@
+{
+  "positives": [
+    {
+      "kind": "renamed",
+      "files": "cross_file",
+      "path": "config_reader.py",
+      "unit": "read_config",
+      "other": "load_settings"
+    },
+    {
+      "kind": "renamed",
+      "files": "cross_file",
+      "path": "mail.py",
+      "unit": "split_field",
+      "other": "parse_header"
+    },
+    {
+      "kind": "renamed",
+      "files": "cross_file",
+      "path": "tally.py",
+      "unit": "combine_tallies",
+      "other": "merge_counts"
+    },
+    {
+      "kind": "edited",
+      "files": "cross_file",
+      "path": "grid.py",
+      "unit": "format_grid",
+      "other": "render_table"
+    },
+    {
+      "kind": "edited",
+      "files": "cross_file",
+      "path": "audit.py",
+      "unit": "gather_failures",
+      "other": "collect_errors"
+    },
+    {
+      "kind": "edited",
+      "files": "cross_file",
+      "path": "dump.py",
+      "unit": "dump_tsv",
+      "other": "export_csv"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "locate.py",
+      "unit": "span_at",
+      "other": "enclosing"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "names.py",
+      "unit": "clean_label",
+      "other": "decode_label"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "latest.py",
+      "unit": "latest_record",
+      "other": "newest_entry"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "roots.py",
+      "unit": "shared_parent",
+      "other": "common_root"
+    }
+  ],
+  "negatives": [
+    {
+      "kind": "accessor_family",
+      "path": "shapes.py",
+      "unit": "Panel.padding"
+    },
+    {
+      "kind": "sibling_pipeline",
+      "path": "invoices.py",
+      "unit": "read_invoices"
+    },
+    {
+      "kind": "protocol_method",
+      "path": "money.py",
+      "unit": "Cost.__eq__"
+    },
+    {
+      "kind": "test_function",
+      "path": "tests/test_backup.py",
+      "unit": "test_packs_every_path"
+    },
+    {
+      "kind": "calls_the_original",
+      "path": "backup.py",
+      "unit": "backup_all"
+    },
+    {
+      "kind": "moved_function",
+      "path": "tables.py",
+      "unit": "compact_rows"
+    },
+    {
+      "kind": "under_three_names",
+      "path": "text.py",
+      "unit": "tidy"
+    },
+    {
+      "kind": "cross_language",
+      "path": "fastpath.py",
+      "unit": "checksum_block"
+    },
+    {
+      "kind": "through_a_reexport",
+      "path": "client.py",
+      "unit": "fetch_users"
+    }
+  ]
+}

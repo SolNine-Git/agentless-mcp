@@ -33,7 +33,7 @@ pub use blob::{Encoded, encode};
 pub use discard::{DiscardFailure, Discarded, discard_facts};
 pub use error::{Refusal, SqlClass, SqlError};
 pub use freshness::{Freshness, IndexMeta, freshness};
-pub use lookup::{Lookup, RowFailure};
+pub use lookup::{Lookup, RowFailure, UnitLookup};
 pub use nogit::{FileStamp, ManifestEntry, nogit_generation};
 pub use open::RowCounts;
 pub use plan::{Extract, Observed, Plan, Previous, Read, Settled, plan, settle};

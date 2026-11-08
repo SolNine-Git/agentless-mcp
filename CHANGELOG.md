@@ -10,6 +10,35 @@ Each byte count is of the served bytes.
 
 ### Added
 
+- **`lint` gains `reuse_candidates`, an opt-in advisory check for a function
+  that the change adds whose action names are mostly those of an existing
+  function.** The action names of a function are the names it calls and the
+  fields it reads (docs/plans/2026-11-08_duplicate-logic.md, sections 6 and
+  8, R1 and R2). The index now stores them per function in the tag cache:
+  FACTS_VERSION 13 to 14, so every stored index is rebuilt once. A row needs
+  an IDF-weighted Jaccard score of 0.3 or more over the names that at most 5%
+  of functions use, 3 or more names on each side, the same language, no
+  protocol method or test code on either side, and no call between the two
+  functions at a binding tier; each added function gives at most 2 rows. The
+  floor of 0.3 is provisional until held-out labels set it (R3). Only `--only
+  reuse_candidates` runs it, in `--since` and in `--path`. `--since` resolves
+  the calls on the whole symbol graph of its scan; `--path` reads the tag
+  cache only and resolves them on a graph of the edited file, the rows' files
+  and the `Cargo.toml` files, so it misses a call through a re-export in
+  another file. On planted pairs (`tests/characterization/fixtures/reuse_rust`
+  and `reuse_py`) it finds 10 of 10 per language (3 renamed copies, 3 edited
+  copies, 4 re-implementations) and gives no row on 9 negatives each,
+  including a caller that reaches the original through a re-export
+  (goldens `lint/reuse_rust.lint.json` and `lint/reuse_py.lint.json`).
+  `capabilities` lists it with the input `pairs+names`. The changed recorded
+  values add its name where a list or a refusal names every check, and its
+  capabilities row: `crates/app/fixtures/registry.json`,
+  `crates/app/fixtures/capabilities.json`, `crates/app/fixtures/write/lint.json`,
+  `crates/cli/fixtures/scenarios.json` and `crates/cli/fixtures/parser.json`
+  (28 `lint --help` cases, rewrapped); the guide's lint section changes
+  `crates/app/fixtures/guide/guide.json` and
+  `crates/cli/fixtures/read/scenarios.json`.
+
 - **`agentless-mcp hook prompt-map`, a `UserPromptSubmit` hook that names
   the files that the map ranks first for the first prompt of a session.**
   The hook is opt-in: it runs only when the Claude Code settings hold a

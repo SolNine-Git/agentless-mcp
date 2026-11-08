@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 364] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 374] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1597,6 +1597,68 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 364] = [
         "repo_refused_not_allowed",
         &["roots"],
         messages::REPO_REFUSED_NOT_ALLOWED.pieces(),
+    ),
+    (
+        "messages",
+        "reuse_candidates_compared",
+        &[],
+        &[Piece::Text(messages::REUSE_CANDIDATES_COMPARED)],
+    ),
+    (
+        "messages",
+        "reuse_candidates_found",
+        &["path", "target", "name", "line", "count", "listed"],
+        messages::REUSE_CANDIDATES_FOUND.pieces(),
+    ),
+    (
+        "messages",
+        "reuse_candidates_found_evidence",
+        &["score"],
+        messages::REUSE_CANDIDATES_FOUND_EVIDENCE.pieces(),
+    ),
+    (
+        "messages",
+        "reuse_candidates_gaps",
+        &["paths", "count", "total"],
+        messages::REUSE_CANDIDATES_GAPS.pieces(),
+    ),
+    (
+        "messages",
+        "reuse_candidates_gaps_evidence",
+        &["path", "reason"],
+        messages::REUSE_CANDIDATES_GAPS_EVIDENCE.pieces(),
+    ),
+    (
+        "messages",
+        "reuse_candidates_new_not_measured",
+        &["path", "reason"],
+        messages::REUSE_CANDIDATES_NEW_NOT_MEASURED.pieces(),
+    ),
+    (
+        "messages",
+        "reuse_candidates_no_tag_cache",
+        &[],
+        &[Piece::Text(messages::REUSE_CANDIDATES_NO_TAG_CACHE)],
+    ),
+    (
+        "messages",
+        "reuse_candidates_no_tag_cache_evidence",
+        &[],
+        &[Piece::Text(
+            messages::REUSE_CANDIDATES_NO_TAG_CACHE_EVIDENCE,
+        )],
+    ),
+    (
+        "messages",
+        "reuse_candidates_old_not_measured",
+        &["path", "reason"],
+        messages::REUSE_CANDIDATES_OLD_NOT_MEASURED.pieces(),
+    ),
+    (
+        "messages",
+        "reuse_candidates_reads",
+        &[],
+        &[Piece::Text(messages::REUSE_CANDIDATES_READS)],
     ),
     (
         "messages",

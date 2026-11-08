@@ -1,0 +1,121 @@
+{
+  "positives": [
+    {
+      "kind": "renamed",
+      "files": "cross_file",
+      "path": "src/config_reader.rs",
+      "unit": "read_config",
+      "other": "load_settings"
+    },
+    {
+      "kind": "renamed",
+      "files": "cross_file",
+      "path": "src/mail.rs",
+      "unit": "split_field",
+      "other": "parse_header"
+    },
+    {
+      "kind": "renamed",
+      "files": "cross_file",
+      "path": "src/tally.rs",
+      "unit": "combine_tallies",
+      "other": "merge_counts"
+    },
+    {
+      "kind": "edited",
+      "files": "cross_file",
+      "path": "src/grid.rs",
+      "unit": "format_grid",
+      "other": "render_table"
+    },
+    {
+      "kind": "edited",
+      "files": "cross_file",
+      "path": "src/audit.rs",
+      "unit": "gather_failures",
+      "other": "collect_errors"
+    },
+    {
+      "kind": "edited",
+      "files": "cross_file",
+      "path": "src/dump.rs",
+      "unit": "dump_tsv",
+      "other": "export_csv"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "src/locate.rs",
+      "unit": "span_at",
+      "other": "enclosing"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "src/names.rs",
+      "unit": "clean_label",
+      "other": "decode_label"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "src/latest.rs",
+      "unit": "latest_record",
+      "other": "newest_entry"
+    },
+    {
+      "kind": "reimplemented",
+      "files": "cross_file",
+      "path": "src/roots.rs",
+      "unit": "shared_parent",
+      "other": "common_root"
+    }
+  ],
+  "negatives": [
+    {
+      "kind": "accessor_family",
+      "path": "src/shapes.rs",
+      "unit": "Panel.padding"
+    },
+    {
+      "kind": "sibling_pipeline",
+      "path": "src/orders.rs",
+      "unit": "read_invoices"
+    },
+    {
+      "kind": "protocol_method",
+      "path": "src/money.rs",
+      "unit": "Cost.fmt"
+    },
+    {
+      "kind": "test_function",
+      "path": "src/settings.rs",
+      "unit": "tests.reads_the_job_count"
+    },
+    {
+      "kind": "calls_the_original",
+      "path": "src/backup.rs",
+      "unit": "backup_all"
+    },
+    {
+      "kind": "moved_function",
+      "path": "src/tables.rs",
+      "unit": "compact_rows"
+    },
+    {
+      "kind": "under_three_names",
+      "path": "src/text.rs",
+      "unit": "tidy"
+    },
+    {
+      "kind": "cross_language",
+      "path": "src/fastpath.rs",
+      "unit": "checksum_block"
+    },
+    {
+      "kind": "through_a_reexport",
+      "path": "src/client.rs",
+      "unit": "fetch_users"
+    }
+  ]
+}

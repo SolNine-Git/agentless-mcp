@@ -41,6 +41,7 @@ mod reading;
 mod refs;
 mod registry;
 mod repo;
+mod reuse;
 mod revision;
 mod rows;
 mod rowtext;

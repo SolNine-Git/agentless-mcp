@@ -1,12 +1,14 @@
-//! The stored clone blocks of one file, served only while the row describes the caller's text.
+//! The stored clone blocks, or the symbols and metrics, of one file, served only while the row
+//! describes the caller's text.
 
 use std::fmt;
 use std::path::PathBuf;
 
-use metrics::Block;
+use facts::Symbol;
+use metrics::{Block, FileMetrics};
 use syntax::Language;
 
-use crate::blob::stored_metrics;
+use crate::blob::{blob, decode_symbols, stored_metrics};
 use crate::{FactsDb, RowKey, SqlError, Unmeasured, schema};
 
 /// What the database holds for one file's clone blocks.
@@ -20,6 +22,18 @@ pub enum Lookup {
     /// measures the file.
     Miss,
     /// The rows could not be read. The caller measures the file and prints the warning.
+    Unreadable(RowFailure),
+}
+
+/// What the database holds for one file's functions: its symbols and its measured units.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UnitLookup {
+    /// The stored symbols and metrics.
+    Hit(Vec<Symbol>, FileMetrics),
+    /// The database holds no row for this text, or the file was not measured. The caller parses
+    /// the file.
+    Miss,
+    /// The rows could not be read. The caller parses the file and prints the warning.
     Unreadable(RowFailure),
 }
 
@@ -60,6 +74,38 @@ impl FactsDb {
                     cause: cause.repr(),
                 })
             })
+    }
+
+    /// Returns the symbols and the metrics that the row of `path` stores, when the row describes
+    /// `text` in `language` now and the file was measured.
+    #[must_use]
+    pub fn units_for(&self, path: &str, text: &str, language: Language) -> UnitLookup {
+        self.stored_units(path, text, language)
+            .unwrap_or_else(|cause| {
+                UnitLookup::Unreadable(RowFailure {
+                    database: self.path().to_path_buf(),
+                    kind: "unit",
+                    path: path.to_owned(),
+                    cause: cause.repr(),
+                })
+            })
+    }
+
+    fn stored_units(
+        &self,
+        path: &str,
+        text: &str,
+        language: Language,
+    ) -> Result<UnitLookup, SqlError> {
+        let Some(id) = self.fresh_row(path, &RowKey::of(language, text))? else {
+            return Ok(UnitLookup::Miss);
+        };
+        let [metrics] = self.cells::<1>(schema::METRICS, id)?;
+        let Some(Ok(measured)) = stored_metrics(&metrics)? else {
+            return Ok(UnitLookup::Miss);
+        };
+        let [symbols] = self.cells::<1>(schema::SYMBOLS, id)?;
+        Ok(UnitLookup::Hit(decode_symbols(blob(&symbols)?)?, measured))
     }
 
     fn stored_blocks(

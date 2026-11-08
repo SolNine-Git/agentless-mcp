@@ -1755,6 +1755,68 @@
       },
       "text": "repository refused: the requested root is not one of this server's roots. Retry with repo_root set to one of: /srv/app, /srv/other"
     },
+    "reuse_candidates_compared": {
+      "arguments": {},
+      "text": "no function"
+    },
+    "reuse_candidates_found": {
+      "arguments": {
+        "count": 3,
+        "line": 42,
+        "listed": "`read_bounded`, `stat_present`, `to_owned`",
+        "name": "load_text",
+        "path": "crates/io/src/read.rs",
+        "target": "read_text"
+      },
+      "text": "`read_text` at crates/io/src/read.rs:42 calls and reads 3 of the same names as `load_text`: `read_bounded`, `stat_present`, `to_owned`. Read `read_text` before you keep a second copy."
+    },
+    "reuse_candidates_found_evidence": {
+      "arguments": {
+        "score": "0.512"
+      },
+      "text": "score 0.512"
+    },
+    "reuse_candidates_gaps": {
+      "arguments": {
+        "count": 2,
+        "paths": "big.py, broken.py",
+        "total": 40
+      },
+      "text": "not checked: reuse_candidates did not read 2 of 40 repository files, so it does not compare a function with the functions in them: big.py, broken.py."
+    },
+    "reuse_candidates_gaps_evidence": {
+      "arguments": {
+        "path": "broken.py",
+        "reason": "broken.py does not parse: the first syntax error is at line 3. Functions are compared only in a file that parses. Fix the syntax error, then run the check again."
+      },
+      "text": "first: broken.py: broken.py does not parse: the first syntax error is at line 3. Functions are compared only in a file that parses. Fix the syntax error, then run the check again."
+    },
+    "reuse_candidates_new_not_measured": {
+      "arguments": {
+        "path": "src/a.py",
+        "reason": "src/a.py does not parse: the first syntax error is at line 2. Functions are compared only in a file that parses. Fix the syntax error, then run the check again."
+      },
+      "text": "not checked: reuse_candidates did not compare src/a.py, because its text after the change cannot be measured. src/a.py does not parse: the first syntax error is at line 2. Functions are compared only in a file that parses. Fix the syntax error, then run the check again."
+    },
+    "reuse_candidates_no_tag_cache": {
+      "arguments": {},
+      "text": "not checked: in the hook form, reuse_candidates reads the functions of the repository from the tag cache only, and this run has no tag cache. Run agentless-mcp index on the repository to turn the check on."
+    },
+    "reuse_candidates_no_tag_cache_evidence": {
+      "arguments": {},
+      "text": "no tag cache"
+    },
+    "reuse_candidates_old_not_measured": {
+      "arguments": {
+        "path": "src/a.py",
+        "reason": "src/a.py does not parse: the first syntax error is at line 2. Functions are compared only in a file that parses. Fix the syntax error, then run the check again."
+      },
+      "text": "not checked: reuse_candidates did not compare src/a.py, because its text before the change cannot be measured. src/a.py does not parse: the first syntax error is at line 2. Functions are compared only in a file that parses. Fix the syntax error, then run the check again."
+    },
+    "reuse_candidates_reads": {
+      "arguments": {},
+      "text": "the action names of every function"
+    },
     "roots_file_hint": {
       "arguments": {
         "file": "/srv/agentless-roots.txt"

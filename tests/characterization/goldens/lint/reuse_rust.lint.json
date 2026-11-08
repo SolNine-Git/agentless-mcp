@@ -1,0 +1,232 @@
+{
+  "candidates": [
+    {
+      "id": "HEAD",
+      "findings": [
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`collect_errors` at src/checks.rs:1 calls and reads 6 of the same names as `gather_failures`: `entries`, `message`, `severity`, `sort_by_key`, `to_lowercase`, `waived`. Read `collect_errors` before you keep a second copy.",
+          "path": "src/audit.rs",
+          "line": 1,
+          "location": "src/audit.rs:1",
+          "evidence": "score 0.365",
+          "detail": {
+            "unit": "gather_failures",
+            "other": "collect_errors",
+            "other_path": "src/checks.rs",
+            "other_line": 1,
+            "score": "0.365",
+            "shared": [
+              "entries",
+              "message",
+              "severity",
+              "sort_by_key",
+              "to_lowercase",
+              "waived"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`load_settings` at src/settings.rs:4 calls and reads 4 of the same names as `read_config`: `from_str`, `jobs`, `read_to_string`, `validate_keys`. Read `load_settings` before you keep a second copy.",
+          "path": "src/config_reader.rs",
+          "line": 6,
+          "location": "src/config_reader.rs:6",
+          "evidence": "score 0.552",
+          "detail": {
+            "unit": "read_config",
+            "other": "load_settings",
+            "other_path": "src/settings.rs",
+            "other_line": 4,
+            "score": "0.552",
+            "shared": [
+              "from_str",
+              "jobs",
+              "read_to_string",
+              "validate_keys"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`export_csv` at src/export.rs:7 calls and reads 8 of the same names as `dump_tsv`: `Start`, `as_bytes`, `concat`, `seek`, `set_len`, `sync_data`, `truncate`, `write`. Read `export_csv` before you keep a second copy.",
+          "path": "src/dump.rs",
+          "line": 7,
+          "location": "src/dump.rs:7",
+          "evidence": "score 0.421",
+          "detail": {
+            "unit": "dump_tsv",
+            "other": "export_csv",
+            "other_path": "src/export.rs",
+            "other_line": 7,
+            "score": "0.421",
+            "shared": [
+              "Start",
+              "as_bytes",
+              "concat",
+              "seek",
+              "set_len",
+              "sync_data",
+              "truncate",
+              "write"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`render_table` at src/report.rs:1 calls and reads 6 of the same names as `format_grid`: `chars`, `count`, `map_or`, `pad_right`, `trim_end`, `zip`. Read `render_table` before you keep a second copy.",
+          "path": "src/grid.rs",
+          "line": 1,
+          "location": "src/grid.rs:1",
+          "evidence": "score 0.307",
+          "detail": {
+            "unit": "format_grid",
+            "other": "render_table",
+            "other_path": "src/report.rs",
+            "other_line": 1,
+            "score": "0.307",
+            "shared": [
+              "chars",
+              "count",
+              "map_or",
+              "pad_right",
+              "trim_end",
+              "zip"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`newest_entry` at src/history.rs:1 calls and reads 4 of the same names as `latest_record`: `cmp`, `is_some`, `max_by`, `stamp`. Read `newest_entry` before you keep a second copy.",
+          "path": "src/latest.rs",
+          "line": 1,
+          "location": "src/latest.rs:1",
+          "evidence": "score 0.422",
+          "detail": {
+            "unit": "latest_record",
+            "other": "newest_entry",
+            "other_path": "src/history.rs",
+            "other_line": 1,
+            "score": "0.422",
+            "shared": [
+              "cmp",
+              "is_some",
+              "max_by",
+              "stamp"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`enclosing` at src/spans.rs:1 calls and reads 2 of the same names as `span_at`: `checked_sub`, `partition_point`. Read `enclosing` before you keep a second copy.",
+          "path": "src/locate.rs",
+          "line": 1,
+          "location": "src/locate.rs:1",
+          "evidence": "score 0.362",
+          "detail": {
+            "unit": "span_at",
+            "other": "enclosing",
+            "other_path": "src/spans.rs",
+            "other_line": 1,
+            "score": "0.362",
+            "shared": [
+              "checked_sub",
+              "partition_point"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`parse_header` at src/headers.rs:1 calls and reads 3 of the same names as `split_field`: `split_once`, `to_ascii_lowercase`, `trim_start`. Read `parse_header` before you keep a second copy.",
+          "path": "src/mail.rs",
+          "line": 1,
+          "location": "src/mail.rs:1",
+          "evidence": "score 0.367",
+          "detail": {
+            "unit": "split_field",
+            "other": "parse_header",
+            "other_path": "src/headers.rs",
+            "other_line": 1,
+            "score": "0.367",
+            "shared": [
+              "split_once",
+              "to_ascii_lowercase",
+              "trim_start"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`decode_label` at src/labels.rs:1 calls and reads 3 of the same names as `clean_label`: `capitalized`, `from_utf8_lossy`, `split_whitespace`. Read `decode_label` before you keep a second copy.",
+          "path": "src/names.rs",
+          "line": 1,
+          "location": "src/names.rs:1",
+          "evidence": "score 0.331",
+          "detail": {
+            "unit": "clean_label",
+            "other": "decode_label",
+            "other_path": "src/labels.rs",
+            "other_line": 1,
+            "score": "0.331",
+            "shared": [
+              "capitalized",
+              "from_utf8_lossy",
+              "split_whitespace"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`common_root` at src/paths.rs:3 calls and reads 4 of the same names as `shared_parent`: `all`, `ancestors`, `starts_with`, `to_path_buf`. Read `common_root` before you keep a second copy.",
+          "path": "src/roots.rs",
+          "line": 3,
+          "location": "src/roots.rs:3",
+          "evidence": "score 0.407",
+          "detail": {
+            "unit": "shared_parent",
+            "other": "common_root",
+            "other_path": "src/paths.rs",
+            "other_line": 3,
+            "score": "0.407",
+            "shared": [
+              "all",
+              "ancestors",
+              "starts_with",
+              "to_path_buf"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`merge_counts` at src/counts.rs:3 calls and reads 3 of the same names as `combine_tallies`: `entry`, `or_insert`, `retain`. Read `merge_counts` before you keep a second copy.",
+          "path": "src/tally.rs",
+          "line": 3,
+          "location": "src/tally.rs:3",
+          "evidence": "score 0.653",
+          "detail": {
+            "unit": "combine_tallies",
+            "other": "merge_counts",
+            "other_path": "src/counts.rs",
+            "other_line": 3,
+            "score": "0.653",
+            "shared": [
+              "entry",
+              "or_insert",
+              "retain"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

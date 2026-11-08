@@ -16,6 +16,7 @@ use super::{
 };
 use crate::lint::BlockSource;
 use crate::pairs::Stored;
+use crate::reuse::StoredUnits;
 use crate::testing::{MANIFEST_DIR, Sandbox, buildable_cases};
 use crate::{Error, LintReport, Noted, Reading, Repo, Services};
 
@@ -117,9 +118,11 @@ fn linted(
         facts: &facts,
         deadline: None,
     };
+    let mut units = |_: &str, _: &str, _| StoredUnits::Miss;
     let source = BlockSource {
         cached: false,
         lookup,
+        units: &mut units,
     };
     candidates_with(services, &reading, source, request)
 }

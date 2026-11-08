@@ -12,6 +12,7 @@ use crate::detached::drop_detached;
 use crate::pair_runs::{IndexOf, Reported, RunInputs, TreeOf};
 use crate::pairs::{Judged, Lookup, built_index, run_pairs};
 use crate::proposed::{After, Proposed, proposed};
+use crate::reuse::{ReuseSource, UnitLookup};
 use crate::revision::compared;
 use crate::tree_scan::{TreeScan, tree_scan};
 use crate::{Error, Noted, PairSelection, Repo, Services, Tags};
@@ -22,9 +23,9 @@ pub use candidates::{
 };
 pub(crate) use candidates::{name, patch_files, stem};
 
-/// Runs the pair checks of `request` on `repo`, with the clone blocks that `tags` stores. The
-/// error is a revision that names no commit, git output that does not parse, or a check that
-/// fails on input it cannot read. The warnings come with either outcome.
+/// Runs the pair checks of `request` on `repo`, with the clone blocks and units that `tags`
+/// stores. The error is a revision that names no commit, git output that does not parse, or a
+/// check that fails on input it cannot read. The warnings come with either outcome.
 pub fn lint(
     services: &Services,
     repo: &Repo,
@@ -32,9 +33,11 @@ pub fn lint(
     request: &LintRequest,
 ) -> Noted<Result<LintReport, Error>> {
     let mut lookup = |path: &str, text: &str, language| tags.stored(path, text, language);
+    let mut units = |path: &str, text: &str, language| tags.stored_units(path, text, language);
     let source = BlockSource {
         cached: tags.cached(),
         lookup: &mut lookup,
+        units: &mut units,
     };
     lint_with(services, repo, source, request)
 }
@@ -84,10 +87,12 @@ pub struct LintCandidate {
     pub observed: Option<Observed>,
 }
 
-// The tag cache as the lint run reads it: whether one is usable, and its stored blocks.
+// The tag cache as the lint run reads it: whether one is usable, its stored blocks, and its
+// stored units.
 pub(crate) struct BlockSource<'a> {
     pub(crate) cached: bool,
     pub(crate) lookup: &'a mut Lookup<'a>,
+    pub(crate) units: &'a mut UnitLookup<'a>,
 }
 
 // The clone index walk and the tree scan raise the warnings, so they reach the caller with
@@ -100,7 +105,11 @@ pub(crate) fn lint_with(
 ) -> Noted<Result<LintReport, Error>> {
     let warnings = RefCell::new(Vec::new());
     let scanned: OnceCell<TreeScan> = OnceCell::new();
-    let BlockSource { cached, lookup } = source;
+    let BlockSource {
+        cached,
+        lookup,
+        units,
+    } = source;
     let mut index = |measured: &[&checks::Pair]| -> Result<Rc<CloneIndex>, Error> {
         let built = built_index(services, &repo.root, lookup, measured);
         warnings.borrow_mut().extend(built.diagnostics);
@@ -115,10 +124,18 @@ pub(crate) fn lint_with(
         let scan = built.value?;
         Ok(scanned.get_or_init(|| scan))
     };
+    let mut reuse = ReuseSource {
+        services,
+        root: &repo.root,
+        no_tag_cache: !cached,
+        units,
+        warnings: &warnings,
+    };
     let tree = TreeSources {
         cached,
         index: &mut index,
         scan: &mut scan,
+        reuse: &mut reuse,
     };
     let report = report(services, repo, request, tree);
     if let Some(scan) = scanned.into_inner() {
@@ -131,11 +148,12 @@ pub(crate) fn lint_with(
 }
 
 // What the run reads from the tree besides the edited files: whether a tag cache is usable, the
-// clone index, and the scan that the tree checks share.
+// clone index, the scan that the tree checks share, and the source of reuse_candidates.
 struct TreeSources<'r, 'i> {
     cached: bool,
     index: &'r mut IndexOf<'i>,
     scan: &'r mut TreeOf<'i>,
+    reuse: &'r mut ReuseSource<'i>,
 }
 
 // Without a usable tag cache, the proposed form reports the no_tag_cache gap and reads no other
@@ -150,6 +168,7 @@ fn report(
         cached,
         index,
         scan,
+        reuse,
     } = tree;
     let (id, judged) = match &request.form {
         LintForm::Proposed { path, after } => {
@@ -158,7 +177,7 @@ fn report(
             let index: &mut IndexOf<'_> = if cached { index } else { &mut no_cache };
             (
                 path,
-                judge_proposed(compared, request.checks, &repo.config, index)?,
+                judge_proposed(compared, request.checks, &repo.config, index, reuse)?,
             )
         }
         LintForm::Revision { revision } => {
@@ -168,6 +187,7 @@ fn report(
                 index,
                 reported: &Reported::new(),
                 tree: Some(scan),
+                reuse,
             };
             let judged = run_pairs(compared.pairs, request.checks, inputs)?;
             (revision, with_rows(compared.rows, judged))
@@ -178,11 +198,12 @@ fn report(
     })
 }
 
-fn judge_proposed(
+fn judge_proposed<'i>(
     compared: Proposed,
     checks: PairSelection,
     config: &io::ProjectConfig,
-    index: &mut IndexOf<'_>,
+    index: &mut IndexOf<'i>,
+    reuse: &mut ReuseSource<'i>,
 ) -> Result<Judged, Error> {
     match compared {
         Proposed::Pair(pair) => {
@@ -191,6 +212,7 @@ fn judge_proposed(
                 index,
                 reported: &Reported::new(),
                 tree: None,
+                reuse,
             };
             run_pairs(vec![pair], checks, inputs)
         }

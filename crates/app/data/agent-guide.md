@@ -1383,17 +1383,19 @@ reason, and the candidate is not half-checked.
 
 **`--only CHECK[,CHECK...]` runs a subset of the checks.** Name checks from the
 table below. An unknown name is a usage error (exit 2). `complexity_delta`,
-`contract_drift`, `clone_delta`, and `callee_overlap` are pair checks: they
-compare each edited file's whole text before and after the change.
+`contract_drift`, `clone_delta`, `callee_overlap`, `cycle_dodge`, and
+`reuse_candidates` are pair checks: they compare each edited file's whole text
+before and after the change.
 `complexity_delta` and `contract_drift` read only the edited files.
 `clone_delta` also reads every tier-1 source file outside test and fixture
 paths, to find the copies of a block. It reads them only when a change edits a
 file in that scope, once for all the candidates of a run, and it stops after
 10 s. `callee_overlap` reads the calls of every function in the working tree,
 so only `--since` runs it. `--candidates` and `--diff` leave it out, and an
-`--only` that names it in any other form is a usage error (exit 2). When
-`--only` names pair checks alone, `lint` skips the symbol scan that the patch
-checks need. The
+`--only` that names it in any other form is a usage error (exit 2).
+`reuse_candidates` reads the action names of every function outside test and
+fixture paths, and runs only when `--only` names it. When `--only` names pair
+checks alone, `lint` skips the symbol scan that the patch checks need. The
 pair checks pair functions across all the files of one candidate, so a
 function moved to another file without other change is not a finding, and a
 contract hit that moves with its function is not new.
@@ -1408,8 +1410,10 @@ the tag cache only, and it parses just this file and the files that changed
 since the index. Without a tag cache, as on a repository never indexed or with
 `--no-cache`, it gives one `not_checked` row with `detail`
 `{"reason": "no_tag_cache"}` and parses nothing. Run `agentless-mcp index`, or
-let the MCP server index the repository, to turn it on. An `--only` that names
-another check is a usage error (exit 2). A path that does
+let the MCP server index the repository, to turn it on. `--only
+reuse_candidates` reads the functions of the source files from the tag cache
+in the same way, and without a tag cache it gives one `not_checked` row. An
+`--only` that names another check is a usage error (exit 2). A path that does
 not exist yet is a new file, so every function in `FILE` counts as new. Both
 sides are read as UTF-8 with their line endings kept, up to 1,000,000 bytes
 each. A side that is larger, unreadable, or not UTF-8 gives a `not_checked`
@@ -1422,7 +1426,8 @@ the commit `REV` with its text in the working tree. Committed, staged,
 unstaged, and untracked changes all count. For a branch, pass the merge-base:
 `--since "$(git merge-base HEAD main)"`. This form runs the pair checks only.
 Without `--only` it runs `complexity_delta` and `contract_drift`, which read
-only the changed files. `--only` can add `clone_delta` and `callee_overlap`.
+only the changed files. `--only` can add `clone_delta`, `callee_overlap`,
+`cycle_dodge`, and `reuse_candidates`.
 An `--only` that names another check is a usage error (exit 2). `--since` with
 `--after` is a usage
 error, and so is a `REV` that names no commit. Each file's old text comes
@@ -1530,6 +1535,7 @@ test paths, because test code is maintained code.
 | `complexity_delta` | warning | a function above the complexity threshold grows, a function crosses the threshold, or a new function arrives above it. In the hook form, a function moved from another file also counts as new. The threshold is 10 unless `complexity_threshold` in `.agentless-mcp.json` sets it. Complexity counts decision points the way scb-check does. Functions are paired by body, then by name, then by rank among functions that share a name, so a rename or a reordering is not a finding |
 | `clone_delta` | advisory | the change adds a block of three or more source lines and 40 or more tokens that has a copy elsewhere in the repository once names, literals, comments, and docstrings are ignored (a Type-2 clone). A block is a function, loop, branch, or try statement. A copy moved to another file, or renamed in place, is not a finding. One finding covers a copied function and the copied blocks inside it |
 | `callee_overlap` | advisory | a function that the change adds or rewrites calls at least 80% of the three or more functions that an existing function calls, and does not call that function. Only `--since` runs it. A function moved to another file or renamed without other change is not a finding |
+| `reuse_candidates` | advisory | a function that the change adds calls and reads mostly the same names as an existing function of the same language: an IDF-weighted Jaccard score of 0.3 or more over the names in call and field position. A row names a candidate to read, not a verdict. Only `--only reuse_candidates` runs it |
 | `contract_drift` | warning | the change adds a silent default or a swallowed error to a boundary module, a file that `boundary_globs` in `.agentless-mcp.json` matches. Each hit is keyed by its rule, the function that holds it, and its text. A hit the code already had is not a finding, and a renamed function keeps its hits, as does a function moved to another file of the same candidate. A hit that moves into another function is a finding |
 
 **`contract_drift` matches syntax, not types or data flow.** Each rule is a
@@ -1640,6 +1646,33 @@ pairs in Rust and in Python it finds 10 of 10 (3 renamed copies, 3 edited
 copies, 4 re-implementations) and gives no row on 8 negatives each
 (`tests/characterization/fixtures/callee_overlap_rust` and `_py`).
 
+**`reuse_candidates` compares the names that functions call and read.** It
+finds a re-implementation that shares only standard-library and method calls,
+which `callee_overlap` cannot count. The action names of a function are the
+names before `(` and the names after `.` that are not before `(`; a name in a
+string or a comment, the function's own name, and a keyword never count. The
+index stores them per function, so the check reads them from the tag cache
+and parses only the files that changed since the index.
+
+The rule: f is a function that the change adds, and g is an existing function
+of the same language. Both have 3 or more action names, and neither is a Rust
+method of `impl Trait for T`, a Python dunder, or Rust test code. A name counts
+toward the match only when at most 5% of all functions use it. The score is
+the IDF weight of the shared counted names over the weight of the union of
+the two name sets, and a row needs 0.3 or more (a provisional floor, until
+held-out labels set it). Each f gets at most two rows, the best score first.
+A g that f calls, or that calls f, at the same-file or resolved-via-import
+tier is left out, because the one uses the other. `--since` resolves those
+calls on the whole symbol graph of its scan. The `--path` form reads the tag
+cache only, so it resolves them on a graph of the edited file, the files of
+the rows, and the `Cargo.toml` files. That graph misses a call through a
+re-export in another file (a Python package's `__init__.py`, a Rust `pub
+use`), and then the row stays.
+
+On planted pairs in Rust and in Python it finds 10 of 10 (3 renamed copies, 3
+edited copies, 4 re-implementations) and gives no row on 9 negatives each
+(`tests/characterization/fixtures/reuse_rust` and `_py`).
+
 Two things the table cannot say.
 
 **`not_checked` is a finding.** Every check reports coverage gaps as findings
@@ -1658,6 +1691,10 @@ at severity `not_checked` and names the reason:
   the `--path` form a run with no tag cache
 - for `callee_overlap`, a run whose scan or graph build reached its time
   budget (one row, and no finding)
+- for `reuse_candidates`, repository files that could not be read or parsed
+  (one row counts them), a read of the functions or a graph build that reached
+  its time budget (one row, and no finding), and in the `--path` form a run
+  with no tag cache
 - a boundary file in a language with no contract rules (c, bash)
 - in review mode: a binary file, a submodule, an unmerged path, a git call
   that failed or timed out, and a run in which no file changed

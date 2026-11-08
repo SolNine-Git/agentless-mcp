@@ -22,6 +22,7 @@ pub const checks::schema::OTHER_PATH: &str
 pub const checks::schema::OTHER_TIER: &str
 pub const checks::schema::PATH: &str
 pub const checks::schema::RULE: &str
+pub const checks::schema::SCORE: &str
 pub const checks::schema::SHARED: &str
 pub const checks::schema::SITES: &str
 pub const checks::schema::SITES_TOTAL: &str
@@ -102,6 +103,7 @@ pub checks::Detail::Dodge(checks::ImportDodge)
 pub checks::Detail::Drift(checks::DriftKey)
 pub checks::Detail::Gap(checks::CheckGap)
 pub checks::Detail::Overlap(alloc::boxed::Box<checks::CalleeShare>)
+pub checks::Detail::Reuse(alloc::boxed::Box<checks::NameShare>)
 pub checks::Detail::Unit(checks::UnitDelta)
 impl core::clone::Clone for checks::Detail
 pub fn checks::Detail::clone(&self) -> Self
@@ -204,6 +206,29 @@ impl core::marker::Unpin for checks::Match
 impl core::marker::UnsafeUnpin for checks::Match
 impl core::panic::unwind_safe::RefUnwindSafe for checks::Match
 impl core::panic::unwind_safe::UnwindSafe for checks::Match
+pub enum checks::NamedTree
+pub checks::NamedTree::Built
+pub checks::NamedTree::Built::files: usize
+pub checks::NamedTree::Built::functions: alloc::vec::Vec<checks::NamedFunction>
+pub checks::NamedTree::Built::unread: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>
+pub checks::NamedTree::NoTagCache
+pub checks::NamedTree::Stopped
+pub checks::NamedTree::Stopped::seconds: u64
+impl core::clone::Clone for checks::NamedTree
+pub fn checks::NamedTree::clone(&self) -> Self
+impl core::cmp::Eq for checks::NamedTree
+impl core::cmp::PartialEq for checks::NamedTree
+pub fn checks::NamedTree::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::NamedTree
+pub fn checks::NamedTree::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::NamedTree
+impl core::marker::Freeze for checks::NamedTree
+impl core::marker::Send for checks::NamedTree
+impl core::marker::Sync for checks::NamedTree
+impl core::marker::Unpin for checks::NamedTree
+impl core::marker::UnsafeUnpin for checks::NamedTree
+impl core::panic::unwind_safe::RefUnwindSafe for checks::NamedTree
+impl core::panic::unwind_safe::UnwindSafe for checks::NamedTree
 pub enum checks::Severity
 pub checks::Severity::Advisory
 pub checks::Severity::NotChecked
@@ -627,6 +652,55 @@ impl core::marker::Unpin for checks::LocalImports
 impl core::marker::UnsafeUnpin for checks::LocalImports
 impl core::panic::unwind_safe::RefUnwindSafe for checks::LocalImports
 impl core::panic::unwind_safe::UnwindSafe for checks::LocalImports
+pub struct checks::NameShare
+pub checks::NameShare::other: alloc::string::String
+pub checks::NameShare::other_line: u32
+pub checks::NameShare::other_path: alloc::string::String
+pub checks::NameShare::score: alloc::string::String
+pub checks::NameShare::shared: alloc::vec::Vec<alloc::string::String>
+pub checks::NameShare::unit: alloc::string::String
+impl core::clone::Clone for checks::NameShare
+pub fn checks::NameShare::clone(&self) -> Self
+impl core::cmp::Eq for checks::NameShare
+impl core::cmp::PartialEq for checks::NameShare
+pub fn checks::NameShare::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::NameShare
+pub fn checks::NameShare::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::NameShare
+impl serde_core::ser::Serialize for checks::NameShare
+pub fn checks::NameShare::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::NameShare
+impl core::marker::Send for checks::NameShare
+impl core::marker::Sync for checks::NameShare
+impl core::marker::Unpin for checks::NameShare
+impl core::marker::UnsafeUnpin for checks::NameShare
+impl core::panic::unwind_safe::RefUnwindSafe for checks::NameShare
+impl core::panic::unwind_safe::UnwindSafe for checks::NameShare
+pub struct checks::NamedFunction
+pub checks::NamedFunction::id: alloc::string::String
+pub checks::NamedFunction::language: syntax::language::Language
+pub checks::NamedFunction::line: u32
+pub checks::NamedFunction::name_line: u32
+pub checks::NamedFunction::names: alloc::vec::Vec<alloc::string::String>
+pub checks::NamedFunction::path: alloc::string::String
+pub checks::NamedFunction::protocol: bool
+pub checks::NamedFunction::qualname: alloc::string::String
+pub checks::NamedFunction::test: bool
+impl core::clone::Clone for checks::NamedFunction
+pub fn checks::NamedFunction::clone(&self) -> Self
+impl core::cmp::Eq for checks::NamedFunction
+impl core::cmp::PartialEq for checks::NamedFunction
+pub fn checks::NamedFunction::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::NamedFunction
+pub fn checks::NamedFunction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::NamedFunction
+impl core::marker::Freeze for checks::NamedFunction
+impl core::marker::Send for checks::NamedFunction
+impl core::marker::Sync for checks::NamedFunction
+impl core::marker::Unpin for checks::NamedFunction
+impl core::marker::UnsafeUnpin for checks::NamedFunction
+impl core::panic::unwind_safe::RefUnwindSafe for checks::NamedFunction
+impl core::panic::unwind_safe::UnwindSafe for checks::NamedFunction
 pub struct checks::Observed
 pub checks::Observed::clone_instances: core::option::Option<alloc::vec::Vec<checks::CloneState>>
 pub checks::Observed::contract_keys: core::option::Option<alloc::vec::Vec<checks::HitState>>
@@ -711,6 +785,18 @@ impl core::marker::Unpin for checks::PairFinding
 impl core::marker::UnsafeUnpin for checks::PairFinding
 impl core::panic::unwind_safe::RefUnwindSafe for checks::PairFinding
 impl core::panic::unwind_safe::UnwindSafe for checks::PairFinding
+pub struct checks::Proposed<'t>
+impl checks::Proposed<'_>
+pub fn checks::Proposed<'_>::functions(&self) -> &[checks::NamedFunction]
+pub fn checks::Proposed<'_>::links(&self) -> alloc::vec::Vec<checks::Link>
+pub fn checks::Proposed<'_>::outcome(self, &alloc::collections::btree::set::BTreeSet<checks::Link>) -> checks::Outcome
+impl<'t> core::marker::Freeze for checks::Proposed<'t>
+impl<'t> core::marker::Send for checks::Proposed<'t>
+impl<'t> core::marker::Sync for checks::Proposed<'t>
+impl<'t> core::marker::Unpin for checks::Proposed<'t>
+impl<'t> core::marker::UnsafeUnpin for checks::Proposed<'t>
+impl<'t> core::panic::unwind_safe::RefUnwindSafe for checks::Proposed<'t>
+impl<'t> core::panic::unwind_safe::UnwindSafe for checks::Proposed<'t>
 pub struct checks::SharedCallee
 pub checks::SharedCallee::callee: alloc::string::String
 pub checks::SharedCallee::other_tier: &'static str
@@ -917,6 +1003,8 @@ pub const checks::CLONE_DELTA: &str
 pub const checks::COMPLEXITY_DELTA: &str
 pub const checks::CONTRACT_DRIFT: &str
 pub const checks::CYCLE_DODGE: &str
+pub const checks::FUNCTION_REASONS: metrics::Reasons
+pub const checks::REUSE_CANDIDATES: &str
 pub trait checks::LoadChains
 pub fn checks::LoadChains::chain(&mut self, checks::Tree, &str, &str) -> core::result::Result<core::option::Option<alloc::vec::Vec<checks::ChainHop>>, checks::BudgetSpent>
 pub fn checks::callee_overlap(&[&checks::Pair], &checks::CalleeTree) -> core::result::Result<checks::Outcome, checks::Error>
@@ -927,3 +1015,5 @@ pub fn checks::contract_drift(&[&checks::Pair], &[alloc::string::String]) -> cor
 pub fn checks::cycle_dodge(&[&checks::Pair], checks::DodgeTree<'_>) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::measure_blocks(syntax::language::Language, &str) -> core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>
 pub fn checks::pair_language(&str) -> core::option::Option<syntax::language::Language>
+pub fn checks::reuse_candidates<'t>(&[&checks::Pair], &'t checks::NamedTree) -> core::result::Result<checks::Proposed<'t>, checks::Error>
+pub type checks::Link = (usize, usize)

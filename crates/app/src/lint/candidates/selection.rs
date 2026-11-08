@@ -16,10 +16,11 @@ pub struct CheckSelection {
 }
 
 impl CheckSelection {
-    /// Returns every check.
+    /// Returns every check but the opt-in pair checks.
     #[must_use]
     pub fn all() -> CheckSelection {
-        Self::chosen(|_| true)
+        let opt_in = |name: &str| PairCheck::from_name(name).is_some_and(PairCheck::opt_in);
+        Self::chosen(|name| !opt_in(name))
     }
 
     /// Returns the checks that `names` names.

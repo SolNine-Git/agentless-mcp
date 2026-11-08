@@ -766,6 +766,17 @@
       },
       "one": "1 is retired (gate-check)",
       "many": "2 are retired (gate-check)"
+    },
+    "reuse_candidates_found": {
+      "arguments": {
+        "line": 42,
+        "listed": "`read_bounded`",
+        "name": "load_text",
+        "path": "crates/io/src/read.rs",
+        "target": "read_text"
+      },
+      "one": "`read_text` at crates/io/src/read.rs:42 calls and reads 1 of the same name as `load_text`: `read_bounded`. Read `read_text` before you keep a second copy.",
+      "many": "`read_text` at crates/io/src/read.rs:42 calls and reads 2 of the same names as `load_text`: `read_bounded`. Read `read_text` before you keep a second copy."
     }
   }
 }

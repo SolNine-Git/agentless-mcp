@@ -2,6 +2,7 @@
 
 use checks::{
     CALLEE_OVERLAP, CLONE_DELTA, COMPLEXITY_DELTA, CONTRACT_DRIFT, CYCLE_DODGE, Outcome, Pair,
+    REUSE_CANDIDATES,
 };
 use patchcheck::{
     CHECK_ARITY, CHECK_CYCLE_DELTA, CHECK_DANGLING_CALLERS, CHECK_DANGLING_REFERENCES,
@@ -28,13 +29,21 @@ pub enum CheckInput {
     PairsClones,
     /// The edited file texts and the symbol graph of the working tree.
     PairsGraph,
+    /// The edited file texts and the action names of every function in the tree.
+    PairsNames,
 }
 
 impl CheckInput {
     /// Returns the input as the capabilities report spells it.
     #[must_use]
     pub fn as_str(self) -> &'static str {
-        ["patch", "pairs", "pairs+clones", "pairs+graph"][self as usize]
+        [
+            "patch",
+            "pairs",
+            "pairs+clones",
+            "pairs+graph",
+            "pairs+names",
+        ][self as usize]
     }
 }
 
@@ -52,7 +61,7 @@ const fn check(name: &'static str, input: CheckInput) -> LintCheck {
 }
 
 /// Every lint check in registry order, which is also the order the checks run in.
-pub const CHECKS: [LintCheck; 12] = [
+pub const CHECKS: [LintCheck; 13] = [
     check(CHECK_UNDECLARED_IMPORTS, CheckInput::Patch),
     check(CHECK_SHADOWING, CheckInput::Patch),
     check(CHECK_NEAR_DUPLICATES, CheckInput::Patch),
@@ -65,6 +74,7 @@ pub const CHECKS: [LintCheck; 12] = [
     PairCheck::CloneDelta.lint_check(),
     PairCheck::CalleeOverlap.lint_check(),
     PairCheck::CycleDodge.lint_check(),
+    PairCheck::ReuseCandidates.lint_check(),
 ];
 
 /// A check that compares the old and new text of each edited file.
@@ -80,6 +90,8 @@ pub enum PairCheck {
     CalleeOverlap,
     /// `cycle_dodge`.
     CycleDodge,
+    /// `reuse_candidates`.
+    ReuseCandidates,
 }
 
 // One row of the pair table. A check reads only the pairs whose path `keeps` accepts. Only a tree
@@ -91,6 +103,7 @@ struct PairRow {
     keeps: fn(&str) -> bool,
     forms: &'static [FormKind],
     reads: Option<&'static str>,
+    opt_in: bool,
     run: Run,
 }
 
@@ -105,6 +118,7 @@ const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
         keeps: |path| !is_fixture_path(path),
         forms: EVERY_FORM,
         reads: None,
+        opt_in: false,
         run: pair_runs::complexity_delta,
     },
     PairRow {
@@ -113,6 +127,7 @@ const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
         keeps: |path| !is_test_path(path) && !is_fixture_path(path),
         forms: EVERY_FORM,
         reads: None,
+        opt_in: false,
         run: pair_runs::contract_drift,
     },
     PairRow {
@@ -121,6 +136,7 @@ const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
         keeps: in_metric_scope,
         forms: EVERY_FORM,
         reads: None,
+        opt_in: false,
         run: pair_runs::clone_delta,
     },
     PairRow {
@@ -129,6 +145,7 @@ const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
         keeps: in_callee_scope,
         forms: &[FormKind::Since],
         reads: Some(CALLEE_OVERLAP_READS),
+        opt_in: false,
         run: pair_runs::callee_overlap,
     },
     PairRow {
@@ -137,18 +154,29 @@ const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
         keeps: in_dodge_scope,
         forms: &[FormKind::Since],
         reads: Some(CYCLE_DODGE_READS),
+        opt_in: false,
         run: pair_runs::cycle_dodge,
+    },
+    PairRow {
+        name: REUSE_CANDIDATES,
+        input: CheckInput::PairsNames,
+        keeps: in_metric_scope,
+        forms: EVERY_FORM,
+        reads: None,
+        opt_in: true,
+        run: pair_runs::reuse_candidates,
     },
 ];
 
 impl PairCheck {
     /// Every pair check, in registry order.
-    pub const ALL: [PairCheck; 5] = [
+    pub const ALL: [PairCheck; 6] = [
         Self::ComplexityDelta,
         Self::ContractDrift,
         Self::CloneDelta,
         Self::CalleeOverlap,
         Self::CycleDodge,
+        Self::ReuseCandidates,
     ];
 
     /// Returns the check's name.
@@ -173,6 +201,10 @@ impl PairCheck {
         inputs: &mut RunInputs<'_, '_>,
     ) -> Result<Option<Outcome>, Error> {
         (self.row().run)(pairs, inputs)
+    }
+
+    pub(crate) fn opt_in(self) -> bool {
+        self.row().opt_in
     }
 
     pub(crate) fn runs_in(self, form: FormKind) -> bool {
