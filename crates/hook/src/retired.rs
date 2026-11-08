@@ -3,8 +3,7 @@
 
 use std::io::Read;
 
-/// Reads the payload on `stdin` and returns 0. It writes nothing.
-pub fn retired(stdin: &mut dyn Read) -> u8 {
+pub(crate) fn retired(stdin: &mut dyn Read) -> u8 {
     // Claude Code writes the whole payload; a hook that exits first can break that write. A
     // failed read leaves nothing to do.
     drop(std::io::copy(stdin, &mut std::io::sink()));

@@ -99,9 +99,7 @@ struct Operands<'w> {
     pattern_given: bool,
 }
 
-// The one file that `command` reads when it is a read-before-edit view of one file, as written:
-// relative to the command's directory. Any other shape, and a shape the rules cannot read with
-// certainty, reads no file.
+// The file of a read-before-edit view of one file, as written. A doubtful shape reads no file.
 pub(crate) fn single_file_read(command: &CodePointString) -> Option<CodePointString> {
     if has_operator(command) {
         return None;

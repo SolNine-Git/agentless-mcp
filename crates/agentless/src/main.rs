@@ -31,21 +31,6 @@ fn main() -> ExitCode {
     ExitCode::from(dispatch(&args, &env, &services))
 }
 
-// One hook: its subcommand name and its run.
-type HookRun = fn(&EnvConfig, &Services) -> u8;
-
-const HOOKS: [(&str, HookRun); 9] = [
-    ("read-card", read_carded),
-    ("ledger-mark", ledger_marked),
-    ("brief-record", brief_recorded),
-    ("subagent-map", subagent_mapped),
-    ("prompt-map", prompt_mapped),
-    ("erosion", erosion),
-    ("ledger-reset", ledger_reset),
-    ("gate-check", retired),
-    ("gate-mark", retired),
-];
-
 // One command on the settings files: its subcommand name and its run on the options after it.
 type SettingsRun = fn(&[OsString], &EnvConfig) -> hook::Output;
 
@@ -58,10 +43,13 @@ const SETTINGS: [(&str, SettingsRun); 3] = [
 // The hooks need no start-up directory, so only the other command lines stop on an unread one.
 fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
     let words: Vec<Option<&str>> = args.iter().map(|arg| arg.to_str()).collect();
-    if let [Some("hook"), Some(name)] = words.as_slice()
-        && let Some((_, run)) = HOOKS.iter().find(|(hook, _)| hook == name)
-    {
-        return run(env, services);
+    if let [Some("hook"), Some(name)] = words.as_slice() {
+        if *name == "erosion" {
+            return erosion(env, services);
+        }
+        if let Some(found) = hook::ContextHook::named(name) {
+            return context_hook(found, env, services);
+        }
     }
     if words.first() == Some(&Some("gate-report")) {
         return with_streams(|streams| {
@@ -96,59 +84,16 @@ fn erosion(env: &EnvConfig, services: &Services) -> u8 {
     answered(|| hook::erosion(env, services, &mut io::stdin().lock()))
 }
 
-// A retired hook stays accepted for one release, so a stale settings entry breaks no session.
-fn retired(_env: &EnvConfig, _services: &Services) -> u8 {
+// A context hook writes its reply itself. Claude Code reads plain stdout as context on some of
+// these events, so a panic line must not reach a stream.
+fn context_hook(found: hook::ContextHook, env: &EnvConfig, services: &Services) -> u8 {
     keep_panic_lines();
-    hook::retired(&mut io::stdin().lock())
-}
-
-// The prompt map writes its reply itself. Claude Code reads plain stdout as context on this event,
-// so a panic line must not reach a stream.
-fn prompt_mapped(env: &EnvConfig, services: &Services) -> u8 {
-    keep_panic_lines();
-    hook::prompt_map(
+    found.run(
         env,
         services,
         &mut io::stdin().lock(),
         &mut io::stdout().lock(),
     )
-}
-
-// The card of a first read goes to stdout as the hook's reply, like the prompt map's.
-fn read_carded(env: &EnvConfig, services: &Services) -> u8 {
-    keep_panic_lines();
-    hook::read_card(
-        env,
-        services,
-        &mut io::stdin().lock(),
-        &mut io::stdout().lock(),
-    )
-}
-
-fn ledger_marked(env: &EnvConfig, services: &Services) -> u8 {
-    keep_panic_lines();
-    hook::ledger_mark(env, services, &mut io::stdin().lock())
-}
-
-// The brief record returns no decision, so it writes nothing.
-fn brief_recorded(env: &EnvConfig, services: &Services) -> u8 {
-    keep_panic_lines();
-    hook::brief_record(env, services, &mut io::stdin().lock())
-}
-
-fn subagent_mapped(env: &EnvConfig, services: &Services) -> u8 {
-    keep_panic_lines();
-    hook::subagent_map(
-        env,
-        services,
-        &mut io::stdin().lock(),
-        &mut io::stdout().lock(),
-    )
-}
-
-fn ledger_reset(env: &EnvConfig, _services: &Services) -> u8 {
-    keep_panic_lines();
-    hook::ledger_reset(env, &mut io::stdin().lock())
 }
 
 // The report opens its paths as given, so like the hook it needs no start-up directory.

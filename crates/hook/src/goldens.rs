@@ -101,19 +101,14 @@ impl Rig {
         let (env, services) = (&self.env, &self.services);
         let mut stdin = stdin.as_bytes();
         let mut stdout = Vec::new();
-        let code = match hook {
-            "read-card" => crate::read_card(env, services, &mut stdin, &mut stdout),
-            "ledger-mark" => crate::ledger_mark(env, services, &mut stdin),
-            "brief-record" => crate::brief_record(env, services, &mut stdin),
-            "subagent-map" => crate::subagent_map(env, services, &mut stdin, &mut stdout),
-            "ledger-reset" => crate::ledger_reset(env, &mut stdin),
-            "prompt-map" => crate::prompt_map(env, services, &mut stdin, &mut stdout),
-            "erosion" => {
-                let output = crate::erosion(env, services, &mut stdin);
-                stdout = output.stdout.into_bytes();
-                output.code
-            }
-            other => panic!("no hook {other}"),
+        let code = if hook == "erosion" {
+            let output = crate::erosion(env, services, &mut stdin);
+            stdout = output.stdout.into_bytes();
+            output.code
+        } else {
+            let found = crate::ContextHook::named(hook);
+            let found = found.unwrap_or_else(|| panic!("no hook {hook}"));
+            found.run(env, services, &mut stdin, &mut stdout)
         };
         assert_eq!(code, 0, "{hook}");
         let stdout = String::from_utf8(stdout).expect("UTF-8 stdout");

@@ -1,14 +1,16 @@
 //! What each hook of the trace surface shares: the process facts it reads, the payload's object
-//! and context, the panic catch that keeps a failure silent, and its one log line.
+//! and context, its job under the deadline, the panic catch that keeps a failure silent, and its
+//! one log line.
 
 use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::io::{Read, Write};
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::Duration;
 
 use app::EnvConfig;
+use app::hooks::{self, DEFAULT_SERVER_NAME, Hook};
 use json::{JsonValue, get};
 use kernel::Clock;
 use text::CodePointString;
@@ -17,6 +19,7 @@ use crate::ledger;
 use crate::reply::{self, EMITTED, INTERNAL};
 use crate::search::log::{self, Entry, key};
 use crate::search::{Parsed, object_field, parsed, text_field};
+use crate::worker::{self, Finished};
 
 pub(crate) const MALFORMED_PAYLOAD: &str = "malformed_payload";
 pub(crate) const NO_SESSION_ID: &str = "no_session_id";
@@ -33,23 +36,27 @@ const MS_KEY: &str = "ms";
 
 pub(crate) type Fields = Vec<(CodePointString, JsonValue)>;
 
-// What one run reads from its process: the ledger directory, the log variable, the start-up
-// directory and the clock.
+// One run of a hook and what it reads from its process: the ledger directory, the log variable,
+// the start-up directory, the clock, and the deadline of its job.
 pub(crate) struct Run<'a> {
+    pub(crate) hook: Hook,
     pub(crate) ledger: PathBuf,
     pub(crate) log: Option<&'a OsStr>,
     // None when the start-up directory cannot be read.
     pub(crate) cwd: Option<&'a Path>,
     pub(crate) clock: &'a dyn Clock,
+    pub(crate) deadline: Duration,
 }
 
 impl<'a> Run<'a> {
-    pub(crate) fn of(env: &'a EnvConfig, clock: &'a dyn Clock) -> Self {
+    pub(crate) fn of(hook: Hook, env: &'a EnvConfig, clock: &'a dyn Clock) -> Self {
         Self {
+            hook,
             ledger: ledger::base(env),
             log: env.var(log::LOG_ENV),
             cwd: env.cwd().ok(),
             clock,
+            deadline: hook.deadline(),
         }
     }
 
@@ -60,12 +67,30 @@ impl<'a> Run<'a> {
             .or_else(|| self.cwd.map(Path::to_path_buf))
     }
 
-    // The milliseconds since `started`, by the run's clock.
-    pub(crate) fn ms_since(&self, started: Instant) -> u128 {
-        self.clock
-            .now()
-            .saturating_duration_since(started)
-            .as_millis()
+    // The work on its own thread under the run's deadline, with its milliseconds in the facts.
+    pub(crate) fn timed<T: Send + 'static>(
+        &self,
+        work: impl FnOnce() -> Result<T, app::Error> + Send + 'static,
+        facts: &mut Facts,
+    ) -> std::io::Result<Finished<T>> {
+        let started = self.clock.now();
+        let finished = worker::run(self.hook.name(), work, self.deadline);
+        let elapsed = self.clock.now().saturating_duration_since(started);
+        facts.ms = Some(elapsed.as_millis());
+        finished
+    }
+}
+
+// The value of finished work, or the reason that a hook logs for each way it did not finish.
+pub(crate) fn finished<T>(
+    finished: std::io::Result<Finished<T>>,
+    failed: &'static str,
+) -> Result<T, &'static str> {
+    match finished {
+        Ok(Finished::Done(value)) => Ok(value),
+        Ok(Finished::TimedOut) => Err(DEADLINE_PASSED),
+        Ok(Finished::Failed(_)) => Err(failed),
+        Ok(Finished::Panicked(_)) | Err(_) => Err(INTERNAL),
     }
 }
 
@@ -92,8 +117,6 @@ pub(crate) struct Context {
 // Fail open: a panic prints nothing, and every run logs one line.
 pub(crate) fn answered(
     run: &Run<'_>,
-    hook: &str,
-    event_name: &str,
     stdout: &mut dyn Write,
     decide: impl FnOnce(&mut Facts) -> Result<Outcome, &'static str>,
 ) {
@@ -101,7 +124,7 @@ pub(crate) fn answered(
     let mut facts = Facts::default();
     let decided = panic::catch_unwind(AssertUnwindSafe(|| decide(&mut facts)));
     let (event, reason) = match decided {
-        Ok(Ok(Outcome::Context(context))) => match reply::written(stdout, event_name, &context) {
+        Ok(Ok(Outcome::Context(context))) => match replied(run.hook, stdout, &context) {
             EMITTED => (EMITTED, EMITTED),
             failed => (SILENT, failed),
         },
@@ -112,8 +135,17 @@ pub(crate) fn answered(
     // The log is the hook's only channel: a failed append has nowhere to be reported.
     drop(log::append(
         run.log,
-        &entry(ts, hook, event, reason, &facts),
+        &entry(ts, run.hook.name(), event, reason, &facts),
     ));
+}
+
+// The reply names the hook's event, as the entry table holds it.
+fn replied(hook: Hook, stdout: &mut dyn Write, context: &str) -> &'static str {
+    let entries = hooks::entries(DEFAULT_SERVER_NAME);
+    match entries.iter().find(|entry| entry.hook == hook) {
+        Some(entry) => reply::written(stdout, entry.event.as_str(), context),
+        None => INTERNAL,
+    }
 }
 
 // The payload's object. An unreadable stdin and a document past a parse limit are malformed too.

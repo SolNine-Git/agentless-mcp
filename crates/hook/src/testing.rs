@@ -4,8 +4,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use app::EnvConfig;
+use app::hooks::Hook;
 use io::testing::{Identity, Tree};
 use kernel::Clock;
+
+use crate::run::{Facts, Outcome, Run};
 
 // The wall time every test clock reports, and the generator writes into each expected record.
 pub(crate) const WALL_SECONDS: u64 = 1_760_000_000;
@@ -194,23 +197,32 @@ impl Rig {
         self.sandbox.root().join(relative)
     }
 
-    pub(crate) fn run<'a>(&'a self, clock: &'a dyn Clock) -> crate::run::Run<'a> {
-        crate::run::Run {
+    // A run of `hook` in the sandbox, with a deadline that no test job reaches.
+    pub(crate) fn run<'a>(&'a self, hook: Hook, clock: &'a dyn Clock) -> Run<'a> {
+        Run {
+            hook,
             ledger: self.ledger(),
             log: Some(self.log.as_os_str()),
             cwd: None,
             clock,
+            deadline: Duration::from_secs(30),
         }
+    }
+
+    // The stdout of one run whose decision is `decide`.
+    pub(crate) fn answer(
+        run: &Run<'_>,
+        decide: impl FnOnce(&mut Facts) -> Result<Outcome, &'static str>,
+    ) -> String {
+        let mut stdout = Vec::new();
+        crate::run::answered(run, &mut stdout, decide);
+        String::from_utf8(stdout).expect("UTF-8 stdout")
     }
 
     // The read-card reply to a Read of `relative` in the context.
     pub(crate) fn read_reply(&self, session: &str, agent: Option<&str>, relative: &str) -> String {
         let clock = Steps::fixed();
-        let hook = crate::read_card::ReadCard {
-            run: self.run(&clock),
-            card: crate::read_card::in_process,
-            deadline: Duration::from_secs(30),
-        };
+        let run = self.run(Hook::ReadCard, &clock);
         let mut payload = serde_json::json!({
             "session_id": session,
             "tool_name": "Read",
@@ -219,10 +231,11 @@ impl Rig {
         if let Some(agent) = agent {
             payload["agent_id"] = serde_json::json!(agent);
         }
-        let mut stdout = Vec::new();
         let stdin = payload.to_string();
-        crate::read_card::answer(&hook, &self.services, &mut stdin.as_bytes(), &mut stdout);
-        String::from_utf8(stdout).expect("UTF-8 stdout")
+        Self::answer(&run, |facts| {
+            let card = crate::read_card::in_process;
+            crate::read_card::decide(&run, card, &self.services, &mut stdin.as_bytes(), facts)
+        })
     }
 
     pub(crate) fn lines(&self) -> Vec<serde_json::Value> {

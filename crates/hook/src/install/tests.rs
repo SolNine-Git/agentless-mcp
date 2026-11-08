@@ -132,7 +132,7 @@ const MIXED: &str = r#"{
     ],
     "Stop": [{"hooks": [{"type": "command", "command": "notify-send done"}]}]
   },
-  "env": {"NAME": "caf\u00e9", "BIG": 12345678901234567890}
+  "env": {"NAME": "Z\u00fcrich", "BIG": 12345678901234567890}
 }
 "#;
 
@@ -178,7 +178,7 @@ fn foreign_handlers_mixed_groups_and_other_keys_stay_and_retired_entries_go() {
         json!([{"hooks": [{"type": "command", "command": "notify-send done"}]}])
     );
     assert!(text.contains("\"BIG\": 12345678901234567890"), "{text}");
-    assert!(text.contains("\"NAME\": \"caf\\u00e9\""), "{text}");
+    assert!(text.contains("\"NAME\": \"Z\\u00fcrich\""), "{text}");
     assert!(!text.contains("/old/bin"), "{text}");
     assert_eq!(rig.install(&[]).stdout.split(':').next(), Some("no change"));
 }

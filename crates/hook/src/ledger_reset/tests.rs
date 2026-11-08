@@ -1,12 +1,16 @@
 use serde_json::json;
 
-use super::answer;
+use app::hooks::Hook;
+
+use super::decide;
 use crate::testing::{Rig, Steps};
 
 impl Rig {
     fn reset(&self, stdin: &str) {
         let clock = Steps::fixed();
-        answer(&self.run(&clock), &mut stdin.as_bytes());
+        let run = self.run(Hook::LedgerReset, &clock);
+        let stdout = Rig::answer(&run, |facts| decide(&run, &mut stdin.as_bytes(), facts));
+        assert_eq!(stdout, "");
     }
 }
 

@@ -17,11 +17,12 @@ use kernel::{Clock, SystemClock};
 
 use crate::reply::{self, EMITTED, INTERNAL};
 use crate::repository;
+use crate::run;
 use crate::search::log::{self, Entry, key};
 use crate::search::{Parsed, parsed, text_field};
 use crate::state::{self, Claim};
 use crate::text::sha256_hex;
-use crate::worker::{self, Finished};
+use crate::worker;
 
 pub(crate) type MapFn = fn(&Services, &Path, &MapRequest) -> Result<MapResult, app::Error>;
 
@@ -39,7 +40,6 @@ const NO_PROMPT: &str = "no_prompt";
 const NO_REPOSITORY: &str = "no_repository";
 const NO_SEED: &str = "no_seed";
 const NO_SEED_RESOLVED: &str = "no_seed_resolved";
-const DEADLINE_PASSED: &str = "deadline";
 const MAP_FAILED: &str = "map_failed";
 const TOO_LONG: &str = "too_long";
 const MARKER_STORAGE_UNAVAILABLE: &str = "marker_storage_unavailable";
@@ -195,12 +195,7 @@ fn mapped(
             .saturating_duration_since(started)
             .as_millis(),
     );
-    match finished {
-        Ok(Finished::Done(result)) => Ok(result),
-        Ok(Finished::TimedOut) => Err(DEADLINE_PASSED),
-        Ok(Finished::Failed(_)) => Err(MAP_FAILED),
-        Ok(Finished::Panicked(_)) | Err(_) => Err(INTERNAL),
-    }
+    run::finished(finished, MAP_FAILED)
 }
 
 // The names are the seeds that the map resolved. A map that resolved none gives no sentence.

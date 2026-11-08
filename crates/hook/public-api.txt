@@ -1,4 +1,20 @@
 pub mod hook
+pub struct hook::ContextHook(_)
+impl hook::ContextHook
+pub fn hook::ContextHook::named(&str) -> core::option::Option<Self>
+pub fn hook::ContextHook::run(self, &app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read, &mut dyn core::io::write::Write) -> u8
+impl core::clone::Clone for hook::ContextHook
+pub fn hook::ContextHook::clone(&self) -> Self
+impl core::fmt::Debug for hook::ContextHook
+pub fn hook::ContextHook::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for hook::ContextHook
+impl core::marker::Freeze for hook::ContextHook
+impl core::marker::Send for hook::ContextHook
+impl core::marker::Sync for hook::ContextHook
+impl core::marker::Unpin for hook::ContextHook
+impl core::marker::UnsafeUnpin for hook::ContextHook
+impl core::panic::unwind_safe::RefUnwindSafe for hook::ContextHook
+impl core::panic::unwind_safe::UnwindSafe for hook::ContextHook
 pub struct hook::Output
 pub hook::Output::code: u8
 pub hook::Output::stderr: alloc::string::String
@@ -20,15 +36,9 @@ impl core::marker::Unpin for hook::Output
 impl core::marker::UnsafeUnpin for hook::Output
 impl core::panic::unwind_safe::RefUnwindSafe for hook::Output
 impl core::panic::unwind_safe::UnwindSafe for hook::Output
-pub fn hook::brief_record(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read) -> u8
 pub fn hook::erosion(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read) -> hook::Output
 pub fn hook::gate_report(&str, core::option::Option<&str>, core::option::Option<&str>, &str) -> hook::Output
 pub fn hook::install(&[std::ffi::os_str::OsString], &app::env::EnvConfig) -> hook::Output
-pub fn hook::ledger_mark(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read) -> u8
-pub fn hook::ledger_reset(&app::env::EnvConfig, &mut dyn alloc::io::read::Read) -> u8
 pub fn hook::prompt_map(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read, &mut dyn core::io::write::Write) -> u8
-pub fn hook::read_card(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read, &mut dyn core::io::write::Write) -> u8
-pub fn hook::retired(&mut dyn alloc::io::read::Read) -> u8
 pub fn hook::status(&[std::ffi::os_str::OsString], &app::env::EnvConfig) -> hook::Output
-pub fn hook::subagent_map(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read, &mut dyn core::io::write::Write) -> u8
 pub fn hook::uninstall(&[std::ffi::os_str::OsString], &app::env::EnvConfig) -> hook::Output

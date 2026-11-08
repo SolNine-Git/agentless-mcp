@@ -5,8 +5,12 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
-use super::{CARD_CAP, CardFn, ReadCard, answer, cut, in_process, read_card};
+use app::hooks::Hook;
+
+use super::{CARD_CAP, CardFn, cut, decide, in_process};
+use crate::ContextHook;
 use crate::ledger::CAP;
+use crate::run::Run;
 use crate::testing::{Rig, Steps, context_of};
 use crate::text::sha256_hex;
 
@@ -44,26 +48,20 @@ fn bash_payload(session: &str, command: &str, cwd: &Path) -> String {
 }
 
 impl Rig {
-    fn hook<'a>(&'a self, clock: &'a Steps, card: CardFn, deadline: Duration) -> ReadCard<'a> {
-        ReadCard {
-            run: self.run(clock),
-            card,
+    // One read-card run with `card` under `deadline`.
+    fn read_with(&self, clock: &Steps, card: CardFn, deadline: Duration, stdin: &str) -> String {
+        let run = Run {
             deadline,
-        }
-    }
-
-    fn read_with(&self, hook: &ReadCard<'_>, stdin: &str) -> String {
-        let mut stdout = Vec::new();
-        answer(hook, &self.services, &mut stdin.as_bytes(), &mut stdout);
-        String::from_utf8(stdout).expect("UTF-8 stdout")
+            ..self.run(Hook::ReadCard, clock)
+        };
+        Rig::answer(&run, |facts| {
+            decide(&run, card, &self.services, &mut stdin.as_bytes(), facts)
+        })
     }
 
     fn read(&self, stdin: &str) -> String {
         let clock = Steps::fixed();
-        self.read_with(
-            &self.hook(&clock, in_process, Duration::from_secs(30)),
-            stdin,
-        )
+        self.read_with(&clock, in_process, Duration::from_secs(30), stdin)
     }
 }
 
@@ -77,7 +75,8 @@ fn a_first_read_of_a_source_file_gets_its_file_card_and_exits_0() {
     let stdin = read_payload("s1", None, &rig.file(Rig::INVOICE));
     let mut stdout = Vec::new();
 
-    let code = read_card(&env, &rig.services, &mut stdin.as_bytes(), &mut stdout);
+    let hook = ContextHook::named("read-card").expect("the hook");
+    let code = hook.run(&env, &rig.services, &mut stdin.as_bytes(), &mut stdout);
 
     assert_eq!(code, 0);
     let stdout = String::from_utf8(stdout).expect("UTF-8 stdout");
@@ -234,10 +233,7 @@ fn a_card_past_the_deadline_is_silent_and_uses_the_one_try() {
     let deadline = Duration::from_millis(100);
     let stdin = read_payload("s1", None, &rig.file(Rig::INVOICE));
     let started = Instant::now();
-    assert_eq!(
-        rig.read_with(&rig.hook(&clock, STUCK, deadline), &stdin),
-        ""
-    );
+    assert_eq!(rig.read_with(&clock, STUCK, deadline, &stdin), "");
     assert!(started.elapsed() < deadline + Duration::from_secs(1));
     assert_eq!(rig.read(&stdin), "");
     assert_eq!(rig.reasons(), ["deadline", "held"]);
@@ -249,9 +245,9 @@ fn a_panicking_failing_or_missing_card_is_silent() {
     let clock = Steps::fixed();
     let invoice = rig.file(Rig::INVOICE);
     for (session, card) in [("s1", PANICKING), ("s2", FAILING), ("s3", NO_CARD)] {
-        let hook = rig.hook(&clock, card, Duration::from_secs(5));
         let stdin = read_payload(session, None, &invoice);
-        assert_eq!(rig.read_with(&hook, &stdin), "");
+        let stdout = rig.read_with(&clock, card, Duration::from_secs(5), &stdin);
+        assert_eq!(stdout, "");
     }
     assert_eq!(rig.reasons(), ["internal", "render_failed", "no_file_card"]);
 }
@@ -296,11 +292,8 @@ fn the_entry_is_named_by_session_context_path_and_content() {
 fn the_log_line_holds_its_keys_in_order() {
     let rig = Rig::new();
     let clock = Steps::new(&[Duration::ZERO, Duration::from_millis(40)]);
-    let hook = rig.hook(&clock, in_process, Duration::from_secs(30));
-    drop(rig.read_with(
-        &hook,
-        &read_payload("s1", Some("a1"), &rig.file(Rig::INVOICE)),
-    ));
+    let stdin = read_payload("s1", Some("a1"), &rig.file(Rig::INVOICE));
+    drop(rig.read_with(&clock, in_process, Duration::from_secs(30), &stdin));
     let lines = rig.lines();
     let keys: BTreeSet<&str> = (lines[0].as_object().expect("an object").keys())
         .map(String::as_str)

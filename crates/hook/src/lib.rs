@@ -8,6 +8,7 @@
 //! agentless entries in step with the entry table.
 
 mod call;
+mod context;
 mod destination;
 mod edit;
 mod gate;
@@ -47,14 +48,10 @@ use std::sync::Arc;
 use app::{EnvConfig, Services};
 use kernel::{Clock, SystemClock};
 
+pub use crate::context::ContextHook;
 pub use crate::install::{install, status, uninstall};
-pub use crate::ledger_mark::ledger_mark;
-pub use crate::ledger_reset::ledger_reset;
 pub use crate::prompt_map::prompt_map;
-pub use crate::read_card::read_card;
 pub use crate::report::gate_report;
-pub use crate::retired::retired;
-pub use crate::subagent::{brief_record, subagent_map};
 
 use crate::call::Call;
 use crate::gate::Ports;

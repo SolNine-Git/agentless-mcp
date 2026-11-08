@@ -3,35 +3,26 @@
 //! brief, and subagent-map pairs a starting subagent with the one pending record of its type.
 
 use std::fs;
-use std::io::{ErrorKind, Read, Write};
+use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
 
-use app::hooks::Hook;
-use app::{EnvConfig, IntArg, MapRequest, MapResult, Services};
+use app::{IntArg, MapRequest, MapResult, Services};
 use io::Granularity;
 use json::{JsonValue, get};
-use kernel::{Clock, SystemClock};
+use kernel::Clock;
 use prompts::messages::SUBAGENT_MAP_CONTEXT;
 use text::CodePointString;
 
 use crate::ledger;
+use crate::prompt_map::MapFn;
 use crate::prompt_map::seeds::{self, Seeded};
-use crate::prompt_map::{MapFn, in_process};
-use crate::reply::INTERNAL;
 use crate::repository;
-use crate::run::{
-    self, DEADLINE_PASSED, Facts, LEDGER_STORAGE_UNAVAILABLE, NO_REPOSITORY, Outcome, Run,
-};
+use crate::run::{self, Facts, LEDGER_STORAGE_UNAVAILABLE, NO_REPOSITORY, Outcome, Run};
 use crate::search::text_field;
 use crate::state;
 use crate::text::sha256_hex;
-use crate::worker::{self, Finished};
 
-const BRIEF_HOOK: &str = "brief-record";
-const MAP_HOOK: &str = "subagent-map";
-const PRE_TOOL_USE: &str = "PreToolUse";
-const SUBAGENT_START: &str = "SubagentStart";
 // A fork inherits its parent's context, so its brief needs no map.
 const FORK: &str = "fork";
 // The type of an Agent call that names none.
@@ -60,62 +51,8 @@ const NO_NEW_FILE: &str = "no_new_file";
 const MAP_FAILED: &str = "map_failed";
 const TOO_LONG: &str = "too_long";
 
-/// Records the seeds and the named files of the Agent call's brief in the `PreToolUse` payload
-/// on `stdin`, for the subagent's map. It returns no decision, writes nothing and returns 0.
-pub fn brief_record(env: &EnvConfig, services: &Services, stdin: &mut dyn Read) -> u8 {
-    let clock = SystemClock;
-    record(&Run::of(env, &clock), services, stdin);
-    0
-}
-
-pub(crate) fn record(run: &Run<'_>, services: &Services, stdin: &mut dyn Read) {
-    run::answered(
-        run,
-        BRIEF_HOOK,
-        PRE_TOOL_USE,
-        &mut std::io::sink(),
-        |facts| recorded(run, services, stdin, facts),
-    );
-}
-
-/// Answers the `SubagentStart` payload on `stdin` with one JSON object on `stdout` that names the
-/// map's first files for the seeds of the subagent's brief, or with nothing, and returns 0.
-pub fn subagent_map(
-    env: &EnvConfig,
-    services: &Services,
-    stdin: &mut dyn Read,
-    stdout: &mut dyn Write,
-) -> u8 {
-    let clock = SystemClock;
-    let hook = SubagentMap {
-        run: Run::of(env, &clock),
-        map: in_process,
-        deadline: Hook::SubagentMap.deadline(),
-    };
-    answer(&hook, services, stdin, stdout);
-    0
-}
-
-// One run: its process facts, the map and the map's deadline.
-pub(crate) struct SubagentMap<'a> {
-    pub(crate) run: Run<'a>,
-    pub(crate) map: MapFn,
-    pub(crate) deadline: Duration,
-}
-
-pub(crate) fn answer(
-    hook: &SubagentMap<'_>,
-    services: &Services,
-    stdin: &mut dyn Read,
-    stdout: &mut dyn Write,
-) {
-    run::answered(&hook.run, MAP_HOOK, SUBAGENT_START, stdout, |facts| {
-        mapped(hook, services, stdin, facts)
-    });
-}
-
 // A brief with no seed is recorded too: a record of every brief keeps a pairing honest.
-fn recorded(
+pub(crate) fn recorded(
     run: &Run<'_>,
     services: &Services,
     stdin: &mut dyn Read,
@@ -192,8 +129,9 @@ struct Brief {
     files: Vec<String>,
 }
 
-fn mapped(
-    hook: &SubagentMap<'_>,
+pub(crate) fn mapped(
+    run: &Run<'_>,
+    map: MapFn,
     services: &Services,
     stdin: &mut dyn Read,
     facts: &mut Facts,
@@ -202,17 +140,24 @@ fn mapped(
     let context = run::context(&fields, facts)?;
     let kind = text_field(&fields, "agent_type").and_then(CodePointString::as_str);
     let kind = kind.ok_or(NO_AGENT_TYPE)?;
-    if !state::private_dir(&hook.run.ledger) {
+    if !state::private_dir(&run.ledger) {
         return Err(LEDGER_STORAGE_UNAVAILABLE);
     }
-    let dir = ledger::briefs_dir(&hook.run.ledger, &context.session);
-    let brief = taken(&dir, kind, wall_ns(hook.run.clock))?;
+    let dir = ledger::briefs_dir(&run.ledger, &context.session);
+    let brief = taken(&dir, kind, wall_ns(run.clock))?;
     if brief.seeds.is_empty() {
         return Err(NO_SEED);
     }
-    let root =
-        (brief.root.clone()).or_else(|| repository::root_of(services, &hook.run.cwd(&fields)?));
-    let result = ranked(hook, services, root.ok_or(NO_REPOSITORY)?, &brief, facts)?;
+    let root = (brief.root.clone()).or_else(|| repository::root_of(services, &run.cwd(&fields)?));
+    let request = MapRequest {
+        focus: brief.seeds.clone(),
+        budget: None,
+        max_files: Some(IntArg::from_usize(RANKED_FILES)),
+        granularity: Some(Granularity::File),
+    };
+    let (services, root) = (services.clone(), root.ok_or(NO_REPOSITORY)?);
+    let finished = run.timed(move || map(&services, &root, &request), facts);
+    let result = run::finished(finished, MAP_FAILED)?;
     sentence(&result, &brief).map(Outcome::Context)
 }
 
@@ -279,35 +224,6 @@ fn owned_text(value: &JsonValue) -> Option<String> {
     match value {
         JsonValue::Str(text) => text.as_str().map(str::to_owned),
         _ => None,
-    }
-}
-
-fn ranked(
-    hook: &SubagentMap<'_>,
-    services: &Services,
-    root: PathBuf,
-    brief: &Brief,
-    facts: &mut Facts,
-) -> Result<MapResult, &'static str> {
-    let request = MapRequest {
-        focus: brief.seeds.clone(),
-        budget: None,
-        max_files: Some(IntArg::from_usize(RANKED_FILES)),
-        granularity: Some(Granularity::File),
-    };
-    let (services, map) = (services.clone(), hook.map);
-    let started = hook.run.clock.now();
-    let finished = worker::run(
-        MAP_HOOK,
-        move || map(&services, &root, &request),
-        hook.deadline,
-    );
-    facts.ms = Some(hook.run.ms_since(started));
-    match finished {
-        Ok(Finished::Done(result)) => Ok(result),
-        Ok(Finished::TimedOut) => Err(DEADLINE_PASSED),
-        Ok(Finished::Failed(_)) => Err(MAP_FAILED),
-        Ok(Finished::Panicked(_)) | Err(_) => Err(INTERNAL),
     }
 }
 

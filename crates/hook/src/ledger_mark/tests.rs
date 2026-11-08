@@ -4,7 +4,10 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use super::{FilesFn, LedgerMark, answer, in_process};
+use app::hooks::Hook;
+
+use super::{FilesFn, decide, in_process};
+use crate::run::Run;
 use crate::testing::{Rig, Steps};
 
 fn trace_payload(session: &str, agent: Option<&str>, target: &Value, cwd: &Path) -> String {
@@ -25,14 +28,13 @@ fn trace_payload(session: &str, agent: Option<&str>, target: &Value, cwd: &Path)
 impl Rig {
     fn mark_with(&self, files: FilesFn, deadline: Duration, stdin: &str) -> String {
         let clock = Steps::fixed();
-        let hook = LedgerMark {
-            run: self.run(&clock),
-            files,
+        let run = Run {
             deadline,
+            ..self.run(Hook::LedgerMark, &clock)
         };
-        let mut stdout = Vec::new();
-        answer(&hook, &self.services, &mut stdin.as_bytes(), &mut stdout);
-        String::from_utf8(stdout).expect("UTF-8 stdout")
+        Rig::answer(&run, |facts| {
+            decide(&run, files, &self.services, &mut stdin.as_bytes(), facts)
+        })
     }
 
     fn mark(&self, stdin: &str) {

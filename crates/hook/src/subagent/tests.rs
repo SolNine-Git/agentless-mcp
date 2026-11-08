@@ -2,12 +2,14 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use app::hooks::Hook;
 use kernel::Clock;
 use serde_json::json;
 
-use super::{SubagentMap, answer, record};
+use super::{mapped, recorded};
 use crate::ledger;
 use crate::prompt_map::{MapFn, in_process};
+use crate::run::Run;
 use crate::testing::{Rig, Steps, WALL_SECONDS, context_of};
 
 const EVENT: &str = "SubagentStart";
@@ -55,18 +57,21 @@ fn start(session: &str, agent: &str, kind: &str, cwd: &PathBuf) -> String {
 impl Rig {
     fn brief(&self, stdin: &str) {
         let clock = Steps::fixed();
-        record(&self.run(&clock), &self.services, &mut stdin.as_bytes());
+        let run = self.run(Hook::BriefRecord, &clock);
+        let stdout = Rig::answer(&run, |facts| {
+            recorded(&run, &self.services, &mut stdin.as_bytes(), facts)
+        });
+        assert_eq!(stdout, "");
     }
 
     fn map_with(&self, clock: &dyn Clock, map: MapFn, deadline: Duration, stdin: &str) -> String {
-        let hook = SubagentMap {
-            run: self.run(clock),
-            map,
+        let run = Run {
             deadline,
+            ..self.run(Hook::SubagentMap, clock)
         };
-        let mut stdout = Vec::new();
-        answer(&hook, &self.services, &mut stdin.as_bytes(), &mut stdout);
-        String::from_utf8(stdout).expect("UTF-8 stdout")
+        Rig::answer(&run, |facts| {
+            mapped(&run, map, &self.services, &mut stdin.as_bytes(), facts)
+        })
     }
 
     fn map(&self, stdin: &str) -> String {
