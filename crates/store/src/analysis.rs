@@ -15,7 +15,7 @@ use syntax::{Language, Parsed, Unparsable};
 pub const FACTS_SCHEMA_VERSION: u16 = 1;
 /// The version of the extraction rules written as code and of the blob layout. Bump it on any
 /// change to what `facts::extract`, the stored reason, or a blob encoder gives for one text.
-pub const FACTS_VERSION: u32 = 13;
+pub const FACTS_VERSION: u32 = 14;
 
 /// One file as the caller read it: its path below the root, its language, and its text.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,6 +44,29 @@ impl FileText {
     #[must_use]
     pub fn digest(&self) -> Key {
         text_digest(&self.text)
+    }
+
+    /// Returns the key of the stored row that describes the text.
+    #[must_use]
+    pub fn row_key(&self) -> RowKey {
+        RowKey::of(self.language, &self.text)
+    }
+}
+
+/// What a stored row of a path is matched by: the language and the digest of its text. The row
+/// describes a text when the text has the same key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RowKey {
+    pub(crate) language: Language,
+    pub(crate) digest: Key,
+}
+
+impl RowKey {
+    pub(crate) fn of(language: Language, text: &str) -> RowKey {
+        RowKey {
+            language,
+            digest: text_digest(text),
+        }
     }
 }
 

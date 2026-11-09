@@ -115,7 +115,7 @@ pub fn is_package_entry(path: &str) -> bool {
 }
 
 // The directory of the package whose entry point is `path`, with its final "/"; empty at the root.
-fn package_directory(path: &str) -> Option<&str> {
+pub(crate) fn package_directory(path: &str) -> Option<&str> {
     path.strip_suffix(PACKAGE_ENTRY)
         .filter(|directory| directory.is_empty() || directory.ends_with('/'))
 }

@@ -269,16 +269,16 @@ fn a_refused_refresh_thread_fails_the_call_once() {
         launch: None,
     };
     let server = sandbox.server_with(&setup, Arc::clone(&services), ports);
-    let dir = json!({"operation": "dir"});
-    let first = server.answer("read", dir.as_object().cloned());
+    let dir = json!({"files": "*"});
+    let first = server.answer("search", dir.as_object().cloned());
     assert_eq!((first.text.as_str(), first.is_error), (UNPLANNED, true));
     let detail = format!(
-        "unhandled error in an agentless-mcp tool call: read: the background index thread did \
+        "unhandled error in an agentless-mcp tool call: search: the background index thread did \
          not start: {}",
         refused_spawn()
     );
     assert_eq!(log.lines(), [detail]);
-    let second = server.answer("read", dir.as_object().cloned());
+    let second = server.answer("search", dir.as_object().cloned());
     assert!(!second.is_error, "{}", second.text);
     assert!(on_start.try_recv().is_err());
 }
@@ -301,14 +301,14 @@ fn the_receipt_names_a_running_refresh() {
         launch: None,
     };
     let server = sandbox.server_with(&setup, Arc::clone(&services), ports);
-    let dir = json!({"operation": "dir"});
-    let answer = server.answer("read", dir.as_object().cloned());
+    let dir = json!({"files": "*"});
+    let answer = server.answer("search", dir.as_object().cloned());
     on_start.recv_timeout(WAIT).expect("a started refresh");
     let refreshing = format!("cache: none ({CACHE_ABSENT_REFRESHING})");
     assert!(answer.text.contains(&refreshing), "{}", answer.text);
     release.send(()).expect("a waiting refresh");
     joined.join_all();
-    let later = server.answer("read", dir.as_object().cloned());
+    let later = server.answer("search", dir.as_object().cloned());
     assert!(
         !later.text.contains(CACHE_ABSENT_REFRESHING),
         "{}",

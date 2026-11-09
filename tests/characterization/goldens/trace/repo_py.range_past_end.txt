@@ -1,0 +1,2 @@
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+no lines 100-120 in pricing.py: the file has 81 lines.

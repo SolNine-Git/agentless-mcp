@@ -1,0 +1,9 @@
+// agentless-mcp receipt   repo: <REPO>   head: 45d898f1   dirty: 0 files   cache: none
+[ts:pricing.ts::formatMoney] @94-96  function
+  fn formatMoney(money: Money) -> string
+callers: 4 bound
+  reports.ts  imported, locals not checked  (module level) @6, reorderReport @47, formatRow @54, summarise @63
+callees: 1 bound
+  types.ts  imported  Money @5
+tests: none
+last change: 45d898f1 2026-02-01 fixture  (more=history)

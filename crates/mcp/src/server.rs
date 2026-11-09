@@ -4,10 +4,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use app::trace::KeptGraphs;
 use app::{Services, Session};
 use tokio::sync::Semaphore;
 
 use crate::dispatch::Inner;
+use crate::hooks::{HookCheck, Hooks, SessionNote};
 use crate::listing::listed_tools;
 use crate::offload::{Offload, Threads};
 use crate::roots::{Allowlist, RootsFile};
@@ -26,6 +28,8 @@ pub struct ServerConfig {
     pub call_limit: f64,
     /// The most seconds of uncached parsing that a call may add to its limit.
     pub recache_grace: f64,
+    /// What the hook note compares the settings with, or `None` for no note.
+    pub hooks: Option<HookCheck>,
 }
 
 /// The background index: armed after a call opens its repository, before the operation runs.
@@ -56,7 +60,8 @@ pub struct Ports {
     pub log: Arc<dyn Log>,
 }
 
-/// The MCP server of the v2 tools. Its clones share one concurrency gate.
+/// The MCP server of the trace and search tools. Its clones share one concurrency gate; each
+/// client session has its own claim on the hook note.
 #[derive(Clone)]
 pub struct Server {
     pub(crate) inner: Arc<Inner>,
@@ -65,6 +70,7 @@ pub struct Server {
     pub(crate) offload: Arc<dyn Offload>,
     pub(crate) tools: Arc<Vec<rmcp::model::Tool>>,
     pub(crate) over_http: bool,
+    pub(crate) note: SessionNote,
 }
 
 impl Server {
@@ -81,6 +87,9 @@ impl Server {
         ports: Ports,
         offload: Arc<dyn Offload>,
     ) -> Server {
+        // The files of a root that a roots file adds are read at the first call into that root.
+        let hooks = Hooks::new(config.hooks, &config.roots);
+        let graphs = KeptGraphs::new(Arc::clone(&services.clock));
         let inner = Inner {
             allowlist: Allowlist::new(config.roots, config.roots_files),
             launch: config.launch_dir,
@@ -88,6 +97,8 @@ impl Server {
             recache_grace: config.recache_grace,
             services,
             ports,
+            hooks,
+            graphs,
         };
         let tools = listed_tools(inner.allowlist.root_count());
         Server {
@@ -97,6 +108,15 @@ impl Server {
             offload,
             tools: Arc::new(tools),
             over_http: false,
+            note: SessionNote::default(),
+        }
+    }
+
+    // The server of one more client session: the shared state, and a claim of its own.
+    pub(crate) fn session(&self) -> Server {
+        Server {
+            note: SessionNote::default(),
+            ..self.clone()
         }
     }
 }

@@ -1,0 +1,410 @@
+[
+ {
+  "id": "S105",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Different MathML printers that share the mi plus mfenced construction pattern."
+ },
+ {
+  "id": "S029",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Same balanced ternary printing algorithm for Max and Min, differing only in the comparison operator."
+ },
+ {
+  "id": "S061",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Each target-language printer owns its relational syntax; same text, independent choices."
+ },
+ {
+  "id": "S038",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling Poly wrappers that delegate different operations to the representation."
+ },
+ {
+  "id": "S098",
+  "label": "duplicate",
+  "low_confidence": true,
+  "reason": "nseries holds lseries's job (find the integration symbol, integrate the series term-wise) plus order handling."
+ },
+ {
+  "id": "S035",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "B is the nested helper inside A, one home rather than two."
+ },
+ {
+  "id": "S101",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Per-domain conversion adapters that delegate to the ground domain for different source types."
+ },
+ {
+  "id": "S015",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Transpose._eval_trace is a hook that Trace.doit consumes; producer and consumer."
+ },
+ {
+  "id": "S087",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Two identity extractors over different documents with different field sets."
+ },
+ {
+  "id": "S014",
+  "label": "duplicate",
+  "low_confidence": true,
+  "reason": "Both turn a resolved path into repository-relative text with '.' for the root; B adds containment resolution."
+ },
+ {
+  "id": "S078",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Different hypergeometric jobs that share the ap/bq coefficient-product pattern."
+ },
+ {
+  "id": "S004",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Different coefficient accessors that share the to_sympy conversion call."
+ },
+ {
+  "id": "S108",
+  "label": "duplicate",
+  "low_confidence": true,
+  "reason": "cos and sin taylor_term share one recurrence and closed form, differing only in parity."
+ },
+ {
+  "id": "S026",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Aesara printer is a fork of the Theano printer; identical MatPow rule in two homes."
+ },
+ {
+  "id": "S089",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "to_matrix on Vector and Dyadic in different vector modules, separate jobs."
+ },
+ {
+  "id": "S095",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling DiagonalPredicate handlers for different expression types."
+ },
+ {
+  "id": "S032",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Each state class declares its own Hilbert space; same value, independent declarations."
+ },
+ {
+  "id": "S084",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Per-domain conversion adapters for different source types."
+ },
+ {
+  "id": "S104",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical latex rule for annihilation vs creation operators in boson and fermion operators."
+ },
+ {
+  "id": "S048",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Per-domain conversion adapters for different source types."
+ },
+ {
+  "id": "S073",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Different polynomial operations (cancel vs sub) that share the unify pattern."
+ },
+ {
+  "id": "S113",
+  "label": "duplicate",
+  "low_confidence": true,
+  "reason": "Both read a working-tree file via stat_present then a bounded read with the same unreadable mapping; B adds UTF-8 decoding."
+ },
+ {
+  "id": "S079",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Per-domain conversion adapters in different domain classes."
+ },
+ {
+  "id": "S107",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical AlgebraicNumber printing rule in the latex and str printers."
+ },
+ {
+  "id": "S041",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Per-domain conversion adapters for different source types."
+ },
+ {
+  "id": "S072",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Different coefficient accessors that share the to_sympy conversion call."
+ },
+ {
+  "id": "S033",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Mul handlers for different predicates (integer vs even)."
+ },
+ {
+  "id": "S051",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Handlers for different predicates and expression types."
+ },
+ {
+  "id": "S115",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Same coerce-to-Dimension rule (str, Symbol, Dimension, else TypeError) in two nested helpers."
+ },
+ {
+  "id": "S075",
+  "label": "unrelated",
+  "low_confidence": false,
+  "reason": "A Jones vector formula and a rotation DCM share only matrix and trig calls."
+ },
+ {
+  "id": "S028",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Printer methods for piecewise constructs in different printers, separate jobs."
+ },
+ {
+  "id": "S112",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling frame-orientation methods that share the DCM and angular-velocity epilogue."
+ },
+ {
+  "id": "S081",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Aesara printer is a fork of the Theano printer; identical Piecewise rule in two homes."
+ },
+ {
+  "id": "S092",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling frame-orientation methods that share the DCM and angular-velocity epilogue."
+ },
+ {
+  "id": "S011",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling matrix printers (MatPow vs MatMul) in one printer."
+ },
+ {
+  "id": "S017",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling Poly wrappers that delegate different operations to the representation."
+ },
+ {
+  "id": "S022",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Taylor terms of different functions with different formulas."
+ },
+ {
+  "id": "S012",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Aesara printer is a fork of the Theano printer; identical DenseMatrix rule in two homes."
+ },
+ {
+  "id": "S090",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Rational printers for two languages with different output formats."
+ },
+ {
+  "id": "S083",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Different element-wise matrix operations (applyfunc vs row_op)."
+ },
+ {
+  "id": "S042",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "from_ZZ_python adapters on two domain classes, each a plain delegation to its ground domain."
+ },
+ {
+  "id": "S009",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Two integer parsers with different accepted syntax and error contracts."
+ },
+ {
+  "id": "S093",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sign inference for different classes with different rules."
+ },
+ {
+  "id": "S020",
+  "label": "unrelated",
+  "low_confidence": false,
+  "reason": "Differentiation of hyper and its LaTeX printing share only the subject class."
+ },
+ {
+  "id": "S100",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Both report undecodable bytes, with different decode policies and message contracts."
+ },
+ {
+  "id": "S054",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "scan calls define; caller and callee."
+ },
+ {
+  "id": "S064",
+  "label": "duplicate",
+  "low_confidence": true,
+  "reason": "Fresnel S and C asymptotic series share the same auxiliary p and q coefficient lists."
+ },
+ {
+  "id": "S110",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "MatPow printers for two languages with different syntax."
+ },
+ {
+  "id": "S006",
+  "label": "duplicate",
+  "low_confidence": true,
+  "reason": "inverse_transpose_matrix holds inverse_matrix's inversion and parse step as a part."
+ },
+ {
+  "id": "S030",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "_eval_trigsimp on different classes that apply trigsimp to their own parts."
+ },
+ {
+  "id": "S008",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling Poly wrappers that delegate different operations to the representation."
+ },
+ {
+  "id": "S057",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical IdentityMorphism printing rule (print as NamedMorphism 'id') in latex and pretty printers."
+ },
+ {
+  "id": "S106",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Different column operations that share the entry-function construction pattern."
+ },
+ {
+  "id": "S016",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Comma splitters over different inputs (token streams vs char slices) in different tools."
+ },
+ {
+  "id": "S082",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Indexed printers for two languages with different syntax."
+ },
+ {
+  "id": "S116",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical AlgebraicNumber printing rule in the pretty and str printers."
+ },
+ {
+  "id": "S109",
+  "label": "unrelated",
+  "low_confidence": false,
+  "reason": "A finite difference of a Sum and an Integral series expansion share no job."
+ },
+ {
+  "id": "S027",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling GF compatibility wrappers for different operations."
+ },
+ {
+  "id": "S036",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Per-domain conversion adapters for different source types."
+ },
+ {
+  "id": "S046",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Trace.doit consumes the _eval_trace hook that Adjoint provides; producer and consumer."
+ },
+ {
+  "id": "S067",
+  "label": "duplicate",
+  "low_confidence": true,
+  "reason": "Same ground-ANP conversion rule (convert LC when is_ground) in the QQ and ZZ domains."
+ },
+ {
+  "id": "S031",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Per-domain conversion adapters for different source types."
+ },
+ {
+  "id": "S023",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling GF compatibility wrappers for different operations."
+ },
+ {
+  "id": "S021",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "rewrite walks the coset table along a word like scan's forward pass, but does a different job."
+ },
+ {
+  "id": "S025",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical errno rule for an absent path (ENOENT, ENOTDIR, EBADF, ELOOP) in two crates."
+ },
+ {
+  "id": "S055",
+  "label": "duplicate",
+  "low_confidence": true,
+  "reason": "Both run git hermetically for tests with a fixed identity and global config disabled, in two crates."
+ },
+ {
+  "id": "S003",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Printers for different constructs that share the kwargs format pattern."
+ },
+ {
+  "id": "S053",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Per-domain conversion adapters for different source types."
+ }
+]

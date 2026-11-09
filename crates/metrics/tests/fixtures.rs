@@ -1,11 +1,11 @@
 //! Each generated case measures to the units, blocks, and SLOC lines, or the refusal, it records.
+//! The reference records no action names, so no case compares them.
 
 use std::sync::Arc;
 
 use kernel::Key;
 use metrics::{
-    Block, FileMetrics, Measurable, TokenizeError, TokenizeErrorKind, Unit, Unmeasurable, measure,
-    stamp,
+    Block, Measurable, TokenizeError, TokenizeErrorKind, Unit, Unmeasurable, measure, stamp,
 };
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -55,7 +55,12 @@ struct BlockRow {
 
 #[test]
 fn every_case_measures_as_recorded() {
-    assert_every_case(|parsed| measure(&parsed), |expected| expected);
+    assert_every_case(
+        |parsed| {
+            measure(&parsed).map(|metrics| (metrics.units, metrics.blocks, metrics.sloc_lines))
+        },
+        |expected| expected,
+    );
 }
 
 // The entry point that the checks use gives what `measure` gives, apart from the SLOC lines.
@@ -65,13 +70,16 @@ fn every_case_measures_as_recorded_through_measurable() {
         |parsed| {
             Measurable::new(parsed).map(|measurable| (measurable.units(), measurable.blocks()))
         },
-        |expected| expected.map(|metrics| (metrics.units, metrics.blocks)),
+        |expected| expected.map(|(units, blocks, _)| (units, blocks)),
     );
 }
 
+// The units, blocks, and SLOC lines of a case.
+type Recorded = (Vec<Unit>, Vec<Block>, Vec<u32>);
+
 fn assert_every_case<T: PartialEq + std::fmt::Debug>(
     found: impl Fn(Parsed) -> Result<T, Unmeasurable>,
-    shown: impl Fn(Result<FileMetrics, Unmeasurable>) -> Result<T, Unmeasurable>,
+    shown: impl Fn(Result<Recorded, Unmeasurable>) -> Result<T, Unmeasurable>,
 ) {
     let cases = tier1_cases();
     let failures: Vec<String> = cases
@@ -142,7 +150,7 @@ fn read<T: DeserializeOwned>(file: &str) -> T {
     document(env!("CARGO_MANIFEST_DIR"), file)
 }
 
-fn expected(case: &Case) -> Result<FileMetrics, Unmeasurable> {
+fn expected(case: &Case) -> Result<Recorded, Unmeasurable> {
     if let Some(refusal) = &case.error {
         return Err(unmeasurable(refusal));
     }
@@ -154,11 +162,11 @@ fn expected(case: &Case) -> Result<FileMetrics, Unmeasurable> {
             case.name
         );
     };
-    Ok(FileMetrics {
-        units: units.iter().map(unit).collect(),
-        blocks: blocks.iter().map(block).collect(),
-        sloc_lines: sloc_lines.clone(),
-    })
+    Ok((
+        units.iter().map(unit).collect(),
+        blocks.iter().map(block).collect(),
+        sloc_lines.clone(),
+    ))
 }
 
 fn unmeasurable(refusal: &Refusal) -> Unmeasurable {

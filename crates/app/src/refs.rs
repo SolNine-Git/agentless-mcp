@@ -5,19 +5,22 @@ mod shared;
 mod sites;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::Path;
 
 use facts::{Declared, Role};
-use graph::{Definition, NameIndex, Resolver, Scopes, Site, TargetForm, references_to};
-use kernel::Bounded;
+use graph::{
+    Aliases, Definition, FileFacts, NameIndex, Resolver, Scopes, Site, TargetForm, Tier,
+    references_to,
+};
+use kernel::{Bounded, Deadline};
 
-use crate::bounds::within;
 use crate::detached::answered_over;
 use crate::endpoints::{
     BindingStatus, Bound, Coverage, Scope, TARGET_WORDING, TargetBinding, bind, data_key_binding,
 };
-use crate::ops::limits::MAX_LIMIT;
 use crate::scan::RepoFacts;
-use crate::span::{Missed, SymbolSpan, data_key_span};
+use crate::span::{Missed, SymbolSpan, limited};
+use crate::symbol_graph::{CallGraph, CallScan};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
 
 /// A refs request: the target, the most sites, and whether to rank the shared callers.
@@ -40,6 +43,8 @@ pub struct RefsResult {
     pub groups: RefListing,
     /// The ranked symbols that the target's callers also reference.
     pub shared: Bounded<SharedCaller>,
+    /// The ranked symbols that a caller at a binding tier also references.
+    pub shared_bound: usize,
     /// Whether the request asked for the shared callers.
     pub shared_callers: bool,
     /// Whether the target named what it found.
@@ -144,6 +149,9 @@ pub struct SharedCaller {
     pub callers: Vec<CallerRef>,
     /// Whether a test path defines the candidate.
     pub in_tests: bool,
+    /// The wire value of the strongest tier at which one of the shared callers references the
+    /// target, over every site before the limit cuts them.
+    pub tier: &'static str,
 }
 
 /// One caller shared between the target and a candidate.
@@ -165,38 +173,102 @@ pub fn refs(
     reading: &Reading<'_>,
     request: &RefsRequest,
 ) -> Noted<Result<RefsResult, Error>> {
-    let limit = match within(&request.limit, 1, MAX_LIMIT, "limit") {
-        Ok(limit) => limit,
-        Err(error) => return Noted::new(Err(error)),
-    };
-    if let Some(found) = data_key_span(reading, &request.target) {
-        return found.map(|span| Ok(keyed(request, limit, span)));
-    }
-    let loaded = RepoFacts::load(services, reading);
-    loaded.map(|facts| {
-        facts.and_then(|facts| answered_over(facts, |facts| fan_in(facts, reading, request, limit)))
+    with_limit(reading, request, |limit| {
+        let loaded = RepoFacts::load(services, reading);
+        loaded.map(|facts| {
+            facts.and_then(|facts| {
+                answered_over(facts, |facts| scanned(facts, reading, request, limit))
+            })
+        })
     })
 }
 
-fn fan_in(
+// The fan-in over a resolver of the scan's own.
+fn scanned(
     facts: &RepoFacts,
     reading: &Reading<'_>,
     request: &RefsRequest,
     limit: usize,
 ) -> Result<RefsResult, Error> {
-    let index = NameIndex::build(&facts.files);
-    let scopes = Scopes::build(&facts.files);
+    let files: Vec<&FileFacts> = facts.files.iter().collect();
+    let index = NameIndex::build(&files);
+    let scopes = Scopes::build(&files);
     let resolver = Resolver::new(&index, &scopes);
-    let scope = Scope {
-        index: &index,
+    let fan = FanIn {
+        resolver: &resolver,
+        aliases: &Aliases::build(&resolver),
         skipped: &facts.skipped,
         root: &reading.repo.root,
+        stoplist: &reading.repo.config.stoplist,
+        deadline: reading.deadline,
+    };
+    fan_in(&fan, request, limit)
+}
+
+// Lists the sites as `refs` does, over the graph that one trace call reads for all its cards. The
+// warnings of the call's scan come first, as the scan of `refs` gives them.
+pub(crate) fn refs_in(
+    reading: &Reading<'_>,
+    request: &RefsRequest,
+    graph: &CallGraph<'_, '_>,
+    scan: &CallScan,
+) -> Noted<Result<RefsResult, Error>> {
+    with_limit(reading, request, |limit| {
+        let (skipped, root) = (scan.skipped.clone(), reading.repo.root.clone());
+        let stoplist = reading.repo.config.stoplist.clone();
+        let request = request.clone();
+        let answered = graph.over(move |graph| {
+            let fan = FanIn {
+                resolver: graph.resolver(),
+                aliases: graph.aliases(),
+                skipped: &skipped,
+                root: &root,
+                stoplist: &stoplist,
+                deadline: graph.deadline(),
+            };
+            fan_in(&fan, &request, limit)
+        });
+        let mut diagnostics = scan.warnings.clone();
+        diagnostics.extend(answered.diagnostics);
+        Noted {
+            value: answered.value,
+            diagnostics,
+        }
+    })
+}
+
+fn with_limit(
+    reading: &Reading<'_>,
+    request: &RefsRequest,
+    fanned: impl FnOnce(usize) -> Noted<Result<RefsResult, Error>>,
+) -> Noted<Result<RefsResult, Error>> {
+    let keyed = |span, limit| keyed(request, limit, span);
+    limited(reading, &request.target, &request.limit, keyed, fanned)
+}
+
+// What one fan-in reads: the resolver and the aliases of the scan, the files it passed over, the
+// repository's root and stoplist, and the deadline.
+struct FanIn<'f, 'a> {
+    resolver: &'f Resolver<'f, 'a>,
+    aliases: &'f Aliases<'a>,
+    skipped: &'f [Skipped],
+    root: &'f Path,
+    stoplist: &'f BTreeSet<String>,
+    deadline: Option<&'f Deadline>,
+}
+
+fn fan_in(fan: &FanIn<'_, '_>, request: &RefsRequest, limit: usize) -> Result<RefsResult, Error> {
+    let (resolver, index) = (fan.resolver, fan.resolver.index());
+    let scope = Scope {
+        index,
+        skipped: fan.skipped,
+        root: fan.root,
     };
     let bound = bind(&scope, &request.target, limit, &TARGET_WORDING);
     let scanned = RefsResult {
-        coverage: Coverage::of(&bound.binding, &facts.skipped),
-        skipped: facts.skipped.clone(),
-        scanned: Some(facts.files.len()),
+        coverage: Coverage::of(&bound.binding, fan.skipped),
+        skipped: fan.skipped.to_vec(),
+        scanned: Some(index.files().len()),
         ..nothing_listed(request, limit, bound.binding.clone())
     };
     if bound.binding.status == BindingStatus::NotFound {
@@ -205,10 +277,10 @@ fn fan_in(
     let target_ids: BTreeSet<String> = (bound.definitions.iter())
         .map(|definition| definition.stable_id().to_string())
         .collect();
-    let spellings = spellings(&resolver, &bound.definitions, &target_ids);
+    let spellings = spellings(fan, &bound.definitions, &target_ids);
     let sites = dedupe(&spellings);
     let names = names_by_path(&spellings);
-    let tiers = sites::site_tiers(&sites, &names, &resolver, &target_ids);
+    let tiers = sites::site_tiers(&sites, &names, resolver, &target_ids);
     let kept = round_robin(&sites, limit);
     let groups = RefListing {
         rows: sites::group_sites(&kept, &tiers),
@@ -218,13 +290,16 @@ fn fan_in(
         files: sites.iter().map(Site::path).collect::<BTreeSet<_>>().len(),
     };
     let ranked = if request.shared_callers {
-        let stoplist = &reading.repo.config.stoplist;
-        shared::shared_callers(&sites, &target_ids, &index, stoplist, reading.deadline)?
+        let callers = sites::caller_tiers(&sites, &tiers);
+        let shared = (index, fan.stoplist, &callers);
+        shared::shared_callers(&sites, &target_ids, shared, fan.deadline)?
     } else {
         Vec::new()
     };
+    let through_bound = |row: &&SharedCaller| binds(row.tier);
     Ok(RefsResult {
         groups,
+        shared_bound: ranked.iter().filter(through_bound).count(),
         shared: Bounded::cut(ranked, limit),
         definition: single_definition(&bound),
         definitions: bound.definitions.len(),
@@ -262,6 +337,7 @@ fn nothing_listed(request: &RefsRequest, limit: usize, binding: TargetBinding) -
             files: 0,
         },
         shared: Bounded::cut(Vec::new(), limit),
+        shared_bound: 0,
         shared_callers: request.shared_callers,
         target_resolved: binding.status != BindingStatus::NotFound,
         definition: None,
@@ -275,6 +351,11 @@ fn nothing_listed(request: &RefsRequest, limit: usize, binding: TargetBinding) -
     }
 }
 
+// Whether the tier whose wire value is `tier` binds: same-file or resolved-via-import.
+pub(crate) fn binds(tier: &str) -> bool {
+    (Tier::ORDER.iter()).any(|known| known.as_str() == tier && known.binds())
+}
+
 // The one definition that a target other than a stable id bound to.
 fn single_definition(bound: &Bound<'_>) -> Option<String> {
     match bound.definitions.as_slice() {
@@ -286,10 +367,11 @@ fn single_definition(bound: &Bound<'_>) -> Option<String> {
 // Each definition's spellings outside its span in its family, then the alias spellings, less the
 // paths through a module outside the repository and the lines that only declare (a row is a line).
 fn spellings<'a>(
-    resolver: &Resolver<'a>,
+    fan: &FanIn<'_, 'a>,
     definitions: &[Definition<'a>],
     target_ids: &BTreeSet<String>,
 ) -> Vec<Site<'a>> {
+    let resolver = fan.resolver;
     let spelled: BTreeSet<&str> = (definitions.iter())
         .map(|definition| definition.symbol().name.as_str())
         .collect();
@@ -299,7 +381,7 @@ fn spellings<'a>(
         sites.filter(move |site| site.file.language.family() == family)
     });
     let mut declared: HashMap<&'a str, Declared<'a>> = HashMap::new();
-    let all = direct.chain(alias_sites(resolver, target_ids, &spelled));
+    let all = direct.chain(alias_sites(fan, target_ids, &spelled));
     all.filter(|site| {
         !resolver.names_outside(site.reference, site.path()) && !only_declares(&mut declared, site)
     })
@@ -315,24 +397,21 @@ fn only_declares<'a>(declared: &mut HashMap<&'a str, Declared<'a>>, site: &Site<
 }
 
 // A file that imported the target under another name calls it by that name. Only the import
-// chain can rename, so it is walked first and the resolver confirms.
+// chain can rename, so the chains that reach the target come first and the resolver confirms.
 fn alias_sites<'a>(
-    resolver: &Resolver<'a>,
+    fan: &FanIn<'_, 'a>,
     target_ids: &BTreeSet<String>,
     spelled: &BTreeSet<&str>,
 ) -> Vec<Site<'a>> {
+    let resolver = fan.resolver;
     let mut found = Vec::new();
-    for (path, scope) in resolver.scopes().iter() {
-        for local in scope.member_names() {
-            if spelled.contains(local)
-                || !lands_on(&resolver.through_imports(local, path), target_ids)
-            {
-                continue;
-            }
-            let confirmed = resolver.resolve(local, path);
-            if confirmed.is_some_and(|resolution| lands_on(&resolution.candidates, target_ids)) {
-                found.extend(alias_spellings(resolver.index(), local, path));
-            }
+    for (path, local) in fan.aliases.reaching(target_ids) {
+        if spelled.contains(local) {
+            continue;
+        }
+        let confirmed = resolver.resolve(local, path);
+        if confirmed.is_some_and(|resolution| lands_on(&resolution.candidates, target_ids)) {
+            found.extend(alias_spellings(resolver.index(), local, path));
         }
     }
     found

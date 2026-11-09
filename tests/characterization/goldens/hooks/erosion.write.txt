@@ -1,0 +1,3 @@
+Erosion gate findings for this edit (advisory, the edit is not blocked):
+audit.py:1: audit: complexity 12, 25 source lines. This function is new, or moved from another file, and it is above the threshold (10). Split it into smaller named functions. If it moved here unchanged, it was already above the threshold in its old file.
+Erosion gate mode: complexity_delta advisory, contract_drift advisory, clone_delta advisory. Change it with the erosion_gate key in .agentless-mcp.json or the AGENTLESS_EROSION_GATE variable (off, advisory, block).

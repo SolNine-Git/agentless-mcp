@@ -1,0 +1,20 @@
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+search /Decimal\(/ files={pricing,reports}.py: 9 matches in 2 files
+pricing.py
+  BASE_MARKUP  [py:pricing.py::BASE_MARKUP] @6
+    6| BASE_MARKUP = Decimal("1.35")
+  CENTS  [py:pricing.py::CENTS] @8
+    8| CENTS = Decimal("0.01")
+  DISCOUNTS  [py:pricing.py::DISCOUNTS] @19-23
+    20|     Tier.RETAIL: Decimal("0.00"),
+    21|     Tier.TRADE: Decimal("0.10"),
+    22|     Tier.WHOLESALE: Decimal("0.22"),
+  PriceBook.__init__  [py:pricing.py::PriceBook.__init__] @29-36
+    36|             self._costs[sku] = Decimal(cost)
+  PriceBook.quote  [py:pricing.py::PriceBook.quote] @46-56
+    54|         discounted = unit * (Decimal("1.00") - discount)
+reports.py
+  stock_value  [py:reports.py::stock_value] @16-26
+    18|     total = Decimal("0.00")
+  reorder_report  [py:reports.py::reorder_report] @29-44
+    36|     running = Decimal("0.00")

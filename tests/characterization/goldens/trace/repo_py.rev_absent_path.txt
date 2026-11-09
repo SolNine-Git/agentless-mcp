@@ -1,0 +1,2 @@
+// agentless-mcp receipt   repo: <REPO>   head: 2b62ec37   rev: base f5f25218   dirty: 2 files   cache: none
+no file taxes.py at base (f5f25218). It is in the working tree: trace it with no rev.

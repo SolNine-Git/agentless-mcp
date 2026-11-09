@@ -1,7 +1,9 @@
 //! The declarations of the command line: the top parser, its subcommands, and the `lint` and
 //! `capabilities` parsers with their help texts. The read subcommands' parsers come from
-//! `app::ops::OPS`, and the write subcommands' parsers from `write`.
+//! `app::ops::OPS`, the `trace` and `search` parsers from `answers`, and the write subcommands'
+//! parsers from `write`.
 
+mod answers;
 mod write;
 
 use app::ops::{self, JSON, NO_CACHE, Op, REPO};
@@ -34,7 +36,17 @@ const DIFF_HELP: &str = "a unified diff to check instead (git diff, or a format-
 const AFTER_HELP: &str = "the file that holds the proposed whole new text of --path";
 
 // The subcommands in the order of the top-level help. A read subcommand names its operation.
-pub(crate) static COMMANDS: [Command; 24] = [
+pub(crate) static COMMANDS: [Command; 26] = [
+    built(
+        "trace",
+        "the trace tool: what a code target is and how it connects",
+        answers::trace,
+    ),
+    built(
+        "search",
+        "the search tool: regex search of the file text, or a file listing",
+        answers::search,
+    ),
     read(&ops::MAP),
     read(&ops::TREE),
     read(&ops::SKELETON),
@@ -255,8 +267,10 @@ fn only_help() -> String {
         "run only these checks: {}. The pair checks ({}) compare whole file texts. {} read only \
          the edited files. clone_delta also reads every tier-1 source file outside test and \
          fixture paths. callee_overlap and cycle_dodge read the calls of every function and the \
-         imports of every file in the working tree, and only --since runs them. A run with only \
-         pair checks skips the symbol scan that the patch checks need",
+         imports of every file in the working tree, and only --since runs them. reuse_candidates \
+         reads the action names of every function from the tag cache, and only --only runs it, in \
+         --since and --path. A run with only pair checks skips the symbol scan that the patch \
+         checks need",
         all.join(", "),
         pairs.join(", "),
         edited_checks()

@@ -1,0 +1,13 @@
+{
+  "tool": "trace",
+  "fixture": "repo_py",
+  "files": {
+    "ledger.py": "def ledger_line(amount):\n    return format_money(round_cents(amount)) + label()\n\n\ndef ledger_total(amounts):\n    return format_money(sum(amounts)) + label()\n\n\ndef label():\n    return \" total\"\n",
+    "rounding_a.py": "def round_cents(amount):\n    return amount\n",
+    "rounding_b.py": "def round_cents(amount):\n    return amount\n"
+  },
+  "arguments": {
+    "target": "ledger_line",
+    "more": "callees"
+  }
+}

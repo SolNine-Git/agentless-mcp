@@ -4,9 +4,11 @@
 mod changes;
 mod churn;
 mod history;
+mod last_commit;
 mod run;
 mod snapshot;
 mod toplevel;
+mod tree;
 mod walk;
 mod worktree;
 
@@ -24,6 +26,7 @@ pub use history::{
     Commit, CommitId, HistoryFailure, LineRange, MAX_HISTORY_OUTPUT_BYTES, SpanLog, SpanLogError,
     SpanQuery,
 };
+pub use last_commit::LastCommit;
 pub use run::{Failure, Git, GitOutcome, Unfinished};
 pub use snapshot::{SHORT_SHA_LENGTH, Snapshot};
 pub use toplevel::Toplevel;

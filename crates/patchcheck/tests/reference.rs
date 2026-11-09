@@ -62,6 +62,7 @@ fn scan(case: &LintCase) -> Vec<FileFacts> {
 // The report of each of `runs` lint runs of the case against one set of facts.
 fn reports(case: &LintCase, runs: usize) -> Vec<String> {
     let files = scan(case);
+    let files: Vec<&FileFacts> = files.iter().collect();
     let index = NameIndex::build(&files);
     let scopes = Scopes::build(&files);
     let resolver = Resolver::new(&index, &scopes);

@@ -22,11 +22,12 @@ struct NameCase {
 fn the_name_index_matches_the_reference() {
     for corpus in Corpus::all() {
         let files = corpus.files();
+        let files: Vec<&FileFacts> = files.iter().collect();
         let index = NameIndex::build(&files);
         let Some(cases) = corpus.section::<NameCase>("index") else {
             continue;
         };
-        assert_eq!(index.name_count(), cases.len(), "{}", corpus.name);
+        assert_eq!(index.names().len(), cases.len(), "{}", corpus.name);
         for case in cases {
             check_name(&index, &case, corpus.name);
         }
@@ -77,6 +78,7 @@ fn check_name(index: &NameIndex<'_>, case: &NameCase, corpus: &str) {
 fn lookups_match_the_reference() {
     for corpus in Corpus::all() {
         let files = corpus.files();
+        let files: Vec<&FileFacts> = files.iter().collect();
         let index = NameIndex::build(&files);
         for (target, expected, scoped) in corpus
             .section::<(String, Value, bool)>("lookups")
@@ -98,12 +100,13 @@ fn lookups_match_the_reference() {
 fn references_match_the_reference() {
     for corpus in Corpus::all() {
         let files = corpus.files();
+        let files: Vec<&FileFacts> = files.iter().collect();
         let index = NameIndex::build(&files);
         let Some(expected) = corpus.section::<Value>("references") else {
             continue;
         };
-        let definitions =
-            (0..index.name_count()).flat_map(|position| index.definitions_at(position));
+        let names = index.names();
+        let definitions = names.iter().flat_map(|name| index.definitions(name));
         let found: Vec<Value> = definitions
             .map(|definition| {
                 let sites: Vec<Value> = references_to(&index, definition)

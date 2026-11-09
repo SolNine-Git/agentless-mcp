@@ -119,6 +119,9 @@ pub enum Detail {
     Overlap(Box<CalleeShare>),
     /// A `cycle_dodge` finding's import and the chain that imports its file back.
     Dodge(ImportDodge),
+    /// A `reuse_candidates` finding's two functions and the action names they share, boxed
+    /// because it is far larger than most details.
+    Reuse(Box<NameShare>),
 }
 
 /// How `complexity_delta` paired a new unit with an old one.
@@ -298,6 +301,24 @@ pub struct TieredCallee {
     pub tier: &'static str,
 }
 
+/// A `reuse_candidates` finding: the added function, the existing function whose action names
+/// it shares, the score, and the shared names.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NameShare {
+    /// The added function's qualified name.
+    pub unit: String,
+    /// The existing function's qualified name.
+    pub other: String,
+    /// The existing function's repo-relative path.
+    pub other_path: String,
+    /// The existing function's first line.
+    pub other_line: u32,
+    /// The IDF-weighted Jaccard score, with three decimals.
+    pub score: String,
+    /// Each shared name that counts toward the score, sorted.
+    pub shared: Vec<String>,
+}
+
 /// A `cycle_dodge` finding: a function-local import, the file it imports, and the load-time
 /// imports from that file back to the import's own file.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -385,6 +406,14 @@ keyed! {
     }
     SharedCallee { CALLEE: callee, TIER: tier, OTHER_TIER: other_tier }
     TieredCallee { CALLEE: callee, TIER: tier }
+    NameShare {
+        UNIT: unit,
+        OTHER: other,
+        OTHER_PATH: other_path,
+        OTHER_LINE: other_line,
+        SCORE: score,
+        SHARED: shared,
+    }
     ImportDodge {
         MODULE: module,
         TARGET: target,

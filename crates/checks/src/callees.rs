@@ -390,7 +390,7 @@ fn spelled_in<'t>(parsed: &'t Parsed, unit: &Unit) -> BTreeSet<&'t str> {
 }
 
 // A metrics qualname joins its scopes with dots, so the own name is its last part.
-fn own_name(qualname: &str) -> &str {
+pub(crate) fn own_name(qualname: &str) -> &str {
     qualname.rsplit_once('.').map_or(qualname, |(_, name)| name)
 }
 

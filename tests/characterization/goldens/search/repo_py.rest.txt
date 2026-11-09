@@ -1,0 +1,9 @@
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+search /Decimal/: 20 matches in 2 files
+pricing.py
+    3| from decimal import ROUND_HALF_UP, Decimal
+  BASE_MARKUP  [py:pricing.py::BASE_MARKUP] @6
+    6| BASE_MARKUP = Decimal("1.35")
+  CENTS  [py:pricing.py::CENTS] @8
+    8| CENTS = Decimal("0.01")
+... 3 of 20 match lines shown; the rest are in 2 files: pricing.py (12), reports.py (5)

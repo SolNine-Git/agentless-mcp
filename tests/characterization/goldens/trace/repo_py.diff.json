@@ -1,0 +1,184 @@
+{
+  "receipt": {
+    "repo": "<REPO>",
+    "head": "06b750b6",
+    "tree": "1eece5d7",
+    "dirty": 4,
+    "cache": "none",
+    "note": ""
+  },
+  "more": null,
+  "cards": [
+    {
+      "target": "diff:base",
+      "answer": "diff",
+      "rev": "base",
+      "scope": null,
+      "base": "f5f252187928e7028e1c825f36c6a15c81c9162e",
+      "commits": 1,
+      "full": false,
+      "files": {
+        "total": 7,
+        "added": 4,
+        "removed": 0,
+        "changed": 2,
+        "renamed": 1,
+        "folders_total": 4,
+        "folders": [
+          {
+            "path": "",
+            "files": 4,
+            "added": 3,
+            "removed": 1,
+            "changed": 2
+          },
+          {
+            "path": "config",
+            "files": 1,
+            "added": 0,
+            "removed": 0,
+            "changed": 0
+          },
+          {
+            "path": "stock",
+            "files": 1,
+            "added": 0,
+            "removed": 0,
+            "changed": 0
+          },
+          {
+            "path": "tests",
+            "files": 1,
+            "added": 1,
+            "removed": 0,
+            "changed": 0
+          }
+        ]
+      },
+      "symbols": {
+        "changed": {
+          "total": 2,
+          "files": 2,
+          "tests": 0,
+          "rows": [
+            {
+              "stable_id": "py:reports.py::summarise",
+              "path": "reports.py",
+              "start_line": 48,
+              "end_line": 59,
+              "kind": "function",
+              "language": "python",
+              "signature": "def summarise(inventory: Inventory, prices: PriceBook) -> dict[str, str]",
+              "parent_class": "",
+              "base_start_line": 69,
+              "base_end_line": 79
+            },
+            {
+              "stable_id": "py:pricing.py::format_money",
+              "path": "pricing.py",
+              "start_line": 83,
+              "end_line": 85,
+              "kind": "function",
+              "language": "python",
+              "signature": "def format_money(amount: Decimal) -> str",
+              "parent_class": "",
+              "base_start_line": 78,
+              "base_end_line": 81
+            }
+          ]
+        },
+        "added": {
+          "total": 4,
+          "files": 3,
+          "tests": 1,
+          "rows": [
+            {
+              "stable_id": "py:pricing.py::round_cents",
+              "path": "pricing.py",
+              "start_line": 78,
+              "end_line": 80,
+              "kind": "function",
+              "language": "python",
+              "signature": "def round_cents(amount: Decimal) -> Decimal",
+              "parent_class": ""
+            },
+            {
+              "stable_id": "py:taxes.py::with_vat",
+              "path": "taxes.py",
+              "start_line": 8,
+              "end_line": 10,
+              "kind": "function",
+              "language": "python",
+              "signature": "def with_vat(amount: Decimal) -> Decimal",
+              "parent_class": ""
+            },
+            {
+              "stable_id": "py:taxes.py::VAT",
+              "path": "taxes.py",
+              "start_line": 5,
+              "end_line": 5,
+              "kind": "constant",
+              "language": "python",
+              "signature": "VAT = Decimal(\"0.20\")",
+              "parent_class": ""
+            },
+            {
+              "stable_id": "py:tests/test_pricing.py::test_format_money",
+              "path": "tests/test_pricing.py",
+              "start_line": 6,
+              "end_line": 7,
+              "kind": "function",
+              "language": "python",
+              "signature": "def test_format_money()",
+              "parent_class": ""
+            }
+          ]
+        },
+        "removed": {
+          "total": 1,
+          "files": 1,
+          "tests": 0,
+          "rows": [
+            {
+              "stable_id": "py:reports.py::check_report_inputs",
+              "path": "reports.py",
+              "start_line": 55,
+              "end_line": 66,
+              "kind": "function",
+              "language": "python",
+              "signature": "def check_report_inputs(inventory: Inventory, prices: PriceBook) -> None",
+              "parent_class": ""
+            }
+          ]
+        },
+        "moved": {
+          "total": 1,
+          "rows": [
+            {
+              "from": {
+                "stable_id": "py:reports.py::_format_row",
+                "path": "reports.py",
+                "start_line": 47,
+                "end_line": 52,
+                "kind": "function",
+                "language": "python",
+                "signature": "def _format_row(item: Item, line_total: Decimal) -> str",
+                "parent_class": ""
+              },
+              "to": {
+                "stable_id": "py:rows.py::_format_row",
+                "path": "rows.py",
+                "start_line": 9,
+                "end_line": 14,
+                "kind": "function",
+                "language": "python",
+                "signature": "def _format_row(item: Item, line_total: Decimal) -> str",
+                "parent_class": ""
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

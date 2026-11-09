@@ -56,6 +56,8 @@ pub const FAMILY: &str = "family";
 pub const SHARED: &str = "shared";
 /// The callees of the existing function.
 pub const OTHER_CALLEES: &str = "other_callees";
+/// The score of a match of action names.
+pub const SCORE: &str = "score";
 /// A callee's stable id.
 pub const CALLEE: &str = "callee";
 /// The evidence tier of an edge.

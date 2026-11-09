@@ -32,10 +32,10 @@ impl Git {
             return Some(BTreeMap::new());
         }
         let since = OsString::from(format!("--since={CHURN_WINDOW_DAYS}.days"));
-        // "./" defeats pathspec magic, so a file named ":!x.py" is a path and not an exclusion.
+        // ":(literal)" keeps each path as written: ":!x.py" is no exclusion and no glob widens it.
         let targets: Vec<OsString> = paths
             .iter()
-            .map(|path| OsString::from(format!("./{path}")))
+            .map(|path| OsString::from(format!(":(literal){path}")))
             .collect();
         let fixed = [PRETTY, "--name-only", "--relative", "--"].map(OsStr::new);
         let rest: Vec<&OsStr> = std::iter::once(since.as_os_str())

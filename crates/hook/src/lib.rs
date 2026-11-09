@@ -1,25 +1,42 @@
 //! The hooks that Claude Code runs around tool calls and prompts. The erosion gate lints the
 //! proposed text of each Write and Edit, decides whether to block, advise or allow, and appends
-//! one log record. The search gate holds broad text search until a localizing agentless call, and
-//! records that call. The prompt map names the files that rank first for the names in the first
-//! prompt of a session.
+//! one log record. The prompt map names the files that rank first for the names in the first
+//! prompt of a session. The read card adds a source file's card to its first read in a context,
+//! and the ledger records the files whose cards a context holds. The subagent map gives a
+//! subagent's first prompt the files that rank first for its brief. The retired search gate's two
+//! hooks still run and do nothing. Hook install, status and uninstall keep a settings file's
+//! agentless entries in step with the entry table.
 
 mod call;
+mod context;
 mod destination;
 mod edit;
 mod gate;
 mod halt;
+mod install;
+mod ledger;
+mod ledger_mark;
+mod ledger_reset;
 mod modes;
 mod payload;
 mod prompt_map;
+mod read_card;
 mod record;
+mod reply;
 mod report;
+mod repository;
+mod retired;
+mod run;
 mod search;
 mod signals;
+mod state;
+mod subagent;
 mod text;
 mod verdict;
 mod worker;
 
+#[cfg(test)]
+mod goldens;
 #[cfg(test)]
 mod testing;
 
@@ -31,9 +48,10 @@ use std::sync::Arc;
 use app::{EnvConfig, Services};
 use kernel::{Clock, SystemClock};
 
+pub use crate::context::ContextHook;
+pub use crate::install::{install, status, uninstall};
 pub use crate::prompt_map::prompt_map;
 pub use crate::report::gate_report;
-pub use crate::search::{gate_check, gate_mark};
 
 use crate::call::Call;
 use crate::gate::Ports;

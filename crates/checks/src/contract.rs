@@ -5,11 +5,11 @@ use std::collections::hash_map::Entry;
 
 use prompts::messages;
 use syntax::Language;
+use text::in_boundary;
 
 use crate::error::Error;
 use crate::finding::{CheckGap, Detail, DriftKey, Finding, PairFinding, Severity};
 use crate::finding::{not_checked, sorted};
-use crate::globs::in_boundary;
 use crate::matching::{Paired, UnitRef, file_units, match_run};
 use crate::observed::{HitState, Observed, Outcome};
 use crate::pair::{CONTRACT_GAPS, Measured, Pair, Sides, each_pair, read_sides};

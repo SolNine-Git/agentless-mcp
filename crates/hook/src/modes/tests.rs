@@ -66,5 +66,8 @@ fn each_gated_check_is_a_pair_check_of_the_same_name_in_the_same_order() {
         .into_iter()
         .filter(|name| !gated.contains(name))
         .collect();
-    assert_eq!(ungated, ["callee_overlap", "cycle_dodge"]);
+    assert_eq!(
+        ungated,
+        ["callee_overlap", "cycle_dodge", "reuse_candidates"]
+    );
 }

@@ -75,6 +75,7 @@ impl core::marker::UnsafeUnpin for metrics::Block
 impl core::panic::unwind_safe::RefUnwindSafe for metrics::Block
 impl core::panic::unwind_safe::UnwindSafe for metrics::Block
 pub struct metrics::FileMetrics
+pub metrics::FileMetrics::actions: alloc::vec::Vec<alloc::vec::Vec<alloc::string::String>>
 pub metrics::FileMetrics::blocks: alloc::vec::Vec<metrics::Block>
 pub metrics::FileMetrics::sloc_lines: alloc::vec::Vec<u32>
 pub metrics::FileMetrics::units: alloc::vec::Vec<metrics::Unit>
@@ -99,6 +100,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for metrics::FileMetrics
 impl core::panic::unwind_safe::UnwindSafe for metrics::FileMetrics
 pub struct metrics::Measurable
 impl metrics::Measurable
+pub fn metrics::Measurable::actions(&self, &[metrics::Unit]) -> alloc::vec::Vec<alloc::vec::Vec<alloc::string::String>>
 pub fn metrics::Measurable::blocks(&self) -> alloc::vec::Vec<metrics::Block>
 pub fn metrics::Measurable::new(syntax::parsed::Parsed) -> core::result::Result<metrics::Measurable, metrics::Unmeasurable>
 pub fn metrics::Measurable::parsed(&self) -> &syntax::parsed::Parsed

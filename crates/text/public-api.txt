@@ -97,9 +97,12 @@ impl<'s> core::marker::Unpin for text::PosixPath<'s>
 impl<'s> core::marker::UnsafeUnpin for text::PosixPath<'s>
 impl<'s> core::panic::unwind_safe::RefUnwindSafe for text::PosixPath<'s>
 impl<'s> core::panic::unwind_safe::UnwindSafe for text::PosixPath<'s>
+pub const text::MAX_BRACE_GLOBS: usize
 pub fn text::convertible_int(&str) -> core::option::Option<text::IntText<'_>>
 pub fn text::decimal_value(char) -> core::option::Option<u8>
 pub fn text::dedent(&str) -> alloc::string::String
+pub fn text::expand_braces(&str) -> core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub fn text::in_boundary(&str, &[alloc::string::String]) -> bool
 pub fn text::int_bytes(&[u8]) -> core::option::Option<text::IntText<'_>>
 pub fn text::int_text(&str) -> core::option::Option<text::IntText<'_>>
 pub fn text::is_ascii_space(u8) -> bool

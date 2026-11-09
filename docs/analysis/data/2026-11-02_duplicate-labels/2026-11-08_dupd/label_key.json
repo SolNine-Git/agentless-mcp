@@ -1,0 +1,1172 @@
+[
+{
+"source": "det_top45",
+"a": [
+"crates/facts/src/extract.rs",
+145,
+153
+],
+"b": [
+"crates/facts/src/extract/rust_items.rs",
+44,
+47
+],
+"id": "Q001"
+},
+{
+"source": "det_card",
+"a": [
+"crates/patchcheck/src/lexer.rs",
+345,
+355
+],
+"b": [
+"crates/text/src/whitespace.rs",
+77,
+88
+],
+"id": "Q002"
+},
+{
+"source": "control_duplicate",
+"a": [
+"crates/hook/src/payload.rs",
+146,
+151
+],
+"b": [
+"crates/app/src/verdicts.rs",
+178,
+187
+],
+"of": "P305",
+"id": "Q003"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/metrics/src/tokenize.rs",
+228,
+232
+],
+"b": [
+"crates/metrics/src/tokenize.rs",
+332,
+337
+],
+"id": "Q004"
+},
+{
+"source": "det_top45",
+"a": [
+"scripts/surface_cmp.py",
+127,
+132
+],
+"b": [
+"scripts/vendor_grammars.py",
+170,
+176
+],
+"id": "Q005"
+},
+{
+"source": "control_related",
+"a": [
+"crates/app/src/map/pack.rs",
+176,
+186
+],
+"b": [
+"crates/render/src/map.rs",
+239,
+247
+],
+"of": "P219",
+"id": "Q006"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/app/src/bounds.rs",
+26,
+32
+],
+"b": [
+"crates/app/src/bounds.rs",
+11,
+19
+],
+"id": "Q007"
+},
+{
+"source": "det_card",
+"a": [
+"crates/io/src/testing.rs",
+60,
+64
+],
+"b": [
+"crates/io/src/testing.rs",
+102,
+110
+],
+"id": "Q008"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/patch/src/unidiff/hunks.rs",
+281,
+285
+],
+"b": [
+"crates/facts/src/skeleton.rs",
+256,
+267
+],
+"id": "Q009"
+},
+{
+"source": "det_top45",
+"a": [
+"xtask/src/tokens.rs",
+604,
+606
+],
+"b": [
+"xtask/src/tokens.rs",
+597,
+602
+],
+"id": "Q010"
+},
+{
+"source": "control_related",
+"a": [
+"crates/git/src/snapshot.rs",
+117,
+129
+],
+"b": [
+"crates/git/src/history.rs",
+239,
+246
+],
+"of": "P157",
+"id": "Q011"
+},
+{
+"source": "det_top45",
+"a": [
+"xtask/src/erosion.rs",
+179,
+200
+],
+"b": [
+"xtask/src/erosion.rs",
+171,
+177
+],
+"id": "Q012"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/graph/src/files.rs",
+100,
+102
+],
+"b": [
+"crates/graph/src/rank.rs",
+50,
+52
+],
+"id": "Q013"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/cli/src/read/refs.rs",
+8,
+25
+],
+"b": [
+"crates/cli/src/read/history.rs",
+8,
+25
+],
+"id": "Q014"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/graph/src/path.rs",
+30,
+37
+],
+"b": [
+"crates/graph/src/path.rs",
+40,
+47
+],
+"id": "Q015"
+},
+{
+"source": "det_card",
+"a": [
+"xtask/src/tokens.rs",
+245,
+258
+],
+"b": [
+"xtask/src/tokens.rs",
+440,
+443
+],
+"id": "Q016"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/hook/src/testing.rs",
+113,
+116
+],
+"b": [
+"crates/hook/src/testing.rs",
+107,
+110
+],
+"id": "Q017"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/graph/src/names.rs",
+187,
+190
+],
+"b": [
+"crates/graph/src/names.rs",
+182,
+185
+],
+"id": "Q018"
+},
+{
+"source": "similar_row",
+"a": [
+"crates/cli/tests/cli/common.rs",
+135,
+140
+],
+"b": [
+"xtask/src/ground_truth/dep_info.rs",
+138,
+151
+],
+"id": "Q019"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/syntax/src/rules.rs",
+112,
+120
+],
+"b": [
+"crates/syntax/src/rules.rs",
+77,
+84
+],
+"id": "Q020"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/syntax/src/cursor.rs",
+75,
+77
+],
+"b": [
+"crates/syntax/src/parsed.rs",
+209,
+212
+],
+"id": "Q021"
+},
+{
+"source": "similar_row",
+"a": [
+"xtask/src/generate/syntax.rs",
+425,
+453
+],
+"b": [
+"crates/syntax/src/language.rs",
+107,
+110
+],
+"id": "Q022"
+},
+{
+"source": "control_duplicate",
+"a": [
+"crates/hook/src/testing.rs",
+119,
+127
+],
+"b": [
+"crates/git/src/testing.rs",
+85,
+98
+],
+"of": "P188",
+"id": "Q023"
+},
+{
+"source": "similar_row",
+"a": [
+"crates/io/src/lock.rs",
+22,
+28
+],
+"b": [
+"crates/io/src/testrun.rs",
+288,
+312
+],
+"id": "Q024"
+},
+{
+"source": "similar_row",
+"a": [
+"crates/store/src/writer.rs",
+129,
+145
+],
+"b": [
+"crates/mcp/src/answer.rs",
+95,
+126
+],
+"id": "Q025"
+},
+{
+"source": "det_card",
+"a": [
+"crates/render/src/capabilities.rs",
+118,
+126
+],
+"b": [
+"crates/render/src/capabilities.rs",
+137,
+143
+],
+"id": "Q026"
+},
+{
+"source": "det_card",
+"a": [
+"crates/store/src/value.rs",
+134,
+144
+],
+"b": [
+"crates/patch/src/natural.rs",
+31,
+35
+],
+"id": "Q027"
+},
+{
+"source": "det_card",
+"a": [
+"crates/hook/src/report/classify.rs",
+171,
+177
+],
+"b": [
+"crates/checks/src/observed.rs",
+34,
+42
+],
+"id": "Q028"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/syntax/src/parsed.rs",
+155,
+159
+],
+"b": [
+"crates/syntax/src/parsed.rs",
+143,
+146
+],
+"id": "Q029"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/facts/src/skeleton.rs",
+206,
+215
+],
+"b": [
+"crates/syntax/src/rules.rs",
+220,
+224
+],
+"id": "Q030"
+},
+{
+"source": "control_duplicate",
+"a": [
+"crates/app/src/scan.rs",
+69,
+76
+],
+"b": [
+"crates/app/src/map.rs",
+123,
+140
+],
+"of": "P190",
+"id": "Q031"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/syntax/src/parsed.rs",
+149,
+152
+],
+"b": [
+"crates/syntax/src/parsed.rs",
+155,
+159
+],
+"id": "Q032"
+},
+{
+"source": "det_top45",
+"a": [
+"xtask/src/tokens.rs",
+499,
+510
+],
+"b": [
+"xtask/src/tokens.rs",
+551,
+558
+],
+"id": "Q033"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/app/src/patches.rs",
+226,
+228
+],
+"b": [
+"crates/app/src/validate.rs",
+314,
+316
+],
+"id": "Q034"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/patch/src/keys.rs",
+68,
+70
+],
+"b": [
+"crates/hook/src/text.rs",
+60,
+62
+],
+"id": "Q035"
+},
+{
+"source": "det_card",
+"a": [
+"crates/graph/src/names.rs",
+192,
+197
+],
+"b": [
+"crates/app/src/symbol_graph.rs",
+23,
+26
+],
+"id": "Q036"
+},
+{
+"source": "det_top45",
+"a": [
+"xtask/src/erosion.rs",
+171,
+177
+],
+"b": [
+"xtask/src/erosion.rs",
+386,
+392
+],
+"id": "Q037"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/metrics/src/tokenize.rs",
+596,
+613
+],
+"b": [
+"crates/metrics/src/tokenize.rs",
+228,
+232
+],
+"id": "Q038"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/app/src/validate.rs",
+215,
+218
+],
+"b": [
+"crates/kernel/src/deadline.rs",
+175,
+177
+],
+"id": "Q039"
+},
+{
+"source": "det_top45",
+"a": [
+"xtask/src/tokens.rs",
+540,
+549
+],
+"b": [
+"xtask/src/tokens.rs",
+473,
+482
+],
+"id": "Q040"
+},
+{
+"source": "det_card",
+"a": [
+"xtask/src/tokens.rs",
+280,
+283
+],
+"b": [
+"xtask/src/tokens.rs",
+145,
+157
+],
+"id": "Q041"
+},
+{
+"source": "similar_row",
+"a": [
+"crates/app/src/capabilities.rs",
+221,
+250
+],
+"b": [
+"crates/render/src/lib.rs",
+78,
+82
+],
+"id": "Q042"
+},
+{
+"source": "det_card",
+"a": [
+"crates/app/src/refs.rs",
+70,
+73
+],
+"b": [
+"crates/render/src/view.rs",
+105,
+111
+],
+"id": "Q043"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/git/src/walk.rs",
+275,
+288
+],
+"b": [
+"crates/git/src/worktree.rs",
+292,
+310
+],
+"id": "Q044"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/hook/src/report/csv.rs",
+237,
+254
+],
+"b": [
+"crates/hook/src/report/csv.rs",
+202,
+213
+],
+"id": "Q045"
+},
+{
+"source": "control_related",
+"a": [
+"crates/metrics/src/tokenize.rs",
+361,
+380
+],
+"b": [
+"crates/json/src/parse.rs",
+409,
+436
+],
+"of": "P292",
+"id": "Q046"
+},
+{
+"source": "det_top45",
+"a": [
+"xtask/src/generate/syntax.rs",
+393,
+416
+],
+"b": [
+"crates/syntax/src/extraction.rs",
+140,
+161
+],
+"id": "Q047"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/metrics/src/lib.rs",
+197,
+200
+],
+"b": [
+"crates/metrics/src/lib.rs",
+191,
+194
+],
+"id": "Q048"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/mcp/src/answer/shared.rs",
+21,
+29
+],
+"b": [
+"crates/mcp/src/answer/shared.rs",
+11,
+19
+],
+"id": "Q049"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/metrics/src/tokenize.rs",
+332,
+337
+],
+"b": [
+"crates/metrics/src/tokenize.rs",
+596,
+613
+],
+"id": "Q050"
+},
+{
+"source": "similar_row",
+"a": [
+"crates/facts/src/extract/python_definitions.rs",
+297,
+322
+],
+"b": [
+"crates/facts/src/extract/python_definitions.rs",
+324,
+331
+],
+"id": "Q051"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/store/src/sweep.rs",
+76,
+81
+],
+"b": [
+"crates/cli/src/steps.rs",
+228,
+234
+],
+"id": "Q052"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/graph/src/rank.rs",
+134,
+136
+],
+"b": [
+"crates/store/src/sweep.rs",
+237,
+241
+],
+"id": "Q053"
+},
+{
+"source": "det_card",
+"a": [
+"crates/app/src/scan.rs",
+248,
+250
+],
+"b": [
+"crates/facts/src/extract/python_imports.rs",
+110,
+112
+],
+"id": "Q054"
+},
+{
+"source": "similar_row",
+"a": [
+"xtask/src/ground_truth/ignored.rs",
+42,
+60
+],
+"b": [
+"xtask/src/ground_truth/dep_info.rs",
+90,
+107
+],
+"id": "Q055"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/facts/src/extract/rust_items.rs",
+100,
+114
+],
+"b": [
+"crates/facts/src/extract/rust_items.rs",
+116,
+123
+],
+"id": "Q056"
+},
+{
+"source": "similar_row",
+"a": [
+"crates/app/src/expand.rs",
+75,
+91
+],
+"b": [
+"crates/cli/src/read/symbols.rs",
+46,
+69
+],
+"id": "Q057"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/hook/src/report/csv.rs",
+215,
+225
+],
+"b": [
+"crates/hook/src/report/csv.rs",
+202,
+213
+],
+"id": "Q058"
+},
+{
+"source": "det_top45",
+"a": [
+"xtask/src/tokens.rs",
+145,
+157
+],
+"b": [
+"xtask/src/tokens.rs",
+460,
+463
+],
+"id": "Q059"
+},
+{
+"source": "det_card",
+"a": [
+"crates/facts/src/extract/python_definitions.rs",
+136,
+163
+],
+"b": [
+"crates/facts/src/extract/rust_items.rs",
+49,
+75
+],
+"id": "Q060"
+},
+{
+"source": "det_card",
+"a": [
+"crates/cli/src/args/wrap.rs",
+80,
+82
+],
+"b": [
+"crates/git/src/history.rs",
+297,
+302
+],
+"id": "Q061"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/graph/src/symbols.rs",
+152,
+164
+],
+"b": [
+"crates/graph/src/symbols.rs",
+206,
+213
+],
+"id": "Q062"
+},
+{
+"source": "det_card",
+"a": [
+"crates/facts/src/extract/lua_assignments.rs",
+122,
+142
+],
+"b": [
+"crates/facts/src/extract/python_definitions.rs",
+324,
+331
+],
+"id": "Q063"
+},
+{
+"source": "similar_row",
+"a": [
+"crates/cli/src/args/parse.rs",
+43,
+52
+],
+"b": [
+"crates/cli/src/server_args.rs",
+130,
+188
+],
+"id": "Q064"
+},
+{
+"source": "similar_row",
+"a": [
+"crates/app/src/history.rs",
+430,
+451
+],
+"b": [
+"crates/app/src/budget.rs",
+10,
+33
+],
+"id": "Q065"
+},
+{
+"source": "similar_row",
+"a": [
+"crates/app/src/registry.rs",
+40,
+42
+],
+"b": [
+"xtask/src/lint_tables.rs",
+37,
+55
+],
+"id": "Q066"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/metrics/src/tokenize.rs",
+640,
+642
+],
+"b": [
+"crates/metrics/src/tokenize.rs",
+644,
+646
+],
+"id": "Q067"
+},
+{
+"source": "control_duplicate",
+"a": [
+"xtask/src/generate/templates.rs",
+73,
+81
+],
+"b": [
+"xtask/src/generate/rules.rs",
+97,
+102
+],
+"of": "P327",
+"id": "Q068"
+},
+{
+"source": "similar_row",
+"a": [
+"crates/facts/src/extract/c_declarators.rs",
+55,
+63
+],
+"b": [
+"crates/json/src/parse.rs",
+594,
+612
+],
+"id": "Q069"
+},
+{
+"source": "similar_row",
+"a": [
+"crates/graph/src/imports.rs",
+24,
+27
+],
+"b": [
+"crates/mcp/src/roots.rs",
+197,
+209
+],
+"id": "Q070"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/facts/src/extract/lua_assignments.rs",
+110,
+112
+],
+"b": [
+"crates/facts/src/extract.rs",
+145,
+153
+],
+"id": "Q071"
+},
+{
+"source": "similar_row",
+"a": [
+"crates/app/src/ops/table.rs",
+70,
+84
+],
+"b": [
+"xtask/src/tokens.rs",
+232,
+243
+],
+"id": "Q072"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/graph/src/ambiguous.rs",
+26,
+29
+],
+"b": [
+"crates/graph/src/ambiguous.rs",
+20,
+23
+],
+"id": "Q073"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/facts/src/extract/rust_items.rs",
+44,
+47
+],
+"b": [
+"crates/facts/src/extract/lua_assignments.rs",
+110,
+112
+],
+"id": "Q074"
+},
+{
+"source": "det_card",
+"a": [
+"crates/metrics/src/tokenize.rs",
+583,
+594
+],
+"b": [
+"crates/metrics/src/tokenize.rs",
+574,
+581
+],
+"id": "Q075"
+},
+{
+"source": "similar_row",
+"a": [
+"xtask/src/erosion.rs",
+343,
+360
+],
+"b": [
+"xtask/src/erosion.rs",
+418,
+426
+],
+"id": "Q076"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/cli/src/args/help.rs",
+196,
+203
+],
+"b": [
+"crates/cli/src/args/help.rs",
+215,
+221
+],
+"id": "Q077"
+},
+{
+"source": "control_related",
+"a": [
+"crates/mcp/src/answer/read.rs",
+15,
+35
+],
+"b": [
+"crates/mcp/src/answer/orient.rs",
+18,
+47
+],
+"of": "P103",
+"id": "Q078"
+},
+{
+"source": "det_card",
+"a": [
+"crates/patchcheck/src/lib.rs",
+100,
+108
+],
+"b": [
+"crates/checks/src/finding.rs",
+302,
+309
+],
+"id": "Q079"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/checks/src/copies.rs",
+153,
+155
+],
+"b": [
+"crates/checks/src/copies.rs",
+93,
+97
+],
+"id": "Q080"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/hook/src/report/csv.rs",
+215,
+225
+],
+"b": [
+"crates/hook/src/report/csv.rs",
+237,
+254
+],
+"id": "Q081"
+},
+{
+"source": "det_top45",
+"a": [
+"crates/graph/src/ambiguous.rs",
+158,
+162
+],
+"b": [
+"crates/graph/src/ambiguous.rs",
+149,
+155
+],
+"id": "Q082"
+},
+{
+"source": "det_top45",
+"a": [
+"xtask/src/erosion.rs",
+386,
+392
+],
+"b": [
+"xtask/src/erosion.rs",
+179,
+200
+],
+"id": "Q083"
+}
+]

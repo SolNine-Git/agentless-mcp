@@ -68,6 +68,27 @@ impl core::marker::Unpin for git::HistoryFailure
 impl core::marker::UnsafeUnpin for git::HistoryFailure
 impl core::panic::unwind_safe::RefUnwindSafe for git::HistoryFailure
 impl core::panic::unwind_safe::UnwindSafe for git::HistoryFailure
+pub enum git::LastCommit
+pub git::LastCommit::Failed(alloc::string::String)
+pub git::LastCommit::Found(git::Commit)
+pub git::LastCommit::NoCommit
+pub git::LastCommit::NotRepository
+pub git::LastCommit::TimedOut
+impl core::clone::Clone for git::LastCommit
+pub fn git::LastCommit::clone(&self) -> Self
+impl core::cmp::Eq for git::LastCommit
+impl core::cmp::PartialEq for git::LastCommit
+pub fn git::LastCommit::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::LastCommit
+pub fn git::LastCommit::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::LastCommit
+impl core::marker::Freeze for git::LastCommit
+impl core::marker::Send for git::LastCommit
+impl core::marker::Sync for git::LastCommit
+impl core::marker::Unpin for git::LastCommit
+impl core::marker::UnsafeUnpin for git::LastCommit
+impl core::panic::unwind_safe::RefUnwindSafe for git::LastCommit
+impl core::panic::unwind_safe::UnwindSafe for git::LastCommit
 pub enum git::Malformed
 pub git::Malformed::Mode(alloc::string::String)
 pub git::Malformed::NoMeta
@@ -422,6 +443,8 @@ pub struct git::Git
 impl git::Git
 pub fn git::Git::blob(&self, &std::path::Path, &str, &str) -> git::GitOutcome
 pub fn git::Git::changes(&self, &std::path::Path, &str) -> git::GitOutcome
+pub fn git::Git::commits_since(&self, &std::path::Path, &str) -> git::GitOutcome
+pub fn git::Git::merge_base(&self, &std::path::Path, &str) -> git::GitOutcome
 pub fn git::Git::untracked(&self, &std::path::Path) -> git::GitOutcome
 pub fn git::Git::verify(&self, &std::path::Path, &str) -> git::GitOutcome
 impl git::Git
@@ -430,6 +453,9 @@ impl git::Git
 pub fn git::Git::differs(&self, &std::path::Path, &str, &git::CommitId) -> core::result::Result<bool, alloc::string::String>
 pub fn git::Git::is_shallow(&self, &std::path::Path) -> core::result::Result<bool, alloc::string::String>
 pub fn git::Git::log_span(&self, &std::path::Path, &git::SpanQuery<'_>) -> core::result::Result<git::SpanLog, git::SpanLogError>
+impl git::Git
+pub fn git::Git::last_commit(&self, &std::path::Path, &str, core::time::Duration) -> git::LastCommit
+pub fn git::Git::last_commit_at(&self, &std::path::Path, &str, &str, core::time::Duration) -> git::LastCommit
 impl git::Git
 pub fn git::Git::new(impl core::iter::traits::collect::IntoIterator<Item = (std::ffi::os_str::OsString, std::ffi::os_str::OsString)>) -> Self
 impl git::Git
@@ -441,6 +467,8 @@ pub fn git::Git::root(&self, &std::path::Path) -> core::option::Option<std::path
 pub fn git::Git::snapshot(&self, &std::path::Path, core::option::Option<&std::path::Path>) -> git::Snapshot
 impl git::Git
 pub fn git::Git::toplevel(&self, &std::path::Path, core::time::Duration) -> git::Toplevel
+impl git::Git
+pub fn git::Git::tree_walk(&self, &std::path::Path, &str, io::walk::ScanReads) -> git::Walk
 impl git::Git
 pub fn git::Git::walk(&self, &std::path::Path, io::walk::ScanReads) -> git::Walk
 impl core::clone::Clone for git::Git

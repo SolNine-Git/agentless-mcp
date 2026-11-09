@@ -22,7 +22,8 @@ use crate::scan::{FileSymbols, SymbolFacts};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped, SymbolCard, symbol_card};
 use data::{DATA_ENTRIES, data_matches};
 use outside::outside_outline;
-use usage::{UsageQuery, spellings, usage, words};
+use usage::spelled_files;
+pub(crate) use usage::{Spelled, UsageQuery, spellings, usage, words};
 
 pub use data::{DataEntry, DataMatches, FoldedFile};
 pub use outside::OutsideOutline;
@@ -104,7 +105,9 @@ pub fn find(
     let mut diagnostics = loaded.diagnostics;
     let value = loaded.value.and_then(|scan| {
         let answered = answered_over(scan, |scan| {
-            let usage = queries.first().and_then(|query| usage(scan, &words, query));
+            let usage = queries
+                .first()
+                .and_then(|query| usage(&spelled_files(scan), &words, query));
             answer(reading, scan, request, limit).map_ok(|found| FindResult { usage, ..found })
         });
         diagnostics.extend(answered.diagnostics);

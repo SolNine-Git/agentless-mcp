@@ -31,15 +31,28 @@ fn main() -> ExitCode {
     ExitCode::from(dispatch(&args, &env, &services))
 }
 
+// One command on the settings files: its subcommand name and its run on the options after it.
+type SettingsRun = fn(&[OsString], &EnvConfig) -> hook::Output;
+
+const SETTINGS: [(&str, SettingsRun); 3] = [
+    ("install", hook::install),
+    ("status", hook::status),
+    ("uninstall", hook::uninstall),
+];
+
 // The hooks need no start-up directory, so only the other command lines stop on an unread one.
 fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
     let words: Vec<Option<&str>> = args.iter().map(|arg| arg.to_str()).collect();
-    match words.as_slice() {
-        [Some("hook"), Some("erosion")] => return erosion(env, services),
-        [Some("hook"), Some("gate-check")] => return searched(env),
-        [Some("hook"), Some("gate-mark")] => return marked(env),
-        [Some("hook"), Some("prompt-map")] => return prompt_mapped(env, services),
-        _ => {}
+    if asks_hook_help(&words) {
+        return with_streams(cli::hook_help);
+    }
+    if let [Some("hook"), Some(name)] = words.as_slice() {
+        if *name == "erosion" {
+            return erosion(env, services);
+        }
+        if let Some(found) = hook::ContextHook::named(name) {
+            return context_hook(found, env, services);
+        }
     }
     if words.first() == Some(&Some("gate-report")) {
         return with_streams(|streams| {
@@ -49,6 +62,16 @@ fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
     if let Err(unread) = env.cwd() {
         let line = cli::cwd_failure_line(&unread.error());
         return with_streams(|streams| cli::write_answer(streams, "", &line, cli::EXIT_DOMAIN));
+    }
+    if let [Some("hook"), Some(name), ..] = words.as_slice()
+        && let Some((_, run)) = SETTINGS.iter().find(|(command, _)| command == name)
+    {
+        return with_streams(|streams| {
+            guarded(streams, |streams| {
+                let output = run(&args[2..], env);
+                cli::write_answer(streams, &output.stdout, &output.stderr, output.code)
+            })
+        });
     }
     match words.as_slice() {
         [Some("hook"), ..] => with_streams(cli::refuse_hook),
@@ -60,27 +83,27 @@ fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
     }
 }
 
+// `hook --help` and `hook <name> --help` for a hook; each settings command prints its own usage.
+fn asks_hook_help(words: &[Option<&str>]) -> bool {
+    let help = |word: &str| matches!(word, "-h" | "--help");
+    match words {
+        [Some("hook"), Some(flag)] => help(flag),
+        [Some("hook"), Some(name), Some(flag)] => {
+            help(flag) && (*name == "erosion" || hook::ContextHook::named(name).is_some())
+        }
+        _ => false,
+    }
+}
+
 fn erosion(env: &EnvConfig, services: &Services) -> u8 {
     answered(|| hook::erosion(env, services, &mut io::stdin().lock()))
 }
 
-// The search gate writes its deny message itself, because a failed write changes the exit code.
-fn searched(env: &EnvConfig) -> u8 {
+// A context hook writes its reply itself. Claude Code reads plain stdout as context on some of
+// these events, so a panic line must not reach a stream.
+fn context_hook(found: hook::ContextHook, env: &EnvConfig, services: &Services) -> u8 {
     keep_panic_lines();
-    hook::gate_check(env, &mut io::stdin().lock(), &mut io::stderr().lock())
-}
-
-fn marked(env: &EnvConfig) -> u8 {
-    keep_panic_lines();
-    hook::gate_mark(env, &mut io::stdin().lock());
-    0
-}
-
-// The prompt map writes its reply itself. Claude Code reads plain stdout as context on this event,
-// so a panic line must not reach a stream.
-fn prompt_mapped(env: &EnvConfig, services: &Services) -> u8 {
-    keep_panic_lines();
-    hook::prompt_map(
+    found.run(
         env,
         services,
         &mut io::stdin().lock(),

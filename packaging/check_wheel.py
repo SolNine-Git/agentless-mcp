@@ -21,9 +21,7 @@ from typing import Any, NoReturn, TypeGuard
 import tomllib
 
 ROOT = Path(__file__).resolve().parent.parent
-TOOLS = frozenset(
-    {"capabilities", "find_referencing_symbols", "graph", "history", "orient", "read", "symbols"}
-)
+TOOLS = frozenset({"search", "trace"})
 SOURCE = "def quote(sku):\n    return 1\n\n\ndef total(items):\n    return sum(map(quote, items))\n"
 NOTICES = (
     "LICENSE",
@@ -168,11 +166,11 @@ def conversation(send: Send) -> list[Any]:
     if names != TOOLS:
         msg = f"tools/list named {sorted(names)}, not {sorted(TOOLS)}"
         raise CheckFailedError(msg)
-    call = {"name": "orient", "arguments": {"operation": "map"}}
+    call = {"name": "trace", "arguments": {"target": "core.py"}}
     result = field(send("tools/call", call, 3), "result")
     text = "".join(field(part, "text") for part in field(result, "content"))
-    if result.get("isError") is not False or "core.py" not in text:
-        msg = f"orient map answered {result!r}"
+    if result.get("isError") is not False or "total" not in text:
+        msg = f"trace core.py answered {result!r}"
         raise CheckFailedError(msg)
     return list(tools)
 

@@ -10,6 +10,7 @@ use serde_json::Value;
 use super::{BlockSource, LintForm, LintReport, LintRequest, lint, lint_with};
 use crate::clock::PinnedClock;
 use crate::pairs::Stored;
+use crate::reuse::StoredUnits;
 use crate::testing::{MANIFEST_DIR, Sandbox, buildable_cases};
 use crate::{After, Error, FormKind, Noted, PairSelection, Repo, Tags};
 
@@ -111,9 +112,11 @@ fn judged(scenario: &Scenario, in_memory: bool) -> Expected {
     let request = request(&sandbox, scenario, in_memory);
     let found = if scenario.cache.as_deref() == Some("fresh") {
         let mut lookup = |_: &str, _: &str, _| Stored::Miss;
+        let mut units = |_: &str, _: &str, _| StoredUnits::Miss;
         let source = BlockSource {
             cached: true,
             lookup: &mut lookup,
+            units: &mut units,
         };
         lint_with(&services, &repo, source, &request)
     } else {
@@ -171,9 +174,11 @@ fn a_run_without_clone_delta_never_reads_a_stored_block() {
     let services = sandbox.services(sandbox.path());
     let repo = Repo::load(&services, &root).expect("the repository loads");
     let mut lookup = |path: &str, _: &str, _| panic!("{path}: no clone_delta, no index");
+    let mut units = |_: &str, _: &str, _| StoredUnits::Miss;
     let source = BlockSource {
         cached: true,
         lookup: &mut lookup,
+        units: &mut units,
     };
     let request = LintRequest {
         form: LintForm::Revision {
@@ -251,9 +256,11 @@ fn since_report(services: &crate::Services, root: &Path, checks: &[&str]) -> Lin
         checks: PairSelection::from_names(&names, FormKind::Since).expect("a selection"),
     };
     let mut lookup = |_: &str, _: &str, _| Stored::Miss;
+    let mut units = |_: &str, _: &str, _| StoredUnits::Miss;
     let source = BlockSource {
         cached: true,
         lookup: &mut lookup,
+        units: &mut units,
     };
     let found = lint_with(services, &repo, source, &request);
     assert_eq!(found.diagnostics, Vec::<String>::new());
@@ -465,6 +472,132 @@ fn the_rust_planted_pairs_give_the_golden_rows_and_no_row_on_a_negative() {
 #[test]
 fn the_python_planted_pairs_give_the_golden_rows_and_no_row_on_a_negative() {
     planted_report_equals_its_golden("callee_overlap_py");
+}
+
+#[derive(Deserialize)]
+struct PlantedReuse {
+    positives: Vec<ReusePair>,
+    negatives: Vec<PlantedPair>,
+}
+
+#[derive(Deserialize)]
+struct ReusePair {
+    path: String,
+    unit: String,
+    other: String,
+}
+
+// Each row names a planted positive with its other function, every positive gives its row, and
+// no row names a planted negative.
+fn planted_reuse_equals_its_golden(name: &str) {
+    let (fixture, report) = planted_report(name, "reuse_candidates");
+    let planted = std::fs::read_to_string(fixture.join("pairs.json")).expect("the planted pairs");
+    let planted: PlantedReuse = serde_json::from_str(&planted).expect("a planted list");
+    let rows = reuse_rows(&report);
+    for negative in &planted.negatives {
+        assert!(
+            !(rows.iter()).any(|row| (row.0.as_str(), row.1.as_str()) == negative.place()),
+            "{name}: a row names the {} negative",
+            negative.kind
+        );
+    }
+    let positives: Vec<(String, String, String)> = (planted.positives.iter())
+        .map(|pair| (pair.path.clone(), pair.unit.clone(), pair.other.clone()))
+        .collect();
+    assert_eq!(rows, positives_in_row_order(positives), "{name}");
+}
+
+// The (path, unit, other function) of each reuse row, in report order.
+fn reuse_rows(report: &LintReport) -> Vec<(String, String, String)> {
+    (report.candidates[0].findings.iter())
+        .map(|row| match &row.detail {
+            Some(checks::Detail::Reuse(share)) => (
+                row.finding.path.clone(),
+                share.unit.clone(),
+                share.other.clone(),
+            ),
+            other => panic!("a row that is no reuse row: {other:?}"),
+        })
+        .collect()
+}
+
+// A report lists its rows by path, so the planted positives are compared in that order.
+fn positives_in_row_order(
+    mut positives: Vec<(String, String, String)>,
+) -> Vec<(String, String, String)> {
+    positives.sort();
+    positives
+}
+
+#[test]
+fn the_rust_planted_reuse_pairs_give_the_golden_rows_and_no_row_on_a_negative() {
+    planted_reuse_equals_its_golden("reuse_rust");
+}
+
+#[test]
+fn the_python_planted_reuse_pairs_give_the_golden_rows_and_no_row_on_a_negative() {
+    planted_reuse_equals_its_golden("reuse_py");
+}
+
+// The proposed form resolves on a graph of the edited file, the rows' files and the manifests:
+// it sees a direct import of the original, and misses one through a package's re-export.
+#[test]
+fn the_proposed_form_misses_a_call_through_a_reexport_and_sees_a_direct_one() {
+    let fixture: PathBuf = [MANIFEST_DIR, FIXTURES, "reuse_py"].iter().collect();
+    let proposed = ["client.py", "backup.py"];
+    let sandbox = Sandbox::new();
+    sandbox.mkdir("repo");
+    sandbox.apply(&[Value::from("init"), Value::from("repo")]);
+    for side in ["base", "change"] {
+        let from = fixture.join(side);
+        let laid = tree_files(&from).into_iter();
+        for path in laid.filter(|path| side == "base" || !proposed.contains(&path.as_str())) {
+            sandbox.copy(&from.join(&path), &format!("repo/{path}"));
+        }
+        if side == "base" {
+            sandbox.apply(&[Value::from("commit"), Value::from("repo")]);
+        }
+    }
+    let services = sandbox.services(sandbox.path());
+    let repo = Repo::load(&services, &sandbox.path().join("repo")).expect("the repository loads");
+    let change = fixture.join("change");
+    let through = (
+        "client.py".to_owned(),
+        "fetch_users".to_owned(),
+        "fetch_rows".to_owned(),
+    );
+    assert_eq!(
+        proposed_rows(&services, &repo, &change, "client.py"),
+        [through]
+    );
+    assert_eq!(proposed_rows(&services, &repo, &change, "backup.py"), []);
+}
+
+// The reuse rows of `lint --path <path> --after <change/path>` with a tag cache that misses.
+fn proposed_rows(
+    services: &crate::Services,
+    repo: &Repo,
+    change: &Path,
+    path: &str,
+) -> Vec<(String, String, String)> {
+    let after = std::fs::read_to_string(change.join(path)).expect("a text");
+    let request = LintRequest {
+        form: LintForm::Proposed {
+            path: path.to_owned(),
+            after: After::Text(after),
+        },
+        checks: PairSelection::from_names(&["reuse_candidates".to_owned()], FormKind::Path)
+            .expect("a selection"),
+    };
+    let mut lookup = |_: &str, _: &str, _| Stored::Miss;
+    let mut units = |_: &str, _: &str, _| StoredUnits::Miss;
+    let source = BlockSource {
+        cached: true,
+        lookup: &mut lookup,
+        units: &mut units,
+    };
+    let found = lint_with(services, repo, source, &request).value;
+    reuse_rows(&found.expect("a report"))
 }
 
 #[derive(Deserialize)]

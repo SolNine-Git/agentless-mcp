@@ -26,8 +26,8 @@ mod writer;
 mod tests;
 
 pub use analysis::{
-    Analysis, FACTS_SCHEMA_VERSION, FACTS_VERSION, FileText, Measured, Unmeasured, analysis,
-    analyze,
+    Analysis, FACTS_SCHEMA_VERSION, FACTS_VERSION, FileText, Measured, RowKey, Unmeasured,
+    analysis, analyze,
 };
 pub use blob::{Encoded, encode};
 pub use discard::{DiscardFailure, Discarded, discard_facts};

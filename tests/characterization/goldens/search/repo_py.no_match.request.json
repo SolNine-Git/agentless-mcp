@@ -1,0 +1,7 @@
+{
+  "tool": "search",
+  "fixture": "repo_py",
+  "arguments": {
+    "pattern": "zz_no_such_text"
+  }
+}

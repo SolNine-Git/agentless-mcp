@@ -2,7 +2,9 @@ use facts::SymbolKind;
 use store::FileText;
 use syntax::Language;
 
-use super::{Usage, UsageFile, UsageOrder, UsageQuery, spelled, spellings, usage, words};
+use super::{
+    Usage, UsageFile, UsageOrder, UsageQuery, spelled, spelled_files, spellings, usage, words,
+};
 use crate::endpoints::scanned::Scanned;
 use crate::scan::{Spelling, SymbolFacts};
 use crate::{FindRequest, FindResult, IntArg, find};
@@ -14,7 +16,7 @@ fn usage_of(files: &[(&str, &str)], query: &str) -> Option<Usage> {
     let spell = |text: &FileText| spellings(text, &words);
     let loaded = SymbolFacts::load(&scanned.services, &scanned.reading(), &spell);
     let scan = loaded.value.unwrap_or_else(|error| panic!("{error}"));
-    usage(&scan, &words, queries.first()?)
+    usage(&spelled_files(&scan), &words, queries.first()?)
 }
 
 fn rows(usage: &Usage) -> Vec<(&str, u32, u32)> {

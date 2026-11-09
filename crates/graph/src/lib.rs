@@ -1,13 +1,17 @@
 //! The repository graphs: the name index, the import scopes, the resolver, the symbol and file
 //! graphs, their ranks, floods, paths, cycles and communities.
 
+mod affected;
+mod aliases;
 mod ambiguous;
+mod candidates;
 mod communities;
 mod cycles;
 mod entries;
 mod files;
 mod flood;
 mod imports;
+mod lists;
 mod lookup;
 mod names;
 mod owners;
@@ -20,7 +24,9 @@ mod scan;
 mod scopes;
 mod symbols;
 mod unresolved;
+mod update;
 
+pub use aliases::Aliases;
 pub use ambiguous::AmbiguousDegrees;
 pub use communities::{
     Community, CommunityPartition, DEFAULT_RESOLUTION, ROOT_LABEL, community_label,
@@ -39,10 +45,11 @@ pub use owners::{LineOwners, enclosing_symbol};
 pub use path::{DEFAULT_MAX_VISITED, Hop, PathBounds, PathPolicy, PathResult, shortest_path};
 pub use paths::normpath;
 pub use rank::{PageRank, pagerank, rank_order};
-pub use resolver::{Resolution, Resolver, Tier};
+pub use resolver::{Answers, Resolution, Resolver, Tier};
 pub use scan::{FileFacts, in_name_graph, joins_name_graph};
 pub use scopes::{ImportScope, Scopes};
 pub use symbols::{AmbiguousReference, Endpoint, Relation, SymbolEdge, SymbolGraph};
+pub use update::{KeptParts, Rebuild, Resolved, update};
 
 #[cfg(test)]
 mod tests;

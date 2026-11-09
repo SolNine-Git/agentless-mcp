@@ -1,0 +1,10 @@
+{
+  "tool": "trace",
+  "fixture": "repo_py",
+  "files": {
+    "notes.md": "# Notes\n\nPricing runs on Decimal.\n"
+  },
+  "arguments": {
+    "target": "notes.md"
+  }
+}

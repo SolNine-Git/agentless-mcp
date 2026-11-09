@@ -1,0 +1,98 @@
+{
+  "receipt": {
+    "repo": "<REPO>",
+    "head": "47bfef1c",
+    "tree": "b4629067",
+    "dirty": 0,
+    "cache": "none",
+    "note": ""
+  },
+  "request": {
+    "pattern": "quantize",
+    "files": null,
+    "path": null,
+    "ignore_case": false
+  },
+  "answer": "matches",
+  "matches": 6,
+  "files": 4,
+  "searched": 6,
+  "shown": 3,
+  "groups": [
+    {
+      "path": "pricing.py",
+      "blocks": [
+        {
+          "owner": {
+            "qualname": "PriceBook.quote",
+            "stable_id": "py:pricing.py::PriceBook.quote",
+            "start_line": 46,
+            "end_line": 56
+          },
+          "lines": [
+            {
+              "line": 56,
+              "text": "        return line_total.quantize(CENTS, rounding=ROUND_HALF_UP)",
+              "matched": true
+            }
+          ]
+        },
+        {
+          "owner": {
+            "qualname": "format_money",
+            "stable_id": "py:pricing.py::format_money",
+            "start_line": 78,
+            "end_line": 81
+          },
+          "lines": [
+            {
+              "line": 80,
+              "text": "    quantized = amount.quantize(CENTS, rounding=ROUND_HALF_UP)",
+              "matched": true
+            },
+            {
+              "line": 81,
+              "text": "    return f\"{quantized} {CURRENCY}\"",
+              "matched": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "repeats": [],
+  "rest": [],
+  "noise": [
+    {
+      "class": "lock",
+      "matches": 1,
+      "files": [
+        {
+          "path": "poetry.lock",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "class": "vendored",
+      "matches": 1,
+      "files": [
+        {
+          "path": "vendor/rounding.py",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "class": "minified",
+      "matches": 1,
+      "files": [
+        {
+          "path": "static/app.min.js",
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "skipped": []
+}

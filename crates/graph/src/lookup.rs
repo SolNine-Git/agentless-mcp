@@ -215,7 +215,7 @@ fn by_line<'a>(index: &NameIndex<'a>, path: &str, line: u32) -> Lookup<'a> {
     }
 }
 
-fn innermost(files: &[FileFacts], at: usize, line: u32) -> Option<Definition<'_>> {
+fn innermost<'a>(files: &[&'a FileFacts], at: usize, line: u32) -> Option<Definition<'a>> {
     let symbols = &files[at].facts.symbols;
     let symbol = enclosing_symbol(symbols, line)?;
     let position = symbols.iter().position(|each| ptr::eq(each, symbol))?;

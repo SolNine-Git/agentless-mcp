@@ -16,11 +16,14 @@ type Grouped<'a> = BTreeMap<(&'a str, Tier), (&'a FileFacts, Vec<RefSite>)>;
 // The tier of each line that spells the target, by file.
 pub(super) type LineTiers<'a> = HashMap<&'a str, BTreeMap<u32, Tier>>;
 
+// The strongest tier at which each symbol references the target, by its path and first line.
+pub(super) type CallerTiers<'a> = HashMap<(&'a str, u32), Tier>;
+
 // Every file of `sites` is tiered once, before the limit cuts the sites.
 pub(super) fn site_tiers<'a>(
     sites: &[Site<'a>],
     names: &BTreeMap<&str, BTreeSet<&str>>,
-    resolver: &Resolver<'a>,
+    resolver: &Resolver<'_, 'a>,
     target_ids: &BTreeSet<String>,
 ) -> LineTiers<'a> {
     let mut tiers: LineTiers<'a> = HashMap::new();
@@ -32,6 +35,20 @@ pub(super) fn site_tiers<'a>(
             .or_insert_with(|| line_tiers(site.file, file_names, resolver, target_ids));
     }
     tiers
+}
+
+// The strongest tier of the sites that each symbol holds, by the symbol's path and first line.
+pub(super) fn caller_tiers<'a>(sites: &[Site<'a>], tiers: &LineTiers<'a>) -> CallerTiers<'a> {
+    let mut strongest: CallerTiers<'a> = HashMap::new();
+    for site in sites {
+        let Some(symbol) = enclosing_symbol(&site.file.facts.symbols, site.reference.line) else {
+            continue;
+        };
+        let tier = tier_of(tiers, site);
+        let held = strongest.entry((site.path(), symbol.line)).or_insert(tier);
+        *held = (*held).min(tier);
+    }
+    strongest
 }
 
 // How many of `sites` sit at a binding tier.
@@ -96,7 +113,7 @@ fn file_group(file: &FileFacts, tier: Tier, sites: Vec<RefSite>) -> RefGroup {
 fn line_tiers(
     file: &FileFacts,
     names: &BTreeSet<&str>,
-    resolver: &Resolver<'_>,
+    resolver: &Resolver<'_, '_>,
     target_ids: &BTreeSet<String>,
 ) -> BTreeMap<u32, Tier> {
     let mut bound = resolver.resolved_sites(file, Some(names)).peekable();
@@ -118,7 +135,7 @@ fn site_tier(
     reference: &Ref,
     path: &str,
     resolution: Option<Resolution<'_>>,
-    resolver: &Resolver<'_>,
+    resolver: &Resolver<'_, '_>,
     target_ids: &BTreeSet<String>,
 ) -> Tier {
     let named = matches!(reference.role, Role::Import | Role::ModuleQualifier);

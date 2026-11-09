@@ -6,6 +6,7 @@ use std::rc::Rc;
 use checks::{CloneIndex, Outcome, Pair, Side};
 
 use crate::callees::callee_tree;
+use crate::reuse::{self, ReuseSource};
 use crate::tree_scan::TreeScan;
 use crate::{Error, dodges, parallel};
 
@@ -26,6 +27,7 @@ pub(crate) struct RunInputs<'r, 'i> {
     pub(crate) index: &'r mut IndexOf<'i>,
     pub(crate) reported: &'r Reported,
     pub(crate) tree: Option<&'r mut TreeOf<'i>>,
+    pub(crate) reuse: &'r mut ReuseSource<'i>,
 }
 
 // A check's run on the pairs it keeps. `None` is a run that gives no outcome at all.
@@ -82,6 +84,21 @@ pub(crate) fn cycle_dodge(
         return Ok(None);
     }
     Ok(Some(dodges::cycle_dodge(scanned(inputs)?, pairs)?))
+}
+
+// The --since form gives the tree scan, which resolves the references between a row's functions.
+pub(crate) fn reuse_candidates(
+    pairs: &[&Pair],
+    inputs: &mut RunInputs<'_, '_>,
+) -> Result<Option<Outcome>, Error> {
+    if pairs.is_empty() {
+        return Ok(None);
+    }
+    let scan = match inputs.tree.as_mut() {
+        Some(tree) => Some(tree()?),
+        None => None,
+    };
+    Ok(Some(reuse::reuse_candidates(pairs, inputs.reuse, scan)?))
 }
 
 // The selection refuses a tree check in every form that has no tree, so the tree is there.

@@ -1,4 +1,26 @@
 pub mod graph
+pub enum graph::Rebuild
+pub graph::Rebuild::Affected
+pub graph::Rebuild::Manifest
+pub graph::Rebuild::Paths
+pub graph::Rebuild::RustModules
+pub graph::Rebuild::Unbuilt
+impl core::clone::Clone for graph::Rebuild
+pub fn graph::Rebuild::clone(&self) -> Self
+impl core::cmp::Eq for graph::Rebuild
+impl core::cmp::PartialEq for graph::Rebuild
+pub fn graph::Rebuild::eq(&self, &Self) -> bool
+impl core::fmt::Debug for graph::Rebuild
+pub fn graph::Rebuild::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for graph::Rebuild
+impl core::marker::StructuralPartialEq for graph::Rebuild
+impl core::marker::Freeze for graph::Rebuild
+impl core::marker::Send for graph::Rebuild
+impl core::marker::Sync for graph::Rebuild
+impl core::marker::Unpin for graph::Rebuild
+impl core::marker::UnsafeUnpin for graph::Rebuild
+impl core::panic::unwind_safe::RefUnwindSafe for graph::Rebuild
+impl core::panic::unwind_safe::UnwindSafe for graph::Rebuild
 pub enum graph::Relation
 pub graph::Relation::Imports
 pub graph::Relation::Inherits
@@ -105,6 +127,17 @@ impl core::marker::Unpin for graph::Tier
 impl core::marker::UnsafeUnpin for graph::Tier
 impl core::panic::unwind_safe::RefUnwindSafe for graph::Tier
 impl core::panic::unwind_safe::UnwindSafe for graph::Tier
+pub struct graph::Aliases<'a>
+impl<'a> graph::Aliases<'a>
+pub fn graph::Aliases<'a>::build(&graph::Resolver<'_, 'a>) -> graph::Aliases<'a>
+pub fn graph::Aliases<'a>::reaching(&self, &alloc::collections::btree::set::BTreeSet<alloc::string::String>) -> alloc::vec::Vec<(&'a str, &'a str)>
+impl<'a> core::marker::Freeze for graph::Aliases<'a>
+impl<'a> core::marker::Send for graph::Aliases<'a>
+impl<'a> core::marker::Sync for graph::Aliases<'a>
+impl<'a> core::marker::Unpin for graph::Aliases<'a>
+impl<'a> core::marker::UnsafeUnpin for graph::Aliases<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::Aliases<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for graph::Aliases<'a>
 pub struct graph::AmbiguousDegrees
 pub graph::AmbiguousDegrees::arriving: alloc::collections::btree::map::BTreeMap<alloc::string::String, u64>
 pub graph::AmbiguousDegrees::leaving: alloc::collections::btree::map::BTreeMap<alloc::string::String, u64>
@@ -150,6 +183,14 @@ impl<'a> core::marker::Unpin for graph::AmbiguousReference<'a>
 impl<'a> core::marker::UnsafeUnpin for graph::AmbiguousReference<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::AmbiguousReference<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::AmbiguousReference<'a>
+pub struct graph::Answers
+impl core::marker::Freeze for graph::Answers
+impl core::marker::Send for graph::Answers
+impl core::marker::Sync for graph::Answers
+impl core::marker::Unpin for graph::Answers
+impl core::marker::UnsafeUnpin for graph::Answers
+impl core::panic::unwind_safe::RefUnwindSafe for graph::Answers
+impl core::panic::unwind_safe::UnwindSafe for graph::Answers
 pub struct graph::Community<'a>
 pub graph::Community::internal_weight: f64
 pub graph::Community::label: alloc::string::String
@@ -337,10 +378,14 @@ pub fn graph::ImportScope<'a>::resolved_edges<'s>(&'s self, &'s str) -> impl cor
 pub fn graph::ImportScope<'a>::resolved_statements<'s>(&'s self, &'s str) -> impl core::iter::traits::iterator::Iterator<Item = (usize, &'s str, &'a str)> + 's
 impl<'a> core::clone::Clone for graph::ImportScope<'a>
 pub fn graph::ImportScope<'a>::clone(&self) -> Self
+impl<'a> core::cmp::Eq for graph::ImportScope<'a>
+impl<'a> core::cmp::PartialEq for graph::ImportScope<'a>
+pub fn graph::ImportScope<'a>::eq(&self, &Self) -> bool
 impl<'a> core::default::Default for graph::ImportScope<'a>
 pub fn graph::ImportScope<'a>::default() -> Self
 impl<'a> core::fmt::Debug for graph::ImportScope<'a>
 pub fn graph::ImportScope<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::StructuralPartialEq for graph::ImportScope<'a>
 impl<'a> core::marker::Freeze for graph::ImportScope<'a>
 impl<'a> core::marker::Send for graph::ImportScope<'a>
 impl<'a> core::marker::Sync for graph::ImportScope<'a>
@@ -361,6 +406,21 @@ impl<'a> core::marker::Unpin for graph::ImportTargets<'a>
 impl<'a> core::marker::UnsafeUnpin for graph::ImportTargets<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::ImportTargets<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::ImportTargets<'a>
+pub struct graph::KeptParts<'p, 's>
+pub graph::KeptParts::aliases: core::option::Option<&'p mut graph::Aliases<'s>>
+pub graph::KeptParts::cycles: core::option::Option<&'p mut alloc::vec::Vec<graph::Cycle<'s>>>
+pub graph::KeptParts::degrees: core::option::Option<&'p mut graph::AmbiguousDegrees>
+pub graph::KeptParts::graph: core::option::Option<&'p mut graph::SymbolGraph<'s>>
+pub graph::KeptParts::imports: core::option::Option<&'p mut graph::SymbolGraph<'s>>
+pub graph::KeptParts::index: core::option::Option<&'p mut graph::NameIndex<'s>>
+pub graph::KeptParts::scopes: core::option::Option<&'p mut graph::Scopes<'s>>
+impl<'p, 's> core::marker::Freeze for graph::KeptParts<'p, 's>
+impl<'p, 's> core::marker::Send for graph::KeptParts<'p, 's>
+impl<'p, 's> core::marker::Sync for graph::KeptParts<'p, 's>
+impl<'p, 's> core::marker::Unpin for graph::KeptParts<'p, 's>
+impl<'p, 's> core::marker::UnsafeUnpin for graph::KeptParts<'p, 's>
+impl<'p, 's> core::panic::unwind_safe::RefUnwindSafe for graph::KeptParts<'p, 's>
+impl<'p, 's> !core::panic::unwind_safe::UnwindSafe for graph::KeptParts<'p, 's>
 pub struct graph::LineOwners<'a>
 impl<'a> graph::LineOwners<'a>
 pub fn graph::LineOwners<'a>::build(&'a [facts::values::Symbol]) -> graph::LineOwners<'a>
@@ -393,11 +453,11 @@ impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::Lookup<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::Lookup<'a>
 pub struct graph::NameIndex<'a>
 impl<'a> graph::NameIndex<'a>
-pub fn graph::NameIndex<'a>::build(&'a [graph::FileFacts]) -> graph::NameIndex<'a>
+pub fn graph::NameIndex<'a>::build(&'a [&'a graph::FileFacts]) -> graph::NameIndex<'a>
 pub fn graph::NameIndex<'a>::caller_spread(&self, &str) -> u32
 pub fn graph::NameIndex<'a>::defining_paths(&self, &str) -> &[&'a str]
 pub fn graph::NameIndex<'a>::definitions(&self, &str) -> &[graph::Definition<'a>]
-pub fn graph::NameIndex<'a>::files(&self) -> &'a [graph::FileFacts]
+pub fn graph::NameIndex<'a>::files(&self) -> &'a [&'a graph::FileFacts]
 pub fn graph::NameIndex<'a>::sites(&self, &str) -> &[graph::Site<'a>]
 pub fn graph::NameIndex<'a>::spelling_spread(&self, &str) -> u32
 impl<'a> core::marker::Freeze for graph::NameIndex<'a>
@@ -516,31 +576,51 @@ impl<'a> core::marker::Unpin for graph::Resolution<'a>
 impl<'a> core::marker::UnsafeUnpin for graph::Resolution<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::Resolution<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::Resolution<'a>
-pub struct graph::Resolver<'a>
-impl<'a> graph::Resolver<'a>
-pub fn graph::Resolver<'a>::index(&self) -> &'a graph::NameIndex<'a>
-pub fn graph::Resolver<'a>::names_outside(&self, &facts::values::Ref, &str) -> bool
-pub fn graph::Resolver<'a>::new(&'a graph::NameIndex<'a>, &'a graph::Scopes<'a>) -> graph::Resolver<'a>
-pub fn graph::Resolver<'a>::resolve(&self, &str, &str) -> core::option::Option<graph::Resolution<'a>>
-pub fn graph::Resolver<'a>::resolved_sites<'r>(&'r self, &'a graph::FileFacts, core::option::Option<&'r alloc::collections::btree::set::BTreeSet<&str>>) -> impl core::iter::traits::iterator::Iterator<Item = (&'a facts::values::Ref, graph::Resolution<'a>)> + 'r
-pub fn graph::Resolver<'a>::scopes(&self) -> &'a graph::Scopes<'a>
-pub fn graph::Resolver<'a>::through_imports(&self, &str, &str) -> alloc::vec::Vec<graph::Definition<'a>>
-impl<'a> core::marker::Freeze for graph::Resolver<'a>
-impl<'a> core::marker::Send for graph::Resolver<'a>
-impl<'a> core::marker::Sync for graph::Resolver<'a>
-impl<'a> core::marker::Unpin for graph::Resolver<'a>
-impl<'a> core::marker::UnsafeUnpin for graph::Resolver<'a>
-impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::Resolver<'a>
-impl<'a> core::panic::unwind_safe::UnwindSafe for graph::Resolver<'a>
+pub struct graph::Resolved
+pub graph::Resolved::files: usize
+pub graph::Resolved::sites: usize
+impl core::clone::Clone for graph::Resolved
+pub fn graph::Resolved::clone(&self) -> Self
+impl core::cmp::Eq for graph::Resolved
+impl core::cmp::PartialEq for graph::Resolved
+pub fn graph::Resolved::eq(&self, &Self) -> bool
+impl core::default::Default for graph::Resolved
+pub fn graph::Resolved::default() -> Self
+impl core::fmt::Debug for graph::Resolved
+pub fn graph::Resolved::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for graph::Resolved
+impl core::marker::StructuralPartialEq for graph::Resolved
+impl core::marker::Freeze for graph::Resolved
+impl core::marker::Send for graph::Resolved
+impl core::marker::Sync for graph::Resolved
+impl core::marker::Unpin for graph::Resolved
+impl core::marker::UnsafeUnpin for graph::Resolved
+impl core::panic::unwind_safe::RefUnwindSafe for graph::Resolved
+impl core::panic::unwind_safe::UnwindSafe for graph::Resolved
+pub struct graph::Resolver<'r, 'a>
+impl<'r, 'a> graph::Resolver<'r, 'a>
+pub fn graph::Resolver<'r, 'a>::index(&self) -> &'r graph::NameIndex<'a>
+pub fn graph::Resolver<'r, 'a>::names_outside(&self, &facts::values::Ref, &str) -> bool
+pub fn graph::Resolver<'r, 'a>::new(&'r graph::NameIndex<'a>, &'r graph::Scopes<'a>) -> graph::Resolver<'r, 'a>
+pub fn graph::Resolver<'r, 'a>::resolve(&self, &str, &str) -> core::option::Option<graph::Resolution<'a>>
+pub fn graph::Resolver<'r, 'a>::resolved_sites<'s>(&'s self, &'a graph::FileFacts, core::option::Option<&'s alloc::collections::btree::set::BTreeSet<&str>>) -> impl core::iter::traits::iterator::Iterator<Item = (&'a facts::values::Ref, graph::Resolution<'a>)> + 's
+pub fn graph::Resolver<'r, 'a>::scopes(&self) -> &'r graph::Scopes<'a>
+pub fn graph::Resolver<'r, 'a>::take_answers(&self) -> graph::Answers
+pub fn graph::Resolver<'r, 'a>::through_imports(&self, &str, &str) -> alloc::vec::Vec<graph::Definition<'a>>
+impl<'r, 'a> !core::marker::Freeze for graph::Resolver<'r, 'a>
+impl<'r, 'a> core::marker::Send for graph::Resolver<'r, 'a>
+impl<'r, 'a> core::marker::Sync for graph::Resolver<'r, 'a>
+impl<'r, 'a> core::marker::Unpin for graph::Resolver<'r, 'a>
+impl<'r, 'a> core::marker::UnsafeUnpin for graph::Resolver<'r, 'a>
+impl<'r, 'a> core::panic::unwind_safe::RefUnwindSafe for graph::Resolver<'r, 'a>
+impl<'r, 'a> core::panic::unwind_safe::UnwindSafe for graph::Resolver<'r, 'a>
 pub struct graph::Scopes<'a>
 impl<'a> graph::Scopes<'a>
-pub fn graph::Scopes<'a>::build(&'a [graph::FileFacts]) -> graph::Scopes<'a>
-pub fn graph::Scopes<'a>::files(&self) -> &'a [graph::FileFacts]
+pub fn graph::Scopes<'a>::build(&'a [&'a graph::FileFacts]) -> graph::Scopes<'a>
+pub fn graph::Scopes<'a>::files(&self) -> &'a [&'a graph::FileFacts]
 pub fn graph::Scopes<'a>::get(&self, &str) -> core::option::Option<&graph::ImportScope<'a>>
 pub fn graph::Scopes<'a>::import_pairs(&self) -> alloc::collections::btree::set::BTreeSet<(&'a str, &'a str)>
 pub fn graph::Scopes<'a>::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&'a str, &graph::ImportScope<'a>)> + '_
-impl<'a> core::clone::Clone for graph::Scopes<'a>
-pub fn graph::Scopes<'a>::clone(&self) -> Self
 impl<'a> core::fmt::Debug for graph::Scopes<'a>
 pub fn graph::Scopes<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<'a> core::marker::Freeze for graph::Scopes<'a>
@@ -595,7 +675,7 @@ impl<'a> core::panic::unwind_safe::UnwindSafe for graph::SymbolEdge<'a>
 pub struct graph::SymbolGraph<'a>
 impl<'a> graph::SymbolGraph<'a>
 pub fn graph::SymbolGraph<'a>::ambiguous(&self) -> &[graph::AmbiguousReference<'a>]
-pub fn graph::SymbolGraph<'a>::build(&graph::Resolver<'a>, core::option::Option<&kernel::deadline::Deadline>) -> core::result::Result<graph::SymbolGraph<'a>, kernel::deadline::Stopped>
+pub fn graph::SymbolGraph<'a>::build(&graph::Resolver<'_, 'a>, core::option::Option<&kernel::deadline::Deadline>) -> core::result::Result<graph::SymbolGraph<'a>, kernel::deadline::Stopped>
 pub fn graph::SymbolGraph<'a>::definitions(&self) -> &alloc::collections::btree::map::BTreeMap<alloc::string::String, graph::Definition<'a>>
 pub fn graph::SymbolGraph<'a>::edges(&self) -> &[graph::SymbolEdge<'a>]
 pub fn graph::SymbolGraph<'a>::files(&self) -> &[&'a str]
@@ -647,7 +727,7 @@ pub fn graph::enclosing_symbol(&[facts::values::Symbol], u32) -> core::option::O
 pub fn graph::flood_backward<'a, 's>(&graph::FileGraph<'a>, impl core::iter::traits::collect::IntoIterator<Item = &'s str>, u32) -> graph::Flood<'a>
 pub fn graph::holds_file(&graph::NameIndex<'_>, &str) -> bool
 pub fn graph::import_chain<'g, 'a>(&'g graph::SymbolGraph<'a>, &str, &str, impl core::ops::function::Fn(&'a str, u32) -> bool) -> core::option::Option<alloc::vec::Vec<&'g graph::SymbolEdge<'a>>>
-pub fn graph::import_cycles<'a>(&graph::SymbolGraph<'a>) -> alloc::vec::Vec<graph::Cycle<'a>>
+pub fn graph::import_cycles<'a>(&graph::SymbolGraph<'a>, &graph::Scopes<'a>) -> alloc::vec::Vec<graph::Cycle<'a>>
 pub fn graph::in_name_graph(&graph::FileFacts) -> bool
 pub fn graph::is_package_entry(&str) -> bool
 pub fn graph::joins_name_graph(syntax::language::Language) -> bool
@@ -662,3 +742,4 @@ pub fn graph::rank_order<'a>(&graph::PageRank<'a>, impl core::ops::function::Fn(
 pub fn graph::references_to<'a>(&graph::NameIndex<'a>, &graph::Definition<'a>) -> alloc::vec::Vec<graph::Site<'a>>
 pub fn graph::resolve_definitions<'a>(&graph::NameIndex<'a>, &str) -> graph::Lookup<'a>
 pub fn graph::shortest_path<'a>(&graph::SymbolGraph<'a>, &str, &str, graph::PathPolicy, graph::PathBounds<'_>) -> core::result::Result<graph::PathResult<'a>, kernel::deadline::Stopped>
+pub fn graph::update<'s>(graph::KeptParts<'_, 's>, &'s [&'s graph::FileFacts], &'s [&'s graph::FileFacts], usize) -> core::result::Result<graph::Resolved, graph::Rebuild>

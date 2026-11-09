@@ -1,0 +1,5 @@
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+pricing.py  python  81 lines  ids: py:pricing.py::<QualifiedName>
+declares: 12 (5 methods, 4 constants, 1 class, 1 enum, 1 function)
+  BASE_MARKUP @6, CURRENCY @7, CENTS @8, class Tier @11, DISCOUNTS @19, class PriceBook @26, def PriceBook.__init__ @29, def PriceBook.cost_of @38
+  def PriceBook.quote @46, def PriceBook.price_list @58, def PriceBook.cheapest @65, def format_money @78

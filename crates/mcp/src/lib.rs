@@ -1,5 +1,6 @@
-//! The MCP server: the v2 tool list, the argument validation, the call dispatch, the repository
-//! allowlist, the stdio and HTTP transports, the background index, and the restart on upgrade.
+//! The MCP server: the tool list, the argument validation, the call dispatch, the repository
+//! allowlist, the hook note, the stdio and HTTP transports, the background index, and the restart
+//! on upgrade.
 
 mod answer;
 mod arguments;
@@ -7,11 +8,11 @@ mod autoindex;
 mod dispatch;
 mod drain;
 mod failure;
+mod hooks;
 mod http;
 mod listing;
 mod log;
 mod offload;
-mod operation;
 mod refusal;
 mod restart;
 mod roots;
@@ -23,6 +24,7 @@ mod stdio;
 mod tests;
 mod validate;
 
+pub use hooks::HookCheck;
 pub use restart::Relaunch;
 pub use roots::{RootsFile, RootsFileError};
 pub use serve::{Ended, Start, Transport, serve};

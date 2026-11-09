@@ -1,0 +1,11 @@
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+no symbol in pricing.py spans line 2; this is the file card.
+pricing.py  python  81 lines  ids: py:pricing.py::<QualifiedName>
+declares: 12 (5 methods, 4 constants, 1 class, 1 enum, 1 function); 4 constants hidden  (more=declares)
+  class Tier @11, class PriceBook @26, def PriceBook.__init__ @29, def PriceBook.cost_of @38, def PriceBook.quote @46, def PriceBook.price_list @58, def PriceBook.cheapest @65, def format_money @78
+imports: none
+importers: 1
+  reports.py @6
+tests: none
+cycles: none
+last change: f5f25218 2026-02-01 fixture

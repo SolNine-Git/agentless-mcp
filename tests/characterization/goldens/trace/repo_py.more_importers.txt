@@ -1,0 +1,4 @@
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+pricing.py  python  81 lines  ids: py:pricing.py::<QualifiedName>
+importers: 1
+  reports.py @6

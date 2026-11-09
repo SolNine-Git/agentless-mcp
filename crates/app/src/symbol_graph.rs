@@ -1,10 +1,20 @@
 //! The resolved symbol graph that explain, path and health read: its build over one scan, the
-//! order of its evidence tiers, and the verbs of its relations.
+//! graph that one call reads and that a server keeps between calls, the order of its evidence
+//! tiers, and the verbs of its relations.
+
+mod call;
+mod retention;
+mod store;
 
 use graph::{FileFacts, NameIndex, Relation, Resolver, Scopes, SymbolGraph, Tier};
 use kernel::Deadline;
 
 use crate::Error;
+
+pub use call::{Builds, KeptGraphs};
+pub(crate) use call::{
+    CallGraph, CallScan, Keeping, State, over_call_scan, over_walked_scan, with_call_graph,
+};
 
 // Builds the name index and the resolved symbol graph of one scan, and gives both to `answer`.
 pub(crate) fn with_resolved<T>(
@@ -12,8 +22,9 @@ pub(crate) fn with_resolved<T>(
     deadline: Option<&Deadline>,
     answer: impl FnOnce(&NameIndex<'_>, &SymbolGraph<'_>) -> Result<T, Error>,
 ) -> Result<T, Error> {
-    let index = NameIndex::build(files);
-    let scopes = Scopes::build(files);
+    let files: Vec<&FileFacts> = files.iter().collect();
+    let index = NameIndex::build(&files);
+    let scopes = Scopes::build(&files);
     let resolver = Resolver::new(&index, &scopes);
     let graph = SymbolGraph::build(&resolver, deadline)?;
     answer(&index, &graph)

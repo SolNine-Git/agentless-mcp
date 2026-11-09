@@ -538,7 +538,7 @@ R
 fails "9b allow of a forbidden lint" "allow(clippy::dbg_macro) incompatible with previous forbid" \
     cargo clippy -p kernel --all-targets -- -D warnings
 violate
-printf '\n[dependencies.rusqlite]\nversion = "=0.40.2"\ndefault-features = false\nfeatures = ["bundled", "cache"]\n' \
+printf '\n[dependencies.rusqlite]\nversion = "=0.41.1"\ndefault-features = false\nfeatures = ["bundled", "cache"]\n' \
     >>crates/kernel/Cargo.toml
 printf '\n/// Open a database.\npub fn open() {\n    let _ = rusqlite::Connection::open_with_flags("x", rusqlite::OpenFlags::default());\n}\n' \
     >>crates/kernel/src/lib.rs

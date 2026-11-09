@@ -4,6 +4,7 @@ use facts::StableId;
 use serde_json::{Value, json};
 
 use super::corpus::{Corpus, ids};
+use crate::FileFacts;
 use crate::lookup::{Target, TargetForm, lookup_target, parse_target, path_end, path_name_id};
 use crate::names::NameIndex;
 
@@ -101,6 +102,7 @@ fn the_last_name_of_each_form_is_the_name_its_definitions_carry() {
 fn each_form_keeps_its_own_scope() {
     let corpus = Corpus::load("repo_py");
     let files = corpus.files();
+    let files: Vec<&FileFacts> = files.iter().collect();
     let index = NameIndex::build(&files);
     let looked = |text: &str| {
         let found = lookup_target(&index, &parse_target(text));

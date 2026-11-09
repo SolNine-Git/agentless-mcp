@@ -1,0 +1,1968 @@
+[
+ {
+  "function": {
+   "path": "sympy/printing/aesaracode.py",
+   "language": "python",
+   "qualname": "AesaraPrinter._print_MatPow",
+   "line": 190,
+   "end": 199,
+   "name_line": 190,
+   "protocol": false,
+   "test": false,
+   "names": 6,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`AesaraPrinter._print_MatMul` at sympy/printing/aesaracode.py:183 calls and reads 2 of the same names as `AesaraPrinter._print_MatPow`: `_print`, `dot`. Read `AesaraPrinter._print_MatMul` before you keep a second copy.",
+    "path": "sympy/printing/aesaracode.py",
+    "line": 190,
+    "location": "sympy/printing/aesaracode.py:190",
+    "evidence": "score 0.390",
+    "detail": {
+     "unit": "AesaraPrinter._print_MatPow",
+     "other": "AesaraPrinter._print_MatMul",
+     "other_path": "sympy/printing/aesaracode.py",
+     "other_line": 183,
+     "score": "0.390",
+     "shared": [
+      "_print",
+      "dot"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`TheanoPrinter._print_MatPow` at sympy/printing/theanocode.py:196 calls and reads 3 of the same names as `AesaraPrinter._print_MatPow`: `NotImplementedError`, `_print`, `dot`. Read `TheanoPrinter._print_MatPow` before you keep a second copy.",
+    "path": "sympy/printing/aesaracode.py",
+    "line": 190,
+    "location": "sympy/printing/aesaracode.py:190",
+    "evidence": "score 0.454",
+    "detail": {
+     "unit": "AesaraPrinter._print_MatPow",
+     "other": "TheanoPrinter._print_MatPow",
+     "other_path": "sympy/printing/theanocode.py",
+     "other_line": 196,
+     "score": "0.454",
+     "shared": [
+      "NotImplementedError",
+      "_print",
+      "dot"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/physics/vector/frame.py",
+   "language": "python",
+   "qualname": "ReferenceFrame.orient_axis",
+   "line": 594,
+   "end": 681,
+   "name_line": 594,
+   "protocol": false,
+   "test": false,
+   "names": 23,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`ReferenceFrame.orient_body_fixed` at sympy/physics/vector/frame.py:822 calls and reads 11 of the same names as `ReferenceFrame.orient_axis`: `T`, `_ang_vel_dict`, `_check_frame`, `_dcm`, `_t`, `_var_dict`, `diff`, `functions`, `physics`, `update`, `vector`. Read `ReferenceFrame.orient_body_fixed` before you keep a second copy.",
+    "path": "sympy/physics/vector/frame.py",
+    "line": 594,
+    "location": "sympy/physics/vector/frame.py:594",
+    "evidence": "score 0.407",
+    "detail": {
+     "unit": "ReferenceFrame.orient_axis",
+     "other": "ReferenceFrame.orient_body_fixed",
+     "other_path": "sympy/physics/vector/frame.py",
+     "other_line": 822,
+     "score": "0.407",
+     "shared": [
+      "T",
+      "_ang_vel_dict",
+      "_check_frame",
+      "_dcm",
+      "_t",
+      "_var_dict",
+      "diff",
+      "functions",
+      "physics",
+      "update",
+      "vector"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`ReferenceFrame.orient_quaternion` at sympy/physics/vector/frame.py:1020 calls and reads 12 of the same names as `ReferenceFrame.orient_axis`: `Matrix`, `_ang_vel_dict`, `_check_frame`, `_dcm`, `_t`, `_var_dict`, `diff`, `functions`, `physics`, `sympify`, `update`, `vector`. Read `ReferenceFrame.orient_quaternion` before you keep a second copy.",
+    "path": "sympy/physics/vector/frame.py",
+    "line": 594,
+    "location": "sympy/physics/vector/frame.py:594",
+    "evidence": "score 0.469",
+    "detail": {
+     "unit": "ReferenceFrame.orient_axis",
+     "other": "ReferenceFrame.orient_quaternion",
+     "other_path": "sympy/physics/vector/frame.py",
+     "other_line": 1020,
+     "score": "0.469",
+     "shared": [
+      "Matrix",
+      "_ang_vel_dict",
+      "_check_frame",
+      "_dcm",
+      "_t",
+      "_var_dict",
+      "diff",
+      "functions",
+      "physics",
+      "sympify",
+      "update",
+      "vector"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/sets/sets.py",
+   "language": "python",
+   "qualname": "Interval.is_right_unbounded",
+   "line": 1250,
+   "end": 1253,
+   "name_line": 1251,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/functions/combinatorial/numbers.py",
+   "language": "python",
+   "qualname": "motzkin.eval",
+   "line": 2436,
+   "end": 2444,
+   "name_line": 2437,
+   "protocol": false,
+   "test": false,
+   "names": 4,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/polys/compatibility.py",
+   "language": "python",
+   "qualname": "IPolys.dup_lshift",
+   "line": 305,
+   "end": 306,
+   "name_line": 305,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`IPolys.dup_add_term` at sympy/polys/compatibility.py:271 calls and reads 3 of the same names as `IPolys.dup_lshift`: `domain`, `from_dense`, `to_dense`. Read `IPolys.dup_add_term` before you keep a second copy.",
+    "path": "sympy/polys/compatibility.py",
+    "line": 305,
+    "location": "sympy/polys/compatibility.py:305",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "IPolys.dup_lshift",
+     "other": "IPolys.dup_add_term",
+     "other_path": "sympy/polys/compatibility.py",
+     "other_line": 271,
+     "score": "1.000",
+     "shared": [
+      "domain",
+      "from_dense",
+      "to_dense"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`IPolys.dup_sub_term` at sympy/polys/compatibility.py:275 calls and reads 3 of the same names as `IPolys.dup_lshift`: `domain`, `from_dense`, `to_dense`. Read `IPolys.dup_sub_term` before you keep a second copy.",
+    "path": "sympy/polys/compatibility.py",
+    "line": 305,
+    "location": "sympy/polys/compatibility.py:305",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "IPolys.dup_lshift",
+     "other": "IPolys.dup_sub_term",
+     "other_path": "sympy/polys/compatibility.py",
+     "other_line": 275,
+     "score": "1.000",
+     "shared": [
+      "domain",
+      "from_dense",
+      "to_dense"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/parsing/latex/_parse_latex_antlr.py",
+   "language": "python",
+   "qualname": "convert_postfix_list",
+   "line": 174,
+   "end": 204,
+   "name_line": 174,
+   "protocol": false,
+   "test": false,
+   "names": 10,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/physics/mechanics/kane.py",
+   "language": "python",
+   "qualname": "KanesMethod._form_eoms",
+   "line": 623,
+   "end": 625,
+   "name_line": 623,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/plotting/pygletplot/plot_controller.py",
+   "language": "python",
+   "qualname": "PlotController.update",
+   "line": 103,
+   "end": 174,
+   "name_line": 103,
+   "protocol": false,
+   "test": false,
+   "names": 17,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/polys/compatibility.py",
+   "language": "python",
+   "qualname": "IPolys.gf_add",
+   "line": 1012,
+   "end": 1013,
+   "name_line": 1012,
+   "protocol": false,
+   "test": false,
+   "names": 5,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`IPolys.gf_add_ground` at sympy/polys/compatibility.py:1003 calls and reads 5 of the same names as `IPolys.gf_add`: `dom`, `domain`, `from_gf_dense`, `mod`, `to_gf_dense`. Read `IPolys.gf_add_ground` before you keep a second copy.",
+    "path": "sympy/polys/compatibility.py",
+    "line": 1012,
+    "location": "sympy/polys/compatibility.py:1012",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "IPolys.gf_add",
+     "other": "IPolys.gf_add_ground",
+     "other_path": "sympy/polys/compatibility.py",
+     "other_line": 1003,
+     "score": "1.000",
+     "shared": [
+      "dom",
+      "domain",
+      "from_gf_dense",
+      "mod",
+      "to_gf_dense"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`IPolys.gf_neg` at sympy/polys/compatibility.py:1000 calls and reads 5 of the same names as `IPolys.gf_add`: `dom`, `domain`, `from_gf_dense`, `mod`, `to_gf_dense`. Read `IPolys.gf_neg` before you keep a second copy.",
+    "path": "sympy/polys/compatibility.py",
+    "line": 1012,
+    "location": "sympy/polys/compatibility.py:1012",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "IPolys.gf_add",
+     "other": "IPolys.gf_neg",
+     "other_path": "sympy/polys/compatibility.py",
+     "other_line": 1000,
+     "score": "1.000",
+     "shared": [
+      "dom",
+      "domain",
+      "from_gf_dense",
+      "mod",
+      "to_gf_dense"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/ntheory/residue_ntheory.py",
+   "language": "python",
+   "qualname": "primitive_root",
+   "line": 91,
+   "end": 154,
+   "name_line": 91,
+   "protocol": false,
+   "test": false,
+   "names": 11,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/combinatorics/coset_table.py",
+   "language": "python",
+   "qualname": "CosetTable.switch",
+   "line": 729,
+   "end": 751,
+   "name_line": 729,
+   "protocol": false,
+   "test": false,
+   "names": 6,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`CosetTable.coset_representative` at sympy/combinatorics/coset_table.py:842 calls and reads 3 of the same names as `CosetTable.switch`: `A`, `A_dict`, `table`. Read `CosetTable.coset_representative` before you keep a second copy.",
+    "path": "sympy/combinatorics/coset_table.py",
+    "line": 729,
+    "location": "sympy/combinatorics/coset_table.py:729",
+    "evidence": "score 0.449",
+    "detail": {
+     "unit": "CosetTable.switch",
+     "other": "CosetTable.coset_representative",
+     "other_path": "sympy/combinatorics/coset_table.py",
+     "other_line": 842,
+     "score": "0.449",
+     "shared": [
+      "A",
+      "A_dict",
+      "table"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`first_in_class` at sympy/combinatorics/fp_groups.py:828 calls and reads 3 of the same names as `CosetTable.switch`: `A`, `A_dict`, `table`. Read `first_in_class` before you keep a second copy.",
+    "path": "sympy/combinatorics/coset_table.py",
+    "line": 729,
+    "location": "sympy/combinatorics/coset_table.py:729",
+    "evidence": "score 0.515",
+    "detail": {
+     "unit": "CosetTable.switch",
+     "other": "first_in_class",
+     "other_path": "sympy/combinatorics/fp_groups.py",
+     "other_line": 828,
+     "score": "0.515",
+     "shared": [
+      "A",
+      "A_dict",
+      "table"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/printing/str.py",
+   "language": "python",
+   "qualname": "StrPrinter._print_ExprCondPair",
+   "line": 157,
+   "end": 158,
+   "name_line": 157,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`LatexPrinter._print_Piecewise` at sympy/printing/latex.py:1671 calls and reads 3 of the same names as `StrPrinter._print_ExprCondPair`: `_print`, `cond`, `expr`. Read `LatexPrinter._print_Piecewise` before you keep a second copy.",
+    "path": "sympy/printing/str.py",
+    "line": 157,
+    "location": "sympy/printing/str.py:157",
+    "evidence": "score 0.600",
+    "detail": {
+     "unit": "StrPrinter._print_ExprCondPair",
+     "other": "LatexPrinter._print_Piecewise",
+     "other_path": "sympy/printing/latex.py",
+     "other_line": 1671,
+     "score": "0.600",
+     "shared": [
+      "_print",
+      "cond",
+      "expr"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`RCodePrinter._print_Piecewise` at sympy/printing/rcode.py:219 calls and reads 3 of the same names as `StrPrinter._print_ExprCondPair`: `_print`, `cond`, `expr`. Read `RCodePrinter._print_Piecewise` before you keep a second copy.",
+    "path": "sympy/printing/str.py",
+    "line": 157,
+    "location": "sympy/printing/str.py:157",
+    "evidence": "score 0.656",
+    "detail": {
+     "unit": "StrPrinter._print_ExprCondPair",
+     "other": "RCodePrinter._print_Piecewise",
+     "other_path": "sympy/printing/rcode.py",
+     "other_line": 219,
+     "score": "0.656",
+     "shared": [
+      "_print",
+      "cond",
+      "expr"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/tensor/tensor.py",
+   "language": "python",
+   "qualname": "_TensorDataLazyEvaluator.inverse_matrix",
+   "line": 706,
+   "end": 709,
+   "name_line": 707,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`_TensorDataLazyEvaluator.inverse_transpose_matrix` at sympy/tensor/tensor.py:711 calls and reads 3 of the same names as `_TensorDataLazyEvaluator.inverse_matrix`: `inv`, `parse_data`, `tomatrix`. Read `_TensorDataLazyEvaluator.inverse_transpose_matrix` before you keep a second copy.",
+    "path": "sympy/tensor/tensor.py",
+    "line": 707,
+    "location": "sympy/tensor/tensor.py:707",
+    "evidence": "score 0.805",
+    "detail": {
+     "unit": "_TensorDataLazyEvaluator.inverse_matrix",
+     "other": "_TensorDataLazyEvaluator.inverse_transpose_matrix",
+     "other_path": "sympy/tensor/tensor.py",
+     "other_line": 711,
+     "score": "0.805",
+     "shared": [
+      "inv",
+      "parse_data",
+      "tomatrix"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/polys/polyclasses.py",
+   "language": "python",
+   "qualname": "DMP.cancel",
+   "line": 696,
+   "end": 710,
+   "name_line": 696,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`ANP.sub` at sympy/polys/polyclasses.py:1644 calls and reads 2 of the same names as `DMP.cancel`: `per`, `unify`. Read `ANP.sub` before you keep a second copy.",
+    "path": "sympy/polys/polyclasses.py",
+    "line": 696,
+    "location": "sympy/polys/polyclasses.py:696",
+    "evidence": "score 0.427",
+    "detail": {
+     "unit": "DMP.cancel",
+     "other": "ANP.sub",
+     "other_path": "sympy/polys/polyclasses.py",
+     "other_line": 1644,
+     "score": "0.427",
+     "shared": [
+      "per",
+      "unify"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`DMP.mul` at sympy/polys/polyclasses.py:454 calls and reads 2 of the same names as `DMP.cancel`: `per`, `unify`. Read `DMP.mul` before you keep a second copy.",
+    "path": "sympy/polys/polyclasses.py",
+    "line": 696,
+    "location": "sympy/polys/polyclasses.py:696",
+    "evidence": "score 0.428",
+    "detail": {
+     "unit": "DMP.cancel",
+     "other": "DMP.mul",
+     "other_path": "sympy/polys/polyclasses.py",
+     "other_line": 454,
+     "score": "0.428",
+     "shared": [
+      "per",
+      "unify"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/functions/special/error_functions.py",
+   "language": "python",
+   "qualname": "fresnelc._eval_aseries",
+   "line": 2615,
+   "end": 2642,
+   "name_line": 2615,
+   "protocol": false,
+   "test": false,
+   "names": 15,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Si._eval_aseries` at sympy/functions/special/error_functions.py:1898 calls and reads 10 of the same names as `fresnelc._eval_aseries`: `Add`, `Infinity`, `NegativeOne`, `Order`, `cos`, `factorial`, `order`, `series`, `sin`, `super`. Read `Si._eval_aseries` before you keep a second copy.",
+    "path": "sympy/functions/special/error_functions.py",
+    "line": 2615,
+    "location": "sympy/functions/special/error_functions.py:2615",
+    "evidence": "score 0.636",
+    "detail": {
+     "unit": "fresnelc._eval_aseries",
+     "other": "Si._eval_aseries",
+     "other_path": "sympy/functions/special/error_functions.py",
+     "other_line": 1898,
+     "score": "0.636",
+     "shared": [
+      "Add",
+      "Infinity",
+      "NegativeOne",
+      "Order",
+      "cos",
+      "factorial",
+      "order",
+      "series",
+      "sin",
+      "super"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`fresnels._eval_aseries` at sympy/functions/special/error_functions.py:2459 calls and reads 13 of the same names as `fresnelc._eval_aseries`: `Add`, `Half`, `Infinity`, `NegativeOne`, `Order`, `cos`, `factorial`, `order`, `series`, `sin`, `sqrt`, `subs`, `super`. Read `fresnels._eval_aseries` before you keep a second copy.",
+    "path": "sympy/functions/special/error_functions.py",
+    "line": 2615,
+    "location": "sympy/functions/special/error_functions.py:2615",
+    "evidence": "score 0.847",
+    "detail": {
+     "unit": "fresnelc._eval_aseries",
+     "other": "fresnels._eval_aseries",
+     "other_path": "sympy/functions/special/error_functions.py",
+     "other_line": 2459,
+     "score": "0.847",
+     "shared": [
+      "Add",
+      "Half",
+      "Infinity",
+      "NegativeOne",
+      "Order",
+      "cos",
+      "factorial",
+      "order",
+      "series",
+      "sin",
+      "sqrt",
+      "subs",
+      "super"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/combinatorics/rewritingsystem.py",
+   "language": "python",
+   "qualname": "RewritingSystem.reduce_using_automaton",
+   "line": 421,
+   "end": 453,
+   "name_line": 421,
+   "protocol": false,
+   "test": false,
+   "names": 11,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "examples/advanced/pyglet_plotting.py",
+   "language": "python",
+   "qualname": "main.gradient_vectors",
+   "line": 141,
+   "end": 193,
+   "name_line": 142,
+   "protocol": false,
+   "test": false,
+   "names": 22,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`main.gradient_vectors.gradient_vectors_inner.draw_gradient_vectors` at examples/advanced/pyglet_plotting.py:149 calls and reads 12 of the same names as `main.gradient_vectors`: `FF`, `FG`, `diff`, `draw`, `draw_arrow`, `frange`, `glBegin`, `glColor3f`, `glEnd`, `glVertex3f`, `lambdify`, `v_steps`. Read `main.gradient_vectors.gradient_vectors_inner.draw_gradient_vectors` before you keep a second copy.",
+    "path": "examples/advanced/pyglet_plotting.py",
+    "line": 142,
+    "location": "examples/advanced/pyglet_plotting.py:142",
+    "evidence": "score 0.540",
+    "detail": {
+     "unit": "main.gradient_vectors",
+     "other": "main.gradient_vectors.gradient_vectors_inner.draw_gradient_vectors",
+     "other_path": "examples/advanced/pyglet_plotting.py",
+     "other_line": 149,
+     "score": "0.540",
+     "shared": [
+      "FF",
+      "FG",
+      "diff",
+      "draw",
+      "draw_arrow",
+      "frange",
+      "glBegin",
+      "glColor3f",
+      "glEnd",
+      "glVertex3f",
+      "lambdify",
+      "v_steps"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`main.gradient_vectors.gradient_vectors_inner` at examples/advanced/pyglet_plotting.py:143 calls and reads 19 of the same names as `main.gradient_vectors`: `FF`, `FG`, `PlotInterval`, `diff`, `draw`, `draw_arrow`, `draw_gradient_vectors`, `frange`, `gl`, `glBegin`, `glColor3f`, `glEnd`, `glVertex3f`, `intervals`, `lambdify`, `plot_interval`, `plotting`, `postdraw`, `v_steps`. Read `main.gradient_vectors.gradient_vectors_inner` before you keep a second copy.",
+    "path": "examples/advanced/pyglet_plotting.py",
+    "line": 142,
+    "location": "examples/advanced/pyglet_plotting.py:142",
+    "evidence": "score 0.868",
+    "detail": {
+     "unit": "main.gradient_vectors",
+     "other": "main.gradient_vectors.gradient_vectors_inner",
+     "other_path": "examples/advanced/pyglet_plotting.py",
+     "other_line": 143,
+     "score": "0.868",
+     "shared": [
+      "FF",
+      "FG",
+      "PlotInterval",
+      "diff",
+      "draw",
+      "draw_arrow",
+      "draw_gradient_vectors",
+      "frange",
+      "gl",
+      "glBegin",
+      "glColor3f",
+      "glEnd",
+      "glVertex3f",
+      "intervals",
+      "lambdify",
+      "plot_interval",
+      "plotting",
+      "postdraw",
+      "v_steps"
+     ]
+    }
+   }
+  ],
+  "other_rows": 1,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/liealgebras/weyl_group.py",
+   "language": "python",
+   "qualname": "WeylGroup.group_order",
+   "line": 46,
+   "end": 82,
+   "name_line": 46,
+   "protocol": false,
+   "test": false,
+   "names": 4,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`WeylGroup.coxeter_diagram` at sympy/liealgebras/weyl_group.py:367 calls and reads 3 of the same names as `WeylGroup.group_order`: `cartan_type`, `rank`, `series`. Read `WeylGroup.coxeter_diagram` before you keep a second copy.",
+    "path": "sympy/liealgebras/weyl_group.py",
+    "line": 46,
+    "location": "sympy/liealgebras/weyl_group.py:46",
+    "evidence": "score 0.395",
+    "detail": {
+     "unit": "WeylGroup.group_order",
+     "other": "WeylGroup.coxeter_diagram",
+     "other_path": "sympy/liealgebras/weyl_group.py",
+     "other_line": 367,
+     "score": "0.395",
+     "shared": [
+      "cartan_type",
+      "rank",
+      "series"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`WeylGroup.group_name` at sympy/liealgebras/weyl_group.py:84 calls and reads 3 of the same names as `WeylGroup.group_order`: `cartan_type`, `rank`, `series`. Read `WeylGroup.group_name` before you keep a second copy.",
+    "path": "sympy/liealgebras/weyl_group.py",
+    "line": 46,
+    "location": "sympy/liealgebras/weyl_group.py:46",
+    "evidence": "score 0.593",
+    "detail": {
+     "unit": "WeylGroup.group_order",
+     "other": "WeylGroup.group_name",
+     "other_path": "sympy/liealgebras/weyl_group.py",
+     "other_line": 84,
+     "score": "0.593",
+     "shared": [
+      "cartan_type",
+      "rank",
+      "series"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/physics/units/dimensions.py",
+   "language": "python",
+   "qualname": "DimensionSystem.__new__.parse_dim_name",
+   "line": 325,
+   "end": 333,
+   "name_line": 325,
+   "protocol": false,
+   "test": false,
+   "names": 5,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`DimensionSystem.__new__.parse_dim` at sympy/physics/units/dimensions.py:304 calls and reads 3 of the same names as `DimensionSystem.__new__.parse_dim_name`: `Dimension`, `Symbol`, `TypeError`. Read `DimensionSystem.__new__.parse_dim` before you keep a second copy.",
+    "path": "sympy/physics/units/dimensions.py",
+    "line": 325,
+    "location": "sympy/physics/units/dimensions.py:325",
+    "evidence": "score 0.625",
+    "detail": {
+     "unit": "DimensionSystem.__new__.parse_dim_name",
+     "other": "DimensionSystem.__new__.parse_dim",
+     "other_path": "sympy/physics/units/dimensions.py",
+     "other_line": 304,
+     "score": "0.625",
+     "shared": [
+      "Dimension",
+      "Symbol",
+      "TypeError"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`_symbol_converter` at sympy/stats/rv.py:1711 calls and reads 2 of the same names as `DimensionSystem.__new__.parse_dim_name`: `Symbol`, `TypeError`. Read `_symbol_converter` before you keep a second copy.",
+    "path": "sympy/physics/units/dimensions.py",
+    "line": 325,
+    "location": "sympy/physics/units/dimensions.py:325",
+    "evidence": "score 0.351",
+    "detail": {
+     "unit": "DimensionSystem.__new__.parse_dim_name",
+     "other": "_symbol_converter",
+     "other_path": "sympy/stats/rv.py",
+     "other_line": 1711,
+     "score": "0.351",
+     "shared": [
+      "Symbol",
+      "TypeError"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/printing/mathml.py",
+   "language": "python",
+   "qualname": "MathMLPresentationPrinter._print_re_im",
+   "line": 1281,
+   "end": 1290,
+   "name_line": 1281,
+   "protocol": false,
+   "test": false,
+   "names": 6,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`MathMLPresentationPrinter._print_elliptic_e` at sympy/printing/mathml.py:1927 calls and reads 6 of the same names as `MathMLPresentationPrinter._print_re_im`: `_print`, `appendChild`, `createElement`, `createTextNode`, `dom`, `setAttribute`. Read `MathMLPresentationPrinter._print_elliptic_e` before you keep a second copy.",
+    "path": "sympy/printing/mathml.py",
+    "line": 1281,
+    "location": "sympy/printing/mathml.py:1281",
+    "evidence": "score 0.924",
+    "detail": {
+     "unit": "MathMLPresentationPrinter._print_re_im",
+     "other": "MathMLPresentationPrinter._print_elliptic_e",
+     "other_path": "sympy/printing/mathml.py",
+     "other_line": 1927,
+     "score": "0.924",
+     "shared": [
+      "_print",
+      "appendChild",
+      "createElement",
+      "createTextNode",
+      "dom",
+      "setAttribute"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`MathMLPresentationPrinter._print_elliptic_f` at sympy/printing/mathml.py:1915 calls and reads 6 of the same names as `MathMLPresentationPrinter._print_re_im`: `_print`, `appendChild`, `createElement`, `createTextNode`, `dom`, `setAttribute`. Read `MathMLPresentationPrinter._print_elliptic_f` before you keep a second copy.",
+    "path": "sympy/printing/mathml.py",
+    "line": 1281,
+    "location": "sympy/printing/mathml.py:1281",
+    "evidence": "score 0.924",
+    "detail": {
+     "unit": "MathMLPresentationPrinter._print_re_im",
+     "other": "MathMLPresentationPrinter._print_elliptic_f",
+     "other_path": "sympy/printing/mathml.py",
+     "other_line": 1915,
+     "score": "0.924",
+     "shared": [
+      "_print",
+      "appendChild",
+      "createElement",
+      "createTextNode",
+      "dom",
+      "setAttribute"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/matrices/common.py",
+   "language": "python",
+   "qualname": "MatrixOperations._eval_trigsimp",
+   "line": 2448,
+   "end": 2450,
+   "name_line": 2448,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Relational._eval_trigsimp` at sympy/core/relational.py:501 calls and reads 2 of the same names as `MatrixOperations._eval_trigsimp`: `simplify`, `trigsimp`. Read `Relational._eval_trigsimp` before you keep a second copy.",
+    "path": "sympy/matrices/common.py",
+    "line": 2448,
+    "location": "sympy/matrices/common.py:2448",
+    "evidence": "score 0.354",
+    "detail": {
+     "unit": "MatrixOperations._eval_trigsimp",
+     "other": "Relational._eval_trigsimp",
+     "other_path": "sympy/core/relational.py",
+     "other_line": 501,
+     "score": "0.354",
+     "shared": [
+      "simplify",
+      "trigsimp"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/integrals/manualintegrate.py",
+   "language": "python",
+   "qualname": "hyperbolic_rule",
+   "line": 1586,
+   "end": 1611,
+   "name_line": 1586,
+   "protocol": false,
+   "test": false,
+   "names": 16,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/polys/polytools.py",
+   "language": "python",
+   "qualname": "Poly.sqf_part",
+   "line": 3248,
+   "end": 3267,
+   "name_line": 3248,
+   "protocol": false,
+   "test": false,
+   "names": 4,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Poly.to_field` at sympy/polys/polytools.py:786 calls and reads 4 of the same names as `Poly.sqf_part`: `OperationNotSupported`, `hasattr`, `per`, `rep`. Read `Poly.to_field` before you keep a second copy.",
+    "path": "sympy/polys/polytools.py",
+    "line": 3248,
+    "location": "sympy/polys/polytools.py:3248",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "Poly.sqf_part",
+     "other": "Poly.to_field",
+     "other_path": "sympy/polys/polytools.py",
+     "other_line": 786,
+     "score": "1.000",
+     "shared": [
+      "OperationNotSupported",
+      "hasattr",
+      "per",
+      "rep"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Poly.to_ring` at sympy/polys/polytools.py:765 calls and reads 4 of the same names as `Poly.sqf_part`: `OperationNotSupported`, `hasattr`, `per`, `rep`. Read `Poly.to_ring` before you keep a second copy.",
+    "path": "sympy/polys/polytools.py",
+    "line": 3248,
+    "location": "sympy/polys/polytools.py:3248",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "Poly.sqf_part",
+     "other": "Poly.to_ring",
+     "other_path": "sympy/polys/polytools.py",
+     "other_line": 765,
+     "score": "1.000",
+     "shared": [
+      "OperationNotSupported",
+      "hasattr",
+      "per",
+      "rep"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/functions/special/hyper.py",
+   "language": "python",
+   "qualname": "hyper.fdiff",
+   "line": 204,
+   "end": 210,
+   "name_line": 204,
+   "protocol": false,
+   "test": false,
+   "names": 7,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`LatexPrinter._print_hyper` at sympy/printing/latex.py:1435 calls and reads 3 of the same names as `hyper.fdiff`: `ap`, `argument`, `bq`. Read `LatexPrinter._print_hyper` before you keep a second copy.",
+    "path": "sympy/functions/special/hyper.py",
+    "line": 204,
+    "location": "sympy/functions/special/hyper.py:204",
+    "evidence": "score 0.336",
+    "detail": {
+     "unit": "hyper.fdiff",
+     "other": "LatexPrinter._print_hyper",
+     "other_path": "sympy/printing/latex.py",
+     "other_line": 1435,
+     "score": "0.336",
+     "shared": [
+      "ap",
+      "argument",
+      "bq"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`try_polynomial` at sympy/simplify/hyperexpand.py:1697 calls and reads 4 of the same names as `hyper.fdiff`: `Mul`, `Tuple`, `ap`, `bq`. Read `try_polynomial` before you keep a second copy.",
+    "path": "sympy/functions/special/hyper.py",
+    "line": 204,
+    "location": "sympy/functions/special/hyper.py:204",
+    "evidence": "score 0.319",
+    "detail": {
+     "unit": "hyper.fdiff",
+     "other": "try_polynomial",
+     "other_path": "sympy/simplify/hyperexpand.py",
+     "other_line": 1697,
+     "score": "0.319",
+     "shared": [
+      "Mul",
+      "Tuple",
+      "ap",
+      "bq"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/assumptions/handlers/matrices.py",
+   "language": "python",
+   "qualname": "_",
+   "line": 539,
+   "end": 545,
+   "name_line": 540,
+   "protocol": false,
+   "test": false,
+   "names": 5,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`_` at sympy/assumptions/handlers/matrices.py:560 calls and reads 3 of the same names as `_`: `all`, `ask`, `diagonal`. Read `_` before you keep a second copy.",
+    "path": "sympy/assumptions/handlers/matrices.py",
+    "line": 540,
+    "location": "sympy/assumptions/handlers/matrices.py:540",
+    "evidence": "score 0.471",
+    "detail": {
+     "unit": "_",
+     "other": "_",
+     "other_path": "sympy/assumptions/handlers/matrices.py",
+     "other_line": 560,
+     "score": "0.471",
+     "shared": [
+      "all",
+      "ask",
+      "diagonal"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`_` at sympy/assumptions/handlers/matrices.py:580 calls and reads 3 of the same names as `_`: `_is_empty_or_1x1`, `ask`, `diagonal`. Read `_` before you keep a second copy.",
+    "path": "sympy/assumptions/handlers/matrices.py",
+    "line": 540,
+    "location": "sympy/assumptions/handlers/matrices.py:540",
+    "evidence": "score 0.453",
+    "detail": {
+     "unit": "_",
+     "other": "_",
+     "other_path": "sympy/assumptions/handlers/matrices.py",
+     "other_line": 580,
+     "score": "0.453",
+     "shared": [
+      "_is_empty_or_1x1",
+      "ask",
+      "diagonal"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/combinatorics/coset_table.py",
+   "language": "python",
+   "qualname": "CosetTable.scan",
+   "line": 283,
+   "end": 378,
+   "name_line": 283,
+   "protocol": false,
+   "test": false,
+   "names": 10,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`CosetTable.define` at sympy/combinatorics/coset_table.py:130 calls and reads 6 of the same names as `CosetTable.scan`: `A_dict`, `A_dict_inv`, `P`, `_grp`, `identity`, `table`. Read `CosetTable.define` before you keep a second copy.",
+    "path": "sympy/combinatorics/coset_table.py",
+    "line": 283,
+    "location": "sympy/combinatorics/coset_table.py:283",
+    "evidence": "score 0.392",
+    "detail": {
+     "unit": "CosetTable.scan",
+     "other": "CosetTable.define",
+     "other_path": "sympy/combinatorics/coset_table.py",
+     "other_line": 130,
+     "score": "0.392",
+     "shared": [
+      "A_dict",
+      "A_dict_inv",
+      "P",
+      "_grp",
+      "identity",
+      "table"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`rewrite` at sympy/combinatorics/fp_groups.py:1208 calls and reads 4 of the same names as `CosetTable.scan`: `A_dict`, `P`, `identity`, `table`. Read `rewrite` before you keep a second copy.",
+    "path": "sympy/combinatorics/coset_table.py",
+    "line": 283,
+    "location": "sympy/combinatorics/coset_table.py:283",
+    "evidence": "score 0.317",
+    "detail": {
+     "unit": "CosetTable.scan",
+     "other": "rewrite",
+     "other_path": "sympy/combinatorics/fp_groups.py",
+     "other_line": 1208,
+     "score": "0.317",
+     "shared": [
+      "A_dict",
+      "P",
+      "identity",
+      "table"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/printing/c.py",
+   "language": "python",
+   "qualname": "C89CodePrinter._print_Min",
+   "line": 434,
+   "end": 445,
+   "name_line": 434,
+   "protocol": false,
+   "test": false,
+   "names": 6,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`C89CodePrinter._print_Max` at sympy/printing/c.py:421 calls and reads 3 of the same names as `C89CodePrinter._print_Min`: `_print`, `_print_Function`, `known_functions`. Read `C89CodePrinter._print_Max` before you keep a second copy.",
+    "path": "sympy/printing/c.py",
+    "line": 434,
+    "location": "sympy/printing/c.py:434",
+    "evidence": "score 0.366",
+    "detail": {
+     "unit": "C89CodePrinter._print_Min",
+     "other": "C89CodePrinter._print_Max",
+     "other_path": "sympy/printing/c.py",
+     "other_line": 421,
+     "score": "0.366",
+     "shared": [
+      "_print",
+      "_print_Function",
+      "known_functions"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/functions/combinatorial/factorials.py",
+   "language": "python",
+   "qualname": "binomial.eval",
+   "line": 940,
+   "end": 962,
+   "name_line": 941,
+   "protocol": false,
+   "test": false,
+   "names": 15,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`catalan.eval` at sympy/functions/combinatorial/numbers.py:1266 calls and reads 9 of the same names as `binomial.eval`: `Zero`, `functions`, `gamma`, `gamma_functions`, `is_integer`, `is_negative`, `is_nonnegative`, `is_zero`, `special`. Read `catalan.eval` before you keep a second copy.",
+    "path": "sympy/functions/combinatorial/factorials.py",
+    "line": 941,
+    "location": "sympy/functions/combinatorial/factorials.py:941",
+    "evidence": "score 0.455",
+    "detail": {
+     "unit": "binomial.eval",
+     "other": "catalan.eval",
+     "other_path": "sympy/functions/combinatorial/numbers.py",
+     "other_line": 1266,
+     "score": "0.455",
+     "shared": [
+      "Zero",
+      "functions",
+      "gamma",
+      "gamma_functions",
+      "is_integer",
+      "is_negative",
+      "is_nonnegative",
+      "is_zero",
+      "special"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`riemann_xi.eval` at sympy/functions/special/zeta_functions.py:692 calls and reads 6 of the same names as `binomial.eval`: `One`, `Zero`, `functions`, `gamma`, `gamma_functions`, `special`. Read `riemann_xi.eval` before you keep a second copy.",
+    "path": "sympy/functions/combinatorial/factorials.py",
+    "line": 941,
+    "location": "sympy/functions/combinatorial/factorials.py:941",
+    "evidence": "score 0.328",
+    "detail": {
+     "unit": "binomial.eval",
+     "other": "riemann_xi.eval",
+     "other_path": "sympy/functions/special/zeta_functions.py",
+     "other_line": 692,
+     "score": "0.328",
+     "shared": [
+      "One",
+      "Zero",
+      "functions",
+      "gamma",
+      "gamma_functions",
+      "special"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/matrices/expressions/trace.py",
+   "language": "python",
+   "qualname": "Trace._eval_derivative",
+   "line": 48,
+   "end": 57,
+   "name_line": 48,
+   "protocol": false,
+   "test": false,
+   "names": 7,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`FunctionMatrix._eval_trace` at sympy/matrices/expressions/funcmatrix.py:112 calls and reads 4 of the same names as `Trace._eval_derivative`: `concrete`, `doit`, `rewrite`, `summations`. Read `FunctionMatrix._eval_trace` before you keep a second copy.",
+    "path": "sympy/matrices/expressions/trace.py",
+    "line": 48,
+    "location": "sympy/matrices/expressions/trace.py:48",
+    "evidence": "score 0.359",
+    "detail": {
+     "unit": "Trace._eval_derivative",
+     "other": "FunctionMatrix._eval_trace",
+     "other_path": "sympy/matrices/expressions/funcmatrix.py",
+     "other_line": 112,
+     "score": "0.359",
+     "shared": [
+      "concrete",
+      "doit",
+      "rewrite",
+      "summations"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`evalf_prod` at sympy/core/evalf.py:1311 calls and reads 4 of the same names as `Trace._eval_derivative`: `concrete`, `doit`, `rewrite`, `summations`. Read `evalf_prod` before you keep a second copy.",
+    "path": "sympy/matrices/expressions/trace.py",
+    "line": 48,
+    "location": "sympy/matrices/expressions/trace.py:48",
+    "evidence": "score 0.394",
+    "detail": {
+     "unit": "Trace._eval_derivative",
+     "other": "evalf_prod",
+     "other_path": "sympy/core/evalf.py",
+     "other_line": 1311,
+     "score": "0.394",
+     "shared": [
+      "concrete",
+      "doit",
+      "rewrite",
+      "summations"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/printing/aesaracode.py",
+   "language": "python",
+   "qualname": "AesaraPrinter._print_Piecewise",
+   "line": 223,
+   "end": 238,
+   "name_line": 223,
+   "protocol": false,
+   "test": false,
+   "names": 6,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`TheanoPrinter._print_Piecewise` at sympy/printing/theanocode.py:232 calls and reads 4 of the same names as `AesaraPrinter._print_Piecewise`: `Piecewise`, `_print`, `nan`, `switch`. Read `TheanoPrinter._print_Piecewise` before you keep a second copy.",
+    "path": "sympy/printing/aesaracode.py",
+    "line": 223,
+    "location": "sympy/printing/aesaracode.py:223",
+    "evidence": "score 0.703",
+    "detail": {
+     "unit": "AesaraPrinter._print_Piecewise",
+     "other": "TheanoPrinter._print_Piecewise",
+     "other_path": "sympy/printing/theanocode.py",
+     "other_line": 232,
+     "score": "0.703",
+     "shared": [
+      "Piecewise",
+      "_print",
+      "nan",
+      "switch"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/polys/polytools.py",
+   "language": "python",
+   "qualname": "Poly.quo_ground",
+   "line": 1330,
+   "end": 1352,
+   "name_line": 1330,
+   "protocol": false,
+   "test": false,
+   "names": 4,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Poly.to_field` at sympy/polys/polytools.py:786 calls and reads 4 of the same names as `Poly.quo_ground`: `OperationNotSupported`, `hasattr`, `per`, `rep`. Read `Poly.to_field` before you keep a second copy.",
+    "path": "sympy/polys/polytools.py",
+    "line": 1330,
+    "location": "sympy/polys/polytools.py:1330",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "Poly.quo_ground",
+     "other": "Poly.to_field",
+     "other_path": "sympy/polys/polytools.py",
+     "other_line": 786,
+     "score": "1.000",
+     "shared": [
+      "OperationNotSupported",
+      "hasattr",
+      "per",
+      "rep"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Poly.to_ring` at sympy/polys/polytools.py:765 calls and reads 4 of the same names as `Poly.quo_ground`: `OperationNotSupported`, `hasattr`, `per`, `rep`. Read `Poly.to_ring` before you keep a second copy.",
+    "path": "sympy/polys/polytools.py",
+    "line": 1330,
+    "location": "sympy/polys/polytools.py:1330",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "Poly.quo_ground",
+     "other": "Poly.to_ring",
+     "other_path": "sympy/polys/polytools.py",
+     "other_line": 765,
+     "score": "1.000",
+     "shared": [
+      "OperationNotSupported",
+      "hasattr",
+      "per",
+      "rep"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/combinatorics/perm_groups.py",
+   "language": "python",
+   "qualname": "PermutationGroup._union_find_merge",
+   "line": 348,
+   "end": 395,
+   "name_line": 348,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/assumptions/handlers/sets.py",
+   "language": "python",
+   "qualname": "_",
+   "line": 67,
+   "end": 93,
+   "name_line": 68,
+   "protocol": false,
+   "test": false,
+   "names": 9,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`_` at sympy/assumptions/handlers/ntheory.py:144 calls and reads 5 of the same names as `_`: `ask`, `even`, `integer`, `irrational`, `is_number`. Read `_` before you keep a second copy.",
+    "path": "sympy/assumptions/handlers/sets.py",
+    "line": 68,
+    "location": "sympy/assumptions/handlers/sets.py:68",
+    "evidence": "score 0.424",
+    "detail": {
+     "unit": "_",
+     "other": "_",
+     "other_path": "sympy/assumptions/handlers/ntheory.py",
+     "other_line": 144,
+     "score": "0.424",
+     "shared": [
+      "ask",
+      "even",
+      "integer",
+      "irrational",
+      "is_number"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`_` at sympy/assumptions/handlers/ntheory.py:259 calls and reads 3 of the same names as `_`: `ask`, `even`, `integer`. Read `_` before you keep a second copy.",
+    "path": "sympy/assumptions/handlers/sets.py",
+    "line": 68,
+    "location": "sympy/assumptions/handlers/sets.py:68",
+    "evidence": "score 0.349",
+    "detail": {
+     "unit": "_",
+     "other": "_",
+     "other_path": "sympy/assumptions/handlers/ntheory.py",
+     "other_line": 259,
+     "score": "0.349",
+     "shared": [
+      "ask",
+      "even",
+      "integer"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/matrices/expressions/trace.py",
+   "language": "python",
+   "qualname": "Trace.doit",
+   "line": 105,
+   "end": 117,
+   "name_line": 105,
+   "protocol": false,
+   "test": false,
+   "names": 6,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Adjoint._eval_trace` at sympy/matrices/expressions/adjoint.py:56 calls and reads 3 of the same names as `Trace.doit`: `Trace`, `arg`, `trace`. Read `Adjoint._eval_trace` before you keep a second copy.",
+    "path": "sympy/matrices/expressions/trace.py",
+    "line": 105,
+    "location": "sympy/matrices/expressions/trace.py:105",
+    "evidence": "score 0.380",
+    "detail": {
+     "unit": "Trace.doit",
+     "other": "Adjoint._eval_trace",
+     "other_path": "sympy/matrices/expressions/adjoint.py",
+     "other_line": 56,
+     "score": "0.380",
+     "shared": [
+      "Trace",
+      "arg",
+      "trace"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Transpose._eval_trace` at sympy/matrices/expressions/transpose.py:64 calls and reads 3 of the same names as `Trace.doit`: `Trace`, `arg`, `trace`. Read `Transpose._eval_trace` before you keep a second copy.",
+    "path": "sympy/matrices/expressions/trace.py",
+    "line": 105,
+    "location": "sympy/matrices/expressions/trace.py:105",
+    "evidence": "score 0.562",
+    "detail": {
+     "unit": "Trace.doit",
+     "other": "Transpose._eval_trace",
+     "other_path": "sympy/matrices/expressions/transpose.py",
+     "other_line": 64,
+     "score": "0.562",
+     "shared": [
+      "Trace",
+      "arg",
+      "trace"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/polys/rings.py",
+   "language": "python",
+   "qualname": "PolyElement._gcd",
+   "line": 2182,
+   "end": 2190,
+   "name_line": 2182,
+   "protocol": false,
+   "test": false,
+   "names": 7,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/matrices/repmatrix.py",
+   "language": "python",
+   "qualname": "MutableRepMatrix.row_op",
+   "line": 472,
+   "end": 495,
+   "name_line": 472,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`MatrixOperations._eval_applyfunc` at sympy/matrices/common.py:1930 calls and reads 2 of the same names as `MutableRepMatrix.row_op`: `cols`, `f`. Read `MatrixOperations._eval_applyfunc` before you keep a second copy.",
+    "path": "sympy/matrices/repmatrix.py",
+    "line": 472,
+    "location": "sympy/matrices/repmatrix.py:472",
+    "evidence": "score 0.426",
+    "detail": {
+     "unit": "MutableRepMatrix.row_op",
+     "other": "MatrixOperations._eval_applyfunc",
+     "other_path": "sympy/matrices/common.py",
+     "other_line": 1930,
+     "score": "0.426",
+     "shared": [
+      "cols",
+      "f"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`MutableRepMatrix.zip_row_op` at sympy/matrices/repmatrix.py:524 calls and reads 2 of the same names as `MutableRepMatrix.row_op`: `cols`, `f`. Read `MutableRepMatrix.zip_row_op` before you keep a second copy.",
+    "path": "sympy/matrices/repmatrix.py",
+    "line": 472,
+    "location": "sympy/matrices/repmatrix.py:472",
+    "evidence": "score 0.608",
+    "detail": {
+     "unit": "MutableRepMatrix.row_op",
+     "other": "MutableRepMatrix.zip_row_op",
+     "other_path": "sympy/matrices/repmatrix.py",
+     "other_line": 524,
+     "score": "0.608",
+     "shared": [
+      "cols",
+      "f"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/functions/elementary/trigonometric.py",
+   "language": "python",
+   "qualname": "sin.taylor_term",
+   "line": 417,
+   "end": 429,
+   "name_line": 419,
+   "protocol": false,
+   "test": false,
+   "names": 5,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`cos.taylor_term` at sympy/functions/elementary/trigonometric.py:746 calls and reads 4 of the same names as `sin.taylor_term`: `NegativeOne`, `Zero`, `factorial`, `sympify`. Read `cos.taylor_term` before you keep a second copy.",
+    "path": "sympy/functions/elementary/trigonometric.py",
+    "line": 419,
+    "location": "sympy/functions/elementary/trigonometric.py:419",
+    "evidence": "score 0.763",
+    "detail": {
+     "unit": "sin.taylor_term",
+     "other": "cos.taylor_term",
+     "other_path": "sympy/functions/elementary/trigonometric.py",
+     "other_line": 746,
+     "score": "0.763",
+     "shared": [
+      "NegativeOne",
+      "Zero",
+      "factorial",
+      "sympify"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`tan.taylor_term` at sympy/functions/elementary/trigonometric.py:1095 calls and reads 4 of the same names as `sin.taylor_term`: `NegativeOne`, `Zero`, `factorial`, `sympify`. Read `tan.taylor_term` before you keep a second copy.",
+    "path": "sympy/functions/elementary/trigonometric.py",
+    "line": 419,
+    "location": "sympy/functions/elementary/trigonometric.py:419",
+    "evidence": "score 0.646",
+    "detail": {
+     "unit": "sin.taylor_term",
+     "other": "tan.taylor_term",
+     "other_path": "sympy/functions/elementary/trigonometric.py",
+     "other_line": 1095,
+     "score": "0.646",
+     "shared": [
+      "NegativeOne",
+      "Zero",
+      "factorial",
+      "sympify"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/integrals/integrals.py",
+   "language": "python",
+   "qualname": "Integral._eval_nseries",
+   "line": 1169,
+   "end": 1179,
+   "name_line": 1169,
+   "protocol": false,
+   "test": false,
+   "names": 8,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Integral._eval_lseries` at sympy/integrals/integrals.py:1159 calls and reads 4 of the same names as `Integral._eval_nseries`: `as_dummy`, `function`, `integrate`, `limits`. Read `Integral._eval_lseries` before you keep a second copy.",
+    "path": "sympy/integrals/integrals.py",
+    "line": 1169,
+    "location": "sympy/integrals/integrals.py:1169",
+    "evidence": "score 0.437",
+    "detail": {
+     "unit": "Integral._eval_nseries",
+     "other": "Integral._eval_lseries",
+     "other_path": "sympy/integrals/integrals.py",
+     "other_line": 1159,
+     "score": "0.437",
+     "shared": [
+      "as_dummy",
+      "function",
+      "integrate",
+      "limits"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`finite_diff_kauers` at sympy/series/kauers.py:27 calls and reads 3 of the same names as `Integral._eval_nseries`: `function`, `limits`, `subs`. Read `finite_diff_kauers` before you keep a second copy.",
+    "path": "sympy/integrals/integrals.py",
+    "line": 1169,
+    "location": "sympy/integrals/integrals.py:1169",
+    "evidence": "score 0.312",
+    "detail": {
+     "unit": "Integral._eval_nseries",
+     "other": "finite_diff_kauers",
+     "other_path": "sympy/series/kauers.py",
+     "other_line": 27,
+     "score": "0.312",
+     "shared": [
+      "function",
+      "limits",
+      "subs"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/functions/elementary/piecewise.py",
+   "language": "python",
+   "qualname": "Piecewise._intervals._solve_relational",
+   "line": 610,
+   "end": 636,
+   "name_line": 610,
+   "protocol": false,
+   "test": false,
+   "names": 12,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Piecewise._intervals` at sympy/functions/elementary/piecewise.py:583 calls and reads 10 of the same names as `Piecewise._intervals._solve_relational`: `Infinity`, `NegativeInfinity`, `Or`, `_solve_inequality`, `false`, `free_symbols`, `nonsymfail`, `rel_op`, `rhs`, `true`. Read `Piecewise._intervals` before you keep a second copy.",
+    "path": "sympy/functions/elementary/piecewise.py",
+    "line": 610,
+    "location": "sympy/functions/elementary/piecewise.py:610",
+    "evidence": "score 0.317",
+    "detail": {
+     "unit": "Piecewise._intervals._solve_relational",
+     "other": "Piecewise._intervals",
+     "other_path": "sympy/functions/elementary/piecewise.py",
+     "other_line": 583,
+     "score": "0.317",
+     "shared": [
+      "Infinity",
+      "NegativeInfinity",
+      "Or",
+      "_solve_inequality",
+      "false",
+      "free_symbols",
+      "nonsymfail",
+      "rel_op",
+      "rhs",
+      "true"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "sympy/core/mul.py",
+   "language": "python",
+   "qualname": "Mul._eval_pos_neg",
+   "line": 1583,
+   "end": 1616,
+   "name_line": 1583,
+   "protocol": false,
+   "test": false,
+   "names": 10,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Pow._eval_is_extended_negative` at sympy/core/power.py:594 calls and reads 6 of the same names as `Mul._eval_pos_neg`: `is_extended_negative`, `is_extended_nonnegative`, `is_extended_nonpositive`, `is_extended_positive`, `is_finite`, `is_zero`. Read `Pow._eval_is_extended_negative` before you keep a second copy.",
+    "path": "sympy/core/mul.py",
+    "line": 1583,
+    "location": "sympy/core/mul.py:1583",
+    "evidence": "score 0.405",
+    "detail": {
+     "unit": "Mul._eval_pos_neg",
+     "other": "Pow._eval_is_extended_negative",
+     "other_path": "sympy/core/power.py",
+     "other_line": 594,
+     "score": "0.405",
+     "shared": [
+      "is_extended_negative",
+      "is_extended_nonnegative",
+      "is_extended_nonpositive",
+      "is_extended_positive",
+      "is_finite",
+      "is_zero"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Pow._eval_is_zero` at sympy/core/power.py:619 calls and reads 6 of the same names as `Mul._eval_pos_neg`: `is_extended_negative`, `is_extended_nonpositive`, `is_extended_positive`, `is_finite`, `is_negative`, `is_zero`. Read `Pow._eval_is_zero` before you keep a second copy.",
+    "path": "sympy/core/mul.py",
+    "line": 1583,
+    "location": "sympy/core/mul.py:1583",
+    "evidence": "score 0.372",
+    "detail": {
+     "unit": "Mul._eval_pos_neg",
+     "other": "Pow._eval_is_zero",
+     "other_path": "sympy/core/power.py",
+     "other_line": 619,
+     "score": "0.372",
+     "shared": [
+      "is_extended_negative",
+      "is_extended_nonpositive",
+      "is_extended_positive",
+      "is_finite",
+      "is_negative",
+      "is_zero"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ }
+]

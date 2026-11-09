@@ -1,0 +1,8 @@
+{
+  "tool": "trace",
+  "fixture": "repo_py",
+  "arguments": {
+    "target": "format_money",
+    "more": "similar"
+  }
+}

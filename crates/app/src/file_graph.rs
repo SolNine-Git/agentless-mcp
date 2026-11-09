@@ -56,7 +56,7 @@ pub(crate) struct Ranked<'a> {
 impl<'a> Ranked<'a> {
     // Tests stay pure sources of rank, as they do in the map.
     pub(crate) fn build(
-        files: &'a [FileFacts],
+        files: &'a [&'a FileFacts],
         config: &ProjectConfig,
         deadline: Option<&Deadline>,
     ) -> Result<Ranked<'a>, Stopped> {

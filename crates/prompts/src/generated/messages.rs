@@ -4,6 +4,12 @@
 use crate::template::{Count, Piece, Template, Text};
 
 /// A text that takes no values.
+pub const ACCEPTS_ANY_NUMBER: &str = "a number";
+
+/// A text that takes no values.
+pub const ACCEPTS_ARRAY: &str = "an array";
+
+/// A text that takes no values.
 pub const ACCEPTS_BOOL: &str = "true or false";
 
 /// A template that takes `listed`.
@@ -25,10 +31,6 @@ pub const ACCEPTS_INTEGER_FROM: Template<Count> = Template::new(&[
     Piece::Text(" or more"),
 ]);
 
-/// A text that takes no values.
-pub const ACCEPTS_LINE_RANGES: &str = "one [start, end] pair of 1-based line numbers, such as \
-        [10, 20], or a list of pairs, such as [[10, 20], [40, 50]]";
-
 /// A template that takes (`minimum`, `ceiling`).
 pub const ACCEPTS_NUMBER: Template<(Count, Text)> = Template::new(&[
     Piece::Text("a number above "),
@@ -38,13 +40,25 @@ pub const ACCEPTS_NUMBER: Template<(Count, Text)> = Template::new(&[
 ]);
 
 /// A text that takes no values.
+pub const ACCEPTS_OBJECT: &str = "an object";
+
+/// A text that takes no values.
 pub const ACCEPTS_SCHEMA: &str = "a value that fits its schema in tools/list";
+
+/// A text that takes no values.
+pub const ACCEPTS_SERVER_NAME: &str = "a name of ASCII letters, digits, _ and -";
 
 /// A text that takes no values.
 pub const ACCEPTS_TEXT: &str = "a string";
 
-/// A text that takes no values.
-pub const ACCEPTS_TEXT_OR_TEXTS: &str = "a string or a list of strings";
+/// A template that takes (`minimum`, `maximum`).
+pub const ACCEPTS_TEXT_OR_TEXTS: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("a string or a list of "),
+    Piece::Value(0),
+    Piece::Text(" to "),
+    Piece::Value(1),
+    Piece::Text(" strings"),
+]);
 
 /// A text that takes no values.
 pub const ACCEPTS_TEXTS: &str = "a list of strings";
@@ -76,7 +90,7 @@ pub const ARGUMENT_UNKNOWN: Template<(Text, Text)> = Template::new(&[
 ]);
 
 /// A text that takes no values.
-pub const CACHE_ABSENT_REFRESHING: &str = "a background refresh is in progress";
+pub const CACHE_ABSENT_REFRESHING: &str = "refreshing";
 
 /// A template that takes `repo_root`.
 pub const CACHE_BUILD_HINT: Template<Text> = Template::new(&[
@@ -106,15 +120,21 @@ pub const CACHE_DISCARDED_OTHER_REPO: Template<Text> = Template::new(&[
     Piece::Value(0),
 ]);
 
+/// A template that takes (`sha`, `note`).
+pub const CACHE_STALE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("g:"),
+    Piece::Value(0),
+    Piece::Text(" stale, "),
+    Piece::Value(1),
+]);
+
 /// A text that takes no values.
-pub const CACHE_STALE_REFRESHING: &str = "changed files parse live; a background refresh is in \
-        progress";
+pub const CACHE_STALE_REFRESHING: &str = "refreshing";
 
 /// A template that takes `repo_root`.
 pub const CACHE_STALE_REMEDIATION: Template<Text> = Template::new(&[
-    Piece::Text("changed files parse live; run agentless-mcp index --repo "),
+    Piece::Text("run agentless-mcp index --repo "),
     Piece::Value(0),
-    Piece::Text(" for performance"),
 ]);
 
 /// A text that takes no values.
@@ -1182,13 +1202,6 @@ pub const FIND_USAGE_ROW: Template<(Text, Count, Count)> = Template::new(&[
     Piece::Text(")"),
 ]);
 
-/// A text that takes no values.
-pub const GATE_DENY: &str = "Structural pass first: no agentless call has localized this session \
-        yet.\nCall mcp__agentless__orient with operation=\"map\" and \
-        focus seeds from the task (file paths or symbol names). Broad \
-        Grep, Glob and shell search unlock after that call. A Grep of \
-        one existing file runs now.\n";
-
 /// A template that takes `count`.
 pub const GROUPED_FILES: Template<Count> = Template::new(&[
     Piece::Text("("),
@@ -1580,9 +1593,237 @@ pub const HISTORY_TARGET_UNRESOLVED: Template<(Text, Text)> = Template::new(&[
     ),
 ]);
 
+/// A template that takes (`path`, `command`, `error`).
+pub const HOOK_INSTALL_BAD_JSON: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" is not valid JSON: "),
+    Piece::Value(2),
+    Piece::Text(". hook "),
+    Piece::Value(1),
+    Piece::Text(" wrote nothing."),
+]);
+
+/// A template that takes (`listed`, `added`, `replaced`, `removed`, `kept`).
+pub const HOOK_INSTALL_COUNTS: Template<(Text, Count, Count, Count, Count)> = Template::new(&[
+    Piece::Text("added "),
+    Piece::Value(1),
+    Piece::Text(", replaced "),
+    Piece::Value(2),
+    Piece::Text(", removed "),
+    Piece::Value(3),
+    Piece::Text(" retired"),
+    Piece::Value(0),
+    Piece::Text(", kept "),
+    Piece::Value(4),
+    Piece::Text(" other "),
+    Piece::Choice(4, "handler", "handlers"),
+]);
+
+/// A template that takes (`path`, `summary`).
+pub const HOOK_INSTALL_DRY_RUN: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text("; --dry-run wrote nothing to "),
+    Piece::Value(0),
+]);
+
 /// A text that takes no values.
-pub const HOOK_USAGE: &str = "hook takes one argument: erosion, gate-check, gate-mark or \
-        prompt-map";
+pub const HOOK_INSTALL_HELP: &str = "usage: agentless-mcp hook install [--scope \
+        user|project|local] [--repo PATH] [--server-name NAME] \
+        [--dry-run]\n\nWrites the agentless hook entries of this binary \
+        into one Claude Code settings file, and removes the retired \
+        ones. Every other handler and key stays. --scope names the \
+        file: user (the default), project or local. --repo names the \
+        repository of a project or local file (the default is the \
+        start-up directory). --server-name names the MCP server whose \
+        trace calls ledger-mark follows (the default is agentless). \
+        --dry-run prints the new file and writes nothing.";
+
+/// A template that takes (`path`, `command`).
+pub const HOOK_INSTALL_NOT_FINITE: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(
+        " holds a number that JSON cannot write: NaN, Infinity, or a \
+        number past the 64-bit float range, such as 1e400. hook ",
+    ),
+    Piece::Value(1),
+    Piece::Text(" wrote nothing."),
+]);
+
+/// A template that takes (`path`, `command`).
+pub const HOOK_INSTALL_RACED: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" changed twice while hook "),
+    Piece::Value(1),
+    Piece::Text(" wrote it. hook "),
+    Piece::Value(1),
+    Piece::Text(" wrote nothing. Run it again."),
+]);
+
+/// A template that takes `path`.
+pub const HOOK_INSTALL_UNCHANGED: Template<Text> = Template::new(&[
+    Piece::Text("no change: "),
+    Piece::Value(0),
+    Piece::Text(" holds the current entries"),
+]);
+
+/// A template that takes (`path`, `summary`).
+pub const HOOK_INSTALL_WROTE: Template<(Text, Text)> =
+    Template::new(&[Piece::Value(1), Piece::Text("; wrote "), Piece::Value(0)]);
+
+/// A template that takes `name`.
+pub const HOOK_STATUS_CURRENT: Template<Text> =
+    Template::new(&[Piece::Value(0), Piece::Text(": current")]);
+
+/// A text that takes no values.
+pub const HOOK_STATUS_HELP: &str = "usage: agentless-mcp hook status [--repo PATH] [--server-name \
+        NAME]\n\nCompares the agentless hook entries of the user, \
+        project and local settings files with the entry table of this \
+        binary, one line per entry. The exit code is 0 when every entry \
+        is current, else 1.";
+
+/// A template that takes `name`.
+pub const HOOK_STATUS_MISSING: Template<Text> =
+    Template::new(&[Piece::Value(0), Piece::Text(": missing")]);
+
+/// A template that takes (`path`, `name`).
+pub const HOOK_STATUS_OTHER_PATH: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(": runs "),
+    Piece::Value(0),
+    Piece::Text(", not this binary"),
+]);
+
+/// A template that takes `name`.
+pub const HOOK_STATUS_RETIRED: Template<Text> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(": retired: hook install removes it"),
+]);
+
+/// A template that takes `name`.
+pub const HOOK_STATUS_STALE: Template<Text> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(": stale: the entry differs from the table of this binary"),
+]);
+
+/// A text that takes no values.
+pub const HOOK_UNINSTALL_HELP: &str = "usage: agentless-mcp hook uninstall [--scope \
+        user|project|local] [--repo PATH]\n\nRemoves every agentless \
+        hook entry from one Claude Code settings file. Every other \
+        handler and key stays.";
+
+/// A template that takes `path`.
+pub const HOOK_UNINSTALL_NONE: Template<Text> = Template::new(&[
+    Piece::Text("nothing to remove: "),
+    Piece::Value(0),
+    Piece::Text(" holds no agentless entry"),
+]);
+
+/// A template that takes (`path`, `removed`, `kept`).
+pub const HOOK_UNINSTALL_REPORT: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Text("removed "),
+    Piece::Value(1),
+    Piece::Text(" agentless "),
+    Piece::Choice(1, "handler", "handlers"),
+    Piece::Text(", kept "),
+    Piece::Value(2),
+    Piece::Text(" other "),
+    Piece::Choice(2, "handler", "handlers"),
+    Piece::Text("; wrote "),
+    Piece::Value(0),
+]);
+
+/// A text that takes no values.
+pub const HOOK_USAGE: &str = "hook takes one hook name: read-card, ledger-mark, brief-record, \
+        subagent-map, prompt-map, erosion or ledger-reset. hook \
+        install, hook status and hook uninstall manage the hook entries \
+        of a settings file. gate-check and gate-mark are retired: each \
+        still exits 0 with no output.";
+
+/// A template that takes (`count`, `total`, `listed`).
+pub const HOOKS_MISSING: Template<(Count, Count, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" of "),
+    Piece::Value(1),
+    Piece::Text(" agentless hook "),
+    Piece::Choice(1, "entry", "entries"),
+    Piece::Text(" "),
+    Piece::Choice(0, "is", "are"),
+    Piece::Text(" missing ("),
+    Piece::Value(2),
+    Piece::Text(")"),
+]);
+
+/// A template that takes `summary`.
+pub const HOOKS_NOTE: Template<Text> = Template::new(&[
+    Piece::Text("hooks: "),
+    Piece::Value(0),
+    Piece::Text(". Run: agentless-mcp hook install"),
+]);
+
+/// A template that takes (`file`, `path`).
+pub const HOOKS_OTHER_PATH: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("hooks run "),
+    Piece::Value(1),
+    Piece::Text("; this server runs "),
+    Piece::Value(0),
+]);
+
+/// A template that takes (`count`, `listed`).
+pub const HOOKS_RETIRED: Template<(Count, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" agentless hook "),
+    Piece::Choice(0, "entry is", "entries are"),
+    Piece::Text(" retired ("),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes (`count`, `listed`).
+pub const HOOKS_RETIRED_MORE: Template<(Count, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "is", "are"),
+    Piece::Text(" retired ("),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes (`accepted`, `path`).
+pub const HOOKS_SHAPE: Template<(Text, Text)> =
+    Template::new(&[Piece::Value(1), Piece::Text(" is not "), Piece::Value(0)]);
+
+/// A template that takes (`count`, `total`, `listed`).
+pub const HOOKS_STALE: Template<(Count, Count, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" of "),
+    Piece::Value(1),
+    Piece::Text(" agentless hook "),
+    Piece::Choice(1, "entry", "entries"),
+    Piece::Text(" "),
+    Piece::Choice(0, "is", "are"),
+    Piece::Text(" stale ("),
+    Piece::Value(2),
+    Piece::Text(")"),
+]);
+
+/// A template that takes (`count`, `listed`).
+pub const HOOKS_STALE_MORE: Template<(Count, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "is", "are"),
+    Piece::Text(" stale ("),
+    Piece::Value(1),
+    Piece::Text(")"),
+]);
+
+/// A template that takes (`path`, `error`).
+pub const HOOKS_UNREADABLE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("hooks: "),
+    Piece::Value(0),
+    Piece::Text(" is not readable: "),
+    Piece::Value(1),
+    Piece::Text("; hook state unknown"),
+]);
 
 /// A template that takes `checks`.
 pub const LINT_NO_CHECKS: Template<Text> = Template::new(&[
@@ -1763,6 +2004,35 @@ pub const LISTED_AND: Template<(Text, Text)> =
 pub const LISTED_OR: Template<(Text, Text)> =
     Template::new(&[Piece::Value(1), Piece::Text(" or "), Piece::Value(0)]);
 
+/// A template that takes (`path`, `count`).
+pub const LISTING_ROW: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("  "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "line", "lines"),
+]);
+
+/// A template that takes (`path`, `count`, `total`).
+pub const LISTING_ROW_SYMBOLS: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("  "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "line", "lines"),
+    Piece::Text("  "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "symbol", "symbols"),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const LISTING_ROW_UNREAD: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("  not read: "),
+    Piece::Value(1),
+]);
+
 /// A template that takes (`count`, `budget`).
 pub const MAP_BUDGET_NONE: Template<(Count, Count)> = Template::new(&[
     Piece::Text("// note: the "),
@@ -1789,17 +2059,6 @@ pub const MAP_FILE_UNREACHED: Template<Count> = Template::new(&[
         budget shows ",
     ),
     Piece::Choice(0, "it", "them"),
-]);
-
-/// A template that takes (`limit`, `minimum`, `maximum`).
-pub const MAP_LIMIT_OUT_OF_RANGE: Template<(Count, Count, Count)> = Template::new(&[
-    Piece::Text("limit is "),
-    Piece::Value(0),
-    Piece::Text(", but operation map takes a limit from "),
-    Piece::Value(1),
-    Piece::Text(" to "),
-    Piece::Value(2),
-    Piece::Text("."),
 ]);
 
 /// A template that takes `count`.
@@ -1869,53 +2128,16 @@ pub const MAP_UNRESOLVED_SEEDS: Template<Text> = Template::new(&[
 pub const MAP_WALK_CAPPED: &str = "// note: the walk out to these tests hit its node bound before \
         it finished, so this section is a floor rather than every test";
 
-/// A template that takes (`tool`, `operation`).
-pub const OPERATION_IN_TOOL: Template<(Text, Text)> = Template::new(&[
-    Piece::Text("Call the tool "),
+/// A template that takes (`name`, `count`).
+pub const NEAR_DUPLICATES_FOUND: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("the body the patch gives "),
     Piece::Value(0),
-    Piece::Text(" with operation "),
+    Piece::Text(" is the same as the body of "),
     Piece::Value(1),
-    Piece::Text("."),
-]);
-
-/// A template that takes (`operation`, `name`).
-pub const OPERATION_LACKS_PARAMETER: Template<(Text, Text)> = Template::new(&[
-    Piece::Text("Operation "),
-    Piece::Value(0),
-    Piece::Text(" has no parameter "),
-    Piece::Value(1),
-    Piece::Text("."),
-]);
-
-/// A template that takes (`operation`, `accepted`, `name`).
-pub const OPERATION_REQUIRES_VALUE: Template<(Text, Text, Text)> = Template::new(&[
-    Piece::Text("Operation "),
-    Piece::Value(0),
-    Piece::Text(" requires a value for "),
-    Piece::Value(2),
-    Piece::Text(", which must be "),
-    Piece::Value(1),
-    Piece::Text("."),
-]);
-
-/// A template that takes (`operation`, `accepted`).
-pub const OPERATION_TAKES: Template<(Text, Text)> = Template::new(&[
-    Piece::Text("Operation "),
-    Piece::Value(0),
-    Piece::Text(" takes "),
-    Piece::Value(1),
-    Piece::Text("."),
-]);
-
-/// A template that takes (`operation`, `accepted`, `required`).
-pub const OPERATION_TAKES_AND_REQUIRES: Template<(Text, Text, Text)> = Template::new(&[
-    Piece::Text("Operation "),
-    Piece::Value(0),
-    Piece::Text(" takes "),
-    Piece::Value(1),
-    Piece::Text(", and requires "),
-    Piece::Value(2),
-    Piece::Text("."),
+    Piece::Text(
+        " existing definition(s) token for token, with comments and \
+        indentation left out; you may already have this",
+    ),
 ]);
 
 /// A template that takes (`count`, `cap`).
@@ -2049,6 +2271,23 @@ pub const PROMPT_MAP_CONTEXT: Template<(Text, Text)> = Template::new(&[
     Piece::Text("."),
 ]);
 
+/// A template that takes (`path`, `card`).
+pub const READ_CARD_CONTEXT: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("File card (agentless-mcp), first read of "),
+    Piece::Value(0),
+    Piece::Text(" in this context:\n"),
+    Piece::Value(1),
+]);
+
+/// A template that takes (`path`, `cap`).
+pub const READ_CARD_CUT: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("(card cut at "),
+    Piece::Value(1),
+    Piece::Text(" characters; trace "),
+    Piece::Value(0),
+    Piece::Text(" for the rest)"),
+]);
+
 /// A template that takes `target`.
 pub const REFS_ABSENT: Template<Text> = Template::new(&[
     Piece::Text("no references to "),
@@ -2152,6 +2391,16 @@ pub const REFS_SHARED_CANDIDATE: Template<(Text, Count, Count, Text)> = Template
     Piece::Text(")"),
 ]);
 
+/// A template that takes `target`.
+pub const REFS_SHARED_UNBOUND: Template<Text> = Template::new(&[
+    Piece::Text("no caller of "),
+    Piece::Value(0),
+    Piece::Text(
+        " at a binding tier shares a symbol: each row ranks through \
+        name-only callers.",
+    ),
+]);
+
 /// A template that takes (`count`, `total`).
 pub const REFS_SPLIT: Template<(Count, Count)> = Template::new(&[
     Piece::Value(0),
@@ -2213,6 +2462,85 @@ pub const REPO_REFUSED_NOT_ALLOWED: Template<Text> = Template::new(&[
     Piece::Value(0),
 ]);
 
+/// A text that takes no values.
+pub const REUSE_CANDIDATES_COMPARED: &str = "no function";
+
+/// A template that takes (`path`, `target`, `name`, `line`, `count`, `listed`).
+pub const REUSE_CANDIDATES_FOUND: Template<(Text, Text, Text, Count, Count, Text)> =
+    Template::new(&[
+        Piece::Text("`"),
+        Piece::Value(1),
+        Piece::Text("` at "),
+        Piece::Value(0),
+        Piece::Text(":"),
+        Piece::Value(3),
+        Piece::Text(" calls and reads "),
+        Piece::Value(4),
+        Piece::Text(" of the same "),
+        Piece::Choice(4, "name", "names"),
+        Piece::Text(" as `"),
+        Piece::Value(2),
+        Piece::Text("`: "),
+        Piece::Value(5),
+        Piece::Text(". Read `"),
+        Piece::Value(1),
+        Piece::Text("` before you keep a second copy."),
+    ]);
+
+/// A template that takes `score`.
+pub const REUSE_CANDIDATES_FOUND_EVIDENCE: Template<Text> =
+    Template::new(&[Piece::Text("score "), Piece::Value(0)]);
+
+/// A template that takes (`paths`, `count`, `total`).
+pub const REUSE_CANDIDATES_GAPS: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Text("not checked: reuse_candidates did not read "),
+    Piece::Value(1),
+    Piece::Text(" of "),
+    Piece::Value(2),
+    Piece::Text(
+        " repository files, so it does not compare a function with the \
+        functions in them: ",
+    ),
+    Piece::Value(0),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const REUSE_CANDIDATES_GAPS_EVIDENCE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("first: "),
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(1),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const REUSE_CANDIDATES_NEW_NOT_MEASURED: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("not checked: reuse_candidates did not compare "),
+    Piece::Value(0),
+    Piece::Text(", because its text after the change cannot be measured. "),
+    Piece::Value(1),
+]);
+
+/// A text that takes no values.
+pub const REUSE_CANDIDATES_NO_TAG_CACHE: &str = "not checked: in the hook form, reuse_candidates \
+        reads the functions of the repository from the tag cache only, \
+        and this run has no tag cache. Run agentless-mcp index on the \
+        repository to turn the check on.";
+
+/// A text that takes no values.
+pub const REUSE_CANDIDATES_NO_TAG_CACHE_EVIDENCE: &str = "no tag cache";
+
+/// A template that takes (`path`, `reason`).
+pub const REUSE_CANDIDATES_OLD_NOT_MEASURED: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("not checked: reuse_candidates did not compare "),
+    Piece::Value(0),
+    Piece::Text(", because its text before the change cannot be measured. "),
+    Piece::Value(1),
+]);
+
+/// A text that takes no values.
+pub const REUSE_CANDIDATES_READS: &str = "the action names of every function";
+
 /// A template that takes `file`.
 pub const ROOTS_FILE_HINT: Template<Text> = Template::new(&[
     Piece::Text(
@@ -2249,6 +2577,194 @@ pub const SCAN_SKIPPED_FILES: Template<(Count, Text)> = Template::new(&[
         ". A symbol in a skipped file reads as missing here even though \
         it may exist in the repository.",
     ),
+]);
+
+/// A template that takes (`pattern`, `count`, `reason`).
+pub const SEARCH_BAD_PATTERN: Template<(Text, Count, Text)> = Template::new(&[
+    Piece::Text("pattern is not a valid regular expression: "),
+    Piece::Value(2),
+    Piece::Text(" at column "),
+    Piece::Value(1),
+    Piece::Text(". To match the text, pass pattern=\""),
+    Piece::Value(0),
+    Piece::Text("\""),
+]);
+
+/// A template that takes (`pattern`, `reason`).
+pub const SEARCH_BAD_PATTERN_NO_COLUMN: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("pattern is not a valid regular expression: "),
+    Piece::Value(1),
+    Piece::Text(". To match the text, pass pattern=\""),
+    Piece::Value(0),
+    Piece::Text("\""),
+]);
+
+/// A template that takes (`chars`, `text`).
+pub const SEARCH_CUT: Template<(Count, Text)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text("...[+"),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "char", "chars"),
+    Piece::Text("]"),
+]);
+
+/// A text that takes no values.
+pub const SEARCH_GLOB_ROOT: &str = "A glob matches the path from the root. Start it with **/ to \
+        match at any depth.";
+
+/// A template that takes (`query`, `count`, `glob`).
+pub const SEARCH_LISTING: Template<(Text, Count, Text)> = Template::new(&[
+    Piece::Text("search files="),
+    Piece::Value(2),
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+]);
+
+/// A template that takes (`query`, `glob`).
+pub const SEARCH_LISTING_NO_FILE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("search files="),
+    Piece::Value(1),
+    Piece::Value(0),
+    Piece::Text(": no file matches the glob."),
+]);
+
+/// A template that takes (`shown`, `total`).
+pub const SEARCH_LISTING_REST: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" of "),
+    Piece::Value(1),
+    Piece::Text(" files shown: raise limit for more."),
+]);
+
+/// A template that takes `count`.
+pub const SEARCH_MORE_FILES: Template<Count> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" more "),
+    Piece::Choice(0, "file", "files"),
+]);
+
+/// A template that takes (`query`, `pattern`).
+pub const SEARCH_NO_FILE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("search /"),
+    Piece::Value(1),
+    Piece::Text("/"),
+    Piece::Value(0),
+    Piece::Text(": no file matches the glob."),
+]);
+
+/// A template that takes (`kind`, `count`, `total`, `listed`).
+pub const SEARCH_NOISE: Template<(Text, Count, Count, Text)> = Template::new(&[
+    Piece::Text("+ "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "match", "matches"),
+    Piece::Text(" in "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(2, "file", "files"),
+    Piece::Text(": "),
+    Piece::Value(3),
+    Piece::Text(". path=<file> shows them."),
+]);
+
+/// A text that takes no values.
+pub const SEARCH_NOTHING_ASKED: &str = "search needs pattern, files or both.";
+
+/// A template that takes (`pattern`, `limit`).
+pub const SEARCH_PATTERN_TOO_BIG: Template<(Text, Count)> = Template::new(&[
+    Piece::Text(
+        "pattern is not a valid regular expression: it compiles to more \
+        than ",
+    ),
+    Piece::Value(1),
+    Piece::Text(" bytes. To match the text, pass pattern=\""),
+    Piece::Value(0),
+    Piece::Text("\""),
+]);
+
+/// A template that takes (`count`, `listed`).
+pub const SEARCH_REPEAT: Template<(Count, Text)> = Template::new(&[
+    Piece::Text("same line in "),
+    Piece::Value(0),
+    Piece::Text(" places: "),
+    Piece::Value(1),
+]);
+
+/// A template that takes (`shown`, `count`, `total`, `listed`).
+pub const SEARCH_REST: Template<(Count, Count, Count, Text)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" of "),
+    Piece::Value(2),
+    Piece::Text(" match lines shown; the rest are in "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+    Piece::Text(": "),
+    Piece::Value(3),
+]);
+
+/// A template that takes `glob`.
+pub const SEARCH_SCOPE_FILES: Template<Text> =
+    Template::new(&[Piece::Text(" files="), Piece::Value(0)]);
+
+/// A template that takes `path`.
+pub const SEARCH_SCOPE_PATH: Template<Text> =
+    Template::new(&[Piece::Text(" in "), Piece::Value(0)]);
+
+/// A template that takes (`count`, `listed`).
+pub const SEARCH_SKIPPED: Template<(Count, Text)> = Template::new(&[
+    Piece::Text("// warning: "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "file was", "files were"),
+    Piece::Text(" not searched: "),
+    Piece::Value(1),
+]);
+
+/// A template that takes (`query`, `pattern`, `count`, `total`).
+pub const SEARCH_SUMMARY: Template<(Text, Text, Count, Count)> = Template::new(&[
+    Piece::Text("search /"),
+    Piece::Value(1),
+    Piece::Text("/"),
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "match", "matches"),
+    Piece::Text(" in "),
+    Piece::Value(3),
+    Piece::Text(" "),
+    Piece::Choice(3, "file", "files"),
+]);
+
+/// A template that takes (`query`, `pattern`, `total`).
+pub const SEARCH_SUMMARY_NONE: Template<(Text, Text, Count)> = Template::new(&[
+    Piece::Text("search /"),
+    Piece::Value(1),
+    Piece::Text("/"),
+    Piece::Value(0),
+    Piece::Text(": 0 matches in "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "file", "files"),
+    Piece::Text(" searched."),
+]);
+
+/// A template that takes (`limit`, `glob`).
+pub const SEARCH_WIDE_GLOB: Template<(Count, Text)> = Template::new(&[
+    Piece::Text("files expands to more than "),
+    Piece::Value(0),
+    Piece::Text(" globs: "),
+    Piece::Value(1),
+    Piece::Text(". Use fewer brace groups."),
 ]);
 
 /// A text that takes no values.
@@ -2339,16 +2855,21 @@ pub const SPAN_SYMBOL_UNDEFINED: Template<(Text, Text)> = Template::new(&[
 pub const STABLE_IDS_PATTERN: Template<Text> =
     Template::new(&[Piece::Text("stable ids: "), Piece::Value(0)]);
 
-/// A template that takes `surface`.
-pub const SURFACE_V1_DEPRECATED: Template<Text> = Template::new(&[
-    Piece::Text("--surface "),
-    Piece::Value(0),
+/// A template that takes (`paths`, `seeds`).
+pub const SUBAGENT_MAP_CONTEXT: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("Repository map (agentless-mcp): for "),
+    Piece::Value(1),
     Piece::Text(
-        " publishes the v1 tools. They are deprecated and are removed in \
-        0.11.0. Move to the v2 tools: agentless-mcp guide --section \
-        the-two-surfaces has the mapping.",
+        " in this brief, the files that rank first and that the brief \
+        does not name are ",
     ),
+    Piece::Value(0),
+    Piece::Text("."),
 ]);
+
+/// A text that takes no values.
+pub const SURFACE_REFUSED: &str = "--surface is no longer served: this release publishes trace \
+        and search only. Drop --surface.";
 
 /// A template that takes (`name`, `count`, `listed`).
 pub const TARGET_CANDIDATES: Template<(Text, Count, Text)> = Template::new(&[
@@ -2445,6 +2966,597 @@ pub const TOOL_TAKES: Template<(Text, Text)> = Template::new(&[
     Piece::Text("."),
 ]);
 
+/// A template that takes `count`.
+pub const TRACE_AT_LEAST: Template<Count> =
+    Template::new(&[Piece::Text("at least "), Piece::Value(0)]);
+
+/// A text that takes no values.
+pub const TRACE_BODY_OF_FILE: &str = "Read reads a file, trace path:start-end gives its numbered \
+        lines, and a symbol id with more=body gives the body of one \
+        symbol.";
+
+/// A template that takes `count`.
+pub const TRACE_BOUND: Template<Count> = Template::new(&[Piece::Value(0), Piece::Text(" bound")]);
+
+/// A template that takes (`target`, `count`).
+pub const TRACE_CANDIDATES: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(1),
+    Piece::Text(" definitions. Trace one by its id."),
+]);
+
+/// A template that takes `listed`.
+pub const TRACE_CYCLE_MEMBERS: Template<Text> =
+    Template::new(&[Piece::Text("also in this cycle: "), Piece::Value(0)]);
+
+/// A template that takes (`count`, `total`).
+pub const TRACE_CYCLES: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("in "),
+    Piece::Value(0),
+    Piece::Text(" import "),
+    Piece::Choice(0, "cycle", "cycles"),
+    Piece::Text(" of "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+]);
+
+/// A template that takes (`kinds`, `count`).
+pub const TRACE_DECLARES: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" ("),
+    Piece::Value(0),
+    Piece::Text(")"),
+]);
+
+/// A text that takes no values.
+pub const TRACE_DIFF_ADDED: &str = "added";
+
+/// A template that takes `span`.
+pub const TRACE_DIFF_BASE_SPAN: Template<Text> =
+    Template::new(&[Piece::Text("(base @"), Piece::Value(0), Piece::Text(")")]);
+
+/// A text that takes no values.
+pub const TRACE_DIFF_CHANGED: &str = "changed";
+
+/// A template that takes (`path`, `status`, `added`, `removed`, `changed`).
+pub const TRACE_DIFF_FILE: Template<(Text, Text, Count, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("  "),
+    Piece::Value(1),
+    Piece::Text("  +"),
+    Piece::Value(2),
+    Piece::Text(" -"),
+    Piece::Value(3),
+    Piece::Text(" ~"),
+    Piece::Value(4),
+]);
+
+/// A template that takes (`count`, `total`, `added`, `removed`, `changed`, `renamed`).
+pub const TRACE_DIFF_FILES: Template<(Count, Count, Count, Count, Count, Count)> =
+    Template::new(&[
+        Piece::Text("files: "),
+        Piece::Value(0),
+        Piece::Text(" source "),
+        Piece::Choice(0, "file", "files"),
+        Piece::Text(" ("),
+        Piece::Value(2),
+        Piece::Text(" added, "),
+        Piece::Value(3),
+        Piece::Text(" removed, "),
+        Piece::Value(4),
+        Piece::Text(" changed, "),
+        Piece::Value(5),
+        Piece::Text(" renamed) in "),
+        Piece::Value(1),
+        Piece::Text(" "),
+        Piece::Choice(1, "folder", "folders"),
+    ]);
+
+/// A template that takes (`path`, `count`, `added`, `removed`, `changed`).
+pub const TRACE_DIFF_FOLDER: Template<(Text, Count, Count, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("/  "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+    Piece::Text("  +"),
+    Piece::Value(2),
+    Piece::Text(" -"),
+    Piece::Value(3),
+    Piece::Text(" ~"),
+    Piece::Value(4),
+]);
+
+/// A template that takes (`revision`, `sha`, `count`).
+pub const TRACE_DIFF_HEADER: Template<(Text, Text, Count)> = Template::new(&[
+    Piece::Text("diff "),
+    Piece::Value(0),
+    Piece::Text(": base "),
+    Piece::Value(1),
+    Piece::Text(" (merge base with HEAD), "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "commit", "commits"),
+    Piece::Text(", against the working tree"),
+]);
+
+/// A text that takes no values.
+pub const TRACE_DIFF_MOVED: &str = "moved";
+
+/// A template that takes (`name`, `count`).
+pub const TRACE_DIFF_MOVES: Template<(Text, Count)> =
+    Template::new(&[Piece::Value(0), Piece::Text(": "), Piece::Value(1)]);
+
+/// A template that takes (`revision`, `note`).
+pub const TRACE_DIFF_NO_BASE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("diff:"),
+    Piece::Value(0),
+    Piece::Text(" has no merge base with HEAD: "),
+    Piece::Value(1),
+]);
+
+/// A text that takes no values.
+pub const TRACE_DIFF_NO_FILES: &str = "files: none";
+
+/// A text that takes no values.
+pub const TRACE_DIFF_NO_REV: &str = "a diff target names a revision after diff:, such as \
+        diff:main.";
+
+/// A text that takes no values.
+pub const TRACE_DIFF_REMOVED: &str = "removed";
+
+/// A template that takes `path`.
+pub const TRACE_DIFF_RENAMED: Template<Text> =
+    Template::new(&[Piece::Text("renamed from "), Piece::Value(0)]);
+
+/// A template that takes `revision`.
+pub const TRACE_DIFF_REV: Template<Text> = Template::new(&[
+    Piece::Text("rev does not apply to a diff target. diff:"),
+    Piece::Value(0),
+    Piece::Text(" compares "),
+    Piece::Value(0),
+    Piece::Text(" with the working tree."),
+]);
+
+/// A template that takes (`name`, `count`, `total`, `tests`).
+pub const TRACE_DIFF_SECTION: Template<(Text, Count, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "symbol", "symbols"),
+    Piece::Text(" in "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "file", "files"),
+    Piece::Text(", "),
+    Piece::Value(3),
+    Piece::Text(" in tests"),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const TRACE_DIFF_UNREAD: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" was not read: "),
+    Piece::Value(1),
+]);
+
+/// A template that takes (`path`, `language`, `pattern`, `count`).
+pub const TRACE_FILE_HEADER: Template<(Text, Text, Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("  "),
+    Piece::Value(1),
+    Piece::Text("  "),
+    Piece::Value(3),
+    Piece::Text(" "),
+    Piece::Choice(3, "line", "lines"),
+    Piece::Text("  ids: "),
+    Piece::Value(2),
+]);
+
+/// A template that takes (`path`, `count`, `total`).
+pub const TRACE_FOLDER_HEADER: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("/  "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+    Piece::Text(", "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "line", "lines"),
+]);
+
+/// A template that takes (`path`, `count`).
+pub const TRACE_FOLDER_ROW: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("/  "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+]);
+
+/// A template that takes `count`.
+pub const TRACE_HIDDEN: Template<Count> = Template::new(&[Piece::Value(0), Piece::Text(" hidden")]);
+
+/// A template that takes (`sha`, `date`, `subject`).
+pub const TRACE_LAST_CHANGE: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Text("last change: "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Value(2),
+]);
+
+/// A template that takes `count`.
+pub const TRACE_LAST_CHANGE_NOT_READ: Template<Count> = Template::new(&[
+    Piece::Text("last change: not read in "),
+    Piece::Value(0),
+    Piece::Text(" s"),
+]);
+
+/// A template that takes `reason`.
+pub const TRACE_LAST_CHANGE_UNAVAILABLE: Template<Text> =
+    Template::new(&[Piece::Text("last change: not read: "), Piece::Value(0)]);
+
+/// A template that takes `count`.
+pub const TRACE_LINE_PAST_END: Template<Count> = Template::new(&[
+    Piece::Text(": the file has "),
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "line", "lines"),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`pattern`, `count`, `listed`).
+pub const TRACE_LITERAL: Template<(Text, Count, Text)> = Template::new(&[
+    Piece::Text("It occurs as text in "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+    Piece::Text(": "),
+    Piece::Value(2),
+    Piece::Text(". search(pattern=\""),
+    Piece::Value(0),
+    Piece::Text("\") lists every match."),
+]);
+
+/// A text that takes no values.
+pub const TRACE_LITERAL_NONE: &str = "No file holds it as text.";
+
+/// A template that takes `name`.
+pub const TRACE_MORE_HINT: Template<Text> =
+    Template::new(&[Piece::Text("(more="), Piece::Value(0), Piece::Text(")")]);
+
+/// A template that takes (`revision`, `name`).
+pub const TRACE_MORE_HINT_REV: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("(more="),
+    Piece::Value(1),
+    Piece::Text(", rev="),
+    Piece::Value(0),
+    Piece::Text(")"),
+]);
+
+/// A template that takes `count`.
+pub const TRACE_NAME_ONLY: Template<Count> =
+    Template::new(&[Piece::Value(0), Piece::Text(" name-only")]);
+
+/// A template that takes (`count`, `total`).
+pub const TRACE_NAME_ONLY_FILES: Template<(Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" name-only in "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+]);
+
+/// A template that takes (`count`, `total`).
+pub const TRACE_NAME_ONLY_FILES_FLOOR: Template<(Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" name-only in at least "),
+    Piece::Value(1),
+    Piece::Text(" files"),
+]);
+
+/// A text that takes no values.
+pub const TRACE_NO_ANCHOR: &str = "no symbol of this file joins the name graph";
+
+/// A template that takes (`path`, `kind`).
+pub const TRACE_NO_GRAMMAR: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(": no grammar reads "),
+    Piece::Value(1),
+    Piece::Text(" files. Read it or search it."),
+]);
+
+/// A template that takes `path`.
+pub const TRACE_NO_GRAMMAR_NAME: Template<Text> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(": no grammar reads this file. Read it or search it."),
+]);
+
+/// A template that takes `target`.
+pub const TRACE_NO_MATCH: Template<Text> = Template::new(&[
+    Piece::Text("no symbol, file or folder matches "),
+    Piece::Value(0),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`name`, `listed`).
+pub const TRACE_NO_SECTION_DIFF: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("more="),
+    Piece::Value(0),
+    Piece::Text(" does not apply to a diff card. Diff sections: "),
+    Piece::Value(1),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`name`, `listed`).
+pub const TRACE_NO_SECTION_FILE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("more="),
+    Piece::Value(0),
+    Piece::Text(" does not apply to a file card. File sections: "),
+    Piece::Value(1),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`name`, `listed`).
+pub const TRACE_NO_SECTION_FOLDER: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("more="),
+    Piece::Value(0),
+    Piece::Text(" does not apply to a folder card. Folder sections: "),
+    Piece::Value(1),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`name`, `listed`).
+pub const TRACE_NO_SECTION_SYMBOL: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("more="),
+    Piece::Value(0),
+    Piece::Text(" does not apply to a symbol card. Symbol sections: "),
+    Piece::Value(1),
+    Piece::Text("."),
+]);
+
+/// A text that takes no values.
+pub const TRACE_NO_SYMBOL_AT: &str = "; this is the file card.";
+
+/// A template that takes (`path`, `reason`).
+pub const TRACE_NOT_PARSED: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" is not parsed: "),
+    Piece::Value(1),
+    Piece::Text(". Read it or search it."),
+]);
+
+/// A template that takes `count`.
+pub const TRACE_NOT_RESOLVED: Template<Count> = Template::new(&[
+    Piece::Text("not resolved: the scan skipped "),
+    Piece::Value(0),
+    Piece::Text(" code "),
+    Piece::Choice(0, "file", "files"),
+    Piece::Text(", so a caller can be missing"),
+]);
+
+/// A template that takes `path`.
+pub const TRACE_NOT_SCANNED: Template<Text> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(": the scan does not read this file. Read it or search it."),
+]);
+
+/// A template that takes `text`.
+pub const TRACE_PART_HIDDEN: Template<Text> =
+    Template::new(&[Piece::Value(0), Piece::Text(" hidden")]);
+
+/// A template that takes `path`.
+pub const TRACE_RANGE_BINARY: Template<Text> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" is a binary file: trace shows the lines of a text file only."),
+]);
+
+/// A template that takes (`target`, `shown`, `count`, `total`).
+pub const TRACE_RANGE_CUT: Template<(Text, Count, Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(1),
+    Piece::Text(" of "),
+    Piece::Value(3),
+    Piece::Text(" lines shown: trace "),
+    Piece::Value(0),
+    Piece::Text(" for the next "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "line", "lines"),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`path`, `start`, `end`, `count`).
+pub const TRACE_RANGE_HEADER: Template<(Text, Count, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("  "),
+    Piece::Value(1),
+    Piece::Text("-"),
+    Piece::Value(2),
+    Piece::Text(" of "),
+    Piece::Value(3),
+    Piece::Text(" "),
+    Piece::Choice(3, "line", "lines"),
+]);
+
+/// A template that takes (`path`, `start`, `end`).
+pub const TRACE_RANGE_PAST_END: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Text("no lines "),
+    Piece::Value(1),
+    Piece::Text("-"),
+    Piece::Value(2),
+    Piece::Text(" in "),
+    Piece::Value(0),
+]);
+
+/// A template that takes (`path`, `start`, `end`).
+pub const TRACE_RANGE_REVERSED: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(":"),
+    Piece::Value(1),
+    Piece::Text("-"),
+    Piece::Value(2),
+    Piece::Text(
+        " is not a line range: start is 1 or more, and end is at or \
+        after start.",
+    ),
+]);
+
+/// A template that takes `count`.
+pub const TRACE_RANGE_SYMBOLS: Template<Count> =
+    Template::new(&[Piece::Text("symbols: "), Piece::Value(0)]);
+
+/// A text that takes no values.
+pub const TRACE_RANGE_SYMBOLS_NONE: &str = "symbols: none";
+
+/// A template that takes (`path`, `revision`, `sha`).
+pub const TRACE_REV_NO_FILE: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Text("no file "),
+    Piece::Value(0),
+    Piece::Text(" at "),
+    Piece::Value(1),
+    Piece::Text(" ("),
+    Piece::Value(2),
+    Piece::Text("). It is in the working tree: trace it with no rev."),
+]);
+
+/// A template that takes (`revision`, `sha`, `target`).
+pub const TRACE_REV_NO_MATCH: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Text("no symbol, file or folder matches "),
+    Piece::Value(2),
+    Piece::Text(" at "),
+    Piece::Value(0),
+    Piece::Text(" ("),
+    Piece::Value(1),
+    Piece::Text(")."),
+]);
+
+/// A template that takes `revision`.
+pub const TRACE_REV_NOT_A_NAME: Template<Text> = Template::new(&[
+    Piece::Text("rev "),
+    Piece::Value(0),
+    Piece::Text(" is not a revision name: it holds \":\" or starts with \"-\"."),
+]);
+
+/// A text that takes no values.
+pub const TRACE_REV_SHALLOW: &str = "The clone is shallow: the commit can be older than its depth \
+        (git fetch --unshallow).";
+
+/// A template that takes (`revision`, `note`).
+pub const TRACE_REV_UNKNOWN: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("rev "),
+    Piece::Value(0),
+    Piece::Text(" names no commit: "),
+    Piece::Value(1),
+    Piece::Text(". Give a branch, a tag or a commit id, such as rev=main."),
+]);
+
+/// A template that takes (`path`, `revision`, `note`).
+pub const TRACE_REV_UNREAD: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" at "),
+    Piece::Value(1),
+    Piece::Text(" was not read: "),
+    Piece::Value(2),
+]);
+
+/// A template that takes `count`.
+pub const TRACE_ROWS_UNLISTED: Template<Count> =
+    Template::new(&[Piece::Text("... "), Piece::Value(0), Piece::Text(" more")]);
+
+/// A template that takes `count`.
+pub const TRACE_ROWS_UNLISTED_FLOOR: Template<Count> = Template::new(&[
+    Piece::Text("... at least "),
+    Piece::Value(0),
+    Piece::Text(" more"),
+]);
+
+/// A template that takes `count`.
+pub const TRACE_SAME_CARD: Template<Count> =
+    Template::new(&[Piece::Text("same card as target "), Piece::Value(0)]);
+
+/// A template that takes `name`.
+pub const TRACE_SECTION_NONE: Template<Text> =
+    Template::new(&[Piece::Value(0), Piece::Text(": none")]);
+
+/// A template that takes (`name`, `reason`).
+pub const TRACE_SECTION_UNREAD: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(": not read: "),
+    Piece::Value(1),
+]);
+
+/// A template that takes `count`.
+pub const TRACE_SIMILAR: Template<Count> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "candidate", "candidates"),
+]);
+
+/// A template that takes `count`.
+pub const TRACE_SIMILAR_NAME_ONLY: Template<Count> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" "),
+    Piece::Choice(0, "candidate", "candidates"),
+    Piece::Text(", ranked by name-only callers; hidden"),
+]);
+
+/// A template that takes (`target`, `count`).
+pub const TRACE_SIMILAR_ROW: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("  "),
+    Piece::Value(1),
+    Piece::Text(" shared "),
+    Piece::Choice(1, "caller", "callers"),
+]);
+
+/// A template that takes `target`.
+pub const TRACE_TARGET: Template<Text> = Template::new(&[Piece::Text("target: "), Piece::Value(0)]);
+
+/// A template that takes (`count`, `minimum`, `maximum`).
+pub const TRACE_TARGET_COUNT: Template<(Count, Count, Count)> = Template::new(&[
+    Piece::Text("target holds "),
+    Piece::Value(0),
+    Piece::Text(" targets, but trace takes "),
+    Piece::Value(1),
+    Piece::Text(" to "),
+    Piece::Value(2),
+    Piece::Text(" targets."),
+]);
+
+/// A template that takes `name`.
+pub const TRACE_TIER_UNCHECKED: Template<Text> =
+    Template::new(&[Piece::Value(0), Piece::Text(", locals not checked")]);
+
+/// A template that takes `count`.
+pub const TRACE_TREE_UNLISTED: Template<Count> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(0),
+    Piece::Text(" more: trace a subfolder for the rest"),
+]);
+
+/// A template that takes (`path`, `paths`).
+pub const TRACE_UNKNOWN_PATH: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("no file or folder "),
+    Piece::Value(0),
+    Piece::Text(" in the repository. Paths that end the same way: "),
+    Piece::Value(1),
+    Piece::Text("."),
+]);
+
+/// A template that takes `path`.
+pub const TRACE_UNKNOWN_PATH_NONE: Template<Text> = Template::new(&[
+    Piece::Text("no file or folder "),
+    Piece::Value(0),
+    Piece::Text(" in the repository."),
+]);
+
 /// A template that takes (`check`, `reads`, `compared`, `budget`).
 pub const TREE_CHECK_STOPPED: Template<(Text, Text, Text, Count)> = Template::new(&[
     Piece::Text("not checked: "),
@@ -2493,9 +3605,8 @@ pub const WALK_REFUSED_CLI: Template<Text> = Template::new(&[
 pub const WALK_REFUSED_MCP: Template<Text> = Template::new(&[
     Piece::Value(0),
     Piece::Text(
-        ". No argument changes a walk bound. read dir walks only the \
-        directory that its path names. symbols overview, expand and \
-        locate, read slice and history do not walk the root.",
+        ". No argument changes a walk bound. Serve a subdirectory with \
+        --root, and the walk covers only that subtree.",
     ),
 ]);
 

@@ -3,14 +3,14 @@
 
 use app::{
     BindingStatus, Coverage, CoverageStatus, ROW_INDENT, RefGroup, RefListing, RefSite, RefsResult,
-    SharedCaller, Skipped, TargetBinding, file_site, locator,
+    SharedCaller, TargetBinding, file_site, locator,
 };
 use json::{fixed, round_half_even};
 use prompts::messages::{
     DATA_KEY_NO_FAN_IN, REFS_ABSENT, REFS_ABSENT_COMPLETE, REFS_ABSENT_PARTIAL,
     REFS_CALLERS_UNLISTED, REFS_CANDIDATES_UNLISTED, REFS_GROUP_HEADER, REFS_HEADER,
-    REFS_HEADER_SHARED, REFS_SHARED_CANDIDATE, REFS_SPLIT, REFS_SPLIT_NONE, REFS_UNLISTED,
-    REFS_UNLISTED_FILES,
+    REFS_HEADER_SHARED, REFS_SHARED_CANDIDATE, REFS_SHARED_UNBOUND, REFS_SPLIT, REFS_SPLIT_NONE,
+    REFS_UNLISTED, REFS_UNLISTED_FILES,
 };
 use serde::Serialize;
 use text::one_line;
@@ -49,19 +49,6 @@ fn refs_text(result: &RefsResult) -> String {
         body
     } else {
         format!("{skipped}\n\n{body}")
-    }
-}
-
-/// Returns the refusal of a target that bound to nothing: its line, then the skipped-file warning
-/// when the scan skipped a code file.
-#[must_use]
-pub fn unbound_refusal(message: &str, skipped: &[Skipped]) -> String {
-    let line = one_line(message).into_owned();
-    let warning = skipped_line(skipped);
-    if warning.is_empty() {
-        line
-    } else {
-        format!("{line}\n{warning}")
     }
 }
 
@@ -169,6 +156,9 @@ fn shared_text(result: &RefsResult) -> String {
     let (from_tests, production): (Vec<&SharedCaller>, Vec<&SharedCaller>) =
         listing.rows().iter().partition(|row| row.in_tests);
     let mut lines = vec![format!("symbols sharing callers with {target}")];
+    if result.shared_bound == 0 {
+        lines.push(REFS_SHARED_UNBOUND.render(&target));
+    }
     lines.extend(production.into_iter().flat_map(candidate_rows));
     if !from_tests.is_empty() {
         lines.push("  defined in tests (ranked below all production candidates):".to_owned());
@@ -272,7 +262,7 @@ impl CoverageJson {
 }
 
 #[derive(Clone, Serialize)]
-struct GroupJson<'a> {
+pub(crate) struct GroupJson<'a> {
     path: &'a str,
     count: usize,
     tier: &'a str,
@@ -297,7 +287,7 @@ struct SharedJson<'a> {
 }
 
 #[derive(Clone, Serialize)]
-struct SharedRowJson<'a> {
+pub(crate) struct SharedRowJson<'a> {
     stable_id: &'a str,
     path: &'a str,
     line: u32,
@@ -342,7 +332,7 @@ impl<'a> RefsJson<'a> {
 }
 
 impl<'a> GroupJson<'a> {
-    fn of(group: &'a RefGroup) -> Self {
+    pub(crate) fn of(group: &'a RefGroup) -> Self {
         let sites = group.sites.iter().map(|site| SiteJson {
             line: site.line,
             enclosing: &site.enclosing,
@@ -371,7 +361,7 @@ impl<'a> SharedJson<'a> {
 }
 
 impl<'a> SharedRowJson<'a> {
-    fn of(row: &'a SharedCaller) -> Self {
+    pub(crate) fn of(row: &'a SharedCaller) -> Self {
         let callers = row.callers.iter().map(|caller| CallerJson {
             qualname: &caller.qualname,
             path: &caller.path,

@@ -135,4 +135,10 @@ impl Scratch {
         self.set_mode("fake-bin/git", mode);
         self.root.join("fake-bin")
     }
+
+    // A Git that finds the fake `git` of `fake_git` first on PATH.
+    pub(crate) fn faked_git(&self, body: &str, mode: u32) -> Git {
+        let bin = self.fake_git(body, mode);
+        Git::new(self.env_with(&[("PATH", path_before(bin).as_os_str())]))
+    }
 }

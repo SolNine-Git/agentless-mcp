@@ -223,6 +223,16 @@ pub const RESOLVE_LOCATIONS: &str = "Which lines hold this class, function, or l
         file. Unrecognized locations are reported individually, never \
         dropped silently.";
 
+/// The description of the `search` tool.
+pub const SEARCH: &str = "Search the text of the repository files, or list files by name. pattern \
+        is a regular expression in ripgrep syntax. Without pattern, the \
+        answer lists the files that files matches. Paths are relative \
+        to the root. Matches are grouped by file and by enclosing \
+        symbol, with its stable id: give the id to trace. Lock, \
+        vendored and minified files show as count lines. Use search for \
+        literals, messages, config keys and patterns. Use trace for a \
+        name that you know.";
+
 /// The description of the `symbols` tool.
 pub const SYMBOLS: &str = "Look up a symbol and read it by symbol. find (requires name; kind, \
         limit): symbols matching a name, Qualified.name or substring, \
@@ -237,3 +247,20 @@ pub const SYMBOLS: &str = "Look up a symbol and read it by symbol. find (require
         class:, function: and line: selectors as stable ids and line \
         intervals. For callers and blast radius, use \
         find_referencing_symbols.";
+
+/// The description of the `trace` tool.
+pub const TRACE: &str = "Show what a code target is and how it connects. target is a name, a \
+        repository-relative path, path:line, path:start-end or a stable \
+        id. A name with more than one definition gives the candidates. \
+        A function, method or class gives its signature, callers by \
+        evidence tier, callees, tests and last change. A file gives its \
+        declarations, imports, importers, tests and import cycles. \
+        path:start-end gives up to 200 numbered lines and the ids of \
+        the symbols in them. A folder gives its tree. Each section \
+        shows how many rows it hides, and more shows one section in \
+        full. more=body gives the numbered body. more=similar lists the \
+        symbols that share callers with the target. rev reads the code \
+        at a git revision, not the working tree. diff:<rev> lists the \
+        symbols that the working tree added, removed, changed and moved \
+        since its merge base with <rev>. A list of targets gives one \
+        card per target in one call.";

@@ -56,6 +56,26 @@ impl core::marker::Unpin for mcp::Transport
 impl core::marker::UnsafeUnpin for mcp::Transport
 impl core::panic::unwind_safe::RefUnwindSafe for mcp::Transport
 impl core::panic::unwind_safe::UnwindSafe for mcp::Transport
+pub struct mcp::HookCheck
+pub mcp::HookCheck::binary: std::path::PathBuf
+pub mcp::HookCheck::user_settings: core::option::Option<std::path::PathBuf>
+impl mcp::HookCheck
+pub fn mcp::HookCheck::of(&app::env::EnvConfig, std::path::PathBuf) -> mcp::HookCheck
+impl core::clone::Clone for mcp::HookCheck
+pub fn mcp::HookCheck::clone(&self) -> Self
+impl core::cmp::Eq for mcp::HookCheck
+impl core::cmp::PartialEq for mcp::HookCheck
+pub fn mcp::HookCheck::eq(&self, &Self) -> bool
+impl core::fmt::Debug for mcp::HookCheck
+pub fn mcp::HookCheck::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for mcp::HookCheck
+impl core::marker::Freeze for mcp::HookCheck
+impl core::marker::Send for mcp::HookCheck
+impl core::marker::Sync for mcp::HookCheck
+impl core::marker::Unpin for mcp::HookCheck
+impl core::marker::UnsafeUnpin for mcp::HookCheck
+impl core::panic::unwind_safe::RefUnwindSafe for mcp::HookCheck
+impl core::panic::unwind_safe::UnwindSafe for mcp::HookCheck
 pub struct mcp::Ports
 pub mcp::Ports::arming: alloc::rcs::arc::Arc<dyn mcp::Arming>
 pub mcp::Ports::log: alloc::rcs::arc::Arc<dyn mcp::Log>
@@ -123,6 +143,7 @@ impl !core::panic::unwind_safe::RefUnwindSafe for mcp::Server
 impl !core::panic::unwind_safe::UnwindSafe for mcp::Server
 pub struct mcp::ServerConfig
 pub mcp::ServerConfig::call_limit: f64
+pub mcp::ServerConfig::hooks: core::option::Option<mcp::HookCheck>
 pub mcp::ServerConfig::launch_dir: core::option::Option<std::path::PathBuf>
 pub mcp::ServerConfig::max_concurrency: usize
 pub mcp::ServerConfig::recache_grace: f64

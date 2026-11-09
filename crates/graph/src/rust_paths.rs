@@ -30,10 +30,12 @@ enum Module<'a> {
 }
 
 impl<'p, 'a> RustTree<'p, 'a> {
-    pub(crate) fn build(files: &'a [FileFacts], paths: &'p PathIndex<'a>) -> RustTree<'p, 'a> {
+    pub(crate) fn build(files: &[&'a FileFacts], paths: &'p PathIndex<'a>) -> RustTree<'p, 'a> {
         let mut crates = BTreeMap::new();
         let mut packages = Vec::new();
-        let manifests: Vec<&FileFacts> = files.iter().filter(|file| is_manifest(file)).collect();
+        let manifests: Vec<&'a FileFacts> = (files.iter().copied())
+            .filter(|file| is_manifest(file))
+            .collect();
         for file in &manifests {
             let Some(manifest) = &file.facts.manifest else {
                 continue;
@@ -285,7 +287,7 @@ fn target_dir(inside: &str) -> Option<(&'static str, &str)> {
         .find_map(|top| inside.strip_prefix(top).map(|rest| (top, rest)))
 }
 
-fn is_manifest(file: &FileFacts) -> bool {
+pub(crate) fn is_manifest(file: &FileFacts) -> bool {
     file.language == Language::Toml
         && (file.path == MANIFEST || file.path.ends_with(&format!("/{MANIFEST}")))
 }

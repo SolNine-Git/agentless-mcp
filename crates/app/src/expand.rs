@@ -178,7 +178,7 @@ pub(crate) fn expand_one(
 }
 
 // The card with the span's lines, each behind its line number.
-fn body_card(span: &SymbolSpan) -> SymbolCard {
+pub(crate) fn body_card(span: &SymbolSpan) -> SymbolCard {
     let first = (span.start_line as usize).saturating_sub(1);
     let lines = span.source.split('\n').skip(first);
     let numbered: Vec<String> = (span.start_line..=span.end_line)

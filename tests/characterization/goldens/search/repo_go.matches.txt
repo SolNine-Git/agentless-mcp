@@ -1,0 +1,6 @@
+// agentless-mcp receipt   repo: <REPO>   head: 9fae3265   dirty: 0 files   cache: none
+search /ReorderReport/: 2 matches in 1 file
+reports.go
+    46| // ReorderReport renders a plain-text reorder report.
+  ReorderReport  [go:reports.go::ReorderReport] @47-70
+    47| func ReorderReport(inv *Inventory, prices *PriceBook) (string, error) {

@@ -1,10 +1,13 @@
 //! The one place a name spelled in a file becomes an evidence tier and a candidate set.
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use facts::{Declared, Ref, Role};
 use syntax::Language;
 
+use crate::candidates::Candidates;
 use crate::names::{Definition, NameIndex};
 use crate::scan::FileFacts;
 use crate::scopes::{ImportScope, Qualified, Scopes};
@@ -64,50 +67,108 @@ pub struct Resolution<'a> {
     pub candidates: Vec<Definition<'a>>,
 }
 
-// The definitions of one name, ordered by (path, line, qualified name), and their path groups.
-struct Candidates<'a> {
-    ordered: Vec<Definition<'a>>,
-    groups: Vec<(&'a str, usize, usize)>,
+// How a site spells its name: a bare name reads only the file and the name, a qualified name and a
+// module attribute read their qualifier as well.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Shape {
+    Bare,
+    Qualified,
+    ModuleAttribute,
 }
 
-/// Resolves names against one scan's name index and import scopes.
-pub struct Resolver<'a> {
-    index: &'a NameIndex<'a>,
-    scopes: &'a Scopes<'a>,
-    candidates: Vec<Candidates<'a>>,
+// Everything one resolution reads: the scan position of the spelling file, the shape, the
+// qualifier (empty for a bare name) and the name.
+#[derive(Clone, Copy)]
+struct Spelled<'s> {
+    at: Option<usize>,
+    shape: Shape,
+    qualifier: &'s str,
+    name: &'s str,
 }
 
-impl<'a> Resolver<'a> {
+impl<'s> Spelled<'s> {
+    fn bare(at: Option<usize>, name: &'s str) -> Spelled<'s> {
+        Spelled {
+            at,
+            shape: Shape::Bare,
+            qualifier: "",
+            name,
+        }
+    }
+}
+
+// A spelling's file, shape and name position in the index; the qualifier keys the list below it.
+type Key = (usize, Shape, usize);
+
+// A resolution kept without the scan's lifetime, so the resolver stays covariant: the tier and the
+// (file, symbol) position of each candidate.
+struct Kept {
+    tier: Tier,
+    at: Vec<(usize, usize)>,
+}
+
+// Each key with every qualifier it was resolved under, and what it resolved to.
+type Memo = HashMap<Key, Vec<(Box<str>, Option<Kept>)>>;
+
+/// The resolutions that a resolver kept, apart from the parts it read.
+pub struct Answers {
+    _held: Memo,
+}
+
+/// Resolves names against one scan's name index and import scopes, which it borrows for `'r`; what
+/// it resolves to lives as long as the scan, `'a`.
+pub struct Resolver<'r, 'a> {
+    index: &'r NameIndex<'a>,
+    scopes: &'r Scopes<'a>,
+    // The index and the scopes never change, so a key and qualifier resolve once for the life of
+    // the resolver. A lock, not a cell, keeps the resolver `Sync` for the types that hold it.
+    resolved: Mutex<Memo>,
+    walks: AtomicUsize,
+}
+
+impl<'r, 'a> Resolver<'r, 'a> {
     /// Build the resolver; `index` and `scopes` must come from the same scanned files.
     ///
     /// # Panics
     ///
     /// Panics when `index` and `scopes` were built from different file slices.
     #[must_use]
-    pub fn new(index: &'a NameIndex<'a>, scopes: &'a Scopes<'a>) -> Resolver<'a> {
+    pub fn new(index: &'r NameIndex<'a>, scopes: &'r Scopes<'a>) -> Resolver<'r, 'a> {
         assert!(
             std::ptr::eq(index.files(), scopes.files()),
             "the name index and the import scopes come from different scans"
         );
-        let candidates = (0..index.name_count())
-            .map(|position| ordered(index.definitions_at(position)))
-            .collect();
         Resolver {
             index,
             scopes,
-            candidates,
+            resolved: Mutex::new(HashMap::new()),
+            walks: AtomicUsize::new(0),
         }
+    }
+
+    /// Take what the resolver resolved, which outlives the parts it read, to free it elsewhere.
+    #[must_use]
+    pub fn take_answers(&self) -> Answers {
+        Answers {
+            _held: std::mem::take(&mut *self.memo()),
+        }
+    }
+
+    // How many alias chains the resolver walked: the memo holds it to one per key it resolved.
+    #[cfg(test)]
+    pub(crate) fn walks(&self) -> usize {
+        self.walks.load(Ordering::Relaxed)
     }
 
     /// Return the name index the resolver reads.
     #[must_use]
-    pub fn index(&self) -> &'a NameIndex<'a> {
+    pub fn index(&self) -> &'r NameIndex<'a> {
         self.index
     }
 
     /// Return the import scopes the resolver reads.
     #[must_use]
-    pub fn scopes(&self) -> &'a Scopes<'a> {
+    pub fn scopes(&self) -> &'r Scopes<'a> {
         self.scopes
     }
 
@@ -115,10 +176,12 @@ impl<'a> Resolver<'a> {
     /// name-only match keeps the definitions in the language family of the file at `path`.
     #[must_use]
     pub fn resolve(&self, name: &str, path: &str) -> Option<Resolution<'a>> {
-        let known = self
-            .index
-            .position(name)
-            .map(|position| &self.candidates[position]);
+        let at = self.scopes.position(path);
+        self.memoized(Spelled::bare(at, name), || self.resolve_bare(name, path))
+    }
+
+    fn resolve_bare(&self, name: &str, path: &str) -> Option<Resolution<'a>> {
+        let known = self.index.candidates(name);
         if let Some(found) = known.and_then(|known| self.bound_here(known, name, path)) {
             return Some(found);
         }
@@ -171,19 +234,34 @@ impl<'a> Resolver<'a> {
 
     /// Return each identifier occurrence in `file` that binds a definition, with its resolution;
     /// `names`, when given, keeps only the occurrences of those names.
-    pub fn resolved_sites<'r>(
-        &'r self,
+    pub fn resolved_sites<'s>(
+        &'s self,
         file: &'a FileFacts,
-        names: Option<&'r BTreeSet<&str>>,
-    ) -> impl Iterator<Item = (&'a Ref, Resolution<'a>)> + 'r {
-        let declared = Declared::of(&file.facts.symbols, &file.facts.refs);
-        file.facts.refs.iter().filter_map(move |reference| {
-            let wanted = names.is_none_or(|names| names.contains(reference.name.as_str()));
-            if !wanted || !reference.is_resolvable() || declared.declares(reference) {
+        names: Option<&'s BTreeSet<&str>>,
+    ) -> impl Iterator<Item = (&'a Ref, Resolution<'a>)> + 's {
+        let refs = file.facts.refs.iter().enumerate();
+        let wanted = refs.filter(move |(_, reference)| {
+            names.is_none_or(|names| names.contains(reference.name.as_str()))
+        });
+        let attempted = self.attempted(file, wanted);
+        attempted.filter_map(|(_, reference, found)| Some((reference, found?)))
+    }
+
+    // Each of `refs`, the file's references with their places, that the resolver tries to bind,
+    // with what it binds, if anything. Only a symbol's name line decides a declaring spelling.
+    pub(crate) fn attempted<'s>(
+        &'s self,
+        file: &'a FileFacts,
+        refs: impl Iterator<Item = (usize, &'a Ref)> + 's,
+    ) -> impl Iterator<Item = (usize, &'a Ref, Option<Resolution<'a>>)> + 's {
+        let declared = Declared::of(&file.facts.symbols, &[]);
+        let at = self.scopes.position(&file.path);
+        refs.filter_map(move |(place, reference)| {
+            if !reference.is_resolvable() || declared.declares(reference) {
                 return None;
             }
-            self.resolve_site(reference, &file.path)
-                .map(|found| (reference, found))
+            let found = self.resolve_site(reference, &file.path, at);
+            Some((place, reference, found))
         })
     }
 
@@ -196,13 +274,76 @@ impl<'a> Resolver<'a> {
             && self.qualified(&reference.qualifier, path) == Some(Qualified::Foreign)
     }
 
-    fn resolve_site(&self, reference: &Ref, path: &str) -> Option<Resolution<'a>> {
+    // `at` is the scan position of the file at `path`, which the caller looks up once per file.
+    fn resolve_site(
+        &self,
+        reference: &Ref,
+        path: &str,
+        at: Option<usize>,
+    ) -> Option<Resolution<'a>> {
+        let (name, qualifier) = (reference.name.as_str(), reference.qualifier.as_str());
+        let spelled = |shape| Spelled {
+            at,
+            shape,
+            qualifier,
+            name,
+        };
         if reference.role == Role::ModuleAttribute {
-            self.resolve_module_attribute(&reference.name, path, &reference.qualifier)
-        } else if !reference.qualifier.is_empty() {
-            self.resolve_qualified(&reference.name, path, &reference.qualifier)
+            self.memoized(spelled(Shape::ModuleAttribute), || {
+                self.resolve_module_attribute(name, path, qualifier)
+            })
+        } else if !qualifier.is_empty() {
+            self.memoized(spelled(Shape::Qualified), || {
+                self.resolve_qualified(name, path, qualifier)
+            })
         } else {
-            self.resolve(&reference.name, path)
+            self.memoized(Spelled::bare(at, name), || self.resolve_bare(name, path))
+        }
+    }
+
+    // The resolution of `spelled`, from the memo or from `resolve`; a path outside the scan or a
+    // name outside the index has no key and resolves each time.
+    fn memoized(
+        &self,
+        spelled: Spelled<'_>,
+        resolve: impl FnOnce() -> Option<Resolution<'a>>,
+    ) -> Option<Resolution<'a>> {
+        let Some(key) = (spelled.at)
+            .zip(self.index.position(spelled.name))
+            .map(|(file, name)| (file, spelled.shape, name))
+        else {
+            return resolve();
+        };
+        {
+            let resolved = self.memo();
+            let mut held = resolved.get(&key).into_iter().flatten();
+            if let Some((_, kept)) = held.find(|(held, _)| **held == *spelled.qualifier) {
+                return kept.as_ref().map(|kept| self.restored(kept));
+            }
+        }
+        let found = resolve();
+        let kept = found.as_ref().map(|found| Kept {
+            tier: found.tier,
+            at: found.candidates.iter().map(Definition::position).collect(),
+        });
+        let mut resolved = self.memo();
+        let held = resolved.entry(key).or_default();
+        held.push((spelled.qualifier.into(), kept));
+        found
+    }
+
+    // No code panics while it holds the lock, so a poisoned memo is still whole.
+    fn memo(&self) -> MutexGuard<'_, Memo> {
+        self.resolved.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn restored(&self, kept: &Kept) -> Resolution<'a> {
+        let files = self.index.files();
+        Resolution {
+            tier: kept.tier,
+            candidates: (kept.at.iter())
+                .map(|&(file, symbol)| Definition::new(files, file, symbol))
+                .collect(),
         }
     }
 
@@ -232,8 +373,7 @@ impl<'a> Resolver<'a> {
 
     // A local definition outranks an import, and an import outranks a name-only match.
     fn bound_here(&self, known: &Candidates<'a>, name: &str, path: &str) -> Option<Resolution<'a>> {
-        let same_file: Vec<Definition<'a>> = group(known, path)
-            .iter()
+        let same_file: Vec<Definition<'a>> = (known.group(path).iter())
             .filter(|entry| in_module_scope(entry, path))
             .copied()
             .collect();
@@ -245,7 +385,7 @@ impl<'a> Resolver<'a> {
         }
         let scope = self.scopes.get(path)?;
         let spelled = self.scopes.language_of(path);
-        let named: Vec<Definition<'a>> = groups(known)
+        let named: Vec<Definition<'a>> = (known.groups())
             .filter(|(defining, _)| scope.binds(name, defining))
             .flat_map(|(_, entries)| entries.iter().copied())
             .filter(|entry| bare_name_reaches(spelled, entry))
@@ -263,13 +403,10 @@ impl<'a> Resolver<'a> {
         let scope = self.scopes.get(path)?;
         let targets = scope.module_bindings.get(qualifier);
         let bound = |defining: &str| targets.is_some_and(|targets| targets.contains(defining));
-        let known = self
-            .index
-            .position(name)
-            .map(|position| &self.candidates[position]);
+        let known = self.index.candidates(name);
         let direct: Vec<Definition<'a>> = known
             .into_iter()
-            .flat_map(groups)
+            .flat_map(Candidates::groups)
             .filter(|(defining, _)| bound(defining))
             .flat_map(|(_, entries)| entries.iter().copied())
             .collect();
@@ -287,6 +424,7 @@ impl<'a> Resolver<'a> {
     where
         'a: 'n,
     {
+        self.walks.fetch_add(1, Ordering::Relaxed);
         let mut pending: VecDeque<(&'a str, &'n str, u32)> = first
             .into_iter()
             .map(|(target, member)| (target, member, 1))
@@ -307,15 +445,14 @@ impl<'a> Resolver<'a> {
                 pending.extend(hops.map(|(next, name)| (next, name, depth + 1)));
             }
         }
-        ordered(&found.definitions).ordered
+        Candidates::of(&found.definitions).ordered
     }
 
     fn defined_at(&self, member: &str, target: &str) -> Vec<Definition<'a>> {
-        let Some(position) = self.index.position(member) else {
+        let Some(known) = self.index.candidates(member) else {
             return Vec::new();
         };
-        group(&self.candidates[position], target)
-            .iter()
+        (known.group(target).iter())
             .filter(|entry| in_module_scope(entry, target))
             .copied()
             .collect()
@@ -372,45 +509,4 @@ fn bare_name_reaches(spelled: Option<Language>, candidate: &Definition<'_>) -> b
 // A bare name cannot reach a class member, so only a top-level definition is in module scope.
 fn in_module_scope(candidate: &Definition<'_>, path: &str) -> bool {
     candidate.path() == path && candidate.symbol().parent.is_empty()
-}
-
-fn ordered<'a>(definitions: &[Definition<'a>]) -> Candidates<'a> {
-    let mut keyed: Vec<((&'a str, u32, String), Definition<'a>)> = definitions
-        .iter()
-        .map(|entry| {
-            (
-                (entry.path(), entry.symbol().line, entry.symbol().qualname()),
-                *entry,
-            )
-        })
-        .collect();
-    keyed.sort_by(|left, right| left.0.cmp(&right.0));
-    let ordered: Vec<Definition<'a>> = keyed.into_iter().map(|(_, entry)| entry).collect();
-    let mut groups: Vec<(&'a str, usize, usize)> = Vec::new();
-    for (position, entry) in ordered.iter().enumerate() {
-        match groups.last_mut() {
-            Some((path, _, end)) if *path == entry.path() => *end = position + 1,
-            _ => groups.push((entry.path(), position, position + 1)),
-        }
-    }
-    Candidates { ordered, groups }
-}
-
-fn group<'c, 'a>(known: &'c Candidates<'a>, path: &str) -> &'c [Definition<'a>] {
-    known
-        .groups
-        .binary_search_by(|(held, _, _)| (*held).cmp(path))
-        .map_or(&[], |found| {
-            let (_, start, end) = known.groups[found];
-            &known.ordered[start..end]
-        })
-}
-
-fn groups<'c, 'a>(
-    known: &'c Candidates<'a>,
-) -> impl Iterator<Item = (&'a str, &'c [Definition<'a>])> {
-    known
-        .groups
-        .iter()
-        .map(|&(path, start, end)| (path, &known.ordered[start..end]))
 }

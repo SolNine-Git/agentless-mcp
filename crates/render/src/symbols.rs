@@ -150,7 +150,7 @@ fn miss_line(result: &FindResult) -> String {
 }
 
 // The head with its order, a row per listed file, and the count of the files the cap left out.
-fn usage_text(usage: &Usage) -> String {
+pub(crate) fn usage_text(usage: &Usage) -> String {
     let files = &usage.files;
     let mut lines = vec![usage_head(usage)];
     lines.extend(files.rows().iter().map(usage_row));
@@ -236,7 +236,7 @@ struct FindJson<'a> {
 
 // The code files that spell the name and do not declare it: the owner only for a qualified query.
 #[derive(Clone, Serialize)]
-struct UsageJson<'a> {
+pub(crate) struct UsageJson<'a> {
     name: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     owner: Option<&'a str>,
@@ -254,7 +254,7 @@ struct UsageFileJson<'a> {
 }
 
 impl<'a> UsageJson<'a> {
-    fn of(usage: &'a Usage) -> Self {
+    pub(crate) fn of(usage: &'a Usage) -> Self {
         let files = usage.files.rows().iter().map(|file| UsageFileJson {
             path: &file.path,
             line: file.line,

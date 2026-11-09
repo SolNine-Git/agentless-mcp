@@ -102,8 +102,16 @@ impl Git {
     pub fn changes(&self, root: &Path, commit: &str) -> GitOutcome {
         // --raw carries both modes, which name a symlink or a submodule. --relative keeps every
         // path relative to -C when the root is below the git top level.
-        let rest = ["--raw", "-z", "-M", "--relative", commit, "--"].map(OsStr::new);
-        self.run(root, "diff", &rest, LISTING)
+        let rest = [
+            "--raw",
+            "-z",
+            "-M",
+            "--relative",
+            "--end-of-options",
+            commit,
+            "--",
+        ];
+        self.run(root, "diff", &rest.map(OsStr::new), LISTING)
     }
 
     /// Lists the untracked files that no ignore rule excludes, NUL-separated.
@@ -113,12 +121,28 @@ impl Git {
         self.run(root, "ls-files", &rest, LISTING)
     }
 
+    /// Prints the best common ancestor of `commit` and HEAD with `merge-base`, as a pull request
+    /// takes its base.
+    #[must_use]
+    pub fn merge_base(&self, root: &Path, commit: &str) -> GitOutcome {
+        let rest = ["--end-of-options", commit, "HEAD"].map(OsStr::new);
+        self.run_offline(root, "merge-base", &rest, COMMIT)
+    }
+
+    /// Prints the count of the commits that HEAD holds and `base` does not.
+    #[must_use]
+    pub fn commits_since(&self, root: &Path, base: &str) -> GitOutcome {
+        let range = format!("{base}..HEAD");
+        let rest = ["--count", "--end-of-options", range.as_str()].map(OsStr::new);
+        self.run_offline(root, "rev-list", &rest, COMMIT)
+    }
+
     /// Prints `path` as `commit` has it, up to the per-file cap.
     #[must_use]
     pub fn blob(&self, root: &Path, commit: &str, path: &str) -> GitOutcome {
         // Plumbing, so no textconv driver runs. "./" reads the path from -C, not from the top.
         let object = OsString::from(format!("{commit}:./{path}"));
-        self.run(root, "cat-file", &[OsStr::new("blob"), &object], BLOB)
+        self.run_offline(root, "cat-file", &[OsStr::new("blob"), &object], BLOB)
     }
 }
 

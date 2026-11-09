@@ -1,0 +1,22 @@
+{
+  "hook": "read-card",
+  "fixture": "repo_py",
+  "payload": {
+    "session_id": "session-1",
+    "transcript_path": "/home/user/.claude/projects/repo/session-1.jsonl",
+    "cwd": "<REPO>",
+    "permission_mode": "default",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Read",
+    "tool_input": {
+      "file_path": "<REPO>/reports.py"
+    },
+    "tool_use_id": "toolu_01",
+    "tool_response": {
+      "type": "text",
+      "file": {
+        "filePath": "<REPO>/reports.py"
+      }
+    }
+  }
+}

@@ -4,6 +4,7 @@ use facts::{Symbol, SymbolKind};
 use serde_json::{Value, json};
 
 use super::corpus::{Corpus, bits, edge, reference};
+use crate::FileFacts;
 use crate::communities::detect_communities;
 use crate::cycles::{Adjacency, components, import_cycles};
 use crate::files::{FileGraph, Weighting};
@@ -122,6 +123,7 @@ fn a_partition_covers_every_node_exactly_once() {
 // differ between two builds, since each std map instance draws its own hasher seed.
 fn outputs(corpus: &Corpus) -> Vec<String> {
     let files = corpus.files();
+    let files: Vec<&FileFacts> = files.iter().collect();
     let index = NameIndex::build(&files);
     let scopes = Scopes::build(&files);
     let stoplist = BTreeSet::from(["helper".to_owned(), "render".to_owned()]);
@@ -153,7 +155,7 @@ fn outputs(corpus: &Corpus) -> Vec<String> {
     let symbols = SymbolGraph::build(&resolver, None).expect("no deadline stops it");
     let symbol_edges: Vec<Value> = symbols.edges().iter().map(edge).collect();
     let ambiguous: Vec<Value> = symbols.ambiguous().iter().map(reference).collect();
-    let cycles = import_cycles(&SymbolGraph::imports(&scopes));
+    let cycles = import_cycles(&SymbolGraph::imports(&scopes), &scopes);
     let paths = paths(&symbols);
     vec![
         json!(edges).to_string(),

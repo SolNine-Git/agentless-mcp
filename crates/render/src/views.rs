@@ -14,7 +14,7 @@ use crate::{Rendered, View};
 // The language a header names when no grammar reads the file.
 const UNKNOWN_LANGUAGE: &str = "unknown";
 // The qualified-name placeholder of the id pattern under an overview header.
-const QUALIFIED_NAME: &str = "<QualifiedName>";
+pub(crate) const QUALIFIED_NAME: &str = "<QualifiedName>";
 
 impl View for Vec<FileView> {
     fn rendered(&self) -> Rendered<'_> {

@@ -3,12 +3,13 @@
 use std::fmt;
 use std::path::Path;
 
+use app::trace::Revision;
 use app::{Chars4, ConfigView, Repo, Session, TokenCounter};
 use git::Snapshot;
 use io::ProjectConfig;
 use prompts::envelope::{
-    NOTICE, RECEIPT_CONFIG, RECEIPT_CONFIG_WARNING, RECEIPT_FIELDS, RECEIPT_HEADER, RECEIPT_NOTE,
-    RECEIPT_REPO, RECEIPT_SUMMARY,
+    RECEIPT_CONFIG, RECEIPT_CONFIG_WARNING, RECEIPT_FIELDS, RECEIPT_FIELDS_REV, RECEIPT_HEADER,
+    RECEIPT_NOTE, RECEIPT_REPO, RECEIPT_SUMMARY,
 };
 use serde::Serialize;
 
@@ -31,6 +32,8 @@ pub struct Receipt<'a> {
     pub(crate) warnings: Vec<String>,
     pub(crate) counter: &'a dyn TokenCounter,
     pub(crate) names_repo: bool,
+    // The revision that the answer read in place of the working tree: its name and short id.
+    pub(crate) revision: Option<(&'a str, &'a str)>,
 }
 
 impl<'a> Receipt<'a> {
@@ -54,7 +57,15 @@ impl<'a> Receipt<'a> {
             warnings: app::config_warnings(&repo.config),
             counter: &Chars4,
             names_repo: true,
+            revision: None,
         }
+    }
+
+    /// Returns this receipt for an answer that read `revision` in place of the working tree.
+    #[must_use]
+    pub fn at_revision(self, revision: Option<&'a Revision>) -> Receipt<'a> {
+        let revision = revision.map(|revision| (revision.name.as_str(), revision.short()));
+        Receipt { revision, ..self }
     }
 
     /// Returns this receipt with `counter` as the counter of the output ceiling.
@@ -89,11 +100,13 @@ impl<'a> Receipt<'a> {
         let dirty = self
             .dirty
             .map_or_else(|| "unknown".to_owned(), |count| count.to_string());
-        let fields = RECEIPT_FIELDS.render((
-            &one_line(self.head.unwrap_or("nogit")),
-            &dirty,
-            &one_line(self.cache),
-        ));
+        let (head, cache) = (one_line(self.head.unwrap_or("nogit")), one_line(self.cache));
+        let fields = match self.revision {
+            None => RECEIPT_FIELDS.render((&head, &dirty, &cache)),
+            Some((name, short)) => {
+                RECEIPT_FIELDS_REV.render((&head, &dirty, &cache, &one_line(name), short))
+            }
+        };
         let mut lines = vec![format!("{RECEIPT_HEADER}{repo}{fields}")];
         if !self.note.is_empty() {
             lines.push(RECEIPT_NOTE.render(&one_line(self.note)));
@@ -119,7 +132,6 @@ impl<'a> Receipt<'a> {
             dirty: self.dirty,
             cache: self.cache,
             note: self.note,
-            notice: NOTICE,
             config,
         }
     }
@@ -138,6 +150,7 @@ impl fmt::Debug for Receipt<'_> {
             .field("config", &self.config)
             .field("warnings", &self.warnings)
             .field("names_repo", &self.names_repo)
+            .field("revision", &self.revision)
             .finish_non_exhaustive()
     }
 }
@@ -150,7 +163,6 @@ pub(crate) struct Fields<'a> {
     dirty: Option<usize>,
     cache: &'a str,
     note: &'a str,
-    notice: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     config: Option<ConfigView<'a>>,
 }

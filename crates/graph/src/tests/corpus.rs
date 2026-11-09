@@ -87,7 +87,7 @@ pub(super) fn ids(definitions: &[Definition<'_>]) -> Value {
     Value::from(definitions.iter().map(id).collect::<Vec<_>>())
 }
 
-pub(super) fn endpoint(endpoint: &Endpoint<'_>) -> Value {
+pub(crate) fn endpoint(endpoint: &Endpoint<'_>) -> Value {
     json!([
         endpoint.node(),
         endpoint.path(),
@@ -97,7 +97,7 @@ pub(super) fn endpoint(endpoint: &Endpoint<'_>) -> Value {
     ])
 }
 
-pub(super) fn edge(edge: &SymbolEdge<'_>) -> Value {
+pub(crate) fn edge(edge: &SymbolEdge<'_>) -> Value {
     json!([
         endpoint(edge.source()),
         endpoint(edge.target()),
@@ -107,7 +107,7 @@ pub(super) fn edge(edge: &SymbolEdge<'_>) -> Value {
     ])
 }
 
-pub(super) fn reference(reference: &AmbiguousReference<'_>) -> Value {
+pub(crate) fn reference(reference: &AmbiguousReference<'_>) -> Value {
     json!([
         endpoint(reference.source()),
         reference.name(),

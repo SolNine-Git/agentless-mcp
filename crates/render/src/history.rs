@@ -20,7 +20,7 @@ impl View for HistoryResult {
     }
 }
 
-fn history_text(result: &HistoryResult) -> String {
+pub(crate) fn history_text(result: &HistoryResult) -> String {
     let mut text = span_header(result) + "\n";
     for entry in &result.entries {
         text.push_str(&history_entry_text(entry));
@@ -88,7 +88,7 @@ fn state_notes(result: &HistoryResult) -> Vec<String> {
 
 // The span, the commits that the ceiling may trim, then the flags and notes of the result.
 #[derive(Clone)]
-struct HistoryJson<'a> {
+pub(crate) struct HistoryJson<'a> {
     result: &'a HistoryResult,
     commits: Vec<CommitJson<'a>>,
 }
@@ -136,7 +136,7 @@ struct BodyCut {
 }
 
 impl<'a> HistoryJson<'a> {
-    fn of(result: &'a HistoryResult) -> Self {
+    pub(crate) fn of(result: &'a HistoryResult) -> Self {
         HistoryJson {
             result,
             commits: result.entries.iter().map(CommitJson::of).collect(),

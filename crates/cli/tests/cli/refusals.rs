@@ -163,8 +163,10 @@ fn a_hook_command_line_that_names_no_hook_is_refused() {
     assert_eq!(cli::refuse_hook(&mut streams), 2);
     assert!(out.is_empty());
     let err = String::from_utf8(err).expect("UTF-8");
-    let refusal =
-        "agentless-mcp: hook takes one argument: erosion, gate-check, gate-mark or prompt-map\n";
+    let refusal = "agentless-mcp: hook takes one hook name: read-card, ledger-mark, brief-record, \
+                   subagent-map, prompt-map, erosion or ledger-reset. hook install, hook status \
+                   and hook uninstall manage the hook entries of a settings file. gate-check and \
+                   gate-mark are retired: each still exits 0 with no output.\n";
     assert_eq!(err, refusal);
 }
 

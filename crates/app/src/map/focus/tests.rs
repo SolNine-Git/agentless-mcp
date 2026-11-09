@@ -1,4 +1,4 @@
-use graph::NameIndex;
+use graph::{FileFacts, NameIndex};
 use text::testing::{bits, cases};
 
 use super::{Known, focus_resolution, matches_stem, normalized_spellings, path_matches};
@@ -29,7 +29,8 @@ fn each_entry_resolves_as_the_reference_resolves_it() {
     assert!(!all.is_empty());
     for (repo, entry, paths, ids) in all {
         let facts = fixture_facts(&repo);
-        let index = NameIndex::build(&facts.files);
+        let listed: Vec<&FileFacts> = facts.files.iter().collect();
+        let index = NameIndex::build(&listed);
         let known: Known<'_> = facts.files.iter().map(|file| file.path.as_str()).collect();
         let (found, matched) = focus_resolution(&entry, &known, &index);
         let named: Vec<String> = matched.iter().map(|d| d.stable_id().to_string()).collect();
@@ -43,7 +44,8 @@ fn the_seed_weights_split_each_entry_as_the_reference_splits_it() {
     assert!(!all.is_empty());
     for (repo, entries, weights, unresolved, ids) in all {
         let facts = fixture_facts(&repo);
-        let index = NameIndex::build(&facts.files);
+        let listed: Vec<&FileFacts> = facts.files.iter().collect();
+        let index = NameIndex::build(&listed);
         let known: Known<'_> = facts.files.iter().map(|file| file.path.as_str()).collect();
         let seeding = seed_weights(&entries, &known, &index);
         let found: Vec<(String, u64)> = (seeding.weights.iter())

@@ -6,7 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 use super::*;
-use crate::testing::{Scratch, path_before};
+use crate::testing::Scratch;
 use crate::{Failure, Unfinished};
 
 const APP: &str = "def add(a, b):\n    return a + b\n";
@@ -491,11 +491,6 @@ fn real_git() -> PathBuf {
         .expect("git is on PATH")
 }
 
-fn faked(scratch: &Scratch, body: &str) -> Git {
-    let bin = scratch.fake_git(body, 0o755);
-    Git::new(scratch.env_with(&[("PATH", path_before(bin).as_os_str())]))
-}
-
 // A git that runs the real one without its stderr, then fails as a kill would after `worktree
 // add` made its record.
 fn killed_add_git(scratch: &Scratch, root: &Path) -> Git {
@@ -506,7 +501,7 @@ fn killed_add_git(scratch: &Scratch, root: &Path) -> Git {
         real = real_git().display(),
         root = root.display()
     );
-    faked(scratch, &body)
+    scratch.faked_git(&body, 0o755)
 }
 
 #[test]
@@ -554,7 +549,7 @@ fn child_gets_sigint_during_worktree_add() {
          esac\nexec \"{real}\" \"$@\"\n",
         real = real_git().display()
     );
-    let git = faked(&scratch, &body);
+    let git = scratch.faked_git(&body, 0o755);
     let commit = head(&scratch, &root);
     let made = git.worktree(&root, &commit, &cache(&scratch));
     let tree = made.unwrap_or_else(|failure| panic!("{}", failure.error));
@@ -571,7 +566,7 @@ fn refusing_git(scratch: &Scratch, refused: &str) -> Git {
         "#!/bin/sh\ncase \" $* \" in\n*\" worktree {refused}\"*)\n  echo 'fatal: refused' >&2\n  \
          exit 128;;\nesac\nexit 0\n"
     );
-    faked(scratch, &body)
+    scratch.faked_git(&body, 0o755)
 }
 
 fn fixture_tree(scratch: &Scratch, relative: &str) -> PathBuf {

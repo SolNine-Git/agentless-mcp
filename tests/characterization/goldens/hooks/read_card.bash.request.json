@@ -1,0 +1,24 @@
+{
+  "hook": "read-card",
+  "fixture": "repo_py",
+  "payload": {
+    "session_id": "session-1",
+    "transcript_path": "/home/user/.claude/projects/repo/agent-7.jsonl",
+    "cwd": "<REPO>",
+    "permission_mode": "default",
+    "hook_event_name": "PostToolUse",
+    "agent_id": "agent-7",
+    "agent_type": "Explore",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "sed -n '20,60p' pricing.py",
+      "description": "Read the price book"
+    },
+    "tool_use_id": "toolu_02",
+    "tool_response": {
+      "stdout": "",
+      "stderr": "",
+      "interrupted": false
+    }
+  }
+}

@@ -1,0 +1,15 @@
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+search /def / in pricing.py: 6 matches in 1 file
+pricing.py
+  PriceBook.__init__  [py:pricing.py::PriceBook.__init__] @29-36
+    29|     def __init__(self, costs: dict[str, Decimal]) -> None:
+  PriceBook.cost_of  [py:pricing.py::PriceBook.cost_of] @38-44
+    38|     def cost_of(self, sku: str) -> Decimal:
+  PriceBook.quote  [py:pricing.py::PriceBook.quote] @46-56
+    46|     def quote(self, sku: str, tier: Tier, quantity: int = 1) -> Decimal:
+  PriceBook.price_list  [py:pricing.py::PriceBook.price_list] @58-63
+    58|     def price_list(self, tier: Tier) -> list[tuple[str, Decimal]]:
+  PriceBook.cheapest  [py:pricing.py::PriceBook.cheapest] @65-75
+    65|     def cheapest(self, tier: Tier) -> str:
+  format_money  [py:pricing.py::format_money] @78-81
+    78| def format_money(amount: Decimal) -> str:

@@ -1,0 +1,14 @@
+// agentless-mcp receipt   repo: <REPO>   head: 06b750b6   dirty: 4 files   cache: none
+diff base: base f5f25218 (merge base with HEAD), 1 commit, against the working tree
+changed: 2 symbols in 2 files, 0 in tests
+  [py:reports.py::summarise] @48-59 (base @69-79)  function
+  [py:pricing.py::format_money] @83-85 (base @78-81)  function
+added: 4 symbols in 3 files, 1 in tests
+  [py:pricing.py::round_cents] @78-80  function
+  [py:taxes.py::with_vat] @8-10  function
+  [py:taxes.py::VAT] @5  constant
+  [py:tests/test_pricing.py::test_format_money] @6-7  function
+removed: 1 symbol in 1 file, 0 in tests
+  [py:reports.py::check_report_inputs] @55-66  function
+moved: 1
+  py:reports.py::_format_row @47-52 -> [py:rows.py::_format_row] @9-14

@@ -27,6 +27,28 @@ impl AmbiguousDegrees {
     pub fn leaving(&self, node: &str) -> u64 {
         self.leaving.get(node).copied().unwrap_or(0)
     }
+
+    // Takes out the tally `old` of some names before an update and adds their tally `new` after.
+    pub(crate) fn replace(&mut self, old: &AmbiguousDegrees, new: &AmbiguousDegrees) {
+        self.changed(old, take);
+        self.changed(new, add);
+    }
+
+    fn changed(
+        &mut self,
+        tally: &AmbiguousDegrees,
+        change: fn(&mut BTreeMap<String, u64>, &str, u64),
+    ) {
+        let pairs = [
+            (&mut self.arriving, &tally.arriving),
+            (&mut self.leaving, &tally.leaving),
+        ];
+        for (held, counts) in pairs {
+            for (node, count) in counts {
+                change(held, node, *count);
+            }
+        }
+    }
 }
 
 impl<'a> SymbolGraph<'a> {
@@ -97,8 +119,13 @@ impl<'a> SymbolGraph<'a> {
     /// Count each node's ambiguous edges, arriving and leaving, without building one.
     #[must_use]
     pub fn ambiguous_degrees(&self) -> AmbiguousDegrees {
+        self.degrees_of(self.by_name.keys().copied())
+    }
+
+    // The tally of the ambiguous edges of `names` alone.
+    pub(crate) fn degrees_of<'n>(&self, names: impl Iterator<Item = &'n str>) -> AmbiguousDegrees {
         let mut degrees = AmbiguousDegrees::default();
-        for name in self.by_name.keys() {
+        for name in names {
             let targets = self.candidates_of(name);
             let at_node = tally(targets.iter().map(Endpoint::node));
             let references: Vec<&AmbiguousReference<'a>> = self.references_named(name).collect();
@@ -152,6 +179,16 @@ fn tally<'n>(nodes: impl Iterator<Item = &'n str>) -> BTreeMap<&'n str, u64> {
         *counts.entry(node).or_insert(0) += 1;
     }
     counts
+}
+
+// A count that falls to zero leaves, so a node with no ambiguous edge stays absent.
+fn take(counts: &mut BTreeMap<String, u64>, node: &str, count: u64) {
+    let left = counts.get(node).copied().unwrap_or(0) - count;
+    if left == 0 {
+        counts.remove(node);
+    } else {
+        counts.insert(node.to_owned(), left);
+    }
 }
 
 // A zero count adds no entry, so a node with no ambiguous edge stays absent.

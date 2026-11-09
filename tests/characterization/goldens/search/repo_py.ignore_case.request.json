@@ -1,0 +1,8 @@
+{
+  "tool": "search",
+  "fixture": "repo_py",
+  "arguments": {
+    "pattern": "reorder_REPORT",
+    "ignore_case": true
+  }
+}

@@ -5,15 +5,12 @@ use graph::{Definition, SymbolEdge, SymbolGraph, Tier};
 use kernel::Bounded;
 use prompts::messages::DATA_KEY_NO_FAN_IN;
 
-use crate::bounds::within;
 use crate::endpoints::{
     BindingStatus, Coverage, Scope, TARGET_WORDING, TargetBinding, best_band, bind,
     data_key_binding,
 };
-use crate::ops::limits::MAX_LIMIT;
-use crate::scan::over_scan;
-use crate::span::{Missed, SymbolSpan, data_key_span};
-use crate::symbol_graph::{tier_at, verbs, with_resolved};
+use crate::span::{Missed, SymbolSpan, limited};
+use crate::symbol_graph::{CallGraph, Keeping, over_call_scan, tier_at, verbs, with_call_graph};
 use crate::{
     Error, IntArg, Noted, RationaleNode, Reading, Services, Skipped, SymbolCard, rationale_nodes,
     symbol_card,
@@ -111,47 +108,118 @@ pub fn explain(
     reading: &Reading<'_>,
     request: &ExplainRequest,
 ) -> Noted<Result<Explanation, Error>> {
-    let limit = match within(&request.limit, 1, MAX_LIMIT, "limit") {
-        Ok(limit) => limit,
-        Err(error) => return Noted::new(Err(error)),
-    };
-    let target = request.target.as_str();
-    if let Some(found) = data_key_span(reading, target) {
-        return found.map(|span| Ok(keyed(target, span)));
-    }
-    over_scan(services, reading, |facts| {
-        with_resolved(&facts.files, reading.deadline, |index, graph| {
-            let scope = Scope {
-                index,
-                skipped: &facts.skipped,
-                root: &reading.repo.root,
-            };
-            let explained = explanation(&scope, graph, target, limit);
-            let coverage = Coverage::of(&explained.binding, &facts.skipped);
-            Ok(Explanation {
-                coverage,
-                skipped: facts.skipped.clone(),
-                ..explained
+    with_limit(reading, request, |limit| {
+        over_call_scan(services, reading, |scan| {
+            with_call_graph(&scan.files, reading.deadline, Keeping::Own, |graph| {
+                graph_explained(reading, graph, &scan.skipped, &request.target, limit)
             })
         })
     })
 }
 
-fn explanation(
-    scope: &Scope<'_, '_>,
-    graph: &SymbolGraph<'_>,
+// Explains `request` over the graph that one trace call reads for all its cards.
+pub(crate) fn explain_in(
+    reading: &Reading<'_>,
+    request: &ExplainRequest,
+    graph: &CallGraph<'_, '_>,
+    skipped: &[Skipped],
+) -> Noted<Result<Explanation, Error>> {
+    with_limit(reading, request, |limit| {
+        graph_explained(reading, graph, skipped, &request.target, limit)
+    })
+}
+
+// The imports that the file of a symbol declares, and the imports of that file by other files.
+pub(crate) type FileImports = (Bounded<ImportRow>, Bounded<ImportRow>);
+
+// The imports of the symbol's file as `explain_in` lists them. They come from the import edges
+// alone, so a file card builds no resolved graph.
+pub(crate) fn file_imports_in(
+    reading: &Reading<'_>,
+    request: &ExplainRequest,
+    graph: &CallGraph<'_, '_>,
+    skipped: &[Skipped],
+) -> Noted<Result<FileImports, Error>> {
+    let keyed = |explained: Explanation| (explained.imports_out, explained.imports_in);
+    let target = request.target.as_str();
+    let keyed_span = |span, _| keyed(self::keyed(target, span));
+    limited(reading, target, &request.limit, keyed_span, |limit| {
+        let (skipped, root) = (skipped.to_vec(), reading.repo.root.clone());
+        let target = request.target.clone();
+        graph.over(move |graph| {
+            let scope = Scope {
+                index: graph.index(),
+                skipped: &skipped,
+                root: &root,
+            };
+            let bound = bind(&scope, &target, limit, &TARGET_WORDING);
+            if bound.binding.status == BindingStatus::NotFound {
+                return Ok(keyed(uncarded(&target, bound.binding)));
+            }
+            Ok(imports(graph.imports(), bound.definitions[0].path(), limit))
+        })
+    })
+}
+
+fn with_limit(
+    reading: &Reading<'_>,
+    request: &ExplainRequest,
+    explained: impl FnOnce(usize) -> Noted<Result<Explanation, Error>>,
+) -> Noted<Result<Explanation, Error>> {
+    let target = request.target.as_str();
+    limited(
+        reading,
+        target,
+        &request.limit,
+        |span, _| keyed(target, span),
+        explained,
+    )
+}
+
+// The work owns what it reads, as a kept graph answers it on the root's graph thread.
+fn graph_explained(
+    reading: &Reading<'_>,
+    graph: &CallGraph<'_, '_>,
+    skipped: &[Skipped],
     target: &str,
     limit: usize,
-) -> Explanation {
+) -> Noted<Result<Explanation, Error>> {
+    let skipped = skipped.to_vec();
+    let root = reading.repo.root.clone();
+    let target = target.to_owned();
+    graph.over(move |graph| {
+        let scope = Scope {
+            index: graph.index(),
+            skipped: &skipped,
+            root: &root,
+        };
+        let explained = explanation(&scope, graph, &target, limit)?;
+        let coverage = Coverage::of(&explained.binding, &skipped);
+        Ok(Explanation {
+            coverage,
+            skipped,
+            ..explained
+        })
+    })
+}
+
+// The graph is built before the target binds, so a stopped build stops every explain.
+fn explanation(
+    scope: &Scope<'_, '_>,
+    call: &CallGraph<'_, '_>,
+    target: &str,
+    limit: usize,
+) -> Result<Explanation, Error> {
+    let graph = call.graph()?;
     let bound = bind(scope, target, limit, &TARGET_WORDING);
     if bound.binding.status == BindingStatus::NotFound {
-        return uncarded(target, bound.binding);
+        return Ok(uncarded(target, bound.binding));
     }
     let ordered = bound.definitions;
     let tied = best_band(&ordered, &bound.key).len();
     let chosen = &ordered[0];
     let node = chosen.stable_id().to_string();
-    let degrees = graph.ambiguous_degrees();
+    let degrees = call.degrees()?;
     let (imports_out, imports_in) = imports(graph, chosen.path(), limit);
     let mut fan_out = tier_groups(graph.outgoing(&node).iter(), limit, true);
     let leaving = graph.ambiguous_from(&node);
@@ -169,7 +237,7 @@ fn explanation(
         limit,
         false,
     ));
-    Explanation {
+    Ok(Explanation {
         target: target.to_owned(),
         card: Some(card(chosen)),
         message: String::new(),
@@ -189,7 +257,7 @@ fn explanation(
         binding: bound.binding,
         coverage: Coverage::not_checked(),
         skipped: Vec::new(),
-    }
+    })
 }
 
 // A data key stays out of the name graph, so its card stands alone. A key that the file does not
@@ -314,11 +382,7 @@ fn edge_row(edge: &SymbolEdge<'_>, outgoing: bool) -> EdgeRow {
 
 // The import edges that leave `path` (declared) and those that arrive at it, each counted
 // before the cut.
-fn imports(
-    graph: &SymbolGraph<'_>,
-    path: &str,
-    limit: usize,
-) -> (Bounded<ImportRow>, Bounded<ImportRow>) {
+fn imports(graph: &SymbolGraph<'_>, path: &str, limit: usize) -> FileImports {
     let (mut declared, mut importers) = (Vec::new(), Vec::new());
     for edge in graph.import_edges() {
         let row = || ImportRow {

@@ -1,0 +1,7 @@
+{
+  "tool": "search",
+  "fixture": "repo_nested",
+  "arguments": {
+    "pattern": "^from decimal import Decimal$"
+  }
+}

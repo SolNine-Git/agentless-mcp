@@ -6,22 +6,25 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use git::{Git, Toplevel};
+use git::Git;
 
 use crate::halt::Halt;
-use crate::text::{codec_text, grouped, last_line, shown};
+use crate::repository::{self, NoRoot};
+use crate::text::{grouped, shown};
 
 // A path with a NUL byte names no file. The reason names lstat, the first call that refuses it.
 const EMBEDDED_NUL: &str = "ValueError: lstat: embedded null character in path";
 
 pub(crate) fn resolve(given: &Path) -> Result<PathBuf, Halt> {
-    io::resolve(given).map_err(|error| {
-        if error.kind() == ErrorKind::InvalidInput {
-            Halt::internal(EMBEDDED_NUL)
-        } else {
-            Halt::internal(io::os_error_line(&error))
-        }
-    })
+    io::resolve(given).map_err(|error| unresolved(&error))
+}
+
+fn unresolved(error: &std::io::Error) -> Halt {
+    if error.kind() == ErrorKind::InvalidInput {
+        Halt::internal(EMBEDDED_NUL)
+    } else {
+        Halt::internal(io::os_error_line(error))
+    }
 }
 
 pub(crate) fn require_tier1(resolved: &Path) -> Result<(), Halt> {
@@ -40,32 +43,16 @@ fn not_tier1(name: &str) -> Halt {
 
 // The root comes from where the caller writes, and containment is tested on the resolved file.
 pub(crate) fn root(git: &Git, given: &Path, budget: Duration) -> Result<PathBuf, Halt> {
-    let stdout = halt_for(git.toplevel(&anchor(given), budget), budget)?;
-    found(&stdout)
+    repository::top_level(git, &anchor(given), budget).map_err(halt)
 }
 
-// The printed top level, or the halt that each other answer of `git rev-parse` gives.
-fn halt_for(toplevel: Toplevel, budget: Duration) -> Result<Vec<u8>, Halt> {
-    match toplevel {
-        Toplevel::Found(stdout) => Ok(stdout),
-        Toplevel::NotRepository => Err(Halt::skipped("not in a git repository")),
-        Toplevel::Failed { code, stderr } => {
-            let last = last_line(&String::from_utf8_lossy(&stderr));
-            Err(Halt::degraded(format!(
-                "git rev-parse exited {code}: {last}"
-            )))
-        }
-        Toplevel::Capped => Err(Halt::degraded(
-            "git rev-parse printed more than 65536 bytes",
-        )),
-        Toplevel::TimedOut => {
-            let seconds = budget.as_secs_f64();
-            Err(Halt::degraded(format!(
-                "git rev-parse timed out after {seconds:.1} s"
-            )))
-        }
-        Toplevel::NotInstalled => Err(not_run(Some(2), "No such file or directory")),
-        Toplevel::NotRun { errno, message } => Err(not_run(errno, &message)),
+// The halt that each way of naming no root gives.
+fn halt(no_root: NoRoot) -> Halt {
+    match no_root {
+        NoRoot::Outside => Halt::skipped("not in a git repository"),
+        NoRoot::Git(reason) => Halt::degraded(reason),
+        NoRoot::NotUtf8(text) => Halt::internal(format!("UnicodeDecodeError: {text}")),
+        NoRoot::Unresolved(error) => unresolved(&error),
     }
 }
 
@@ -88,21 +75,6 @@ fn parent(path: &Path) -> PathBuf {
         Some(parent) => parent.to_path_buf(),
         None => path.to_path_buf(),
     }
-}
-
-fn found(stdout: &[u8]) -> Result<PathBuf, Halt> {
-    let text = io::decode_strict(stdout.to_vec()).map_err(|error| {
-        Halt::internal(format!("UnicodeDecodeError: {}", codec_text(stdout, error)))
-    })?;
-    resolve(Path::new(text::strip(&text)))
-}
-
-fn not_run(errno: Option<i32>, message: &str) -> Halt {
-    let error = match errno {
-        Some(code) => format!("[Errno {code}] {message}: 'git'"),
-        None => message.to_owned(),
-    };
-    Halt::degraded(format!("cannot run git: {error}"))
 }
 
 pub(crate) fn relative(resolved: &Path, root: &Path) -> Result<String, Halt> {

@@ -96,7 +96,11 @@ fn malformed(detail: &git::Malformed) -> Error {
 }
 
 // The tracked changes first, then the untracked files.
-fn changes(git: &git::Git, root: &Path, commit: &str) -> Result<Result<Vec<Change>, Gap>, Error> {
+pub(crate) fn changes(
+    git: &git::Git,
+    root: &Path,
+    commit: &str,
+) -> Result<Result<Vec<Change>, Gap>, Error> {
     let listed = match listing_from("diff", git.changes(root, commit)) {
         Ok(listed) => listed,
         Err(row) => return Ok(Err(row)),
@@ -255,7 +259,7 @@ pub(crate) fn blob_from(outcome: GitOutcome) -> Result<Vec<u8>, String> {
     }
 }
 
-fn worktree_read(root: &Path, path: &str) -> Result<Result<Vec<u8>, String>, Gap> {
+pub(crate) fn worktree_read(root: &Path, path: &str) -> Result<Result<Vec<u8>, String>, Gap> {
     match io::contained_path(root, Path::new(path)) {
         Ok(target) => Ok(bounded_read(&target)),
         Err(refusal) => Err(Box::new(refused_row(&refusal))),

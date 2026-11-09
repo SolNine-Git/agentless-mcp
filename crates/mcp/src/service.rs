@@ -134,22 +134,23 @@ impl Server {
             Ok(call) => call,
             Err(refused) => return refused,
         };
-        let deadline = deadline(&self.inner, &call).map(Arc::new);
+        let deadline = Arc::new(deadline(&self.inner));
         let mut cancelled = pin!(cancelled);
         let gate = Arc::clone(&self.gate).acquire_owned();
         let Some(permit) = first(gate, cancelled.as_mut()).await else {
-            return self.cancelled(&call, deadline.as_deref());
+            return self.cancelled(&call, &deadline);
         };
         let Ok(permit) = permit else {
             return self.unplanned(&call, "the concurrency gate is closed");
         };
         let (sender, receiver) = oneshot::channel();
         let inner = Arc::clone(&self.inner);
-        let job_deadline = deadline.clone();
+        let job_deadline = Arc::clone(&deadline);
+        let note = self.note.clone();
         let tool = call.tool.name;
         let job = Box::new(move || {
             let _permit = permit;
-            drop(sender.send(answered(&inner, &call, job_deadline.as_deref())));
+            drop(sender.send(answered(&inner, &call, &job_deadline, &note)));
         });
         if let Err(error) = self.offload.start(job) {
             let detail = format!("the thread of the call did not start: {error}");
@@ -162,18 +163,14 @@ impl Server {
                 failed(&self.inner, tool, Failure::Unplanned(detail))
             }
             None => {
-                if let Some(deadline) = &deadline {
-                    deadline.cancel();
-                }
+                deadline.cancel();
                 failed(&self.inner, tool, Failure::Refused(cancelled_text()))
             }
         }
     }
 
-    fn cancelled(&self, call: &Call, deadline: Option<&kernel::Deadline>) -> Answer {
-        if let Some(deadline) = deadline {
-            deadline.cancel();
-        }
+    fn cancelled(&self, call: &Call, deadline: &kernel::Deadline) -> Answer {
+        deadline.cancel();
         failed(
             &self.inner,
             call.tool.name,

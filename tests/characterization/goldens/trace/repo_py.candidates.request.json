@@ -1,0 +1,7 @@
+{
+  "tool": "trace",
+  "fixture": "repo_py",
+  "arguments": {
+    "target": "__init__"
+  }
+}

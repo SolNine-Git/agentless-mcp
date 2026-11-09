@@ -1,54 +1,19 @@
-//! The search gate: gate-check holds broad text search until the session makes a localizing
-//! agentless call, and gate-mark records that call in a marker file named for the session.
+//! What the hooks share from the retired search gate: the payload read, the gate log, and the
+//! shell parser that finds a single-file read.
 
-mod check;
 pub(crate) mod log;
-mod mark;
-mod marker;
-mod shell;
-mod stat;
+pub(crate) mod shell;
 
-use std::ffi::OsStr;
 use std::io::Read;
-use std::path::{Path, PathBuf};
 
-use app::EnvConfig;
 use json::{JsonErrorKind, JsonValue, get};
-use kernel::Clock;
 use text::CodePointString;
 
 use crate::payload::Fields;
 
-pub use check::gate_check;
-pub use mark::gate_mark;
-
-// An error that the gate answers as the reference's blanket suppress does: the call is allowed,
-// and no log line and no stderr text are written.
+// An error that the hooks answer as the reference's blanket suppress: nothing is written.
 #[derive(Debug)]
 pub(crate) struct Suppressed;
-
-// What one gate run reads from its process: the marker directory, the log variable, the
-// start-up directory, the clock and the process id.
-pub(crate) struct Gate<'a> {
-    pub(crate) markers: PathBuf,
-    pub(crate) log: Option<&'a OsStr>,
-    // None when the start-up directory cannot be read.
-    pub(crate) cwd: Option<&'a Path>,
-    pub(crate) clock: &'a dyn Clock,
-    pub(crate) pid: u32,
-}
-
-impl<'a> Gate<'a> {
-    fn of(env: &'a EnvConfig, clock: &'a dyn Clock) -> Self {
-        Self {
-            markers: PathBuf::from(marker::MARKER_DIR),
-            log: env.var(log::LOG_ENV),
-            cwd: env.cwd().ok(),
-            clock,
-            pid: std::process::id(),
-        }
-    }
-}
 
 // The payload on stdin: a JSON value, or text that is not one JSON document.
 pub(crate) enum Parsed {
@@ -93,18 +58,3 @@ pub(crate) fn object_field<'a>(fields: &'a Fields, key: &str) -> Option<&'a Fiel
         _ => None,
     }
 }
-
-// An array or an object cannot be a member of the reference's name sets: the test raises.
-pub(crate) fn unhashable(value: Option<&JsonValue>) -> bool {
-    matches!(value, Some(JsonValue::Array(_) | JsonValue::Object(_)))
-}
-
-pub(crate) fn as_text(value: Option<&JsonValue>) -> Option<&str> {
-    match value {
-        Some(JsonValue::Str(text)) => text.as_str(),
-        _ => None,
-    }
-}
-
-#[cfg(test)]
-mod tests;

@@ -16,6 +16,7 @@ checks = { path = "../checks" }
 facts = { path = "../facts" }
 graph = { path = "../graph" }
 patch = { path = "../patch" }
+prompts = { path = "../prompts" }
 serde.workspace = true
 sha2.workspace = true
 syntax = { path = "../syntax" }

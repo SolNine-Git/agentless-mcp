@@ -6,8 +6,7 @@ use app::Session;
 use kernel::testing::PinnedClock;
 use serde_json::json;
 
-use super::calls::{answered, built, reference, run_named};
-use super::{Kept, Setup};
+use super::{Kept, Setup, probe};
 use crate::{Arming, Ports};
 
 // The background index of these tests moves the pinned clock, between the call's start and its
@@ -28,7 +27,7 @@ impl Arming for Advancing {
     }
 }
 
-const STOPPED: &str = "Error calling tool 'symbols': this call stopped after 45 s. The server \
+const STOPPED: &str = "Error calling tool 'trace': this call stopped after 45 s. The server \
                        allows 30 s of work per call, plus up to 60 s for parsing files the tag \
                        cache does not hold, and this call had 0 s of that grace. Narrow the \
                        request, or run `agentless-mcp index` on the repository so that later \
@@ -36,9 +35,8 @@ const STOPPED: &str = "Error calling tool 'symbols': this call stopped after 45 
                        --recache-grace set the two bounds.";
 
 #[test]
-fn a_call_past_its_limit_stops_and_capabilities_has_no_limit() {
-    let run = run_named("probe");
-    let sandbox = built(&run);
+fn a_call_past_its_limit_stops() {
+    let sandbox = probe();
     let clock = Arc::new(PinnedClock::at(SystemTime::UNIX_EPOCH));
     let mut services = (*sandbox.services()).clone();
     services.clock = Arc::clone(&clock) as Arc<dyn kernel::Clock>;
@@ -55,22 +53,13 @@ fn a_call_past_its_limit_stops_and_capabilities_has_no_limit() {
         launch: Some("repo"),
     };
     let server = sandbox.server_with(&setup, Arc::new(services), ports);
-    let find = json!({"operation": "find", "name": "alpha"});
-    assert_eq!(
-        answered(&sandbox, &server, "symbols", &find),
-        (STOPPED.to_owned(), true)
-    );
-    let want = (reference(&run, "capabilities", &json!({})), false);
-    assert_eq!(
-        answered(&sandbox, &server, "capabilities", &json!({})),
-        want
-    );
+    let answer = server.answer("trace", json!({"target": "alpha"}).as_object().cloned());
+    assert_eq!((answer.text.as_str(), answer.is_error), (STOPPED, true));
 }
 
 #[test]
 fn an_unknown_tool_is_a_refusal_that_lists_the_tools_and_logs_nothing() {
-    let run = run_named("probe");
-    let sandbox = built(&run);
+    let sandbox = probe();
     let log = Arc::new(Kept::default());
     let ports = Ports {
         arming: Arc::new(Advancing {
@@ -85,9 +74,12 @@ fn an_unknown_tool_is_a_refusal_that_lists_the_tools_and_logs_nothing() {
         launch: None,
     };
     let server = sandbox.server_with(&setup, sandbox.services(), ports);
-    let got = answered(&sandbox, &server, "repo_map", &json!({}));
-    let want = "Error calling tool 'repo_map': No tool has this name. The tools are \
-                find_referencing_symbols, history, capabilities, orient, graph, symbols and read.";
-    assert_eq!(got, (want.to_owned(), true));
+    for name in ["orient", "repo_map"] {
+        let got = server.answer(name, Some(serde_json::Map::new()));
+        let want = format!(
+            "Error calling tool '{name}': No tool has this name. The tools are trace and search."
+        );
+        assert_eq!((got.text, got.is_error), (want, true));
+    }
     assert!(log.lines().is_empty(), "{:?}", log.lines());
 }

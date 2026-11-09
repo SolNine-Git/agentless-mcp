@@ -54,7 +54,7 @@ pub use read::{
     MAX_FILE_BYTES, NotUtf8, Skipped, Utf8Reason, codec_text, decode_strict, decode_text,
     read_bounded, stat_present, within_file_cap,
 };
-pub use replace::replace_file;
+pub use replace::{replace_file, replace_file_keeping_mode};
 pub use runner::{NotRun, Outcome, Spec, run};
 pub use spawn::{Started, helper_builder, spawn_or_run, spawn_or_run_with};
 pub use testrun::{

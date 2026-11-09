@@ -1,0 +1,5 @@
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+search /reorder_REPORT/i: 1 match in 1 file
+reports.py
+  reorder_report  [py:reports.py::reorder_report] @29-44
+    29| def reorder_report(inventory: Inventory, prices: PriceBook) -> str:

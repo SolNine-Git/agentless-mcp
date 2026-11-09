@@ -47,6 +47,7 @@ pub(crate) fn check(
         .iter()
         .map(|cycle| cycle.files.iter().copied().collect())
         .collect();
+    let patched: Vec<&FileFacts> = patched.iter().collect();
     Ok(cycles_of(&patched)
         .iter()
         .filter(|cycle| !existing.contains(&cycle.files.iter().copied().collect()))
@@ -82,8 +83,9 @@ fn edited_texts(
         .collect())
 }
 
-fn cycles_of(files: &[FileFacts]) -> Vec<Cycle<'_>> {
-    import_cycles(&SymbolGraph::imports(&Scopes::build(files)))
+fn cycles_of<'a>(files: &'a [&'a FileFacts]) -> Vec<Cycle<'a>> {
+    let scopes = Scopes::build(files);
+    import_cycles(&SymbolGraph::imports(&scopes), &scopes)
 }
 
 // Each scanned file with only what the import graph reads, read again from the patched text for

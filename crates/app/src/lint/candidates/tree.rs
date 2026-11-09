@@ -11,6 +11,7 @@ use syntax::Language;
 use crate::pair_runs::{IndexOf, Reported, RunInputs};
 use crate::pairs::{Judged, run_pairs};
 use crate::proposed::working_read;
+use crate::reuse::ReuseSource;
 use crate::rows::{Gap, coverage, side_text};
 use crate::{Error, PairSelection};
 
@@ -22,6 +23,7 @@ pub(super) type WorkingRead = Option<Result<Vec<u8>, String>>;
 pub(super) struct Run<'a, 'i> {
     pub(super) index: &'a mut IndexOf<'i>,
     pub(super) reported: &'a Reported,
+    pub(super) reuse: &'a mut ReuseSource<'i>,
 }
 
 // The edited files the scan would read, so orientation without a scan judges the same files.
@@ -61,7 +63,11 @@ pub(super) fn pair_rows(
     reads: &mut BTreeMap<String, WorkingRead>,
     selection: PairSelection,
     config: &io::ProjectConfig,
-    Run { index, reported }: Run<'_, '_>,
+    Run {
+        index,
+        reported,
+        reuse,
+    }: Run<'_, '_>,
 ) -> Result<Judged, Error> {
     let mut rows = Vec::new();
     let mut pairs = Vec::new();
@@ -80,6 +86,7 @@ pub(super) fn pair_rows(
         index,
         reported,
         tree: None,
+        reuse,
     };
     let judged = run_pairs(pairs, selection, inputs)?;
     rows.extend(judged.rows);

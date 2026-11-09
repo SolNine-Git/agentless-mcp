@@ -1,11 +1,12 @@
 //! The module-level import cycles of a repository, in a fixed order, cut at the caller's limit.
 
-use graph::{Scopes, SymbolGraph, import_cycles};
+use graph::{Cycle, FileFacts, Scopes, SymbolGraph, import_cycles};
 use kernel::Bounded;
 
 use crate::bounds::within;
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::{RepoFacts, over_scan};
+use crate::symbol_graph::{CallGraph, CallScan};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
 
 /// A cycles request: how many cycles to list.
@@ -52,22 +53,46 @@ pub fn cycles(
     over_scan(services, reading, |facts| Ok(report(facts, limit)))
 }
 
+// The cycles as `cycles` lists them, over the graph that one trace call reads for all its cards.
+// The warnings of the call's scan come first, as the scan of `cycles` gives them.
+pub(crate) fn cycles_in(
+    request: &CyclesRequest,
+    graph: &CallGraph<'_, '_>,
+    scan: &CallScan,
+) -> Noted<Result<Bounded<CycleRow>, Error>> {
+    let limit = match within(&request.limit, 1, MAX_LIMIT, "limit") {
+        Ok(limit) => limit,
+        Err(error) => return Noted::new(Err(error)),
+    };
+    let answered = graph.over(move |graph| Ok(Bounded::cut(rows(graph.cycles()), limit)));
+    let mut diagnostics = scan.warnings.clone();
+    diagnostics.extend(answered.diagnostics);
+    Noted {
+        value: answered.value,
+        diagnostics,
+    }
+}
+
 fn report(facts: &RepoFacts, limit: usize) -> CycleReport {
-    let scopes = Scopes::build(&facts.files);
+    let files: Vec<&FileFacts> = facts.files.iter().collect();
+    let scopes = Scopes::build(&files);
     let imports = SymbolGraph::imports(&scopes);
-    let rows = import_cycles(&imports)
-        .into_iter()
-        .map(|cycle| CycleRow {
-            files: cycle.files.into_iter().map(str::to_owned).collect(),
-            members: cycle.members.into_iter().map(str::to_owned).collect(),
-        })
-        .collect();
     CycleReport {
-        cycles: Bounded::cut(rows, limit),
+        cycles: Bounded::cut(rows(&import_cycles(&imports, &scopes)), limit),
         unresolved_imports: imports.unresolved_imports(),
         unresolved_internal_imports: imports.unresolved_internal_imports(),
         skipped: facts.skipped.clone(),
     }
+}
+
+fn rows(cycles: &[Cycle<'_>]) -> Vec<CycleRow> {
+    let owned = |paths: &[&str]| paths.iter().map(|path| (*path).to_owned()).collect();
+    (cycles.iter())
+        .map(|cycle| CycleRow {
+            files: owned(&cycle.files),
+            members: owned(&cycle.members),
+        })
+        .collect()
 }
 
 #[cfg(test)]

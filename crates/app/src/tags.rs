@@ -11,6 +11,7 @@ use syntax::Language;
 
 use crate::pairs::Stored;
 use crate::repo::root_text;
+use crate::reuse::StoredUnits;
 use crate::scan;
 use crate::{Error, Noted, Repo, Services};
 
@@ -65,6 +66,18 @@ impl Tags {
             store::Lookup::Unmeasured(reason) => Stored::Unmeasured(reason),
             store::Lookup::Miss => Stored::Miss,
             store::Lookup::Unreadable(failure) => Stored::Unreadable(failure.to_string()),
+        }
+    }
+
+    // The stored symbols and measured units of one file's text, which reuse_candidates reads.
+    pub(crate) fn stored_units(&self, path: &str, text: &str, language: Language) -> StoredUnits {
+        let Some(db) = &self.db else {
+            return StoredUnits::Miss;
+        };
+        match db.units_for(path, text, language) {
+            Ok(Some((symbols, metrics))) => StoredUnits::Hit(symbols, metrics),
+            Ok(None) => StoredUnits::Miss,
+            Err(failure) => StoredUnits::Unreadable(failure.to_string()),
         }
     }
 }
@@ -353,14 +366,8 @@ pub fn repo_generation(
 
 // The walk warnings come with either outcome, as the walk raised them.
 fn manifest(services: &Services, root: &Path) -> Noted<Result<Vec<ManifestEntry>, Error>> {
-    let walk = services.git.walk(root, scan::reads);
-    let entries = walk
-        .files
-        .map_err(|refusal| kernel::Error::from(refusal).into());
-    Noted {
-        value: entries.map(|files| files.into_iter().map(|file| entry(root, file)).collect()),
-        diagnostics: walk.warnings.iter().map(ToString::to_string).collect(),
-    }
+    scan::walked_files(services, root)
+        .map_ok(|files| files.into_iter().map(|file| entry(root, file)).collect())
 }
 
 fn entry(root: &Path, file: git::RepoFile) -> ManifestEntry {

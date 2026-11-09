@@ -1,10 +1,11 @@
 //! Text rules that the tokenizer, the checks and the renderers share: line breaks, whitespace,
 //! the printable rule, the word, digit and identifier classes, decimal integer text, the one-line
-//! escape, the line diff, the common indentation, shell words, the pure POSIX path rules, and text
-//! that can hold a lone surrogate.
+//! escape, the line diff, the common indentation, shell words, the boundary glob dialect, the pure
+//! POSIX path rules, and text that can hold a lone surrogate.
 
 mod code_point_string;
 mod diff;
+mod glob;
 mod identifier;
 mod indent;
 mod integer;
@@ -21,6 +22,7 @@ pub mod testing;
 
 pub use code_point_string::CodePointString;
 pub use diff::{matching_blocks, unified_diff};
+pub use glob::{MAX_BRACE_GLOBS, expand_braces, in_boundary};
 pub use identifier::is_identifier;
 pub use indent::dedent;
 pub use integer::{IntText, convertible_int, int_bytes, int_text};

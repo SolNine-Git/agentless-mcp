@@ -1,0 +1,11 @@
+// agentless-mcp receipt   repo: <REPO>   head: 47bfef1c   dirty: 0 files   cache: none
+search /quantize/: 6 matches in 4 files
+pricing.py
+  PriceBook.quote  [py:pricing.py::PriceBook.quote] @46-56
+    56|         return line_total.quantize(CENTS, rounding=ROUND_HALF_UP)
+  format_money  [py:pricing.py::format_money] @78-81
+    80|     quantized = amount.quantize(CENTS, rounding=ROUND_HALF_UP)
+    81|     return f"{quantized} {CURRENCY}"
++ 1 match in 1 lock file: poetry.lock (1). path=<file> shows them.
++ 1 match in 1 vendored file: vendor/rounding.py (1). path=<file> shows them.
++ 1 match in 1 minified file: static/app.min.js (1). path=<file> shows them.

@@ -4,7 +4,7 @@
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
-use graph::{CommunityPartition, detect_communities};
+use graph::{CommunityPartition, FileFacts, detect_communities};
 
 use crate::bounds::within;
 use crate::file_graph::{Ranked, resolution_setting, select};
@@ -86,7 +86,8 @@ pub fn html(
     };
     let config = &reading.repo.config;
     over_scan(services, reading, |facts| {
-        let ranked = Ranked::build(&facts.files, config, reading.deadline)?;
+        let files: Vec<&FileFacts> = facts.files.iter().collect();
+        let ranked = Ranked::build(&files, config, reading.deadline)?;
         let resolution = resolution_setting(request.resolution)?;
         let partition = detect_communities(&ranked.graph, resolution, reading.deadline)?;
         Ok(export(&ranked, &partition, max_nodes, max_edges))

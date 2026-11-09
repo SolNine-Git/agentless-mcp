@@ -1,8 +1,9 @@
 mod autoindex;
-mod calls;
 mod deadline;
 mod drain;
+mod graphs;
 mod http;
+mod notes;
 mod restart;
 mod roots;
 mod serve;
@@ -15,10 +16,11 @@ use std::sync::{Arc, Mutex};
 
 use app::{EnvConfig, Services};
 use io::testing::{Identity, Tree, hermetic_env, run_git};
+use prompts::envelope::RECEIPT_HEADER;
 
 use crate::autoindex::Disarmed;
 use crate::dispatch::{answered, deadline, prepared};
-use crate::{Log, Ports, RootsFile, Server, ServerConfig};
+use crate::{HookCheck, Log, Ports, RootsFile, Server, ServerConfig};
 
 const IDENTITY: Identity = Identity {
     name: "cli tests",
@@ -37,7 +39,7 @@ pub(crate) struct Setup<'a> {
     pub(crate) launch: Option<&'a str>,
 }
 
-// A scratch directory with a home, where the steps of a fixture run build repositories.
+// A scratch directory with a home, where the steps of a test build repositories.
 pub(crate) struct Sandbox {
     tree: Tree,
     root: PathBuf,
@@ -68,7 +70,7 @@ impl Sandbox {
         )))
     }
 
-    // One step of a fixture run, as the generator runs it.
+    // One step: write a file, remove one, write a roots file, or make or commit a repository.
     pub(crate) fn step(&self, step: &[&str]) {
         let place = self.root.join(step[1]);
         match step[0] {
@@ -111,7 +113,7 @@ impl Sandbox {
         self.tree.write_file(place, bytes).expect("a written file");
     }
 
-    // The server of a fixture run: its roots and roots files below the sandbox.
+    // A server with its roots and roots files below the sandbox, and no hook note.
     pub(crate) fn server(&self, roots: &[&str], files: &[&str], launch: Option<&str>) -> Server {
         let setup = Setup {
             roots,
@@ -126,6 +128,16 @@ impl Sandbox {
         setup: &Setup<'_>,
         services: Arc<Services>,
         ports: Ports,
+    ) -> Server {
+        self.server_checking(setup, services, ports, None)
+    }
+
+    pub(crate) fn server_checking(
+        &self,
+        setup: &Setup<'_>,
+        services: Arc<Services>,
+        ports: Ports,
+        hooks: Option<HookCheck>,
     ) -> Server {
         let Setup {
             roots,
@@ -147,6 +159,7 @@ impl Sandbox {
             max_concurrency: 8,
             call_limit: CALL_LIMIT,
             recache_grace: RECACHE_GRACE,
+            hooks,
         };
         Server::new(config, services, ports)
     }
@@ -189,6 +202,38 @@ fn keyed(text: &str) -> String {
     }
     done.push_str(rest);
     done
+}
+
+// The probe repository: one Python package whose `alpha` calls `beta`, committed.
+pub(crate) fn probe() -> Sandbox {
+    let sandbox = Sandbox::new();
+    sandbox.step(&["init", "repo"]);
+    sandbox.step(&[
+        "write",
+        "repo/main.py",
+        "from pkg.mod import alpha\n\nalpha()\n",
+    ]);
+    sandbox.step(&[
+        "write",
+        "repo/pkg/mod.py",
+        "def alpha():\n    return beta()\n\n\ndef beta():\n    return 1\n",
+    ]);
+    sandbox.step(&["commit", "repo"]);
+    sandbox
+}
+
+// The answer with the receipt's cache field as a placeholder: the field names the cache file.
+pub(crate) fn masked(text: &str) -> String {
+    let lines: Vec<String> = text
+        .split('\n')
+        .map(|line| match line.split_once("   cache: ") {
+            Some((head, _)) if line.starts_with(RECEIPT_HEADER) => {
+                format!("{head}   cache: <CACHE>")
+            }
+            _ => line.to_owned(),
+        })
+        .collect();
+    lines.join("\n")
 }
 
 // The log lines of a test server, kept for the assertions.
@@ -235,7 +280,7 @@ impl Server {
     ) -> ToolAnswer {
         let inner = &*self.inner;
         let answer = match prepared(inner, name, arguments) {
-            Ok(call) => answered(inner, &call, deadline(inner, &call).as_ref()),
+            Ok(call) => answered(inner, &call, &deadline(inner), &self.note),
             Err(refused) => refused,
         };
         ToolAnswer {

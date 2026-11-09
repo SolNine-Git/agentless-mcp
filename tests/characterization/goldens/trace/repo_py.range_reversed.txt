@@ -1,0 +1,2 @@
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+pricing.py:9-3 is not a line range: start is 1 or more, and end is at or after start.

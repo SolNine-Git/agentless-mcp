@@ -1,11 +1,15 @@
+mod aliases;
 mod chains;
-mod corpus;
+pub(crate) mod corpus;
 mod deadline;
+pub(crate) mod equality;
 mod files;
 mod lookup;
+mod memo;
 mod names;
 mod packages;
 mod properties;
-mod rust;
+pub(crate) mod rust;
 mod symbols;
 mod units;
+mod updates;

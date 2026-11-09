@@ -1,0 +1,35 @@
+{
+  "receipt": {
+    "repo": "<REPO>",
+    "head": "f5f25218",
+    "tree": "9e93a4f0",
+    "dirty": 0,
+    "cache": "none",
+    "note": ""
+  },
+  "request": {
+    "pattern": null,
+    "files": "*.py",
+    "path": null,
+    "ignore_case": false
+  },
+  "answer": "listing",
+  "files": 3,
+  "rows": [
+    {
+      "path": "inventory.py",
+      "lines": 134,
+      "symbols": 13
+    },
+    {
+      "path": "pricing.py",
+      "lines": 81,
+      "symbols": 12
+    },
+    {
+      "path": "reports.py",
+      "lines": 79,
+      "symbols": 8
+    }
+  ]
+}

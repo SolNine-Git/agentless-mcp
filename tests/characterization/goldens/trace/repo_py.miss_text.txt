@@ -1,0 +1,2 @@
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+no symbol, file or folder matches pricing tiers. It occurs as text in 1 file: pricing.py @12. search(pattern="pricing tiers") lists every match.

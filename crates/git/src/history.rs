@@ -28,7 +28,7 @@ pub(crate) const PROBE: Limits = Limits {
 };
 
 // %b has no terminator of its own, so with -z each commit is exactly four NUL-ended fields.
-const FORMAT: &str = "--format=%H%x00%aI%x00%s%x00%b";
+pub(crate) const FORMAT: &str = "--format=%H%x00%aI%x00%s%x00%b";
 const FIELDS_PER_COMMIT: usize = 4;
 const SHA1_DIGITS: usize = 40;
 const SHA256_DIGITS: usize = 64;
@@ -205,8 +205,8 @@ impl Git {
     ///
     /// Returns the note of a git that cannot say.
     pub fn differs(&self, root: &Path, path: &str, revision: &CommitId) -> Result<bool, String> {
-        // "./" defeats pathspec magic, so a file named ":(exclude)x" is a path.
-        let target = OsString::from(format!("./{path}"));
+        // ":(literal)" keeps the path as written: no pathspec magic and no glob widens it.
+        let target = OsString::from(format!(":(literal){path}"));
         let rest = [
             OsStr::new("--quiet"),
             OsStr::new(revision.as_str()),

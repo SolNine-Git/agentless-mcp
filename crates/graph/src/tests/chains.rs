@@ -4,6 +4,7 @@
 use facts::Runs;
 
 use super::rust::scanned;
+use crate::FileFacts;
 use crate::{Scopes, SymbolGraph, import_chain};
 
 // a.py imports b.py at load. b.py imports a.py in a function and c.py at load, and c.py imports
@@ -35,6 +36,7 @@ fn hop(path: &str, line: u32, target: &str) -> (String, u32, String) {
 #[test]
 fn the_shortest_chain_takes_an_edge_that_the_filter_keeps_and_no_other() {
     let files = scanned(&FILES);
+    let files: Vec<&FileFacts> = files.iter().collect();
     let scopes = Scopes::build(&files);
     let graph = SymbolGraph::imports(&scopes);
     let every = hops(import_chain(&graph, "b.py", "a.py", |_, _| true));
@@ -64,6 +66,7 @@ fn each_resolved_row_names_the_position_of_its_statement() {
         ("pkg/__init__.py", "name = 1\n"),
         ("pkg/mod.py", "y = 2\n"),
     ]);
+    let files: Vec<&FileFacts> = files.iter().collect();
     let scopes = Scopes::build(&files);
     let scope = scopes.get("a.py").expect("a scanned file");
     let rows: Vec<(usize, &str, &str)> = scope.resolved_statements("a.py").collect();

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use app::{EnvConfig, Services};
 use cli::{ServerArgs, ServerTransport};
-use mcp::{Ended, Relaunch, RootsFile, ServerConfig, Start, Transport};
+use mcp::{Ended, HookCheck, Relaunch, RootsFile, ServerConfig, Start, Transport};
 
 use crate::with_streams;
 
@@ -90,6 +90,7 @@ fn started(
         max_concurrency: parsed.max_concurrency,
         call_limit: parsed.call_limit,
         recache_grace: parsed.recache_grace,
+        hooks: hook_check(env),
     };
     Ok(Start {
         config,
@@ -105,6 +106,14 @@ fn launch_dir(env: &EnvConfig) -> Result<PathBuf, String> {
         .cwd()
         .map_err(|unread| cli::cwd_failure_line(&unread.error()))?;
     io::resolve(cwd).map_err(|error| cli::cwd_failure_line(&error))
+}
+
+// The hook note compares the settings with the canonical path of this binary; with no path known,
+// the server gives no note.
+fn hook_check(env: &EnvConfig) -> Option<HookCheck> {
+    let binary = std::env::current_exe().ok()?;
+    let binary = io::resolve(&binary).ok()?;
+    Some(HookCheck::of(env, binary))
 }
 
 // The installed binary's path, read once now: after an upgrade replaces the file, this process's

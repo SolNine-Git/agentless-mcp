@@ -20,12 +20,9 @@ impl Kind {
 }
 
 // A name's position is its value order, so templates with the same names take them in one order.
-pub const PLACEHOLDERS: [(&str, Kind); 86] = [
+pub const PLACEHOLDERS: [(&str, Kind); 96] = [
     ("tool", Kind::Text),
-    ("operation", Kind::Text),
     ("accepted", Kind::Text),
-    ("required", Kind::Text),
-    ("surface", Kind::Text),
     ("root", Kind::Text),
     ("head", Kind::Text),
     ("dirty", Kind::Text),
@@ -107,6 +104,19 @@ pub const PLACEHOLDERS: [(&str, Kind); 86] = [
     ("modularity", Kind::Text),
     ("resolution", Kind::Text),
     ("score", Kind::Text),
+    ("date", Kind::Text),
+    ("subject", Kind::Text),
+    ("glob", Kind::Text),
+    ("text", Kind::Text),
+    ("card", Kind::Text),
+    ("added", Kind::Count),
+    ("replaced", Kind::Count),
+    ("removed", Kind::Count),
+    ("kept", Kind::Count),
+    ("changed", Kind::Count),
+    ("renamed", Kind::Count),
+    ("tests", Kind::Count),
+    ("span", Kind::Text),
 ];
 
 const TABLE: &str = "xtask/src/generate/placeholders.rs";

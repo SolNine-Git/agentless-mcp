@@ -30,9 +30,9 @@ const INITIALIZE: &str = concat!(
     r#""capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}"#,
 );
 const TOOLS_LIST: &str = r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#;
-const READ_DIR: &str = concat!(
+const LISTING: &str = concat!(
     r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","#,
-    r#""params":{"name":"read","arguments":{"operation":"dir"}}}"#,
+    r#""params":{"name":"search","arguments":{"files":"*"}}}"#,
 );
 const HOST: &str = "127.0.0.1:8766";
 const KEEP_ALIVE: &str = ":\n\n";
@@ -449,6 +449,7 @@ async fn a_signal_ends_a_drain_with_a_huge_bound_at_once() {
         max_concurrency: 8,
         call_limit: 1e15,
         recache_grace: 60.0,
+        hooks: None,
     };
     let server = Server::new(config, sandbox.services(), quiet_ports());
     let (_mcp, sessions) = service(&server, BOUND);
@@ -482,6 +483,7 @@ async fn a_bound_that_is_not_finite_drains_for_at_most_90_seconds() {
         max_concurrency: 8,
         call_limit: f64::INFINITY,
         recache_grace: 60.0,
+        hooks: None,
     };
     let server = Server::new(config, sandbox.services(), quiet_ports());
     let (_mcp, sessions) = service(&server, BOUND);
@@ -534,7 +536,7 @@ async fn a_call_in_flight_at_the_stop_gets_its_answer_before_the_cancel() {
     let (mut client, socket) = tokio::io::duplex(1 << 20);
     let graceful = GracefulShutdown::new();
     connection(socket, routed(mcp), &graceful);
-    let request = in_session(&post("/mcp", HOST, READ_DIR), &session);
+    let request = in_session(&post("/mcp", HOST, LISTING), &session);
     client
         .write_all(request.as_bytes())
         .await

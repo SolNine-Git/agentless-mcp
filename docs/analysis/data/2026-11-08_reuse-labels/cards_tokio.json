@@ -1,0 +1,2021 @@
+[
+ {
+  "function": {
+   "path": "tokio/src/fs/rename.rs",
+   "language": "rust",
+   "qualname": "rename",
+   "line": 12,
+   "end": 17,
+   "name_line": 12,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`canonicalize` at tokio/src/fs/canonicalize.rs:46 calls and reads 3 of the same names as `rename`: `as_ref`, `asyncify`, `to_owned`. Read `canonicalize` before you keep a second copy.",
+    "path": "tokio/src/fs/rename.rs",
+    "line": 12,
+    "location": "tokio/src/fs/rename.rs:12",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "rename",
+     "other": "canonicalize",
+     "other_path": "tokio/src/fs/canonicalize.rs",
+     "other_line": 46,
+     "score": "1.000",
+     "shared": [
+      "as_ref",
+      "asyncify",
+      "to_owned"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`copy` at tokio/src/fs/copy.rs:21 calls and reads 3 of the same names as `rename`: `as_ref`, `asyncify`, `to_owned`. Read `copy` before you keep a second copy.",
+    "path": "tokio/src/fs/rename.rs",
+    "line": 12,
+    "location": "tokio/src/fs/rename.rs:12",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "rename",
+     "other": "copy",
+     "other_path": "tokio/src/fs/copy.rs",
+     "other_line": 21,
+     "score": "1.000",
+     "shared": [
+      "as_ref",
+      "asyncify",
+      "to_owned"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/signal/registry.rs",
+   "language": "rust",
+   "qualname": "tests.collect",
+   "line": 272,
+   "end": 280,
+   "name_line": 272,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "benches/spawn.rs",
+   "language": "rust",
+   "qualname": "basic_scheduler_spawn",
+   "line": 13,
+   "end": 26,
+   "name_line": 13,
+   "protocol": false,
+   "test": false,
+   "names": 8,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`basic_scheduler_spawn10` at benches/spawn.rs:28 calls and reads 8 of the same names as `basic_scheduler_spawn`: `bench_function`, `block_on`, `build`, `iter`, `new_current_thread`, `spawn`, `unwrap`, `work`. Read `basic_scheduler_spawn10` before you keep a second copy.",
+    "path": "benches/spawn.rs",
+    "line": 13,
+    "location": "benches/spawn.rs:13",
+    "evidence": "score 0.802",
+    "detail": {
+     "unit": "basic_scheduler_spawn",
+     "other": "basic_scheduler_spawn10",
+     "other_path": "benches/spawn.rs",
+     "other_line": 28,
+     "score": "0.802",
+     "shared": [
+      "bench_function",
+      "block_on",
+      "build",
+      "iter",
+      "new_current_thread",
+      "spawn",
+      "unwrap",
+      "work"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`threaded_scheduler_spawn` at benches/spawn.rs:48 calls and reads 7 of the same names as `basic_scheduler_spawn`: `bench_function`, `block_on`, `build`, `iter`, `spawn`, `unwrap`, `work`. Read `threaded_scheduler_spawn` before you keep a second copy.",
+    "path": "benches/spawn.rs",
+    "line": 13,
+    "location": "benches/spawn.rs:13",
+    "evidence": "score 0.667",
+    "detail": {
+     "unit": "basic_scheduler_spawn",
+     "other": "threaded_scheduler_spawn",
+     "other_path": "benches/spawn.rs",
+     "other_line": 48,
+     "score": "0.667",
+     "shared": [
+      "bench_function",
+      "block_on",
+      "build",
+      "iter",
+      "spawn",
+      "unwrap",
+      "work"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+   "language": "rust",
+   "qualname": "Inner.remaining_slots",
+   "line": 564,
+   "end": 569,
+   "name_line": 564,
+   "protocol": false,
+   "test": false,
+   "names": 7,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Inner.len` at tokio/src/runtime/scheduler/multi_thread/queue.rs:579 calls and reads 5 of the same names as `Inner.remaining_slots`: `head`, `load`, `tail`, `unpack`, `wrapping_sub`. Read `Inner.len` before you keep a second copy.",
+    "path": "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+    "line": 564,
+    "location": "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs:564",
+    "evidence": "score 0.742",
+    "detail": {
+     "unit": "Inner.remaining_slots",
+     "other": "Inner.len",
+     "other_path": "tokio/src/runtime/scheduler/multi_thread/queue.rs",
+     "other_line": 579,
+     "score": "0.742",
+     "shared": [
+      "head",
+      "load",
+      "tail",
+      "unpack",
+      "wrapping_sub"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Inner.remaining_slots` at tokio/src/runtime/scheduler/multi_thread/queue.rs:572 calls and reads 5 of the same names as `Inner.remaining_slots`: `head`, `load`, `tail`, `unpack`, `wrapping_sub`. Read `Inner.remaining_slots` before you keep a second copy.",
+    "path": "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+    "line": 564,
+    "location": "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs:564",
+    "evidence": "score 0.742",
+    "detail": {
+     "unit": "Inner.remaining_slots",
+     "other": "Inner.remaining_slots",
+     "other_path": "tokio/src/runtime/scheduler/multi_thread/queue.rs",
+     "other_line": 572,
+     "score": "0.742",
+     "shared": [
+      "head",
+      "load",
+      "tail",
+      "unpack",
+      "wrapping_sub"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/runtime/driver.rs",
+   "language": "rust",
+   "qualname": "Driver.new",
+   "line": 47,
+   "end": 64,
+   "name_line": 47,
+   "protocol": false,
+   "test": false,
+   "names": 10,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Builder.get_cfg` at tokio/src/runtime/builder.rs:705 calls and reads 4 of the same names as `Driver.new`: `enable_io`, `enable_time`, `nevents`, `start_paused`. Read `Builder.get_cfg` before you keep a second copy.",
+    "path": "tokio/src/runtime/driver.rs",
+    "line": 47,
+    "location": "tokio/src/runtime/driver.rs:47",
+    "evidence": "score 0.338",
+    "detail": {
+     "unit": "Driver.new",
+     "other": "Builder.get_cfg",
+     "other_path": "tokio/src/runtime/builder.rs",
+     "other_line": 705,
+     "score": "0.338",
+     "shared": [
+      "enable_io",
+      "enable_time",
+      "nevents",
+      "start_paused"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "benches/sync_broadcast.rs",
+   "language": "rust",
+   "qualname": "contention_impl",
+   "line": 29,
+   "end": 69,
+   "name_line": 29,
+   "protocol": false,
+   "test": false,
+   "names": 21,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`contention_resubscribe` at benches/sync_watch.rs:29 calls and reads 19 of the same names as `contention_impl`: `bench_function`, `black_box`, `block_on`, `clone`, `do_work`, `fetch_add`, `fetch_sub`, `is_ok`, `iter`, `load`, `notified`, `notify_one`, `rt`, `seed_from_u64`, `send`, `spawn`, `subscribe`, `to_string`, `unwrap`. Read `contention_resubscribe` before you keep a second copy.",
+    "path": "benches/sync_broadcast.rs",
+    "line": 29,
+    "location": "benches/sync_broadcast.rs:29",
+    "evidence": "score 0.776",
+    "detail": {
+     "unit": "contention_impl",
+     "other": "contention_resubscribe",
+     "other_path": "benches/sync_watch.rs",
+     "other_line": 29,
+     "score": "0.776",
+     "shared": [
+      "bench_function",
+      "black_box",
+      "block_on",
+      "clone",
+      "do_work",
+      "fetch_add",
+      "fetch_sub",
+      "is_ok",
+      "iter",
+      "load",
+      "notified",
+      "notify_one",
+      "rt",
+      "seed_from_u64",
+      "send",
+      "spawn",
+      "subscribe",
+      "to_string",
+      "unwrap"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`rt_multi_spawn_many_local` at benches/rt_multi_threaded.rs:19 calls and reads 10 of the same names as `contention_impl`: `bench_function`, `block_on`, `clone`, `fetch_sub`, `iter`, `recv`, `rt`, `send`, `spawn`, `unwrap`. Read `rt_multi_spawn_many_local` before you keep a second copy.",
+    "path": "benches/sync_broadcast.rs",
+    "line": 29,
+    "location": "benches/sync_broadcast.rs:29",
+    "evidence": "score 0.376",
+    "detail": {
+     "unit": "contention_impl",
+     "other": "rt_multi_spawn_many_local",
+     "other_path": "benches/rt_multi_threaded.rs",
+     "other_line": 19,
+     "score": "0.376",
+     "shared": [
+      "bench_function",
+      "block_on",
+      "clone",
+      "fetch_sub",
+      "iter",
+      "recv",
+      "rt",
+      "send",
+      "spawn",
+      "unwrap"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/net/unix/datagram/socket.rs",
+   "language": "rust",
+   "qualname": "UnixDatagram.from_mio",
+   "line": 99,
+   "end": 107,
+   "name_line": 99,
+   "protocol": false,
+   "test": false,
+   "names": 6,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio-util/src/task/task_tracker.rs",
+   "language": "rust",
+   "qualname": "TaskTracker.is_empty",
+   "line": 363,
+   "end": 367,
+   "name_line": 365,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`TaskTracker.is_closed` at tokio-util/src/task/task_tracker.rs:349 calls and reads 2 of the same names as `TaskTracker.is_empty`: `load`, `state`. Read `TaskTracker.is_closed` before you keep a second copy.",
+    "path": "tokio-util/src/task/task_tracker.rs",
+    "line": 365,
+    "location": "tokio-util/src/task/task_tracker.rs:365",
+    "evidence": "score 0.593",
+    "detail": {
+     "unit": "TaskTracker.is_empty",
+     "other": "TaskTracker.is_closed",
+     "other_path": "tokio-util/src/task/task_tracker.rs",
+     "other_line": 349,
+     "score": "0.593",
+     "shared": [
+      "load",
+      "state"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`TaskTracker.len` at tokio-util/src/task/task_tracker.rs:356 calls and reads 2 of the same names as `TaskTracker.is_empty`: `load`, `state`. Read `TaskTracker.len` before you keep a second copy.",
+    "path": "tokio-util/src/task/task_tracker.rs",
+    "line": 365,
+    "location": "tokio-util/src/task/task_tracker.rs:365",
+    "evidence": "score 0.593",
+    "detail": {
+     "unit": "TaskTracker.is_empty",
+     "other": "TaskTracker.len",
+     "other_path": "tokio-util/src/task/task_tracker.rs",
+     "other_line": 356,
+     "score": "0.593",
+     "shared": [
+      "load",
+      "state"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/net/unix/socket.rs",
+   "language": "rust",
+   "qualname": "UnixSocket.datagram",
+   "line": 230,
+   "end": 245,
+   "name_line": 230,
+   "protocol": false,
+   "test": false,
+   "names": 7,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Receiver.from_owned_fd_unchecked` at tokio/src/net/unix/pipe.rs:990 calls and reads 3 of the same names as `UnixSocket.datagram`: `from_mio`, `from_raw_fd`, `into_raw_fd`. Read `Receiver.from_owned_fd_unchecked` before you keep a second copy.",
+    "path": "tokio/src/net/unix/socket.rs",
+    "line": 230,
+    "location": "tokio/src/net/unix/socket.rs:230",
+    "evidence": "score 0.535",
+    "detail": {
+     "unit": "UnixSocket.datagram",
+     "other": "Receiver.from_owned_fd_unchecked",
+     "other_path": "tokio/src/net/unix/pipe.rs",
+     "other_line": 990,
+     "score": "0.535",
+     "shared": [
+      "from_mio",
+      "from_raw_fd",
+      "into_raw_fd"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Sender.from_owned_fd_unchecked` at tokio/src/net/unix/pipe.rs:494 calls and reads 3 of the same names as `UnixSocket.datagram`: `from_mio`, `from_raw_fd`, `into_raw_fd`. Read `Sender.from_owned_fd_unchecked` before you keep a second copy.",
+    "path": "tokio/src/net/unix/socket.rs",
+    "line": 230,
+    "location": "tokio/src/net/unix/socket.rs:230",
+    "evidence": "score 0.535",
+    "detail": {
+     "unit": "UnixSocket.datagram",
+     "other": "Sender.from_owned_fd_unchecked",
+     "other_path": "tokio/src/net/unix/pipe.rs",
+     "other_line": 494,
+     "score": "0.535",
+     "shared": [
+      "from_mio",
+      "from_raw_fd",
+      "into_raw_fd"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/sync/batch_semaphore.rs",
+   "language": "rust",
+   "qualname": "Semaphore.close",
+   "line": 242,
+   "end": 259,
+   "name_line": 242,
+   "protocol": false,
+   "test": false,
+   "names": 13,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Semaphore.add_permits_locked` at tokio/src/sync/batch_semaphore.rs:306 calls and reads 9 of the same names as `Semaphore.close`: `as_mut`, `lock`, `permits`, `pop_back`, `queue`, `take`, `waiters`, `waker`, `with_mut`. Read `Semaphore.add_permits_locked` before you keep a second copy.",
+    "path": "tokio/src/sync/batch_semaphore.rs",
+    "line": 242,
+    "location": "tokio/src/sync/batch_semaphore.rs:242",
+    "evidence": "score 0.311",
+    "detail": {
+     "unit": "Semaphore.close",
+     "other": "Semaphore.add_permits_locked",
+     "other_path": "tokio/src/sync/batch_semaphore.rs",
+     "other_line": 306,
+     "score": "0.311",
+     "shared": [
+      "as_mut",
+      "lock",
+      "permits",
+      "pop_back",
+      "queue",
+      "take",
+      "waiters",
+      "waker",
+      "with_mut"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/sync/rwlock/owned_write_guard_mapped.rs",
+   "language": "rust",
+   "qualname": "OwnedRwLockMappedWriteGuard.try_map",
+   "line": 135,
+   "end": 157,
+   "name_line": 136,
+   "protocol": false,
+   "test": false,
+   "names": 11,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`OwnedRwLockMappedWriteGuard.map` at tokio/src/sync/rwlock/owned_write_guard_mapped.rs:84 calls and reads 8 of the same names as `OwnedRwLockMappedWriteGuard.try_map`: `FnOnce`, `all`, `cfg`, `f`, `lock`, `permits_acquired`, `resource_span`, `skip_drop`. Read `OwnedRwLockMappedWriteGuard.map` before you keep a second copy.",
+    "path": "tokio/src/sync/rwlock/owned_write_guard_mapped.rs",
+    "line": 136,
+    "location": "tokio/src/sync/rwlock/owned_write_guard_mapped.rs:136",
+    "evidence": "score 0.799",
+    "detail": {
+     "unit": "OwnedRwLockMappedWriteGuard.try_map",
+     "other": "OwnedRwLockMappedWriteGuard.map",
+     "other_path": "tokio/src/sync/rwlock/owned_write_guard_mapped.rs",
+     "other_line": 84,
+     "score": "0.799",
+     "shared": [
+      "FnOnce",
+      "all",
+      "cfg",
+      "f",
+      "lock",
+      "permits_acquired",
+      "resource_span",
+      "skip_drop"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`OwnedRwLockWriteGuard.map` at tokio/src/sync/rwlock/owned_write_guard.rs:85 calls and reads 8 of the same names as `OwnedRwLockMappedWriteGuard.try_map`: `FnOnce`, `all`, `cfg`, `f`, `lock`, `permits_acquired`, `resource_span`, `skip_drop`. Read `OwnedRwLockWriteGuard.map` before you keep a second copy.",
+    "path": "tokio/src/sync/rwlock/owned_write_guard_mapped.rs",
+    "line": 136,
+    "location": "tokio/src/sync/rwlock/owned_write_guard_mapped.rs:136",
+    "evidence": "score 0.799",
+    "detail": {
+     "unit": "OwnedRwLockMappedWriteGuard.try_map",
+     "other": "OwnedRwLockWriteGuard.map",
+     "other_path": "tokio/src/sync/rwlock/owned_write_guard.rs",
+     "other_line": 85,
+     "score": "0.799",
+     "shared": [
+      "FnOnce",
+      "all",
+      "cfg",
+      "f",
+      "lock",
+      "permits_acquired",
+      "resource_span",
+      "skip_drop"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/util/sharded_list.rs",
+   "language": "rust",
+   "qualname": "ShardedList.pop_back",
+   "line": 64,
+   "end": 71,
+   "name_line": 64,
+   "protocol": false,
+   "test": false,
+   "names": 4,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`ShardedList.remove` at tokio/src/util/sharded_list.rs:81 calls and reads 4 of the same names as `ShardedList.pop_back`: `count`, `decrement`, `is_some`, `shard_inner`. Read `ShardedList.remove` before you keep a second copy.",
+    "path": "tokio/src/util/sharded_list.rs",
+    "line": 64,
+    "location": "tokio/src/util/sharded_list.rs:64",
+    "evidence": "score 0.777",
+    "detail": {
+     "unit": "ShardedList.pop_back",
+     "other": "ShardedList.remove",
+     "other_path": "tokio/src/util/sharded_list.rs",
+     "other_line": 81,
+     "score": "0.777",
+     "shared": [
+      "count",
+      "decrement",
+      "is_some",
+      "shard_inner"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio-test/src/io.rs",
+   "language": "rust",
+   "qualname": "Handle.write",
+   "line": 170,
+   "end": 173,
+   "name_line": 170,
+   "protocol": false,
+   "test": false,
+   "names": 5,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Handle.read_error` at tokio-test/src/io.rs:160 calls and reads 4 of the same names as `Handle.write`: `into`, `send`, `tx`, `unwrap`. Read `Handle.read_error` before you keep a second copy.",
+    "path": "tokio-test/src/io.rs",
+    "line": 170,
+    "location": "tokio-test/src/io.rs:170",
+    "evidence": "score 0.544",
+    "detail": {
+     "unit": "Handle.write",
+     "other": "Handle.read_error",
+     "other_path": "tokio-test/src/io.rs",
+     "other_line": 160,
+     "score": "0.544",
+     "shared": [
+      "into",
+      "send",
+      "tx",
+      "unwrap"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Handle.read` at tokio-test/src/io.rs:151 calls and reads 4 of the same names as `Handle.write`: `into`, `send`, `tx`, `unwrap`. Read `Handle.read` before you keep a second copy.",
+    "path": "tokio-test/src/io.rs",
+    "line": 170,
+    "location": "tokio-test/src/io.rs:170",
+    "evidence": "score 0.604",
+    "detail": {
+     "unit": "Handle.write",
+     "other": "Handle.read",
+     "other_path": "tokio-test/src/io.rs",
+     "other_line": 151,
+     "score": "0.604",
+     "shared": [
+      "into",
+      "send",
+      "tx",
+      "unwrap"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+   "language": "rust",
+   "qualname": "Local.push_back_finish",
+   "line": 209,
+   "end": 227,
+   "name_line": 209,
+   "protocol": false,
+   "test": false,
+   "names": 9,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Local.push_back_finish` at tokio/src/runtime/scheduler/multi_thread/queue.rs:223 calls and reads 7 of the same names as `Local.push_back_finish`: `as_mut_ptr`, `buffer`, `store`, `tail`, `with_mut`, `wrapping_add`, `write`. Read `Local.push_back_finish` before you keep a second copy.",
+    "path": "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+    "line": 209,
+    "location": "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs:209",
+    "evidence": "score 0.760",
+    "detail": {
+     "unit": "Local.push_back_finish",
+     "other": "Local.push_back_finish",
+     "other_path": "tokio/src/runtime/scheduler/multi_thread/queue.rs",
+     "other_line": 223,
+     "score": "0.760",
+     "shared": [
+      "as_mut_ptr",
+      "buffer",
+      "store",
+      "tail",
+      "with_mut",
+      "wrapping_add",
+      "write"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Local.push_back` at tokio/src/runtime/scheduler/multi_thread_alt/queue.rs:117 calls and reads 8 of the same names as `Local.push_back_finish`: `as_mut_ptr`, `buffer`, `mask`, `store`, `tail`, `with_mut`, `wrapping_add`, `write`. Read `Local.push_back` before you keep a second copy.",
+    "path": "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+    "line": 209,
+    "location": "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs:209",
+    "evidence": "score 0.536",
+    "detail": {
+     "unit": "Local.push_back_finish",
+     "other": "Local.push_back",
+     "other_path": "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+     "other_line": 117,
+     "score": "0.536",
+     "shared": [
+      "as_mut_ptr",
+      "buffer",
+      "mask",
+      "store",
+      "tail",
+      "with_mut",
+      "wrapping_add",
+      "write"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/runtime/context/blocking.rs",
+   "language": "rust",
+   "qualname": "disallow_block_in_place",
+   "line": 34,
+   "end": 50,
+   "name_line": 34,
+   "protocol": false,
+   "test": false,
+   "names": 5,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`current_enter_context` at tokio/src/runtime/context/runtime_mt.rs:4 calls and reads 3 of the same names as `disallow_block_in_place`: `get`, `runtime`, `with`. Read `current_enter_context` before you keep a second copy.",
+    "path": "tokio/src/runtime/context/blocking.rs",
+    "line": 34,
+    "location": "tokio/src/runtime/context/blocking.rs:34",
+    "evidence": "score 0.555",
+    "detail": {
+     "unit": "disallow_block_in_place",
+     "other": "current_enter_context",
+     "other_path": "tokio/src/runtime/context/runtime_mt.rs",
+     "other_line": 4,
+     "score": "0.555",
+     "shared": [
+      "get",
+      "runtime",
+      "with"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`exit_runtime` at tokio/src/runtime/context/runtime_mt.rs:10 calls and reads 4 of the same names as `disallow_block_in_place`: `get`, `runtime`, `set`, `with`. Read `exit_runtime` before you keep a second copy.",
+    "path": "tokio/src/runtime/context/blocking.rs",
+    "line": 34,
+    "location": "tokio/src/runtime/context/blocking.rs:34",
+    "evidence": "score 0.373",
+    "detail": {
+     "unit": "disallow_block_in_place",
+     "other": "exit_runtime",
+     "other_path": "tokio/src/runtime/context/runtime_mt.rs",
+     "other_line": 10,
+     "score": "0.373",
+     "shared": [
+      "get",
+      "runtime",
+      "set",
+      "with"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/fs/create_dir_all.rs",
+   "language": "rust",
+   "qualname": "create_dir_all",
+   "line": 48,
+   "end": 51,
+   "name_line": 48,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`canonicalize` at tokio/src/fs/canonicalize.rs:46 calls and reads 3 of the same names as `create_dir_all`: `as_ref`, `asyncify`, `to_owned`. Read `canonicalize` before you keep a second copy.",
+    "path": "tokio/src/fs/create_dir_all.rs",
+    "line": 48,
+    "location": "tokio/src/fs/create_dir_all.rs:48",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "create_dir_all",
+     "other": "canonicalize",
+     "other_path": "tokio/src/fs/canonicalize.rs",
+     "other_line": 46,
+     "score": "1.000",
+     "shared": [
+      "as_ref",
+      "asyncify",
+      "to_owned"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`copy` at tokio/src/fs/copy.rs:21 calls and reads 3 of the same names as `create_dir_all`: `as_ref`, `asyncify`, `to_owned`. Read `copy` before you keep a second copy.",
+    "path": "tokio/src/fs/create_dir_all.rs",
+    "line": 48,
+    "location": "tokio/src/fs/create_dir_all.rs:48",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "create_dir_all",
+     "other": "copy",
+     "other_path": "tokio/src/fs/copy.rs",
+     "other_line": 21,
+     "score": "1.000",
+     "shared": [
+      "as_ref",
+      "asyncify",
+      "to_owned"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/task/task_local.rs",
+   "language": "rust",
+   "qualname": "TaskLocalFuture.take_value",
+   "line": 373,
+   "end": 376,
+   "name_line": 373,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Level.take_slot` at tokio/src/runtime/time/wheel/level.rs:143 calls and reads 2 of the same names as `TaskLocalFuture.take_value`: `slot`, `take`. Read `Level.take_slot` before you keep a second copy.",
+    "path": "tokio/src/task/task_local.rs",
+    "line": 373,
+    "location": "tokio/src/task/task_local.rs:373",
+    "evidence": "score 0.376",
+    "detail": {
+     "unit": "TaskLocalFuture.take_value",
+     "other": "Level.take_slot",
+     "other_path": "tokio/src/runtime/time/wheel/level.rs",
+     "other_line": 143,
+     "score": "0.376",
+     "shared": [
+      "slot",
+      "take"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/lib.rs",
+   "language": "rust",
+   "qualname": "trace.async_trace_leaf",
+   "line": 573,
+   "end": 587,
+   "name_line": 574,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/loom/std/unsafe_cell.rs",
+   "language": "rust",
+   "qualname": "UnsafeCell.with_mut",
+   "line": 14,
+   "end": 17,
+   "name_line": 15,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`AtomicUsize.with_mut` at tokio/src/loom/std/atomic_usize.rs:30 calls and reads 3 of the same names as `UnsafeCell.with_mut`: `FnOnce`, `f`, `get`. Read `AtomicUsize.with_mut` before you keep a second copy.",
+    "path": "tokio/src/loom/std/unsafe_cell.rs",
+    "line": 15,
+    "location": "tokio/src/loom/std/unsafe_cell.rs:15",
+    "evidence": "score 0.618",
+    "detail": {
+     "unit": "UnsafeCell.with_mut",
+     "other": "AtomicUsize.with_mut",
+     "other_path": "tokio/src/loom/std/atomic_usize.rs",
+     "other_line": 30,
+     "score": "0.618",
+     "shared": [
+      "FnOnce",
+      "f",
+      "get"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`UnsafeCell.with` at tokio/src/loom/std/unsafe_cell.rs:9 calls and reads 3 of the same names as `UnsafeCell.with_mut`: `FnOnce`, `f`, `get`. Read `UnsafeCell.with` before you keep a second copy.",
+    "path": "tokio/src/loom/std/unsafe_cell.rs",
+    "line": 15,
+    "location": "tokio/src/loom/std/unsafe_cell.rs:15",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "UnsafeCell.with_mut",
+     "other": "UnsafeCell.with",
+     "other_path": "tokio/src/loom/std/unsafe_cell.rs",
+     "other_line": 9,
+     "score": "1.000",
+     "shared": [
+      "FnOnce",
+      "f",
+      "get"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/runtime/task/state.rs",
+   "language": "rust",
+   "qualname": "State.transition_to_notified_by_val",
+   "line": 209,
+   "end": 244,
+   "name_line": 209,
+   "protocol": false,
+   "test": false,
+   "names": 9,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`State.transition_to_notified_and_cancel` at tokio/src/runtime/task/state.rs:296 calls and reads 6 of the same names as `State.transition_to_notified_by_val`: `fetch_update_action`, `is_complete`, `is_notified`, `is_running`, `ref_inc`, `set_notified`. Read `State.transition_to_notified_and_cancel` before you keep a second copy.",
+    "path": "tokio/src/runtime/task/state.rs",
+    "line": 209,
+    "location": "tokio/src/runtime/task/state.rs:209",
+    "evidence": "score 0.548",
+    "detail": {
+     "unit": "State.transition_to_notified_by_val",
+     "other": "State.transition_to_notified_and_cancel",
+     "other_path": "tokio/src/runtime/task/state.rs",
+     "other_line": 296,
+     "score": "0.548",
+     "shared": [
+      "fetch_update_action",
+      "is_complete",
+      "is_notified",
+      "is_running",
+      "ref_inc",
+      "set_notified"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`State.transition_to_notified_by_ref` at tokio/src/runtime/task/state.rs:247 calls and reads 6 of the same names as `State.transition_to_notified_by_val`: `fetch_update_action`, `is_complete`, `is_notified`, `is_running`, `ref_inc`, `set_notified`. Read `State.transition_to_notified_by_ref` before you keep a second copy.",
+    "path": "tokio/src/runtime/task/state.rs",
+    "line": 209,
+    "location": "tokio/src/runtime/task/state.rs:209",
+    "evidence": "score 0.678",
+    "detail": {
+     "unit": "State.transition_to_notified_by_val",
+     "other": "State.transition_to_notified_by_ref",
+     "other_path": "tokio/src/runtime/task/state.rs",
+     "other_line": 247,
+     "score": "0.678",
+     "shared": [
+      "fetch_update_action",
+      "is_complete",
+      "is_notified",
+      "is_running",
+      "ref_inc",
+      "set_notified"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/runtime/scheduler/inject.rs",
+   "language": "rust",
+   "qualname": "Inject.pop",
+   "line": 63,
+   "end": 71,
+   "name_line": 63,
+   "protocol": false,
+   "test": false,
+   "names": 4,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Inject.close` at tokio/src/runtime/scheduler/inject.rs:49 calls and reads 3 of the same names as `Inject.pop`: `lock`, `shared`, `synced`. Read `Inject.close` before you keep a second copy.",
+    "path": "tokio/src/runtime/scheduler/inject.rs",
+    "line": 63,
+    "location": "tokio/src/runtime/scheduler/inject.rs:63",
+    "evidence": "score 0.746",
+    "detail": {
+     "unit": "Inject.pop",
+     "other": "Inject.close",
+     "other_path": "tokio/src/runtime/scheduler/inject.rs",
+     "other_line": 49,
+     "score": "0.746",
+     "shared": [
+      "lock",
+      "shared",
+      "synced"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Inject.is_closed` at tokio/src/runtime/scheduler/inject.rs:41 calls and reads 3 of the same names as `Inject.pop`: `lock`, `shared`, `synced`. Read `Inject.is_closed` before you keep a second copy.",
+    "path": "tokio/src/runtime/scheduler/inject.rs",
+    "line": 63,
+    "location": "tokio/src/runtime/scheduler/inject.rs:63",
+    "evidence": "score 0.746",
+    "detail": {
+     "unit": "Inject.pop",
+     "other": "Inject.is_closed",
+     "other_path": "tokio/src/runtime/scheduler/inject.rs",
+     "other_line": 41,
+     "score": "0.746",
+     "shared": [
+      "lock",
+      "shared",
+      "synced"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio-util/src/time/delay_queue.rs",
+   "language": "rust",
+   "qualname": "SlabStorage.contains",
+   "line": 318,
+   "end": 325,
+   "name_line": 318,
+   "protocol": false,
+   "test": false,
+   "names": 4,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/task/local.rs",
+   "language": "rust",
+   "qualname": "LocalSet.new",
+   "line": 431,
+   "end": 452,
+   "name_line": 431,
+   "protocol": false,
+   "test": false,
+   "names": 5,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/util/rc_cell.rs",
+   "language": "rust",
+   "qualname": "RcCell.with_inner",
+   "line": 28,
+   "end": 39,
+   "name_line": 29,
+   "protocol": false,
+   "test": false,
+   "names": 4,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`LocalOwnedTasks.with_inner` at tokio/src/runtime/task/list.rs:308 calls and reads 3 of the same names as `RcCell.with_inner`: `FnOnce`, `f`, `with_mut`. Read `LocalOwnedTasks.with_inner` before you keep a second copy.",
+    "path": "tokio/src/util/rc_cell.rs",
+    "line": 29,
+    "location": "tokio/src/util/rc_cell.rs:29",
+    "evidence": "score 0.710",
+    "detail": {
+     "unit": "RcCell.with_inner",
+     "other": "LocalOwnedTasks.with_inner",
+     "other_path": "tokio/src/runtime/task/list.rs",
+     "other_line": 308,
+     "score": "0.710",
+     "shared": [
+      "FnOnce",
+      "f",
+      "with_mut"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`UnsafeCell.with` at tokio/src/loom/std/unsafe_cell.rs:9 calls and reads 2 of the same names as `RcCell.with_inner`: `FnOnce`, `f`. Read `UnsafeCell.with` before you keep a second copy.",
+    "path": "tokio/src/util/rc_cell.rs",
+    "line": 29,
+    "location": "tokio/src/util/rc_cell.rs:29",
+    "evidence": "score 0.418",
+    "detail": {
+     "unit": "RcCell.with_inner",
+     "other": "UnsafeCell.with",
+     "other_path": "tokio/src/loom/std/unsafe_cell.rs",
+     "other_line": 9,
+     "score": "0.418",
+     "shared": [
+      "FnOnce",
+      "f"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/fs/file.rs",
+   "language": "rust",
+   "qualname": "Inner.poll_flush",
+   "line": 957,
+   "end": 975,
+   "name_line": 957,
+   "protocol": false,
+   "test": false,
+   "names": 15,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/runtime/scheduler/mod.rs",
+   "language": "rust",
+   "qualname": "Handle.driver",
+   "line": 60,
+   "end": 75,
+   "name_line": 61,
+   "protocol": false,
+   "test": false,
+   "names": 6,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`BlockingSchedule.new` at tokio/src/runtime/blocking/schedule.rs:18 calls and reads 5 of the same names as `Handle.driver`: `CurrentThread`, `MultiThread`, `MultiThreadAlt`, `all`, `cfg`. Read `BlockingSchedule.new` before you keep a second copy.",
+    "path": "tokio/src/runtime/scheduler/mod.rs",
+    "line": 61,
+    "location": "tokio/src/runtime/scheduler/mod.rs:61",
+    "evidence": "score 0.459",
+    "detail": {
+     "unit": "Handle.driver",
+     "other": "BlockingSchedule.new",
+     "other_path": "tokio/src/runtime/blocking/schedule.rs",
+     "other_line": 18,
+     "score": "0.459",
+     "shared": [
+      "CurrentThread",
+      "MultiThread",
+      "MultiThreadAlt",
+      "all",
+      "cfg"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Handle.runtime_flavor` at tokio/src/runtime/handle.rs:369 calls and reads 5 of the same names as `Handle.driver`: `CurrentThread`, `MultiThread`, `MultiThreadAlt`, `all`, `cfg`. Read `Handle.runtime_flavor` before you keep a second copy.",
+    "path": "tokio/src/runtime/scheduler/mod.rs",
+    "line": 61,
+    "location": "tokio/src/runtime/scheduler/mod.rs:61",
+    "evidence": "score 0.774",
+    "detail": {
+     "unit": "Handle.driver",
+     "other": "Handle.runtime_flavor",
+     "other_path": "tokio/src/runtime/handle.rs",
+     "other_line": 369,
+     "score": "0.774",
+     "shared": [
+      "CurrentThread",
+      "MultiThread",
+      "MultiThreadAlt",
+      "all",
+      "cfg"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/runtime/task/state.rs",
+   "language": "rust",
+   "qualname": "State.transition_to_notified_by_ref",
+   "line": 247,
+   "end": 266,
+   "name_line": 247,
+   "protocol": false,
+   "test": false,
+   "names": 7,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`State.transition_to_notified_and_cancel` at tokio/src/runtime/task/state.rs:296 calls and reads 6 of the same names as `State.transition_to_notified_by_ref`: `fetch_update_action`, `is_complete`, `is_notified`, `is_running`, `ref_inc`, `set_notified`. Read `State.transition_to_notified_and_cancel` before you keep a second copy.",
+    "path": "tokio/src/runtime/task/state.rs",
+    "line": 247,
+    "location": "tokio/src/runtime/task/state.rs:247",
+    "evidence": "score 0.670",
+    "detail": {
+     "unit": "State.transition_to_notified_by_ref",
+     "other": "State.transition_to_notified_and_cancel",
+     "other_path": "tokio/src/runtime/task/state.rs",
+     "other_line": 296,
+     "score": "0.670",
+     "shared": [
+      "fetch_update_action",
+      "is_complete",
+      "is_notified",
+      "is_running",
+      "ref_inc",
+      "set_notified"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`State.transition_to_notified_by_val` at tokio/src/runtime/task/state.rs:209 calls and reads 6 of the same names as `State.transition_to_notified_by_ref`: `fetch_update_action`, `is_complete`, `is_notified`, `is_running`, `ref_inc`, `set_notified`. Read `State.transition_to_notified_by_val` before you keep a second copy.",
+    "path": "tokio/src/runtime/task/state.rs",
+    "line": 247,
+    "location": "tokio/src/runtime/task/state.rs:247",
+    "evidence": "score 0.678",
+    "detail": {
+     "unit": "State.transition_to_notified_by_ref",
+     "other": "State.transition_to_notified_by_val",
+     "other_path": "tokio/src/runtime/task/state.rs",
+     "other_line": 209,
+     "score": "0.678",
+     "shared": [
+      "fetch_update_action",
+      "is_complete",
+      "is_notified",
+      "is_running",
+      "ref_inc",
+      "set_notified"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/runtime/scheduler/multi_thread_alt/worker.rs",
+   "language": "rust",
+   "qualname": "Worker.transition_to_searching",
+   "line": 1253,
+   "end": 1259,
+   "name_line": 1253,
+   "protocol": false,
+   "test": false,
+   "names": 4,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Core.transition_to_searching` at tokio/src/runtime/scheduler/multi_thread/worker.rs:875 calls and reads 3 of the same names as `Worker.transition_to_searching`: `idle`, `is_searching`, `shared`. Read `Core.transition_to_searching` before you keep a second copy.",
+    "path": "tokio/src/runtime/scheduler/multi_thread_alt/worker.rs",
+    "line": 1253,
+    "location": "tokio/src/runtime/scheduler/multi_thread_alt/worker.rs:1253",
+    "evidence": "score 0.436",
+    "detail": {
+     "unit": "Worker.transition_to_searching",
+     "other": "Core.transition_to_searching",
+     "other_path": "tokio/src/runtime/scheduler/multi_thread/worker.rs",
+     "other_line": 875,
+     "score": "0.436",
+     "shared": [
+      "idle",
+      "is_searching",
+      "shared"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Worker.transition_from_searching` at tokio/src/runtime/scheduler/multi_thread_alt/worker.rs:1262 calls and reads 3 of the same names as `Worker.transition_to_searching`: `idle`, `is_searching`, `shared`. Read `Worker.transition_from_searching` before you keep a second copy.",
+    "path": "tokio/src/runtime/scheduler/multi_thread_alt/worker.rs",
+    "line": 1253,
+    "location": "tokio/src/runtime/scheduler/multi_thread_alt/worker.rs:1253",
+    "evidence": "score 0.500",
+    "detail": {
+     "unit": "Worker.transition_to_searching",
+     "other": "Worker.transition_from_searching",
+     "other_path": "tokio/src/runtime/scheduler/multi_thread_alt/worker.rs",
+     "other_line": 1262,
+     "score": "0.500",
+     "shared": [
+      "idle",
+      "is_searching",
+      "shared"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/util/sharded_list.rs",
+   "language": "rust",
+   "qualname": "ShardedList.lock_shard",
+   "line": 94,
+   "end": 102,
+   "name_line": 94,
+   "protocol": false,
+   "test": false,
+   "names": 5,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`ShardGuard.push` at tokio/src/util/sharded_list.rs:137 calls and reads 4 of the same names as `ShardedList.lock_shard`: `added`, `as_raw`, `count`, `get_shard_id`. Read `ShardGuard.push` before you keep a second copy.",
+    "path": "tokio/src/util/sharded_list.rs",
+    "line": 94,
+    "location": "tokio/src/util/sharded_list.rs:94",
+    "evidence": "score 0.440",
+    "detail": {
+     "unit": "ShardedList.lock_shard",
+     "other": "ShardGuard.push",
+     "other_path": "tokio/src/util/sharded_list.rs",
+     "other_line": 137,
+     "score": "0.440",
+     "shared": [
+      "added",
+      "as_raw",
+      "count",
+      "get_shard_id"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`ShardedList.remove` at tokio/src/util/sharded_list.rs:81 calls and reads 3 of the same names as `ShardedList.lock_shard`: `count`, `get_shard_id`, `shard_inner`. Read `ShardedList.remove` before you keep a second copy.",
+    "path": "tokio/src/util/sharded_list.rs",
+    "line": 94,
+    "location": "tokio/src/util/sharded_list.rs:94",
+    "evidence": "score 0.442",
+    "detail": {
+     "unit": "ShardedList.lock_shard",
+     "other": "ShardedList.remove",
+     "other_path": "tokio/src/util/sharded_list.rs",
+     "other_line": 81,
+     "score": "0.442",
+     "shared": [
+      "count",
+      "get_shard_id",
+      "shard_inner"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio-util/src/net/mod.rs",
+   "language": "rust",
+   "qualname": "Either.accept",
+   "line": 71,
+   "end": 82,
+   "name_line": 71,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Either.local_addr` at tokio-util/src/net/mod.rs:85 calls and reads 2 of the same names as `Either.accept`: `Left`, `Right`. Read `Either.local_addr` before you keep a second copy.",
+    "path": "tokio-util/src/net/mod.rs",
+    "line": 71,
+    "location": "tokio-util/src/net/mod.rs:71",
+    "evidence": "score 0.721",
+    "detail": {
+     "unit": "Either.accept",
+     "other": "Either.local_addr",
+     "other_path": "tokio-util/src/net/mod.rs",
+     "other_line": 85,
+     "score": "0.721",
+     "shared": [
+      "Left",
+      "Right"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio-test/src/io.rs",
+   "language": "rust",
+   "qualname": "Handle.read",
+   "line": 151,
+   "end": 154,
+   "name_line": 151,
+   "protocol": false,
+   "test": false,
+   "names": 5,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Handle.read_error` at tokio-test/src/io.rs:160 calls and reads 4 of the same names as `Handle.read`: `into`, `send`, `tx`, `unwrap`. Read `Handle.read_error` before you keep a second copy.",
+    "path": "tokio-test/src/io.rs",
+    "line": 151,
+    "location": "tokio-test/src/io.rs:151",
+    "evidence": "score 0.546",
+    "detail": {
+     "unit": "Handle.read",
+     "other": "Handle.read_error",
+     "other_path": "tokio-test/src/io.rs",
+     "other_line": 160,
+     "score": "0.546",
+     "shared": [
+      "into",
+      "send",
+      "tx",
+      "unwrap"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`Handle.write` at tokio-test/src/io.rs:170 calls and reads 4 of the same names as `Handle.read`: `into`, `send`, `tx`, `unwrap`. Read `Handle.write` before you keep a second copy.",
+    "path": "tokio-test/src/io.rs",
+    "line": 151,
+    "location": "tokio-test/src/io.rs:151",
+    "evidence": "score 0.604",
+    "detail": {
+     "unit": "Handle.read",
+     "other": "Handle.write",
+     "other_path": "tokio-test/src/io.rs",
+     "other_line": 170,
+     "score": "0.604",
+     "shared": [
+      "into",
+      "send",
+      "tx",
+      "unwrap"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/runtime/time/entry.rs",
+   "language": "rust",
+   "qualname": "TimerEntry.poll_elapsed",
+   "line": 564,
+   "end": 580,
+   "name_line": 564,
+   "protocol": false,
+   "test": false,
+   "names": 10,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/fs/open_options.rs",
+   "language": "rust",
+   "qualname": "OpenOptions.open",
+   "line": 388,
+   "end": 394,
+   "name_line": 388,
+   "protocol": false,
+   "test": false,
+   "names": 6,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`File.create` at tokio/src/fs/file.rs:190 calls and reads 4 of the same names as `OpenOptions.open`: `as_ref`, `asyncify`, `from_std`, `to_owned`. Read `File.create` before you keep a second copy.",
+    "path": "tokio/src/fs/open_options.rs",
+    "line": 388,
+    "location": "tokio/src/fs/open_options.rs:388",
+    "evidence": "score 0.689",
+    "detail": {
+     "unit": "OpenOptions.open",
+     "other": "File.create",
+     "other_path": "tokio/src/fs/file.rs",
+     "other_line": 190,
+     "score": "0.689",
+     "shared": [
+      "as_ref",
+      "asyncify",
+      "from_std",
+      "to_owned"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`File.open` at tokio/src/fs/file.rs:152 calls and reads 4 of the same names as `OpenOptions.open`: `as_ref`, `asyncify`, `from_std`, `to_owned`. Read `File.open` before you keep a second copy.",
+    "path": "tokio/src/fs/open_options.rs",
+    "line": 388,
+    "location": "tokio/src/fs/open_options.rs:388",
+    "evidence": "score 0.689",
+    "detail": {
+     "unit": "OpenOptions.open",
+     "other": "File.open",
+     "other_path": "tokio/src/fs/file.rs",
+     "other_line": 152,
+     "score": "0.689",
+     "shared": [
+      "as_ref",
+      "asyncify",
+      "from_std",
+      "to_owned"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/io/async_fd.rs",
+   "language": "rust",
+   "qualname": "AsyncFd.async_io",
+   "line": 820,
+   "end": 828,
+   "name_line": 820,
+   "protocol": false,
+   "test": false,
+   "names": 4,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`NamedPipeClient.async_io` at tokio/src/net/windows/named_pipe.rs:1670 calls and reads 2 of the same names as `AsyncFd.async_io`: `FnMut`, `registration`. Read `NamedPipeClient.async_io` before you keep a second copy.",
+    "path": "tokio/src/io/async_fd.rs",
+    "line": 820,
+    "location": "tokio/src/io/async_fd.rs:820",
+    "evidence": "score 0.408",
+    "detail": {
+     "unit": "AsyncFd.async_io",
+     "other": "NamedPipeClient.async_io",
+     "other_path": "tokio/src/net/windows/named_pipe.rs",
+     "other_line": 1670,
+     "score": "0.408",
+     "shared": [
+      "FnMut",
+      "registration"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`NamedPipeServer.async_io` at tokio/src/net/windows/named_pipe.rs:881 calls and reads 2 of the same names as `AsyncFd.async_io`: `FnMut`, `registration`. Read `NamedPipeServer.async_io` before you keep a second copy.",
+    "path": "tokio/src/io/async_fd.rs",
+    "line": 820,
+    "location": "tokio/src/io/async_fd.rs:820",
+    "evidence": "score 0.408",
+    "detail": {
+     "unit": "AsyncFd.async_io",
+     "other": "NamedPipeServer.async_io",
+     "other_path": "tokio/src/net/windows/named_pipe.rs",
+     "other_line": 881,
+     "score": "0.408",
+     "shared": [
+      "FnMut",
+      "registration"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/net/windows/named_pipe.rs",
+   "language": "rust",
+   "qualname": "NamedPipeServer.connect",
+   "line": 191,
+   "end": 201,
+   "name_line": 191,
+   "protocol": false,
+   "test": false,
+   "names": 5,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`TcpStream.peek` at tokio/src/net/tcp/stream.rs:1095 calls and reads 3 of the same names as `NamedPipeServer.connect`: `async_io`, `io`, `registration`. Read `TcpStream.peek` before you keep a second copy.",
+    "path": "tokio/src/net/windows/named_pipe.rs",
+    "line": 191,
+    "location": "tokio/src/net/windows/named_pipe.rs:191",
+    "evidence": "score 0.607",
+    "detail": {
+     "unit": "NamedPipeServer.connect",
+     "other": "TcpStream.peek",
+     "other_path": "tokio/src/net/tcp/stream.rs",
+     "other_line": 1095,
+     "score": "0.607",
+     "shared": [
+      "async_io",
+      "io",
+      "registration"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`UdpSocket.send` at tokio/src/net/udp.rs:556 calls and reads 3 of the same names as `NamedPipeServer.connect`: `async_io`, `io`, `registration`. Read `UdpSocket.send` before you keep a second copy.",
+    "path": "tokio/src/net/windows/named_pipe.rs",
+    "line": 191,
+    "location": "tokio/src/net/windows/named_pipe.rs:191",
+    "evidence": "score 0.607",
+    "detail": {
+     "unit": "NamedPipeServer.connect",
+     "other": "UdpSocket.send",
+     "other_path": "tokio/src/net/udp.rs",
+     "other_line": 556,
+     "score": "0.607",
+     "shared": [
+      "async_io",
+      "io",
+      "registration"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "benches/sync_broadcast.rs",
+   "language": "rust",
+   "qualname": "do_work",
+   "line": 16,
+   "end": 27,
+   "name_line": 16,
+   "protocol": false,
+   "test": false,
+   "names": 5,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`do_work` at benches/sync_watch.rs:16 calls and reads 4 of the same names as `do_work`: `as_bytes`, `fold`, `iter`, `map`. Read `do_work` before you keep a second copy.",
+    "path": "benches/sync_broadcast.rs",
+    "line": 16,
+    "location": "benches/sync_broadcast.rs:16",
+    "evidence": "score 0.789",
+    "detail": {
+     "unit": "do_work",
+     "other": "do_work",
+     "other_path": "benches/sync_watch.rs",
+     "other_line": 16,
+     "score": "0.789",
+     "shared": [
+      "as_bytes",
+      "fold",
+      "iter",
+      "map"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/loom/std/mutex.rs",
+   "language": "rust",
+   "qualname": "Mutex.lock",
+   "line": 20,
+   "end": 26,
+   "name_line": 21,
+   "protocol": false,
+   "test": false,
+   "names": 3,
+   "kept": true
+  },
+  "rows": [],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/runtime/task/list.rs",
+   "language": "rust",
+   "qualname": "OwnedTasks.assert_owner",
+   "line": 130,
+   "end": 139,
+   "name_line": 131,
+   "protocol": false,
+   "test": false,
+   "names": 4,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`LocalOwnedTasks.assert_owner` at tokio/src/runtime/task/list.rs:295 calls and reads 3 of the same names as `OwnedTasks.assert_owner`: `get_owner_id`, `header`, `id`. Read `LocalOwnedTasks.assert_owner` before you keep a second copy.",
+    "path": "tokio/src/runtime/task/list.rs",
+    "line": 131,
+    "location": "tokio/src/runtime/task/list.rs:131",
+    "evidence": "score 0.756",
+    "detail": {
+     "unit": "OwnedTasks.assert_owner",
+     "other": "LocalOwnedTasks.assert_owner",
+     "other_path": "tokio/src/runtime/task/list.rs",
+     "other_line": 295,
+     "score": "0.756",
+     "shared": [
+      "get_owner_id",
+      "header",
+      "id"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`OwnedTasks.remove` at tokio/src/runtime/task/list.rs:179 calls and reads 3 of the same names as `OwnedTasks.assert_owner`: `get_owner_id`, `header`, `id`. Read `OwnedTasks.remove` before you keep a second copy.",
+    "path": "tokio/src/runtime/task/list.rs",
+    "line": 131,
+    "location": "tokio/src/runtime/task/list.rs:131",
+    "evidence": "score 0.543",
+    "detail": {
+     "unit": "OwnedTasks.assert_owner",
+     "other": "OwnedTasks.remove",
+     "other_path": "tokio/src/runtime/task/list.rs",
+     "other_line": 179,
+     "score": "0.543",
+     "shared": [
+      "get_owner_id",
+      "header",
+      "id"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "benches/sync_watch.rs",
+   "language": "rust",
+   "qualname": "rt",
+   "line": 9,
+   "end": 14,
+   "name_line": 9,
+   "protocol": false,
+   "test": false,
+   "names": 4,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`rt` at benches/fs.rs:14 calls and reads 4 of the same names as `rt`: `build`, `new_multi_thread`, `unwrap`, `worker_threads`. Read `rt` before you keep a second copy.",
+    "path": "benches/sync_watch.rs",
+    "line": 9,
+    "location": "benches/sync_watch.rs:9",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "rt",
+     "other": "rt",
+     "other_path": "benches/fs.rs",
+     "other_line": 14,
+     "score": "1.000",
+     "shared": [
+      "build",
+      "new_multi_thread",
+      "unwrap",
+      "worker_threads"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`rt` at benches/sync_broadcast.rs:9 calls and reads 4 of the same names as `rt`: `build`, `new_multi_thread`, `unwrap`, `worker_threads`. Read `rt` before you keep a second copy.",
+    "path": "benches/sync_watch.rs",
+    "line": 9,
+    "location": "benches/sync_watch.rs:9",
+    "evidence": "score 1.000",
+    "detail": {
+     "unit": "rt",
+     "other": "rt",
+     "other_path": "benches/sync_broadcast.rs",
+     "other_line": 9,
+     "score": "1.000",
+     "shared": [
+      "build",
+      "new_multi_thread",
+      "unwrap",
+      "worker_threads"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ },
+ {
+  "function": {
+   "path": "tokio/src/sync/mutex.rs",
+   "language": "rust",
+   "qualname": "MappedMutexGuard.skip_drop",
+   "line": 1187,
+   "end": 1195,
+   "name_line": 1187,
+   "protocol": false,
+   "test": false,
+   "names": 7,
+   "kept": true
+  },
+  "rows": [
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`RwLockReadGuard.skip_drop` at tokio/src/sync/rwlock/read_guard.rs:34 calls and reads 6 of the same names as `MappedMutexGuard.skip_drop`: `all`, `cfg`, `data`, `read`, `resource_span`, `s`. Read `RwLockReadGuard.skip_drop` before you keep a second copy.",
+    "path": "tokio/src/sync/mutex.rs",
+    "line": 1187,
+    "location": "tokio/src/sync/mutex.rs:1187",
+    "evidence": "score 0.826",
+    "detail": {
+     "unit": "MappedMutexGuard.skip_drop",
+     "other": "RwLockReadGuard.skip_drop",
+     "other_path": "tokio/src/sync/rwlock/read_guard.rs",
+     "other_line": 34,
+     "score": "0.826",
+     "shared": [
+      "all",
+      "cfg",
+      "data",
+      "read",
+      "resource_span",
+      "s"
+     ]
+    }
+   },
+   {
+    "check": "reuse_candidates",
+    "severity": "advisory",
+    "message": "`RwLockWriteGuard.skip_drop` at tokio/src/sync/rwlock/write_guard.rs:38 calls and reads 6 of the same names as `MappedMutexGuard.skip_drop`: `all`, `cfg`, `data`, `read`, `resource_span`, `s`. Read `RwLockWriteGuard.skip_drop` before you keep a second copy.",
+    "path": "tokio/src/sync/mutex.rs",
+    "line": 1187,
+    "location": "tokio/src/sync/mutex.rs:1187",
+    "evidence": "score 0.707",
+    "detail": {
+     "unit": "MappedMutexGuard.skip_drop",
+     "other": "RwLockWriteGuard.skip_drop",
+     "other_path": "tokio/src/sync/rwlock/write_guard.rs",
+     "other_line": 38,
+     "score": "0.707",
+     "shared": [
+      "all",
+      "cfg",
+      "data",
+      "read",
+      "resource_span",
+      "s"
+     ]
+    }
+   }
+  ],
+  "other_rows": 0,
+  "not_checked": []
+ }
+]

@@ -3,7 +3,7 @@
 
 mod locations;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use facts::{
@@ -245,14 +245,23 @@ struct Loaded {
     text: Result<Arc<str>, String>,
 }
 
-// The refusal of a path outside the repository is the error; an unreadable file is a reason.
-fn load(root: &Path, raw: &str) -> Result<Loaded, Error> {
+// The file or folder below `root` that `raw` names, and its path below the root, or the
+// containment refusal that every view gives.
+pub(crate) fn contained(root: &Path, raw: &str) -> Result<(PathBuf, String), kernel::Error> {
     let absolute = io::contained_path(root, Path::new(raw))
         .map_err(|refusal| kernel::Error::SecurityRefusal(refusal.to_string()))?;
     let below = absolute.strip_prefix(root).unwrap_or(&absolute);
-    let path = match below.to_string_lossy().into_owned() {
-        empty if empty.is_empty() => ".".to_owned(),
-        path => path,
+    let below = below.to_string_lossy().into_owned();
+    Ok((absolute, below))
+}
+
+// The refusal of a path outside the repository is the error; an unreadable file is a reason.
+fn load(root: &Path, raw: &str) -> Result<Loaded, Error> {
+    let (absolute, below) = contained(root, raw)?;
+    let path = if below.is_empty() {
+        ".".to_owned()
+    } else {
+        below
     };
     let language = Language::from_path(&absolute.to_string_lossy());
     let text = match io::read_bounded(&absolute) {

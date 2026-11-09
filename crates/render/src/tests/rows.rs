@@ -70,6 +70,7 @@ impl ReceiptRow {
                 .unwrap_or_else(|| app::config_warnings(config)),
             counter: &app::Chars4,
             names_repo: true,
+            revision: None,
         }
     }
 }

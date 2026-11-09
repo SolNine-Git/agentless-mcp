@@ -1,4 +1,4 @@
-//! The gate log: one JSON line per decision, appended to the file that `AGENTLESS_GATE_LOG` names.
+//! The gate log: one JSON line per hook run, appended to the file that `AGENTLESS_GATE_LOG` names.
 
 use std::borrow::Cow;
 use std::ffi::OsStr;
@@ -19,10 +19,7 @@ pub(crate) type Entry<'a> = Vec<(&'static str, Cow<'a, JsonValue>)>;
 pub(crate) mod key {
     pub(crate) const TS: &str = "ts";
     pub(crate) const SESSION_ID: &str = "session_id";
-    pub(crate) const TOOL: &str = "tool";
-    pub(crate) const PATTERN: &str = "pattern";
     pub(crate) const EVENT: &str = "event";
-    pub(crate) const OPERATION: &str = "operation";
     pub(crate) const REASON: &str = "reason";
 }
 
@@ -32,11 +29,6 @@ pub(crate) fn now(clock: &dyn Clock) -> Cow<'static, JsonValue> {
 
 pub(crate) fn text(value: &str) -> Cow<'static, JsonValue> {
     Cow::Owned(JsonValue::Str(value.into()))
-}
-
-// A payload value as the line holds it, null for a missing one.
-pub(crate) fn value(found: Option<&JsonValue>) -> Cow<'_, JsonValue> {
-    found.map_or(Cow::Owned(JsonValue::Null), Cow::Borrowed)
 }
 
 // An unset or empty variable writes nothing. A failed append is suppressed, deny included.

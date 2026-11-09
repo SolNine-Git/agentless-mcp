@@ -3,6 +3,7 @@
 
 use std::ffi::OsString;
 use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -11,8 +12,11 @@ use io::testing::{Identity, Tree};
 
 const BINARY: &str = env!("CARGO_BIN_EXE_agentless-mcp");
 const DEADLINE: Duration = Duration::from_secs(30);
-const HOOK_REFUSAL: &str =
-    "agentless-mcp: hook takes one argument: erosion, gate-check, gate-mark or prompt-map\n";
+const HOOK_REFUSAL: &str = "agentless-mcp: hook takes one hook name: read-card, ledger-mark, \
+                            brief-record, subagent-map, prompt-map, erosion or ledger-reset. hook \
+                            install, hook status and hook uninstall manage the hook entries of a \
+                            settings file. gate-check and gate-mark are retired: each still exits \
+                            0 with no output.\n";
 const GATE_LOG: &str = "AGENTLESS_GATE_LOG";
 // The shell enters `gone`, removes it, and then becomes the hook, so the hook starts there.
 const IN_REMOVED_DIRECTORY: &str = r#"cd gone && rmdir "$PWD" && exec "$0" hook "$1""#;
@@ -118,6 +122,11 @@ fn a_hook_command_line_that_names_no_hook_is_refused() {
         &["hook", "gate-check", "extra"],
         &["hook", "gate-mark", "extra"],
         &["hook", "prompt-map", "extra"],
+        &["hook", "read-card", "extra"],
+        &["hook", "ledger-mark", "extra"],
+        &["hook", "ledger-reset", "extra"],
+        &["hook", "brief-record", "extra"],
+        &["hook", "subagent-map", "extra"],
     ] {
         let ran = run(&tree, args, &[]);
         assert_eq!(
@@ -127,9 +136,37 @@ fn a_hook_command_line_that_names_no_hook_is_refused() {
     }
 }
 
+#[test]
+fn hook_help_prints_the_usage_on_stdout_and_exits_0() {
+    let tree = sandbox();
+    let usage = HOOK_REFUSAL
+        .strip_prefix("agentless-mcp: ")
+        .expect("the refusal's prefix");
+    for args in [
+        &["hook", "--help"][..],
+        &["hook", "-h"],
+        &["hook", "read-card", "--help"],
+        &["hook", "prompt-map", "-h"],
+        &["hook", "erosion", "--help"],
+        &["hook", "gate-check", "--help"],
+    ] {
+        let ran = run(&tree, args, &[]);
+        assert_eq!(
+            (ran.code, ran.out.as_str(), ran.err.as_str()),
+            (Some(0), usage, ""),
+            "{args:?}"
+        );
+    }
+}
+
 // Runs `command` with `payload` on stdin and only the hermetic variables and `extra`, so no gate
 // log of the caller reaches the hook.
-fn fed(mut command: Command, tree: &Tree, payload: &str, extra: &[(&str, &str)]) -> Ran {
+fn fed(command: Command, tree: &Tree, payload: &str, extra: &[(&str, &str)]) -> Ran {
+    finished(started(command, tree, payload, extra))
+}
+
+// Starts `command` and hands it `payload` on a closed stdin.
+fn started(mut command: Command, tree: &Tree, payload: &str, extra: &[(&str, &str)]) -> Child {
     let mut child = command
         .current_dir(tree.path())
         .env_clear()
@@ -144,6 +181,10 @@ fn fed(mut command: Command, tree: &Tree, payload: &str, extra: &[(&str, &str)])
         .write_all(payload.as_bytes())
         .expect("the payload is written");
     drop(stdin);
+    child
+}
+
+fn finished(mut child: Child) -> Ran {
     let status = wait(&mut child);
     let (mut out, mut err) = (String::new(), String::new());
     let mut stdout = child.stdout.take().expect("a stdout pipe");
@@ -163,69 +204,25 @@ fn gate(tree: &Tree, hook: &str, payload: &str, extra: &[(&str, &str)]) -> Ran {
     fed(command, tree, payload, extra)
 }
 
-// The one log line without its ts, which the run's own clock sets.
-fn after_ts(log: &str) -> String {
-    let rest = log
-        .strip_prefix("{\"ts\": ")
-        .unwrap_or_else(|| panic!("a line that starts with the ts: {log}"));
-    let (ts, tail) = rest
-        .split_once(", ")
-        .unwrap_or_else(|| panic!("a field after the ts: {log}"));
-    assert!(ts.contains('.') && ts.parse::<f64>().is_ok(), "{log}");
-    tail.to_owned()
-}
-
+// A payload that the search gate denied: the retired hook allows it and writes nothing.
 #[test]
-fn hook_gate_check_reaches_the_search_gate() {
+fn the_retired_gate_hooks_exit_0_with_no_output_in_a_removed_directory() {
     let tree = sandbox();
     let log = tree.join("gate.jsonl");
     let shown = log.to_str().expect("a UTF-8 log path");
-    let payload = r#"{"session_id": "s", "tool_name": "Read"}"#;
-
-    let ran = gate(&tree, "gate-check", payload, &[(GATE_LOG, shown)]);
-
-    let quiet = (Some(0), "", "");
-    assert_eq!((ran.code, ran.out.as_str(), ran.err.as_str()), quiet);
-    let line = std::fs::read_to_string(&log).expect("the gate log");
-    let tail = concat!(
-        r#""session_id": "s", "tool": "Read", "pattern": null, "#,
-        r#""event": "native_search_allowed", "reason": "not_a_search_tool"}"#,
-    );
-    assert_eq!(after_ts(&line), format!("{tail}\n"));
-}
-
-#[test]
-fn hook_gate_mark_reaches_the_search_gate() {
-    let tree = sandbox();
-    let log = tree.join("gate.jsonl");
-    let shown = log.to_str().expect("a UTF-8 log path");
-    let payload = r#"{"session_id": "s", "tool_name": "mcp__agentless__capabilities"}"#;
-
-    let ran = gate(&tree, "gate-mark", payload, &[(GATE_LOG, shown)]);
-
-    let quiet = (Some(0), "", "");
-    assert_eq!((ran.code, ran.out.as_str(), ran.err.as_str()), quiet);
-    let line = std::fs::read_to_string(&log).expect("the gate log");
-    let tail = concat!(
-        r#""session_id": "s", "event": "agentless_call_ignored", "#,
-        r#""tool": "mcp__agentless__capabilities", "operation": null, "#,
-        r#""reason": "non_localizing_operation"}"#,
-    );
-    assert_eq!(after_ts(&line), format!("{tail}\n"));
-}
-
-// The gate hooks come before the start-up directory test of the other command lines.
-#[test]
-fn the_gate_hooks_run_in_a_removed_directory() {
-    let tree = sandbox();
-    let log = tree.join("gate.jsonl");
-    let shown = log.to_str().expect("a UTF-8 log path");
+    let tmp = tree.path().display().to_string();
+    let payload = r#"{"session_id": "s", "tool_name": "Grep", "tool_input": {"pattern": "x"}}"#;
     for hook in ["gate-check", "gate-mark"] {
         let mut command = Command::new("sh");
         command.args(["-c", IN_REMOVED_DIRECTORY, BINARY, hook]);
         tree.create_dir("gone").expect("the start directory");
 
-        let ran = fed(command, &tree, "{}", &[(GATE_LOG, shown)]);
+        let ran = fed(
+            command,
+            &tree,
+            payload,
+            &[("TMPDIR", &tmp), (GATE_LOG, shown)],
+        );
 
         let quiet = (Some(0), "", "");
         assert_eq!(
@@ -234,12 +231,7 @@ fn the_gate_hooks_run_in_a_removed_directory() {
             "{hook}"
         );
     }
-    let line = std::fs::read_to_string(&log).expect("the gate log");
-    let tail = concat!(
-        r#""session_id": null, "tool": null, "pattern": null, "#,
-        r#""event": "native_search_allowed", "reason": "no_session_id"}"#,
-    );
-    assert_eq!(after_ts(&line), format!("{tail}\n"));
+    assert!(!log.exists());
 }
 
 // The prompt map also comes before the start-up directory test, and an empty stdin is silent.
@@ -257,9 +249,8 @@ fn hook_prompt_map_on_an_empty_stdin_in_a_removed_directory_writes_nothing() {
     assert_eq!((ran.code, ran.out.as_str(), ran.err.as_str()), quiet);
 }
 
-#[test]
-fn hook_prompt_map_names_the_files_that_rank_first_for_a_first_prompt() {
-    let tree = sandbox();
+// A committed repository that holds one Python class.
+fn invoice_repo(tree: &Tree) -> PathBuf {
     let repo = tree.create_dir("repo").expect("the repository directory");
     tree.create_dir("repo/src/billing")
         .expect("a source directory");
@@ -268,7 +259,7 @@ fn hook_prompt_map_names_the_files_that_rank_first_for_a_first_prompt() {
         "class InvoiceTotal:\n    pass\n",
     )
     .expect("a source file");
-    let vars = env(&tree, &[]);
+    let vars = env(tree, &[]);
     for args in [
         &["init", "--quiet", "-b", "main"][..],
         &["add", "-A"],
@@ -276,6 +267,101 @@ fn hook_prompt_map_names_the_files_that_rank_first_for_a_first_prompt() {
     ] {
         drop(io::testing::run_git(&repo, args, &vars, &IDENTITY));
     }
+    repo
+}
+
+// The reasons of the gate log's lines, each with its hook.
+fn logged(log: &Path) -> Vec<(String, String)> {
+    let text = std::fs::read_to_string(log).expect("the gate log");
+    let lines = text.lines().map(|line| {
+        let line: serde_json::Value = serde_json::from_str(line).expect("a JSON line");
+        let field = |key: &str| line[key].as_str().unwrap_or("?").to_owned();
+        (field("hook"), field("reason"))
+    });
+    lines.collect()
+}
+
+// The hooks of the trace surface come before the start-up directory test too.
+#[test]
+fn the_trace_hooks_on_an_empty_stdin_in_a_removed_directory_write_nothing() {
+    let tree = sandbox();
+    let log = tree.join("gate.jsonl");
+    let shown = log.to_str().expect("a UTF-8 log path");
+    let tmp = tree.path().display().to_string();
+    let hooks = [
+        "read-card",
+        "ledger-mark",
+        "brief-record",
+        "subagent-map",
+        "ledger-reset",
+    ];
+    for hook in hooks {
+        tree.create_dir("gone").expect("the start directory");
+        let mut command = Command::new("sh");
+        command.args(["-c", IN_REMOVED_DIRECTORY, BINARY, hook]);
+
+        let ran = fed(command, &tree, "", &[("TMPDIR", &tmp), (GATE_LOG, shown)]);
+
+        let quiet = (Some(0), "", "");
+        assert_eq!(
+            (ran.code, ran.out.as_str(), ran.err.as_str()),
+            quiet,
+            "{hook}"
+        );
+    }
+    let expected = hooks.map(|hook| (hook.to_owned(), "no_session_id".to_owned()));
+    assert_eq!(logged(&log), expected);
+}
+
+#[test]
+fn two_read_card_processes_make_one_ledger_claim() {
+    let tree = sandbox();
+    let repo = invoice_repo(&tree);
+    let log = tree.join("gate.jsonl");
+    let shown = log.to_str().expect("a UTF-8 log path");
+    let tmp = tree.path().display().to_string();
+    let payload = serde_json::json!({
+        "session_id": "s1",
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Read",
+        "tool_input": {"file_path": repo.join("src/billing/invoice.py")},
+    });
+    let extra = [("TMPDIR", tmp.as_str()), (GATE_LOG, shown)];
+    let children: Vec<Child> = (0..2)
+        .map(|_| {
+            let mut command = Command::new(BINARY);
+            command.args(["hook", "read-card"]);
+            started(command, &tree, &payload.to_string(), &extra)
+        })
+        .collect();
+
+    let runs: Vec<Ran> = children.into_iter().map(finished).collect();
+
+    for ran in &runs {
+        assert_eq!((ran.code, ran.err.as_str()), (Some(0), ""));
+    }
+    let mut reasons: Vec<String> = logged(&log).into_iter().map(|(_, reason)| reason).collect();
+    reasons.sort();
+    assert_eq!(reasons.len(), 2, "{reasons:?}");
+    assert_eq!(
+        reasons.iter().filter(|reason| *reason == "held").count(),
+        1,
+        "{reasons:?}"
+    );
+    let ledger = tree.join("agentless_ledger");
+    let sessions: Vec<PathBuf> = std::fs::read_dir(&ledger)
+        .expect("the ledger")
+        .map(|entry| entry.expect("a session").path())
+        .collect();
+    assert_eq!(sessions.len(), 1, "{sessions:?}");
+    let entries = std::fs::read_dir(sessions[0].join("main")).expect("the main context");
+    assert_eq!(entries.count(), 1);
+}
+
+#[test]
+fn hook_prompt_map_names_the_files_that_rank_first_for_a_first_prompt() {
+    let tree = sandbox();
+    let repo = invoice_repo(&tree);
     let payload = serde_json::json!({
         "session_id": "s1",
         "cwd": repo,
@@ -301,6 +387,56 @@ fn hook_prompt_map_names_the_files_that_rank_first_for_a_first_prompt() {
         "{}",
         ran.out
     );
+}
+
+// Every run names a fixture CLAUDE_CONFIG_DIR, and HOME is the sandbox's own.
+#[test]
+fn hook_install_status_and_uninstall_write_only_the_fixture_settings() {
+    let tree = sandbox();
+    let config = tree.create_dir("config").expect("a config folder");
+    let shown = config.display().to_string();
+    let extra = [("CLAUDE_CONFIG_DIR", shown.as_str())];
+    let settings = config.join("settings.json");
+    let binary = std::fs::canonicalize(BINARY).expect("the binary's path");
+    let example_path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contrib/hooks/settings-example.json"
+    );
+    let example = std::fs::read_to_string(example_path).expect("the settings example");
+
+    let dry = run(&tree, &["hook", "install", "--dry-run"], &extra);
+    let before = run(&tree, &["hook", "status"], &extra);
+    let installed = run(&tree, &["hook", "install"], &extra);
+    let after = run(&tree, &["hook", "status"], &extra);
+    let uninstalled = run(&tree, &["hook", "uninstall"], &extra);
+
+    let path = settings.display();
+    let expected = example.replace(
+        "/ABSOLUTE/PATH/TO/agentless-mcp",
+        &binary.display().to_string(),
+    );
+    assert_eq!((dry.code, dry.out.as_str()), (Some(0), expected.as_str()));
+    let fresh = "added 7, replaced 0, removed 0 retired, kept 0 other handlers";
+    assert_eq!(
+        dry.err,
+        format!("{fresh}; --dry-run wrote nothing to {path}\n")
+    );
+    assert_eq!(
+        (before.code, before.out.lines().next()),
+        (Some(1), Some("read-card: missing"))
+    );
+    assert_eq!(installed.out, format!("{fresh}; wrote {path}\n"));
+    assert_eq!(
+        (after.code, after.out.lines().last()),
+        (Some(0), Some("ledger-reset: current"))
+    );
+    let removed = format!("removed 7 agentless handlers, kept 0 other handlers; wrote {path}\n");
+    assert_eq!((uninstalled.code, uninstalled.out), (Some(0), removed));
+    assert_eq!(
+        std::fs::read_to_string(&settings).ok().as_deref(),
+        Some("{}\n")
+    );
+    assert!(!tree.path().join("home/.claude").exists());
 }
 
 #[test]

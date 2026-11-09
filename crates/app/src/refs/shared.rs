@@ -4,13 +4,15 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use facts::{StableId, Symbol};
+use facts::{Role, StableId, Symbol};
 use graph::{
-    Definition, FileFacts, NameIndex, Site, common_name_damping, enclosing_symbol, name_multiplier,
+    Definition, FileFacts, NameIndex, Site, Tier, common_name_damping, enclosing_symbol,
+    name_multiplier,
 };
 use kernel::{Deadline, Stopped, checkpoint};
 use metrics::compensated_sum;
 
+use super::sites::CallerTiers;
 use super::{CallerRef, SharedCaller};
 use crate::is_test_path;
 
@@ -31,23 +33,26 @@ struct Adjacency<'a> {
 pub(super) fn shared_callers(
     sites: &[Site<'_>],
     target_ids: &BTreeSet<String>,
-    index: &NameIndex<'_>,
-    stoplist: &BTreeSet<String>,
+    (index, stoplist, tiers): (&NameIndex<'_>, &BTreeSet<String>, &CallerTiers<'_>),
     deadline: Option<&Deadline>,
 ) -> Result<Vec<SharedCaller>, Stopped> {
     let shared = adjacency(&callers(sites), target_ids, index, deadline)?;
     let mut rows: Vec<SharedCaller> = (shared.into_iter())
         .filter(|(_, entry)| entry.callers.len() > 1)
-        .map(|(candidate, entry)| scored_row(candidate, &entry, index, stoplist))
+        .map(|(candidate, entry)| scored_row(candidate, &entry, (index, stoplist, tiers)))
         .collect();
     rows.sort_by(ranked);
     Ok(rows)
 }
 
-// The symbols that hold the target's sites, by stable id.
+// The symbols that hold the target's sites, by stable id. A site that scope analysis binds to a
+// parameter or a local spells another binding, so it makes no caller.
 fn callers<'a>(sites: &[Site<'a>]) -> BTreeMap<String, Caller<'a>> {
     let mut callers = BTreeMap::new();
-    for site in sites {
+    let calling = sites
+        .iter()
+        .filter(|site| !matches!(site.reference.role, Role::Local | Role::Binding));
+    for site in calling {
         if let Some(symbol) = enclosing_symbol(&site.file.facts.symbols, site.reference.line) {
             let id = StableId::of(site.file.language, site.path(), symbol).to_string();
             callers.insert(
@@ -108,8 +113,7 @@ fn referenced_names(caller: Caller<'_>) -> BTreeSet<&str> {
 fn scored_row(
     candidate: String,
     entry: &Adjacency<'_>,
-    index: &NameIndex<'_>,
-    stoplist: &BTreeSet<String>,
+    (index, stoplist, tiers): (&NameIndex<'_>, &BTreeSet<String>, &CallerTiers<'_>),
 ) -> SharedCaller {
     let symbol = entry.definition.symbol();
     let mut weight_by_file: Vec<(&str, f64)> = Vec::new();
@@ -142,7 +146,17 @@ fn scored_row(
         score,
         callers,
         in_tests: is_test_path(entry.definition.path()),
+        tier: strongest(entry, tiers).as_str(),
     }
+}
+
+// Each caller holds a site, so its tier is known; a missing one counts as the weakest.
+fn strongest(entry: &Adjacency<'_>, tiers: &CallerTiers<'_>) -> Tier {
+    (entry.callers.iter())
+        .filter_map(|(caller, _)| tiers.get(&(caller.file.path.as_str(), caller.symbol.line)))
+        .min()
+        .copied()
+        .unwrap_or(Tier::Ambiguous)
 }
 
 fn ranked(a: &SharedCaller, b: &SharedCaller) -> Ordering {

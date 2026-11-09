@@ -1,0 +1,6 @@
+// agentless-mcp receipt   repo: <REPO>   head: 2b62ec37   rev: base f5f25218   dirty: 2 files   cache: none
+[py:pricing.py::format_money] @78-81  function
+  78| def format_money(amount: Decimal) -> str:
+  79|     """Render an amount with the configured currency suffix."""
+  80|     quantized = amount.quantize(CENTS, rounding=ROUND_HALF_UP)
+  81|     return f"{quantized} {CURRENCY}"

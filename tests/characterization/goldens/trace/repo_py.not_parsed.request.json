@@ -1,0 +1,10 @@
+{
+  "tool": "trace",
+  "fixture": "repo_py",
+  "sparse": {
+    "big.py": 1000001
+  },
+  "arguments": {
+    "target": "big.py"
+  }
+}

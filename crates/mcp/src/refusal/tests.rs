@@ -2,7 +2,7 @@ use app::surface::Shape;
 use prompts::messages::{ACCEPTS_SCHEMA, LISTED_OR};
 use serde_json::json;
 
-use super::{choice, listed, operation_owner, phrase, shown, unknown_tool};
+use super::{choice, listed, phrase, shown, unknown_tool};
 
 #[test]
 fn a_long_value_shows_its_head_and_its_tail_at_character_boundaries() {
@@ -37,19 +37,11 @@ fn a_shape_the_surface_does_not_use_still_gets_a_form() {
 }
 
 #[test]
-fn an_operation_name_points_to_the_tool_that_has_it() {
-    let owner = operation_owner("find", "orient");
+fn an_unknown_tool_lists_the_tools() {
     assert_eq!(
-        owner.as_deref(),
-        Some("Call the tool symbols with operation find.")
+        unknown_tool(),
+        "No tool has this name. The tools are trace and search."
     );
-    assert_eq!(operation_owner("find", "symbols"), None);
-    assert_eq!(
-        operation_owner("communities", "orient").as_deref(),
-        Some("Call the tool graph with operation communities.")
-    );
-    assert!(unknown_tool("overview").ends_with(" Call the tool symbols with operation overview."));
-    assert!(!unknown_tool("repo_map").contains("Call the tool"));
 }
 
 // A choice of one is the name alone; a choice of more is one of a list.

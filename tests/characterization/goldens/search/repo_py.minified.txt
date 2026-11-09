@@ -1,0 +1,5 @@
+// agentless-mcp receipt   repo: <REPO>   head: 47bfef1c   dirty: 0 files   cache: none
+search /quantize/ in static/app.min.js: 1 match in 1 file
+static/app.min.js
+  quantize  [js:static/app.min.js::quantize] @1
+    1| function quantize(v){return v};var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;var a;v...[+190 chars]

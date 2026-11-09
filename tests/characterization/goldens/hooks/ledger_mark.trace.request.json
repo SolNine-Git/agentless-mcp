@@ -1,0 +1,25 @@
+{
+  "hook": "ledger-mark",
+  "fixture": "repo_py",
+  "payload": {
+    "session_id": "session-1",
+    "transcript_path": "/home/user/.claude/projects/repo/session-1.jsonl",
+    "cwd": "<REPO>",
+    "permission_mode": "default",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "mcp__agentless__trace",
+    "tool_input": {
+      "target": [
+        "stock_value",
+        "inventory.py"
+      ]
+    },
+    "tool_use_id": "toolu_03",
+    "tool_response": [
+      {
+        "type": "text",
+        "text": "(the trace answer)"
+      }
+    ]
+  }
+}

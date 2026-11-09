@@ -4,12 +4,13 @@
 use std::cmp::Reverse;
 use std::collections::BTreeSet;
 
+use facts::Symbol;
 use graph::joins_name_graph;
 use kernel::Bounded;
 use store::FileText;
 
 use crate::ops::limits::FIND_USAGE_FILES;
-use crate::scan::{FileSymbols, Spelling, SymbolFacts};
+use crate::scan::{Spelling, SymbolFacts};
 
 /// The code files that spell a name as a word and do not declare it, in the order they come.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,14 +47,14 @@ pub struct UsageFile {
 
 // The name of a query, and the owner that a qualified query writes before it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct UsageQuery<'q> {
+pub(crate) struct UsageQuery<'q> {
     pub(super) name: &'q str,
     pub(super) owner: Option<&'q str>,
 }
 
 impl<'q> UsageQuery<'q> {
     // A name, or names joined by `.` or `::`. Any other query, the empty one too, has no usage.
-    pub(super) fn of(query: &'q str) -> Option<Self> {
+    pub(crate) fn of(query: &'q str) -> Option<Self> {
         let segments: Vec<&str> = (query.split("::"))
             .flat_map(|part| part.split('.'))
             .collect();
@@ -68,7 +69,7 @@ impl<'q> UsageQuery<'q> {
 }
 
 // The words that the queries ask the scan to spell: each name, then its owner, each word once.
-pub(super) fn words<'q>(queries: &[UsageQuery<'q>]) -> Vec<&'q str> {
+pub(crate) fn words<'q>(queries: &[UsageQuery<'q>]) -> Vec<&'q str> {
     let mut words: Vec<&str> = Vec::new();
     for word in queries
         .iter()
@@ -82,7 +83,7 @@ pub(super) fn words<'q>(queries: &[UsageQuery<'q>]) -> Vec<&'q str> {
 }
 
 // Where a code file spells each word. A data file spells none, so it is never a usage file.
-pub(super) fn spellings(text: &FileText, words: &[&str]) -> Vec<Option<Spelling>> {
+pub(crate) fn spellings(text: &FileText, words: &[&str]) -> Vec<Option<Spelling>> {
     if !joins_name_graph(text.language) {
         return Vec::new();
     }
@@ -121,6 +122,26 @@ fn is_word(c: char) -> bool {
     c == '$' || text::is_word(c)
 }
 
+// One scanned file as the usage rule reads it: its path, its symbols, and where its text spells
+// each word of the rule's word order.
+#[derive(Clone, Copy)]
+pub(crate) struct Spelled<'f> {
+    pub(crate) path: &'f str,
+    pub(crate) symbols: &'f [Symbol],
+    pub(crate) spellings: &'f [Option<Spelling>],
+}
+
+// Each file of a find's scan, as the usage rule reads it.
+pub(super) fn spelled_files(scan: &SymbolFacts) -> Vec<Spelled<'_>> {
+    (scan.files.iter())
+        .map(|file| Spelled {
+            path: &file.path,
+            symbols: &file.symbols,
+            spellings: &file.spellings,
+        })
+        .collect()
+}
+
 // What a usage file must be: where the scan's words put the name and the owner, the name, and
 // the directories of the files that declare it.
 struct Rule<'a> {
@@ -131,8 +152,12 @@ struct Rule<'a> {
 }
 
 // The usage files of one query, or `None` when no code file spells the name and leaves it
-// undeclared. `words` is the word order that the scan's spellings follow.
-pub(super) fn usage(scan: &SymbolFacts, words: &[&str], query: &UsageQuery<'_>) -> Option<Usage> {
+// undeclared. `words` is the word order that the files' spellings follow.
+pub(crate) fn usage(
+    files: &[Spelled<'_>],
+    words: &[&str],
+    query: &UsageQuery<'_>,
+) -> Option<Usage> {
     let at = |word: &str| words.iter().position(|listed| *listed == word);
     let owner_at = match query.owner {
         Some(owner) => Some(at(owner)?),
@@ -142,9 +167,9 @@ pub(super) fn usage(scan: &SymbolFacts, words: &[&str], query: &UsageQuery<'_>) 
         name: query.name,
         name_at: at(query.name)?,
         owner_at,
-        declaring: declaring(scan, query.name),
+        declaring: declaring(files, query.name),
     };
-    let mut ranked: Vec<_> = (scan.files.iter())
+    let mut ranked: Vec<_> = (files.iter())
         .filter_map(|file| ranked_file(file, &rule))
         .collect();
     if ranked.is_empty() {
@@ -167,13 +192,13 @@ pub(super) fn usage(scan: &SymbolFacts, words: &[&str], query: &UsageQuery<'_>) 
 
 // The directories of the scanned files, data files too, that declare a symbol named `name` in
 // its case, each once.
-fn declaring<'s>(scan: &'s SymbolFacts, name: &str) -> Vec<Vec<&'s str>> {
-    let files = scan.files.iter().filter(|file| declares(file, name));
-    let directories: BTreeSet<Vec<&str>> = files.map(|file| directories(&file.path)).collect();
+fn declaring<'s>(files: &[Spelled<'s>], name: &str) -> Vec<Vec<&'s str>> {
+    let files = files.iter().filter(|file| declares(file, name));
+    let directories: BTreeSet<Vec<&str>> = files.map(|file| directories(file.path)).collect();
     directories.into_iter().collect()
 }
 
-fn declares(file: &FileSymbols, name: &str) -> bool {
+fn declares(file: &Spelled<'_>, name: &str) -> bool {
     file.symbols.iter().any(|symbol| symbol.name == name)
 }
 
@@ -181,21 +206,21 @@ type Key<'f> = (usize, Reverse<u32>, &'f str);
 
 // A file's order key and row, when it spells the name and the owner and does not declare the
 // name. With no declaring file, every distance is 0.
-fn ranked_file<'f>(file: &'f FileSymbols, rule: &Rule<'_>) -> Option<(Key<'f>, UsageFile)> {
+fn ranked_file<'f>(file: &Spelled<'f>, rule: &Rule<'_>) -> Option<(Key<'f>, UsageFile)> {
     let spelled = |at: usize| file.spellings.get(at).copied().flatten();
     let spelling = spelled(rule.name_at)?;
     let owner_missing = rule.owner_at.is_some_and(|at| spelled(at).is_none());
     if owner_missing || declares(file, rule.name) {
         return None;
     }
-    let from = directories(&file.path);
+    let from = directories(file.path);
     let nearest = (rule.declaring.iter())
         .map(|to| steps(&from, to))
         .min()
         .unwrap_or(0);
-    let key = (nearest, Reverse(spelling.lines), file.path.as_str());
+    let key = (nearest, Reverse(spelling.lines), file.path);
     let row = UsageFile {
-        path: file.path.clone(),
+        path: file.path.to_owned(),
         line: spelling.line,
         lines: spelling.lines,
     };

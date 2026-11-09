@@ -20,6 +20,7 @@ fn start(transport: Transport, no_auto_index: bool, no_auto_restart: bool) -> St
         max_concurrency: 8,
         call_limit: 30.0,
         recache_grace: 60.0,
+        hooks: None,
     };
     Start {
         config,

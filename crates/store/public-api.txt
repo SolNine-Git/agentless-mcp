@@ -327,6 +327,7 @@ impl !core::panic::unwind_safe::UnwindSafe for store::FactSource
 pub struct store::FactsDb
 impl store::FactsDb
 pub fn store::FactsDb::blocks_for(&self, &str, &str, syntax::language::Language) -> store::Lookup
+pub fn store::FactsDb::units_for(&self, &str, &str, syntax::language::Language) -> core::result::Result<core::option::Option<(alloc::vec::Vec<facts::values::Symbol>, metrics::FileMetrics)>, store::RowFailure>
 impl store::FactsDb
 pub fn store::FactsDb::generation(&self) -> &str
 pub fn store::FactsDb::row_counts(&self) -> core::result::Result<store::RowCounts, store::SqlError>
@@ -365,6 +366,7 @@ pub store::FileText::text: alloc::rcs::arc::Arc<str>
 impl store::FileText
 pub fn store::FileText::decode(alloc::string::String, syntax::language::Language, &[u8]) -> store::FileText
 pub fn store::FileText::digest(&self) -> kernel::key::Key
+pub fn store::FileText::row_key(&self) -> store::RowKey
 impl core::clone::Clone for store::FileText
 pub fn store::FileText::clone(&self) -> Self
 impl core::cmp::Eq for store::FileText
@@ -598,6 +600,23 @@ impl core::marker::Unpin for store::RowFailure
 impl core::marker::UnsafeUnpin for store::RowFailure
 impl core::panic::unwind_safe::RefUnwindSafe for store::RowFailure
 impl core::panic::unwind_safe::UnwindSafe for store::RowFailure
+pub struct store::RowKey
+impl core::clone::Clone for store::RowKey
+pub fn store::RowKey::clone(&self) -> Self
+impl core::cmp::Eq for store::RowKey
+impl core::cmp::PartialEq for store::RowKey
+pub fn store::RowKey::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::RowKey
+pub fn store::RowKey::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for store::RowKey
+impl core::marker::StructuralPartialEq for store::RowKey
+impl core::marker::Freeze for store::RowKey
+impl core::marker::Send for store::RowKey
+impl core::marker::Sync for store::RowKey
+impl core::marker::Unpin for store::RowKey
+impl core::marker::UnsafeUnpin for store::RowKey
+impl core::panic::unwind_safe::RefUnwindSafe for store::RowKey
+impl core::panic::unwind_safe::UnwindSafe for store::RowKey
 pub struct store::Served<T>
 pub store::Served::value: T
 pub store::Served::warning: core::option::Option<store::RowFailure>

@@ -1,0 +1,164 @@
+{
+  "receipt": {
+    "repo": "<REPO>",
+    "head": "f5f25218",
+    "tree": "9e93a4f0",
+    "dirty": 0,
+    "cache": "none",
+    "note": ""
+  },
+  "more": null,
+  "cards": [
+    {
+      "target": "reports.py",
+      "answer": "file",
+      "path": "reports.py",
+      "language": "python",
+      "lines": 79,
+      "id_prefix": "py",
+      "declares": {
+        "total": 8,
+        "kinds": [
+          {
+            "kind": "function",
+            "count": 5
+          },
+          {
+            "kind": "constant",
+            "count": 2
+          },
+          {
+            "kind": "class",
+            "count": 1
+          }
+        ],
+        "rows": [
+          {
+            "stable_id": "py:reports.py::REPORT_WIDTH",
+            "path": "reports.py",
+            "start_line": 8,
+            "end_line": 8,
+            "kind": "constant",
+            "language": "python",
+            "signature": "REPORT_WIDTH = 72",
+            "parent_class": ""
+          },
+          {
+            "stable_id": "py:reports.py::SEPARATOR",
+            "path": "reports.py",
+            "start_line": 9,
+            "end_line": 9,
+            "kind": "constant",
+            "language": "python",
+            "signature": "SEPARATOR = \"-\" * REPORT_WIDTH",
+            "parent_class": ""
+          },
+          {
+            "stable_id": "py:reports.py::ReportError",
+            "path": "reports.py",
+            "start_line": 12,
+            "end_line": 13,
+            "kind": "class",
+            "language": "python",
+            "signature": "class ReportError(Exception)",
+            "parent_class": ""
+          },
+          {
+            "stable_id": "py:reports.py::stock_value",
+            "path": "reports.py",
+            "start_line": 16,
+            "end_line": 26,
+            "kind": "function",
+            "language": "python",
+            "signature": "def stock_value(inventory: Inventory, prices: PriceBook, tier: Tier) -> Decimal",
+            "parent_class": ""
+          },
+          {
+            "stable_id": "py:reports.py::reorder_report",
+            "path": "reports.py",
+            "start_line": 29,
+            "end_line": 44,
+            "kind": "function",
+            "language": "python",
+            "signature": "def reorder_report(inventory: Inventory, prices: PriceBook) -> str",
+            "parent_class": ""
+          },
+          {
+            "stable_id": "py:reports.py::_format_row",
+            "path": "reports.py",
+            "start_line": 47,
+            "end_line": 52,
+            "kind": "function",
+            "language": "python",
+            "signature": "def _format_row(item: Item, line_total: Decimal) -> str",
+            "parent_class": ""
+          },
+          {
+            "stable_id": "py:reports.py::check_report_inputs",
+            "path": "reports.py",
+            "start_line": 55,
+            "end_line": 66,
+            "kind": "function",
+            "language": "python",
+            "signature": "def check_report_inputs(inventory: Inventory, prices: PriceBook) -> None",
+            "parent_class": ""
+          },
+          {
+            "stable_id": "py:reports.py::summarise",
+            "path": "reports.py",
+            "start_line": 69,
+            "end_line": 79,
+            "kind": "function",
+            "language": "python",
+            "signature": "def summarise(inventory: Inventory, prices: PriceBook) -> dict[str, str]",
+            "parent_class": ""
+          }
+        ]
+      },
+      "imports": {
+        "rows": [
+          {
+            "path": "inventory.py",
+            "line": 5
+          },
+          {
+            "path": "pricing.py",
+            "line": 6
+          }
+        ],
+        "total": {
+          "count": 2,
+          "complete": true
+        }
+      },
+      "importers": {
+        "rows": [],
+        "total": {
+          "count": 0,
+          "complete": true
+        }
+      },
+      "tests": {
+        "rows": [],
+        "total": {
+          "count": 0,
+          "complete": true
+        }
+      },
+      "cycles": {
+        "rows": [],
+        "total": {
+          "count": 0,
+          "complete": true
+        }
+      },
+      "last_change": {
+        "commit": {
+          "sha": "f5f252187928e7028e1c825f36c6a15c81c9162e",
+          "authored": "2026-02-01T00:00:00Z",
+          "subject": "fixture"
+        }
+      }
+    }
+  ]
+}

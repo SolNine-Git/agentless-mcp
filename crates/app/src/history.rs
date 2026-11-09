@@ -4,14 +4,16 @@
 use std::num::NonZeroUsize;
 use std::path::Path;
 
-use facts::line_count;
+use facts::{Symbol, line_count};
 use git::{CommitId, GitOutcome, HistoryFailure, LineRange, SpanLogError, SpanQuery};
+use kernel::Deadline;
 use prompts::messages::{
     HISTORY_BODY_TRUNCATED, HISTORY_GIT_FAILED, HISTORY_GIT_OUTPUT_MALFORMED, HISTORY_NO_COMMITS,
     HISTORY_NO_GIT, HISTORY_OUTPUT_CAPPED_NO_COMMITS, HISTORY_PATH_NOT_IN_HEAD,
     HISTORY_SPAN_BEYOND_HEAD, HISTORY_SYMBOL_NOT_IN_HEAD, HISTORY_TARGET_UNRESOLVED,
 };
 use store::{FactSource, FileText};
+use syntax::{Language, Unparsable};
 use text::{one_line, splitlines, strip};
 
 use crate::bounds::within;
@@ -229,16 +231,29 @@ impl Walk<'_> {
         };
         let commit = self.full_commit(head, working)?;
         let git = &self.services.git;
-        let (dirty, dirty_note) = answered(git.differs(self.root(), &working.path, &commit));
-        let span = if dirty == Some(false) {
+        let dirty = answered(git.differs(self.root(), &working.path, &commit));
+        let span = if dirty.0 == Some(false) {
             working.clone()
         } else {
             self.committed_span(&commit, working)?
         };
+        self.logged(&commit, working, &span, dirty)
+    }
+
+    // The commits on the lines of `span`, which is `working` as `commit` has it, with whether
+    // the file differs from the commit.
+    fn logged(
+        &self,
+        commit: &CommitId,
+        working: &SymbolSpan,
+        span: &SymbolSpan,
+        (dirty, dirty_note): (Option<bool>, String),
+    ) -> Result<HistoryResult, Error> {
+        let git = &self.services.git;
         let seats = (self.limit)
             .min(HISTORY_MAX_SEATS)
             .min((self.budget / HISTORY_TOKENS_PER_SEAT).max(1));
-        let log = self.span_log(&span, &commit, seats)?;
+        let log = self.span_log(span, commit, seats)?;
         let (shallow, shallow_note) = answered(git.is_shallow(self.root()));
         let list_end = match log.commits.len() > seats {
             false => ListEnd::Whole,
@@ -282,28 +297,14 @@ impl Walk<'_> {
             .git
             .blob(self.root(), commit.as_str(), &span.path);
         let bytes = git_text(blob, span, CAT_FILE)?;
-        let file = FileText::decode(span.path.clone(), span.language, &bytes);
-        let symbols = FactSource::parsing()
-            .symbols(&file, self.reading.deadline)
-            .value;
-        let symbols =
-            symbols.map_err(|unparsable| failed(format!("{}: {unparsable}", span.path)))?;
         let wanted = span.symbol.id_qualname();
-        let Some(symbol) = symbols
-            .into_iter()
-            .find(|symbol| symbol.id_qualname() == wanted)
-        else {
-            let message = HISTORY_SYMBOL_NOT_IN_HEAD.render((&span.path, &wanted));
-            return Err(failed(message));
-        };
-        Ok(SymbolSpan {
-            start_line: symbol.line,
-            end_line: line_count(&file.text).min(symbol.end_line),
-            symbol,
-            language: span.language,
-            path: span.path.clone(),
-            source: file.text,
-        })
+        let file = (span.path.as_str(), span.language);
+        let at = (&FactSource::parsing(), self.reading.deadline);
+        let found = committed_symbol(file, &bytes, at, |symbols| {
+            symbols.iter().find(|symbol| symbol.id_qualname() == wanted)
+        });
+        let found = found.map_err(|unparsable| failed(format!("{}: {unparsable}", span.path)))?;
+        found.ok_or_else(|| failed(HISTORY_SYMBOL_NOT_IN_HEAD.render((&span.path, &wanted))))
     }
 
     fn span_log(
@@ -330,6 +331,47 @@ impl Walk<'_> {
         }
         Ok(log)
     }
+}
+
+// The symbol that `find` picks in `bytes`, a file's text at a commit, cut at its last line.
+pub(crate) fn committed_symbol(
+    (path, language): (&str, Language),
+    bytes: &[u8],
+    (source, deadline): (&FactSource, Option<&Deadline>),
+    find: impl FnOnce(&[Symbol]) -> Option<&Symbol>,
+) -> Result<Option<SymbolSpan>, Unparsable> {
+    let file = FileText::decode(path.to_owned(), language, bytes);
+    let symbols = source.symbols(&file, deadline).value?;
+    let Some(symbol) = find(&symbols).cloned() else {
+        return Ok(None);
+    };
+    Ok(Some(SymbolSpan {
+        start_line: symbol.line,
+        end_line: line_count(&file.text).min(symbol.end_line),
+        symbol,
+        language,
+        path: path.to_owned(),
+        source: file.text,
+    }))
+}
+
+// The span is read at `commit`, so its lines need no second read against the working tree.
+pub(crate) fn history_at(
+    services: &Services,
+    reading: &Reading<'_>,
+    request: &HistoryRequest,
+    commit: &CommitId,
+    span: &SymbolSpan,
+) -> Result<HistoryResult, Error> {
+    let limit = within(&request.limit, 1, MAX_LIMIT, "limit")?;
+    let budget = within(&request.budget, MIN_BUDGET, MAX_BUDGET, "budget")?;
+    let walk = Walk {
+        services,
+        reading,
+        limit,
+        budget,
+    };
+    walk.logged(commit, span, span, (Some(false), String::new()))
 }
 
 fn line_range(start: u32, end: u32) -> Result<LineRange, Error> {
@@ -384,7 +426,7 @@ fn no_commits(span: &SymbolSpan, capped: bool) -> String {
 }
 
 // The body without its leading and trailing blank lines.
-fn entry(commit: git::Commit) -> HistoryEntry {
+pub(crate) fn entry(commit: git::Commit) -> HistoryEntry {
     let lines = splitlines(&commit.body, false);
     let blank = |line: &&str| strip(line).is_empty();
     let first = lines

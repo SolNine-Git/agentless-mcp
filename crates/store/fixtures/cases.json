@@ -33,17 +33,17 @@
  ],
  "receipts": [
   ["348a75f0", "348a75f0", "/agentless-store-fixture/repo", "g:348a75f0 fresh", true],
-  ["348a75f0", "0000000000000000000000000000000000000000", "/agentless-store-fixture/repo", "g:348a75f0 generation mismatch (repo g:0000000000000000000000000000000000000000); changed files parse live; run agentless-mcp index --repo /agentless-store-fixture/repo for performance", false],
+  ["348a75f0", "0000000000000000000000000000000000000000", "/agentless-store-fixture/repo", "g:348a75f0 stale, run agentless-mcp index --repo /agentless-store-fixture/repo", false],
   ["348a75f0", "348a75f0", "/agentless-store-fixture/a b", "g:348a75f0 fresh", true],
-  ["348a75f0", "0000000000000000000000000000000000000000", "/agentless-store-fixture/a b", "g:348a75f0 generation mismatch (repo g:0000000000000000000000000000000000000000); changed files parse live; run agentless-mcp index --repo '/agentless-store-fixture/a b' for performance", false],
+  ["348a75f0", "0000000000000000000000000000000000000000", "/agentless-store-fixture/a b", "g:348a75f0 stale, run agentless-mcp index --repo '/agentless-store-fixture/a b'", false],
   ["348a75f0", "348a75f0", "/agentless-store-fixture/it's", "g:348a75f0 fresh", true],
-  ["348a75f0", "0000000000000000000000000000000000000000", "/agentless-store-fixture/it's", "g:348a75f0 generation mismatch (repo g:0000000000000000000000000000000000000000); changed files parse live; run agentless-mcp index --repo '/agentless-store-fixture/it'\"'\"'s' for performance", false],
+  ["348a75f0", "0000000000000000000000000000000000000000", "/agentless-store-fixture/it's", "g:348a75f0 stale, run agentless-mcp index --repo '/agentless-store-fixture/it'\"'\"'s'", false],
   ["348a75f0", "348a75f0", "/agentless-store-fixture/caf\u00e9", "g:348a75f0 fresh", true],
-  ["348a75f0", "0000000000000000000000000000000000000000", "/agentless-store-fixture/caf\u00e9", "g:348a75f0 generation mismatch (repo g:0000000000000000000000000000000000000000); changed files parse live; run agentless-mcp index --repo '/agentless-store-fixture/caf\u00e9' for performance", false],
+  ["348a75f0", "0000000000000000000000000000000000000000", "/agentless-store-fixture/caf\u00e9", "g:348a75f0 stale, run agentless-mcp index --repo '/agentless-store-fixture/caf\u00e9'", false],
   ["348a75f0", "348a75f0", "/agentless-store-fixture/$HOME", "g:348a75f0 fresh", true],
-  ["348a75f0", "0000000000000000000000000000000000000000", "/agentless-store-fixture/$HOME", "g:348a75f0 generation mismatch (repo g:0000000000000000000000000000000000000000); changed files parse live; run agentless-mcp index --repo '/agentless-store-fixture/$HOME' for performance", false],
+  ["348a75f0", "0000000000000000000000000000000000000000", "/agentless-store-fixture/$HOME", "g:348a75f0 stale, run agentless-mcp index --repo '/agentless-store-fixture/$HOME'", false],
   ["348a75f0", "348a75f0", "/agentless-store-fixture/say\"x\"", "g:348a75f0 fresh", true],
-  ["348a75f0", "0000000000000000000000000000000000000000", "/agentless-store-fixture/say\"x\"", "g:348a75f0 generation mismatch (repo g:0000000000000000000000000000000000000000); changed files parse live; run agentless-mcp index --repo '/agentless-store-fixture/say\"x\"' for performance", false]
+  ["348a75f0", "0000000000000000000000000000000000000000", "/agentless-store-fixture/say\"x\"", "g:348a75f0 stale, run agentless-mcp index --repo '/agentless-store-fixture/say\"x\"'", false]
  ],
  "keys": [
   ["/agentless-store-fixture/cache-home/agentless-mcp", "/agentless-store-fixture/repo", "/agentless-store-fixture/cache-home/agentless-mcp/22d572de62bb26b0/tags.db"],

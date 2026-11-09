@@ -10,6 +10,153 @@ Each byte count is of the served bytes.
 
 ### Added
 
+- **`trace` lists what changed since a revision: `diff:<rev>`.** A target
+  `diff:main` (MCP and CLI) gives a diff card (design DES2 section 4,
+  docs/plans/2026-11-08_rev-and-diff-card.md): the base is `git merge-base
+  <rev> HEAD`, as a pull request takes it, and the new side is the working
+  tree with its untracked files. The card heads with `diff main: base
+  <sha> (merge base with HEAD), <n> commits, against the working tree`,
+  then `files:` with the counts by status (added, removed, changed,
+  renamed) and 12 folders at 2 levels, each with its symbol counts `+a -r
+  ~c`, then the `changed`, `added` and `removed` sections, 5 rows each,
+  rows outside test paths first and the longest span first (`[id] @span
+  (base @span)  kind`; a removed row gives its id and span at the base),
+  and `moved` (`old_id @span -> [new_id] @span`), a body that moved to
+  another file or name. The symbols pair as the pair checks pair their
+  units, through the matcher that D1 made generic (`checks::pair_units`):
+  a symbol's body key is the digest of its span text, each line trimmed,
+  its name masked. `diff:<rev>:<path>` scopes the card to a file, which
+  lists each row in line order, or to a folder, which rolls up below it;
+  every changed file is still read, so a move across the scope's edge
+  pairs. Data files (json, yaml, toml) count under `files`, and their keys
+  are listed only under a scoped target. `more=tree` lists each changed
+  file, `more=declares` each symbol row, both up to 500 rows, then `...
+  n more`; any other `more` gets "more=callers does not apply to a diff
+  card. Diff sections: tree, declares.". A call whose every target is a
+  diff target reads no walk, no scan and no graph: `diff --raw -M`, `ls-files
+  --others`, the base blobs 4 at a time, and a parse of each side through
+  the tag cache. `rev` with a diff target is refused ("rev does not apply
+  to a diff target. diff:main compares main with the working tree."), and
+  so are `diff:` with no revision and a revision with no merge base;
+  `Git::merge_base` and `Git::commits_since` are the new git reads. The
+  trace description gains "diff:<rev> lists the symbols that the working
+  tree added, removed, changed and moved since its merge base with
+  <rev>." and the `target` text "a stable id or diff:<rev>": tools/list
+  grows from 3,033 to 3,163 bytes and from 593 to 623 cl100k tokens
+  (`trace` 332 to 362), as predicted before the build (+130 B / +30; the
+  design measured +128 / +29 for "with rev", and "<rev>" names the target
+  part, not the `rev` parameter). New goldens over a request history (the
+  rev goldens' commit plus a renamed file, then working-tree edits, a moved
+  function, an untracked test and an untracked data file):
+  `trace/repo_py.diff` (text and JSON), `diff_tree`, `diff_declares`,
+  `diff_file`, `diff_folder`, `diff_empty`, `diff_hidden` (13 folders and
+  13 added functions past the caps) and `diff_no_section`, each written
+  from the grammar before the first run and equal to it but for the two
+  commit ids, with their counts in `crates/app/fixtures/read/tokens.json`;
+  the door test replays each through the MCP tool and the CLI. The changed
+  recorded values: the `trace` entry of
+  `crates/app/fixtures/surface/surface.json`. Measured with the CLI
+  (release build of 7be0eb7, `/usr/bin/time`, no tag cache) on this
+  repository against main (2e8f807, 137 commits; design figure in
+  brackets, at 09847ed over code suffixes only): the default card 2,703 B
+  and 992 cl100k [2,550 B, 895] in 0.24-0.26 s and 62 MB [about 0.3 s];
+  545 source files (data files included) in 20 folders, 352 changed, 2,141
+  added, 336 removed and 15 moved symbols; `more=tree` 31,646 B and 10,472
+  cl100k; `more=declares` stops at the 16,000-token ceiling (63,761 B).
+
+- **`trace` reads a commit: `rev`.** A call with `rev` (MCP) or `--rev`
+  (CLI), such as `rev=main`, answers each card as that commit holds the
+  code (design DES2, docs/plans/2026-11-08_rev-and-diff-card.md). A stable
+  id or a `path:line` with `more=body` or `more=history` reads one blob of
+  its file and parses it; every other card scans the commit: `git ls-tree`
+  lists its files, `git diff --raw -M` names the paths whose bytes on disk
+  differ, those read as blobs and every other path from disk. The symbol
+  card's last change runs `git log -L` at the commit, and the file card's
+  `git log -1 <commit> -- <path>`. Git reads at a revision set
+  `GIT_NO_LAZY_FETCH=1`, so a partial clone never fetches, and nothing is
+  written: a test proves that `agentless.db` stays byte-equal. The receipt
+  names the revision after `head` (`rev: main 2e8f8074`), each `(more=...)`
+  hint repeats it (`(more=callers, rev=main)`), the JSON carries
+  `"rev": {"name", "commit"}`, and the misses name the commit: a path that
+  the commit lacks and the working tree holds answers "no file <path> at
+  main (2e8f8074). It is in the working tree: trace it with no rev.". A
+  `rev` that holds `:` or starts with `-` is refused before git runs, and an
+  unknown one names git's note, with "The clone is shallow: ..." in a
+  shallow clone. A server keeps the state of a revision beside the working
+  tree's, keyed by root and commit; the retention bound (2) counts states,
+  and a revision's first scan shares the working tree's facts of each
+  unchanged file. tools/list grows from 2,858 to 3,033 bytes and from 551
+  to 593 cl100k tokens (`trace` 290 to 332), as predicted from the design's
+  +172 B / +40 before the build; the test
+  `tools_list_has_the_bytes_and_the_cl100k_count_that_the_changelog_states`
+  pins both. New goldens: `trace/repo_py.rev_body`, `rev_history`,
+  `rev_symbol` (text and JSON), `rev_file`, `rev_folder`,
+  `rev_absent_path` and `rev_absent_symbol`, over a request history (a tag
+  on the fixture commit, one later commit, an edited and an untracked
+  file), with their counts in `crates/app/fixtures/read/tokens.json`. The
+  changed recorded value is the `trace` entry of
+  `crates/app/fixtures/surface/surface.json`. Measured with the CLI
+  (`/usr/bin/time`, 3 runs, warm HEAD cache, `--no-auto-warm`; design
+  estimate in brackets): on this repository at 09847ed with `rev=main`
+  (2e8f807), a symbol card 0.42-0.43 s and 163-165 MB [0.4 s] against
+  0.33-0.34 s at HEAD, and `more=body` 0.05-0.06 s and 14 MB [0.06 s]; on
+  the druid case (main d41e8c2f, 3,375 files changed), a symbol card
+  4.31-4.42 s and 1.09 GB [4.6 s] against 3.54-3.70 s at HEAD, and
+  `more=body` 0.16-0.17 s [0.23 s].
+
+- **`trace` reads a range of lines: `path:start-end`.** A target `path:A-B`
+  (1-based and inclusive) of a file in the walk gives a range card: the
+  header `path  A-B of N lines`, the numbered lines in the gutter of
+  `more=body`, and `symbols: n` with the id, span and kind of each symbol
+  whose span holds a shown line (16 at most, then `... n more`). The card
+  shows at most 200 lines; a longer range ends with "... 200 of T lines
+  shown: trace path:A2-B2 for the next n lines.", which names the next range.
+  An end past the last line stops at the last line. A start past it answers
+  "no lines A-B in path: the file has N lines.", a start of 0 or after the
+  end answers "path:A-B is not a line range: ...", and a binary file answers
+  "path is a binary file: ...", each as an ordinary answer. In the JSON the
+  card is `"answer": "range"`, with `text` as `{line, text}` rows, `next`,
+  `symbols` and `symbols_total`. The `trace` description and its `target`
+  description name the form: tools/list grows from 2,744 to 2,858 bytes and
+  from 524 to 551 cl100k tokens (`trace` 263 to 290), which the test
+  `tools_list_has_the_bytes_and_the_cl100k_count_that_the_changelog_states`
+  pins. New goldens: `trace/repo_py.range` (text and JSON),
+  `trace/repo_py.range_past_end` and `trace/repo_py.range_reversed`, with
+  their counts in `crates/app/fixtures/read/tokens.json`. The changed recorded
+  value is the `trace` entry of `crates/app/fixtures/surface/surface.json`.
+
+- **`lint` gains `reuse_candidates`, an opt-in advisory check for a function
+  that the change adds whose action names are mostly those of an existing
+  function.** The action names of a function are the names it calls and the
+  fields it reads (docs/plans/2026-11-08_duplicate-logic.md, sections 6 and
+  8, R1 and R2). The index now stores them per function in the tag cache:
+  FACTS_VERSION 13 to 14, so every stored index is rebuilt once. A row needs
+  an IDF-weighted Jaccard score of 0.3 or more over the names that at most 5%
+  of functions use, 3 or more names on each side, the same language, no
+  protocol method or test code on either side, and no call between the two
+  functions at a binding tier; each added function gives at most 2 rows. On
+  held-out labels of tokio and sympy (R3,
+  docs/analysis/2026-11-08_reuse-measurement.md), 14 of 113 card rows were
+  duplicates (12.4%, Wilson 7.5-19.7%): both bars failed, so the check stays
+  opt-in at review and no card or hook shows its rows. Only `--only
+  reuse_candidates` runs it, in `--since` and in `--path`. `--since` resolves
+  the calls on the whole symbol graph of its scan; `--path` reads the tag
+  cache only and resolves them on a graph of the edited file, the rows' files
+  and the `Cargo.toml` files, so it misses a call through a re-export in
+  another file. On planted pairs (`tests/characterization/fixtures/reuse_rust`
+  and `reuse_py`) it finds 10 of 10 per language (3 renamed copies, 3 edited
+  copies, 4 re-implementations) and gives no row on 9 negatives each,
+  including a caller that reaches the original through a re-export
+  (goldens `lint/reuse_rust.lint.json` and `lint/reuse_py.lint.json`).
+  `capabilities` lists it with the input `pairs+names`. The changed recorded
+  values add its name where a list or a refusal names every check, and its
+  capabilities row: `crates/app/fixtures/registry.json`,
+  `crates/app/fixtures/capabilities.json`, `crates/app/fixtures/write/lint.json`,
+  `crates/cli/fixtures/scenarios.json` and `crates/cli/fixtures/parser.json`
+  (28 `lint --help` cases, rewrapped); the guide's lint section changes
+  `crates/app/fixtures/guide/guide.json` and
+  `crates/cli/fixtures/read/scenarios.json`.
+
 - **`agentless-mcp hook prompt-map`, a `UserPromptSubmit` hook that names
   the files that the map ranks first for the first prompt of a session.**
   The hook is opt-in: it runs only when the Claude Code settings hold a
@@ -165,6 +312,156 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **The receipt is shorter: `// agentless-mcp receipt`, no JSON `notice`,
+  and short cache states.** The marker went on with `(repository data
+  below)`, and a JSON answer carried the same words twice, as `notice` in
+  the receipt object and at the top level. The line after the receipt says
+  nothing new: everything after the receipt lines is repository content, as
+  the agent guide states, and the textsafe escape that stops a forged marker
+  keys on `// agentless-mcp receipt` and stays as it is. The long cache
+  states become tokens that keep the cache generation: `g:<g> stale,
+  refreshing` in place of `g:<g> generation mismatch (repo g:<r>); changed
+  files parse live; a background refresh is in progress`, `g:<g> stale, run
+  agentless-mcp index --repo <root>` in place of the same mismatch with
+  `...; run agentless-mcp index --repo <root> for performance`, and
+  `none (refreshing)` in place of `none (a background refresh is in
+  progress)`; the agent guide says what each token means. Measured with
+  tiktoken `cl100k_base`: 5 tokens fewer on each text answer, 18 on each
+  JSON answer, and 20 (refreshing) or 17 (stale) fewer while the cache is
+  stale. No consumer reads the removed words: a grep of the bench harness
+  (swe-explore-bench) finds them only in recorded transcripts, and
+  `scripts/surface_cmp.py` matches the `// agentless-mcp receipt` prefix.
+  The 118 goldens that hold a receipt change by one mechanical edit each
+  (95 text goldens lose the words from line 1, 23 JSON goldens lose the two
+  `notice` lines), with their counts in
+  `crates/app/fixtures/read/tokens.json` (-5 and -18). The changed recorded
+  values: the receipt text in 12 fixture files (cli scenarios, render
+  envelope and capabilities, store receipts and cases, the guide copies)
+  and, in `crates/render/fixtures/envelope.json`, `read/envelope.json` and
+  `capabilities.json`, 27 ceiling cases whose cut point moves with the
+  shorter receipt: a text cut keeps 3 more 8-character lines (the marker is
+  24 characters shorter), an over-ceiling count is 19 tokens lower (the two
+  `notice` members), and a trimmed list keeps one more item.
+
+- **`lint --help` says what `reuse_candidates` reads.** The `--only` text
+  named the check but described the reads of the other pair checks only. It
+  now adds: "reuse_candidates reads the action names of every function from
+  the tag cache, and only --only runs it, in --since and --path." The changed
+  recorded values are the 14 `lint --help` cases of
+  `crates/cli/fixtures/parser.json`, each rewrapped in its `--only` text.
+
+- **CLI JSON contract: a whole payload over the token ceiling carries
+  `over_ceiling`, not `truncated`.** A `--json` answer over the ceiling whose
+  items were all kept (one oversized item, an empty list, or a payload with no
+  list to trim) said `"truncated": {...}`, so a consumer that checks
+  `truncated` for completeness read a complete report as cut: `lint --since
+  2e8f807 --json` on this repository gave `"truncated"` with `"shown": 1,
+  "total": 1` (review D1). That object is now `"over_ceiling"`, with the same
+  fields; `truncated` stays for an answer whose ceiling dropped items. The
+  changed recorded values are the key of 16 expected documents: 2 in
+  `crates/render/fixtures/envelope.json` and 14 in
+  `crates/render/fixtures/read/envelope.json`.
+
+- **`refs --shared-callers` counts no parameter or local as a caller, and says
+  when no bound caller shares a row.** A site that scope analysis binds to a
+  parameter or a local of the target's name spells another binding, so it no
+  longer makes its function a caller. On this repository,
+  `refs --shared-callers rs:crates/mcp/src/hooks.rs::parsed` ranked three
+  `Parsed` types first through 75 functions with a `parsed` parameter; it now
+  ranks the other `parsed` functions, `crates/hook/src/install.rs::parsed`
+  second (a tie of three at score 1.440). When no caller at a binding tier
+  references a ranked symbol, the text adds "no caller of T at a binding tier
+  shares a symbol: each row ranks through name-only callers." The changed
+  recorded value is that line in the `refs_shared_tests_repo` scenario of
+  `crates/cli/fixtures/read_symbols/scenarios.json`.
+
+- **A Rust import of names that its target only re-exports is a cycle edge to
+  the files that define them.** A child module's `use crate::X` against a
+  crate root's `pub use child::X` made an import edge to `lib.rs`, so nearly
+  every module of a crate sat in one import cycle through its root. For the
+  import cycles only, a Rust import that takes from a module file only names
+  that the file itself imports now counts as an import of the files that
+  define those names (up to 4 re-export hops); an import of the module, a
+  glob, a name that the file defines, or a leaf that binds no name keeps its
+  target. The import edges, the imports and importers sections and every
+  other language are unchanged. `trace` file cards, `more=cycles`, the
+  `cycles` view and the lint cycle checks read the same cycles (a kept graph
+  already builds again when a Rust `use` or `mod` item changes). Measured on
+  this repository with the debug build of this change (`cycles --json`): 22
+  Rust cycles holding 225 files before, 24 holding 144 after; 81 Rust file
+  cards lose their cycle line and none gains one. The 64-file cycle of
+  `crates/app` through `lib.rs` splits into the parent-child cycles that
+  remain, such as `crates/app/src/search.rs -> crates/app/src/search/files.rs`.
+  No golden or recorded fixture holds a Rust cycle, so none changes.
+
+- **`more=body` asked of a file card names the calls that give lines.** The
+  answer "more=body does not apply to a file card. File sections: ..." now
+  goes on: "Read reads a file, trace path:start-end gives its numbered lines,
+  and a symbol id with more=body gives the body of one symbol." Another
+  section asked of a file card keeps its answer. New golden
+  `trace/repo_py.no_body_file`, with its count in
+  `crates/app/fixtures/read/tokens.json`.
+
+- **`search` says when its glob selects no file, reads CRLF lines, and shows
+  no context of a match that it leaves out.** A `files` glob that selects no
+  file (inside `path`, when the request gives one) now answers "search /P/
+  files=G: no file matches the glob. A glob matches the path from the root.
+  Start it with **/ to match at any depth." (or "search files=G: ..."
+  without a pattern), where it said "0 matches in 0 files searched." or "0
+  files"; the CLI JSON gives `"answer": "no_file"`. A line of a CRLF file is
+  matched and shown without its "\r", so `2$` matches `hit = 2\r\n`. When
+  the limit cuts a file and `context` is above 0, the file shows its lines
+  through the last shown match and the context after it, and no longer the
+  leading context of a match that it left out. The read keeps the lines and
+  the text of a file only while the limit can still show one of its match
+  lines, and the enclosing symbols come from that text, so each shown file is
+  read once. New goldens: `search/repo_nested.no_file` (text and JSON) and
+  `search/repo_nested.listing_no_file`, with their counts in
+  `crates/app/fixtures/read/tokens.json`.
+
+- **The `near_duplicates` message says what the check matches.** It said
+  that the body "normalises to the same token stream" as an existing one, but
+  the check compares the body as written, with comments and indentation left
+  out, so a renamed local stops it. It now reads "is the same as the body of N
+  existing definition(s) token for token, with comments and indentation left
+  out", and so does the guide's table row. The changed recorded values: 6 in
+  `crates/patchcheck/fixtures/lint.json`, 3 in
+  `crates/app/fixtures/write/lint.json`, and the guide row in
+  `crates/app/fixtures/guide/guide.json` and
+  `crates/cli/fixtures/read/scenarios.json`.
+
+- **The default symbol card of `trace` no longer shows `similar`.** The
+  symbols that share callers with the target are a list of co-used names, not
+  of duplicates: 0 of 15 sampled function rows of the default card are
+  duplicates (Wilson 95% 0-20.4%; docs/plans/2026-11-08_duplicate-logic.md,
+  section 3). `more=similar` still lists them in full, and the default card no
+  longer ranks shared callers. The `trace` description no longer promises
+  similar functions on the card and says that `more=similar` lists the
+  symbols that share callers with the target: tools/list grows from 2,696 to
+  2,744 bytes, and from 514 to 524 cl100k tokens (`trace` 253 to 263). The
+  changed goldens are the 6 default symbol cards in text and the 2 in JSON of
+  `goldens/trace`, which lose their `similar` section, and their counts in
+  `crates/app/fixtures/read/tokens.json`. Measured on the TPF answer set with
+  the release builds of d7ee18f and of this change: of 1,192 CLI answers, 241
+  differ, 239 of them only by the removed section. The other 2
+  (sympy__sympy-24562, `trace` of the entry and of the entry targets) also
+  lose the over-ceiling note: without its 267 KB `similar` section the card
+  fits in the 16,000-token ceiling, so the two-target answer now shows its
+  second card. Of 894 MCP answers, 332 differ, each only by the removed
+  section. `explain` and `refs`: 596 of 596 are equal.
+
+- **The refusal of a trace target count names the limit of 1 to 8 targets.**
+  Through MCP, a `target` that is not a string or a list of 1 to 8 strings is
+  refused with "target is VALUE, but must be a string or a list of 1 to 8
+  strings." (before: "a string or a list of strings."). The CLI `trace` and
+  the hooks that trace in their own process refuse 0 or 9 or more targets
+  with "target holds 9 targets, but trace takes 1 to 8 targets." (before:
+  "target takes a value from 1 through 8, got 9"). The changed expected
+  values: the 8 `target` coercion cases and the 3 `target` refusals of
+  `crates/mcp/src/validate/tests.rs`, with one new case for `[]`; the 0 and
+  9 target refusals of `crates/app/src/trace/tests.rs`; the
+  `accepts_text_or_texts` row of `crates/prompts/fixtures/render.json`. No
+  golden changes.
 - **Rust has scope analysis: a parameter, a local or a member name is no
   reference.** A Rust pattern binding (a function or closure parameter, `let`,
   `if let`, `while let`, a match arm, `for`) and each use of it in scope are no
@@ -679,6 +976,89 @@ Each byte count is of the served bytes.
 
 ### Fixed
 
+- **`hook --help` and `hook <name> --help` print the usage.** Both forms
+  were refused with exit 2, as a hook command line that names no hook.
+  Now `agentless-mcp hook --help`, `hook -h`, and `hook <hook> --help` for
+  each hook name (erosion and the retired gate hooks included) print the
+  usage that the refusal holds on stdout and exit 0. `hook install`,
+  `hook status` and `hook uninstall` keep their own `--help`.
+- **The `similar` section of `trace` takes each candidate's tier from the
+  whole fan-in.** A candidate's tier was the strongest tier of its shared
+  callers among the sites that the listing kept (500), so past the cut a
+  candidate whose callers all sat in the cut part left the rows, while the
+  head still counted it and named it unlisted past the limit; its
+  `bound_total` was then a floor. Now refs gives each shared candidate the
+  strongest tier over every site before the cut, the rows list every
+  ranked candidate, and `bound_total` is the exact count. A test cuts a
+  600-site listing and finds the candidate that two cut callers share. No
+  golden changes: no fixture listing reaches the cut.
+- **A panic in the server's update of a kept graph reaches the call as a
+  build's panic does.** The update ran on the graph thread outside
+  `catch_unwind`, so a panic there ended the thread, and the waiting call
+  panicked with "the graph thread ended in a build" in place of the panic
+  itself. Now the state ends, the call over that scan resumes the update's
+  own payload, and the next call over the scan builds in full (a test makes
+  every update panic and counts 2 graphs, 0 updates, 1 rebuild).
+- **hook install and hook uninstall refuse a settings file that holds a
+  number with no JSON text.** NaN, Infinity and a number past the 64-bit
+  float range, such as 1e400 (which the parse reads as Infinity), were
+  written back as `NaN` or `Infinity`, which JSON.parse rejects, so Claude
+  Code could not read the file. Now the command writes nothing and exits 1
+  with the new refusal row `hook_install_not_finite`.
+- **hook install and hook status refuse a `--server-name` with a character
+  other than an ASCII letter, a digit, `_` or `-`** (exit 2, the new row
+  `accepts_server_name`). Claude Code reads the ledger-mark matcher
+  `mcp__<name>__trace` as a regular expression, so `a|b` matched every tool
+  whose name holds `b__trace`.
+- **The server's hook note and hook status read a settings file through one
+  function, `app::hooks::file_handlers`, with one decode.** The server read
+  each carriage return as a line break and hook status did not, so a parse
+  error in a file with CRLF line ends named another character position in
+  the note than in hook status. The file list (the user file, then
+  `.claude/settings.json` and `.claude/settings.local.json` below the root)
+  also has one home, `app::hooks::settings_files`.
+- **prompt-map runs in the frame of the other context hooks, and its gate
+  log line has their record.** The line is now `ts`, `hook`, `event`,
+  `reason`, `session_id`, `agent_id`, then `seeds` and `files` once the hook
+  has found them, then `ms`. Before, prompt-map wrote its own record:
+  `session_id` second, no `agent_id`, and `seeds` and `files` as null before
+  the seed step. An `agent_id` that is not a string is now
+  `malformed_payload`, as in the other hooks.
+- **A hook whose git fails logs `git_failed` with git's error, not
+  `outside_git` or `no_repository`.** The repository lookup of read-card,
+  ledger-mark, prompt-map and subagent-map read a git timeout or failure as
+  a directory outside every repository. The gate log line now has an `error`
+  key when a step failed: git's error (the erosion record's text, such as
+  `git rev-parse timed out after 2.0 s`), and the removal error of a
+  ledger-reset that cannot remove the main context's entries. brief-record
+  still records a brief whose git failed, without a root, and logs the error.
+- **read-card reads `cd DIR && VIEW FILE` as a read of `DIR/FILE`.** The
+  command must be exactly one `cd` to a folder that the shell does not
+  expand (no `$`, `~`, glob or brace), a stand-alone `&&`, and one
+  read-before-edit view of one file. Every other compound stays
+  `not_a_read`. Agents often prefix a read with a `cd`, and such a read got
+  no card.
+- **hook install quotes its binary path with `store::shell_quote`, as the
+  other printed shell words are quoted.** A path with `=` is now written
+  unquoted, and a single quote as `'"'"'`, not `'\''`. hook status reads
+  either form as the same path, so an entry written before stays current.
+- **The first backup of hook install and hook uninstall is skipped only when
+  a regular file holds `settings.json.agentless-backup`.** Before, any entry
+  at the name, even a dangling symlink, kept the write from making a backup.
+  The backup now replaces a symlink at the name (it never writes through
+  one), and an entry that it cannot replace, such as a folder, stops the
+  write with its error.
+- **brief-record removes the session's brief records that are 60 seconds or
+  older when it writes a new one.** Such a record pairs with no subagent,
+  and the records stayed until the OS temp cleaner ran. The ledger entries
+  keep their bound, the cap of 2,000 per context. A removal that fails puts
+  its error in the log line, and the brief is still recorded.
+- **`hook install`, `hook status` and `hook uninstall` take `-h` and
+  `--help`**, which print the command's usage on stdout and exit 0 (the new
+  rows `hook_install_help`, `hook_status_help` and `hook_uninstall_help`).
+  Before, each refused the flag as an unknown parameter with exit 2.
+- **history and churn now pass each path to git as a literal pathspec, so a
+  path with a glob character matches only itself.**
 - **Three Python import rules remove false import edges, and some true
   edges of Python 2 code and top-level scripts.** Each of the 10 false
   alarms in 60 blind `cycle_dodge` findings (record:

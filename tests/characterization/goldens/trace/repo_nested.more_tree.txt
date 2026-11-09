@@ -1,0 +1,11 @@
+// agentless-mcp receipt   repo: <REPO>   head: 47e14e8d   dirty: 0 files   cache: none
+./  7 files, 253 lines
+  billing/  4 files
+    invoice.py  58 lines  8 symbols
+    ledger.py  51 lines  7 symbols
+    money.py  24 lines  5 symbols
+    tax.py  31 lines  5 symbols
+  catalog/  3 files
+    product.py  30 lines  5 symbols
+    search.py  27 lines  4 symbols
+    stock.py  32 lines  6 symbols

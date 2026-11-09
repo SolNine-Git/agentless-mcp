@@ -1,0 +1,52 @@
+{
+  "receipt": {
+    "repo": "<REPO>",
+    "head": "47e14e8d",
+    "tree": "cbd127a3",
+    "dirty": 0,
+    "cache": "none",
+    "note": ""
+  },
+  "more": null,
+  "cards": [
+    {
+      "target": "billing",
+      "answer": "folder",
+      "path": "billing",
+      "files": 4,
+      "lines": 164,
+      "total": 4,
+      "depth": 1,
+      "entries": [
+        {
+          "entry": "file",
+          "depth": 1,
+          "path": "billing/invoice.py",
+          "lines": 58,
+          "symbols": 8
+        },
+        {
+          "entry": "file",
+          "depth": 1,
+          "path": "billing/ledger.py",
+          "lines": 51,
+          "symbols": 7
+        },
+        {
+          "entry": "file",
+          "depth": 1,
+          "path": "billing/money.py",
+          "lines": 24,
+          "symbols": 5
+        },
+        {
+          "entry": "file",
+          "depth": 1,
+          "path": "billing/tax.py",
+          "lines": 31,
+          "symbols": 5
+        }
+      ]
+    }
+  ]
+}

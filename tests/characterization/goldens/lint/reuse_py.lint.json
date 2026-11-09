@@ -1,0 +1,225 @@
+{
+  "candidates": [
+    {
+      "id": "HEAD",
+      "findings": [
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`collect_errors` at checks.py:1 calls and reads 6 of the same names as `gather_failures`: `entries`, `lower`, `message`, `severity`, `sort`, `waived`. Read `collect_errors` before you keep a second copy.",
+          "path": "audit.py",
+          "line": 1,
+          "location": "audit.py:1",
+          "evidence": "score 0.684",
+          "detail": {
+            "unit": "gather_failures",
+            "other": "collect_errors",
+            "other_path": "checks.py",
+            "other_line": 1,
+            "score": "0.684",
+            "shared": [
+              "entries",
+              "lower",
+              "message",
+              "severity",
+              "sort",
+              "waived"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`load_settings` at settings.py:7 calls and reads 5 of the same names as `read_config`: `Path`, `loads`, `read_text`, `setdefault`, `validate_keys`. Read `load_settings` before you keep a second copy.",
+          "path": "config_reader.py",
+          "line": 7,
+          "location": "config_reader.py:7",
+          "evidence": "score 1.000",
+          "detail": {
+            "unit": "read_config",
+            "other": "load_settings",
+            "other_path": "settings.py",
+            "other_line": 7,
+            "score": "1.000",
+            "shared": [
+              "Path",
+              "loads",
+              "read_text",
+              "setdefault",
+              "validate_keys"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`export_csv` at export.py:6 calls and reads 4 of the same names as `dump_tsv`: `len`, `writer`, `writerow`, `writerows`. Read `export_csv` before you keep a second copy.",
+          "path": "dump.py",
+          "line": 6,
+          "location": "dump.py:6",
+          "evidence": "score 0.579",
+          "detail": {
+            "unit": "dump_tsv",
+            "other": "export_csv",
+            "other_path": "export.py",
+            "other_line": 6,
+            "score": "0.579",
+            "shared": [
+              "len",
+              "writer",
+              "writerow",
+              "writerows"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`render_table` at report.py:1 calls and reads 4 of the same names as `format_grid`: `join`, `ljust`, `map`, `zip`. Read `render_table` before you keep a second copy.",
+          "path": "grid.py",
+          "line": 1,
+          "location": "grid.py:1",
+          "evidence": "score 0.347",
+          "detail": {
+            "unit": "format_grid",
+            "other": "render_table",
+            "other_path": "report.py",
+            "other_line": 1,
+            "score": "0.347",
+            "shared": [
+              "join",
+              "ljust",
+              "map",
+              "zip"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`newest_entry` at history.py:4 calls and reads 2 of the same names as `latest_record`: `attrgetter`, `stamp`. Read `newest_entry` before you keep a second copy.",
+          "path": "latest.py",
+          "line": 5,
+          "location": "latest.py:5",
+          "evidence": "score 0.503",
+          "detail": {
+            "unit": "latest_record",
+            "other": "newest_entry",
+            "other_path": "history.py",
+            "other_line": 4,
+            "score": "0.503",
+            "shared": [
+              "attrgetter",
+              "stamp"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`enclosing` at spans.py:4 calls and reads 3 of the same names as `span_at`: `enumerate`, `itemgetter`, `min`. Read `enclosing` before you keep a second copy.",
+          "path": "locate.py",
+          "line": 4,
+          "location": "locate.py:4",
+          "evidence": "score 0.642",
+          "detail": {
+            "unit": "span_at",
+            "other": "enclosing",
+            "other_path": "spans.py",
+            "other_line": 4,
+            "score": "0.642",
+            "shared": [
+              "enumerate",
+              "itemgetter",
+              "min"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`parse_header` at headers.py:1 calls and reads 3 of the same names as `split_field`: `casefold`, `lstrip`, `partition`. Read `parse_header` before you keep a second copy.",
+          "path": "mail.py",
+          "line": 1,
+          "location": "mail.py:1",
+          "evidence": "score 0.653",
+          "detail": {
+            "unit": "split_field",
+            "other": "parse_header",
+            "other_path": "headers.py",
+            "other_line": 1,
+            "score": "0.653",
+            "shared": [
+              "casefold",
+              "lstrip",
+              "partition"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`decode_label` at labels.py:4 calls and reads 3 of the same names as `clean_label`: `decode`, `normalize`, `title`. Read `decode_label` before you keep a second copy.",
+          "path": "names.py",
+          "line": 4,
+          "location": "names.py:4",
+          "evidence": "score 0.450",
+          "detail": {
+            "unit": "clean_label",
+            "other": "decode_label",
+            "other_path": "labels.py",
+            "other_line": 4,
+            "score": "0.450",
+            "shared": [
+              "decode",
+              "normalize",
+              "title"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`common_root` at paths.py:5 calls and reads 2 of the same names as `shared_parent`: `PurePosixPath`, `parts`. Read `common_root` before you keep a second copy.",
+          "path": "roots.py",
+          "line": 4,
+          "location": "roots.py:4",
+          "evidence": "score 0.330",
+          "detail": {
+            "unit": "shared_parent",
+            "other": "common_root",
+            "other_path": "paths.py",
+            "other_line": 5,
+            "score": "0.330",
+            "shared": [
+              "PurePosixPath",
+              "parts"
+            ]
+          }
+        },
+        {
+          "check": "reuse_candidates",
+          "severity": "advisory",
+          "message": "`merge_counts` at counts.py:4 calls and reads 4 of the same names as `combine_tallies`: `Counter`, `dict`, `list`, `most_common`. Read `merge_counts` before you keep a second copy.",
+          "path": "tally.py",
+          "line": 4,
+          "location": "tally.py:4",
+          "evidence": "score 0.687",
+          "detail": {
+            "unit": "combine_tallies",
+            "other": "merge_counts",
+            "other_path": "counts.py",
+            "other_line": 4,
+            "score": "0.687",
+            "shared": [
+              "Counter",
+              "dict",
+              "list",
+              "most_common"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

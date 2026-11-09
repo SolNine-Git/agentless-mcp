@@ -85,9 +85,15 @@ fn flush_failure(error: &io::Error) -> String {
     )
 }
 
-/// Writes the refusal of a `hook` command line that names none of the four hooks, and returns 2.
+/// Writes the refusal of a `hook` command line that names no hook and no settings command, and
+/// returns 2.
 pub fn refuse_hook(streams: &mut Streams<'_>) -> u8 {
     fail(streams.err, HOOK_USAGE, EXIT_USAGE)
+}
+
+/// Writes the usage of the `hook` command lines to stdout, and returns 0.
+pub fn hook_help(streams: &mut Streams<'_>) -> u8 {
+    write_answer(streams, &format!("{HOOK_USAGE}\n"), "", EXIT_OK)
 }
 
 /// Returns the one stderr line that reports a panic.

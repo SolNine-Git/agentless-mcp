@@ -83,7 +83,7 @@ fn unresolved_note(count: u32) -> Option<String> {
 }
 
 // The chain closes the ring by naming its first file again.
-fn chain(cycle: &CycleRow) -> String {
+pub(crate) fn chain(cycle: &CycleRow) -> String {
     let first = cycle.files.first().map(String::as_str);
     let ring: Vec<&str> = cycle
         .files

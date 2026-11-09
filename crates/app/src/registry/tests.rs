@@ -112,6 +112,7 @@ fn each_pair_check_keeps_the_paths_of_its_rule() {
         ("clone_delta", [true, false, false, false]),
         ("callee_overlap", [true, false, false, false]),
         ("cycle_dodge", [true, false, false, false]),
+        ("reuse_candidates", [true, false, false, false]),
     ];
     assert_eq!(found, expected);
 }

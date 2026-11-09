@@ -44,6 +44,7 @@ fn file_graph<'a>(
 #[test]
 fn the_file_graph_stops_under_a_spent_deadline() {
     let files = files();
+    let files: Vec<&FileFacts> = files.iter().collect();
     let (index, scopes) = (NameIndex::build(&files), Scopes::build(&files));
     assert!(is_spent(&file_graph(&index, &scopes, Some(&spent()))));
 }
@@ -51,6 +52,7 @@ fn the_file_graph_stops_under_a_spent_deadline() {
 #[test]
 fn the_ranking_stops_under_a_spent_deadline() {
     let files = files();
+    let files: Vec<&FileFacts> = files.iter().collect();
     let (index, scopes) = (NameIndex::build(&files), Scopes::build(&files));
     let graph = file_graph(&index, &scopes, None).expect("no deadline stops it");
     let ranked = pagerank(&graph, &BTreeMap::new(), |_| false, Some(&spent()));
@@ -60,6 +62,7 @@ fn the_ranking_stops_under_a_spent_deadline() {
 #[test]
 fn the_community_passes_stop_under_a_spent_deadline() {
     let files = files();
+    let files: Vec<&FileFacts> = files.iter().collect();
     let (index, scopes) = (NameIndex::build(&files), Scopes::build(&files));
     let graph = file_graph(&index, &scopes, None).expect("no deadline stops it");
     assert!(graph.edge_count() > 0, "a graph with no edges runs no pass");
@@ -69,6 +72,7 @@ fn the_community_passes_stop_under_a_spent_deadline() {
 #[test]
 fn reference_resolution_stops_under_a_spent_deadline() {
     let files = files();
+    let files: Vec<&FileFacts> = files.iter().collect();
     let (index, scopes) = (NameIndex::build(&files), Scopes::build(&files));
     let resolver = Resolver::new(&index, &scopes);
     assert!(is_spent(&SymbolGraph::build(&resolver, Some(&spent()))));
@@ -77,6 +81,7 @@ fn reference_resolution_stops_under_a_spent_deadline() {
 #[test]
 fn the_path_search_stops_under_a_spent_deadline() {
     let files = files();
+    let files: Vec<&FileFacts> = files.iter().collect();
     let (index, scopes) = (NameIndex::build(&files), Scopes::build(&files));
     let resolver = Resolver::new(&index, &scopes);
     let graph = SymbolGraph::build(&resolver, None).expect("no deadline stops it");
@@ -93,6 +98,7 @@ fn the_path_search_stops_under_a_spent_deadline() {
 #[test]
 fn a_cancelled_deadline_stops_the_ranking_with_its_own_reason() {
     let files = files();
+    let files: Vec<&FileFacts> = files.iter().collect();
     let (index, scopes) = (NameIndex::build(&files), Scopes::build(&files));
     let graph = file_graph(&index, &scopes, None).expect("no deadline stops it");
     let deadline = Deadline::new(60.0, 0.0, Arc::new(PinnedClock::at(UNIX_EPOCH)));

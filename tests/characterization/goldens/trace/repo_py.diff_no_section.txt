@@ -1,0 +1,2 @@
+// agentless-mcp receipt   repo: <REPO>   head: 06b750b6   dirty: 4 files   cache: none
+more=callers does not apply to a diff card. Diff sections: tree, declares.

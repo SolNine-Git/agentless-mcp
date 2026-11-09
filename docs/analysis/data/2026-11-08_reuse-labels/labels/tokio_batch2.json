@@ -1,0 +1,398 @@
+[
+ {
+  "id": "T056",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "with and with_mut are the const and mut accessor pair of one cell, separate jobs."
+ },
+ {
+  "id": "T006",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling contention benches for different channel types (watch vs broadcast) that share a harness pattern."
+ },
+ {
+  "id": "T030",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "map on two different guard types; each builds its own guard type."
+ },
+ {
+  "id": "T077",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling fs wrappers that each forward to a different std::fs operation."
+ },
+ {
+  "id": "T057",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical try_io rule (registration try_io around mio try_io) on two socket types; a readiness fix must reach both."
+ },
+ {
+  "id": "T019",
+  "label": "duplicate",
+  "low_confidence": true,
+  "reason": "Both build the hermetic git test environment (PATH, HOME, GIT_CONFIG_*), already drifted on XDG_CACHE_HOME; A adds override merging."
+ },
+ {
+  "id": "T113",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Inverse state transitions (to and from searching), separate jobs."
+ },
+ {
+  "id": "T092",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical async_io rule (registration async_io around mio try_io) on TCP and Unix streams; a readiness fix must reach both."
+ },
+ {
+  "id": "T041",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling fs wrappers for different operations (symlink vs copy)."
+ },
+ {
+  "id": "T099",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Constructors of different sync primitives that share the tracing resource-span pattern."
+ },
+ {
+  "id": "T104",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling fs wrappers for different operations (read vs canonicalize)."
+ },
+ {
+  "id": "T075",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Code generator for the extension table vs a renderer that groups it; producer and consumer, separate jobs."
+ },
+ {
+  "id": "T070",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical try_io rule on UnixDatagram and TcpStream; a readiness fix must reach both."
+ },
+ {
+  "id": "T042",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Accessor family over one packed state word (is_empty vs len)."
+ },
+ {
+  "id": "T089",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Same unsafe-cell access pattern in two unrelated types with their own invariants."
+ },
+ {
+  "id": "T064",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling sharded-list operations (pop_back vs remove) that share count bookkeeping."
+ },
+ {
+  "id": "T108",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Same-named ownership checks on two task lists with deliberately different asserts and safety arguments."
+ },
+ {
+  "id": "T076",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Different socket operations (peek vs send) built on the same registration adapter."
+ },
+ {
+  "id": "T037",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Both build a text-valued optional Action; B re-implements A with metavar fixed to FILE and kind spelled out."
+ },
+ {
+  "id": "T022",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "async_io on a named pipe vs AsyncFd with different closure wrapping, same API family."
+ },
+ {
+  "id": "T021",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling fs wrappers for different operations (canonicalize vs symlink_metadata)."
+ },
+ {
+  "id": "T067",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical local-queue len computation in the multi_thread scheduler and its alt fork."
+ },
+ {
+  "id": "T054",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Accessor family over one packed state word (is_empty vs is_closed)."
+ },
+ {
+  "id": "T049",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "A test of bound_names vs the builder that normalizes local_names; same data, separate jobs."
+ },
+ {
+  "id": "T023",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical per-platform into_std raw-handle conversion on TcpStream and TcpListener; a platform fix must reach both."
+ },
+ {
+  "id": "T050",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling mock-builder methods queueing different actions (read vs read_error)."
+ },
+ {
+  "id": "T095",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling fs wrappers for different operations (set_permissions vs canonicalize)."
+ },
+ {
+  "id": "T039",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling task-state transitions with different ref-count semantics (by_val vs by_ref)."
+ },
+ {
+  "id": "T017",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Different socket operations (recv vs peek) built on the same registration adapter."
+ },
+ {
+  "id": "T087",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling task-state transitions (notify-and-cancel vs notify by value) with different rules."
+ },
+ {
+  "id": "T105",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "with_mut accessors on two different loom shim types with different access rules."
+ },
+ {
+  "id": "T090",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical async_io rule on TcpStream and UdpSocket; a readiness fix must reach both."
+ },
+ {
+  "id": "T035",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Two different fd-to-tokio-type conversions that share the raw-fd-to-mio pattern."
+ },
+ {
+  "id": "T014",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "File::create and OpenOptions::open open files with different options, sibling entry points."
+ },
+ {
+  "id": "T016",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "OpenOptions::open and File::open open files with different options, sibling entry points."
+ },
+ {
+  "id": "T111",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling sharded-list operations (lock_shard vs remove) that both look up a shard by id."
+ },
+ {
+  "id": "T069",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "metadata adapters on two types (DirEntry vs File) that each forward to their own std type."
+ },
+ {
+  "id": "T078",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Per-bench runtime helpers with independently chosen worker counts."
+ },
+ {
+  "id": "T044",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling fs wrappers for different operations (copy vs rename)."
+ },
+ {
+  "id": "T045",
+  "label": "duplicate",
+  "low_confidence": true,
+  "reason": "try_map holds map's guard-rebuild logic as a part plus the None branch; the rebuild must change together."
+ },
+ {
+  "id": "T007",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Producer of a HealthSymbol row vs its text renderer; producer and consumer."
+ },
+ {
+  "id": "T009",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "A calls B and falls back to measuring; caller and callee."
+ },
+ {
+  "id": "T027",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "async_io on a named pipe vs AsyncFd with different closure wrapping, same API family."
+ },
+ {
+  "id": "T011",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Different benchmarks that share the spawn-and-countdown pattern."
+ },
+ {
+  "id": "T012",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical worker_local_queue_depth metric in the multi_thread scheduler and its alt fork."
+ },
+ {
+  "id": "T065",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Both manipulate the runtime-entered context state but do different jobs."
+ },
+ {
+  "id": "T083",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling fs wrappers for different operations (hard_link vs copy)."
+ },
+ {
+  "id": "T085",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Readiness pollers for different directions on different types."
+ },
+ {
+  "id": "T082",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Same remaining-slots rule in the multi_thread queue and its alt fork, differing only in the capacity source."
+ },
+ {
+  "id": "T062",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Plain per-type delegation of try_write_vectored on two pipe types, adapters of one service."
+ },
+ {
+  "id": "T058",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "The same spawn bench on two runtime flavors, siblings."
+ },
+ {
+  "id": "T072",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Constructors of different sync primitives that share the tracing resource-span pattern."
+ },
+ {
+  "id": "T106",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Identical runtime helpers in a unit test and a bench, each an independent local choice."
+ },
+ {
+  "id": "T047",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Both match on scheduler Handle variants but do different jobs."
+ },
+ {
+  "id": "T036",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling fs wrappers for different operations (create_dir_all vs copy)."
+ },
+ {
+  "id": "T008",
+  "label": "duplicate",
+  "low_confidence": true,
+  "reason": "Both split a leading decimal-digit run from text and return value plus rest, into u64 vs Natural."
+ },
+ {
+  "id": "T073",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "map on two different guard types; each builds its own guard type."
+ },
+ {
+  "id": "T004",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Identical do_work workload helper copied into two contention benches."
+ },
+ {
+  "id": "T053",
+  "label": "duplicate",
+  "low_confidence": true,
+  "reason": "push_back holds push_back_finish's slot-write and tail-publish logic as a part."
+ },
+ {
+  "id": "T005",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "skip_drop on two different guard types, each copying its own fields."
+ },
+ {
+  "id": "T032",
+  "label": "duplicate",
+  "low_confidence": false,
+  "reason": "Same child-by-field lookup and descendant-offset rule implemented on Parsed and on Cursor."
+ },
+ {
+  "id": "T059",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling fs wrappers for different operations (create_dir_all vs canonicalize)."
+ },
+ {
+  "id": "T043",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Different socket operations (recv_from vs peek) built on the same registration adapter."
+ },
+ {
+  "id": "T051",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling mock-builder methods queueing different actions (read_error vs write)."
+ },
+ {
+  "id": "T110",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Sibling spawn benches that measure different spawn counts."
+ },
+ {
+  "id": "T071",
+  "label": "related",
+  "low_confidence": false,
+  "reason": "Different queue accessors (remaining_slots vs len) in sibling schedulers."
+ }
+]

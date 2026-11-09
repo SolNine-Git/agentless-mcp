@@ -1,0 +1,410 @@
+[
+  {
+    "id": "S080",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling DMP methods that unify operands and call different dense routines (mul versus cancel)."
+  },
+  {
+    "id": "S040",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Same yn-to-bessely rewrite in the Julia and Octave printers; a fix to the identity must be made in both."
+  },
+  {
+    "id": "S103",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two entry-function matrix builders for different operations (row add versus column delete)."
+  },
+  {
+    "id": "S059",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Domain converter adapters on different domains for different source types."
+  },
+  {
+    "id": "S013",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Both work on coset tables, but switch swaps two points and first_in_class tests canonicity."
+  },
+  {
+    "id": "S094",
+    "label": "duplicate",
+    "low_confidence": true,
+    "reason": "Both build an error Section with the same ordinal-is-index-plus-one and empty-notes rule."
+  },
+  {
+    "id": "S046",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Trace.doit calls _eval_trace and Adjoint implements it: consumer and producer."
+  },
+  {
+    "id": "S024",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Identical generic relational rendering in the Julia and GLSL printers; an operand-printing fix applies to both."
+  },
+  {
+    "id": "S084",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Domain converter adapters on different domains for different source types."
+  },
+  {
+    "id": "S052",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling patch checks with one signature that detect different problems (shadowing versus dangling callers)."
+  },
+  {
+    "id": "S066",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling diagonal-predicate handlers for different matrix expression types."
+  },
+  {
+    "id": "S011",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two Aesara printer methods for different operations (MatPow versus MatMul) that both fold dot."
+  },
+  {
+    "id": "S069",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Domain converter adapters on different domains for different source types."
+  },
+  {
+    "id": "S071",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Indexed printers for two languages with different index syntax; little logic is shared."
+  },
+  {
+    "id": "S045",
+    "label": "related",
+    "low_confidence": true,
+    "reason": "A is the helper nested inside B (the same source lines), so there is one home, not two copies."
+  },
+  {
+    "id": "S068",
+    "label": "duplicate",
+    "low_confidence": true,
+    "reason": "Both encode the parent-or-dot path rule in two crates, and they already diverge for a path with no parent."
+  },
+  {
+    "id": "S085",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling Poly methods that follow one delegate-to-rep pattern for different operations."
+  },
+  {
+    "id": "S047",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Same 1-based slice rendering in the Octave and Julia printers; only the outer brackets differ."
+  },
+  {
+    "id": "S029",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Max and Min share the same balanced ternary rendering and differ only in the comparison operator."
+  },
+  {
+    "id": "S072",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Both convert coefficients with dom.to_sympy, but over different representations and selections."
+  },
+  {
+    "id": "S007",
+    "label": "unrelated",
+    "low_confidence": false,
+    "reason": "Zero-ness of a power and the sign of a product are different deductions that share only the assumption protocol."
+  },
+  {
+    "id": "S114",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Rational printers for two languages with different literal syntax."
+  },
+  {
+    "id": "S005",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two MathML printers for different functions that follow one mrow/mi/mfenced pattern."
+  },
+  {
+    "id": "S060",
+    "label": "unrelated",
+    "low_confidence": false,
+    "reason": "A trace derivative and a product evaluation share only the rewrite(Sum) and doit calls."
+  },
+  {
+    "id": "S019",
+    "label": "duplicate",
+    "low_confidence": true,
+    "reason": "Both run a subprocess with a deadline and fail on a nonzero exit; A also kills the process tree."
+  },
+  {
+    "id": "S023",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Compatibility wrappers around different gf_* routines."
+  },
+  {
+    "id": "S110",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "MatPow printers for two languages with different power operators and parenthesization."
+  },
+  {
+    "id": "S035",
+    "label": "related",
+    "low_confidence": true,
+    "reason": "B is the helper nested inside A (the same source lines), so there is one home, not two copies."
+  },
+  {
+    "id": "S088",
+    "label": "duplicate",
+    "low_confidence": true,
+    "reason": "Both find the innermost symbol whose span holds a line, in two crates; B's tie-break helper is not shown."
+  },
+  {
+    "id": "S095",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling diagonal-predicate handlers for different matrix expression types."
+  },
+  {
+    "id": "S061",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Identical generic relational rendering in the GLSL and Octave printers; an operand-printing fix applies to both."
+  },
+  {
+    "id": "S073",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling polynomial-class methods that unify operands and call different routines (cancel versus sub)."
+  },
+  {
+    "id": "S115",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Both parse a str, Symbol or Dimension into a Dimension with the same rule; only the error text differs."
+  },
+  {
+    "id": "S044",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Per-class Hilbert-space declarations that happen to give the same space; no shared rule must change together."
+  },
+  {
+    "id": "S018",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling asymptotic expansions of different functions (Si versus Fresnel C) with different series."
+  },
+  {
+    "id": "S086",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Compatibility wrappers around different dup_* routines."
+  },
+  {
+    "id": "S102",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Compatibility wrappers around different dup_* routines."
+  },
+  {
+    "id": "S096",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "One serializer sorts object keys recursively and the other keeps a given entry order: different jobs."
+  },
+  {
+    "id": "S062",
+    "label": "related",
+    "low_confidence": true,
+    "reason": "A is the helper nested inside B (the same source lines), so there is one home, not two copies."
+  },
+  {
+    "id": "S063",
+    "label": "duplicate",
+    "low_confidence": true,
+    "reason": "Both enforce the same non-empty trimmed string rule for a value; B adds a key-name check."
+  },
+  {
+    "id": "S076",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Identical generic relational rendering in the C and R printers; an operand-printing fix applies to both."
+  },
+  {
+    "id": "S070",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Per-class Hilbert-space declarations that happen to give the same space; no shared rule must change together."
+  },
+  {
+    "id": "S058",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling Weyl-group methods that dispatch on the Cartan series to compute different facts."
+  },
+  {
+    "id": "S064",
+    "label": "duplicate",
+    "low_confidence": true,
+    "reason": "Fresnel S and C share the same p and q series terms; a fix to those terms must be made in both."
+  },
+  {
+    "id": "S074",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Domain converter adapters on different domains for different source types."
+  },
+  {
+    "id": "S043",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Both coerce a str argument, but one returns a Symbol and the other a Dimension."
+  },
+  {
+    "id": "S001",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling in-place row operations with different functor arguments."
+  },
+  {
+    "id": "S010",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "A symmetric-predicate handler and a Transpose refiner use the same fact for different jobs."
+  },
+  {
+    "id": "S037",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Per-class Hilbert-space declarations that happen to give the same space; no shared rule must change together."
+  },
+  {
+    "id": "S027",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Compatibility wrappers around different gf_* routines."
+  },
+  {
+    "id": "S056",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Both involve Trace and rewrite(Sum), but one computes a trace and the other a derivative."
+  },
+  {
+    "id": "S097",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Printers for a Piecewise part and a whole Piecewise in two different output formats."
+  },
+  {
+    "id": "S034",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Identical generic relational rendering in the Octave and C printers; an operand-printing fix applies to both."
+  },
+  {
+    "id": "S091",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling Weyl-group methods that dispatch on the Cartan series to give different facts (order versus name)."
+  },
+  {
+    "id": "S079",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Domain converter adapters on different domains."
+  },
+  {
+    "id": "S050",
+    "label": "unrelated",
+    "low_confidence": false,
+    "reason": "Binomial and Riemann xi evaluation are different mathematics that share only the eval protocol and gamma."
+  },
+  {
+    "id": "S099",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Power printers for two output languages with different operators."
+  },
+  {
+    "id": "S031",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Domain converter adapters on different domains for different source types."
+  },
+  {
+    "id": "S026",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Aesara is a fork of Theano and both printers hold the same MatPow rule; a fix to one applies to the other."
+  },
+  {
+    "id": "S106",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two entry-function matrix builders for different operations (column scale versus column insert)."
+  },
+  {
+    "id": "S049",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two CosetTable methods with different jobs (find a representative versus swap two points)."
+  },
+  {
+    "id": "S077",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Evaluation rules of two related combinatorial functions (binomial and Catalan) with different cases."
+  },
+  {
+    "id": "S065",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Indexed printers for two languages with different index syntax; little logic is shared."
+  },
+  {
+    "id": "S082",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Indexed printers for two languages with different index syntax; little logic is shared."
+  },
+  {
+    "id": "S002",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling patch checks with one signature that detect different problems (arity versus shadowing)."
+  },
+  {
+    "id": "S111",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Aesara is a fork of Theano and both printers hold the same Rational-to-true_div rule."
+  },
+  {
+    "id": "S039",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Domain converter adapters on different domains for different source types."
+  },
+  {
+    "id": "S112",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling frame-orientation methods that compute different direction cosine matrices and share only the bookkeeping tail."
+  }
+]

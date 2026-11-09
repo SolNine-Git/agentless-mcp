@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use graph::{CommunityPartition, FileGraph, detect_communities};
+use graph::{CommunityPartition, FileFacts, FileGraph, detect_communities};
 use text::strip;
 
 use crate::bounds::within;
@@ -116,7 +116,8 @@ pub fn diagram(
     };
     let config = &reading.repo.config;
     over_scan(services, reading, |facts| {
-        let ranked = Ranked::build(&facts.files, config, reading.deadline)?;
+        let files: Vec<&FileFacts> = facts.files.iter().collect();
+        let ranked = Ranked::build(&files, config, reading.deadline)?;
         let focus = match diagram_focus(request.focus.as_deref(), &ranked) {
             Ok(focus) => focus,
             Err(message) => return Ok(empty(request, message)),

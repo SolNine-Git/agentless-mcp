@@ -1,0 +1,2 @@
+// agentless-mcp receipt   repo: <REPO>   head: 47e14e8d   dirty: 0 files   cache: none
+search files=*.py in catalog: no file matches the glob. A glob matches the path from the root. Start it with **/ to match at any depth.
