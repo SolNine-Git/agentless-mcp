@@ -1,4 +1,4 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
 search /def / in pricing.py: 6 matches in 1 file
 pricing.py
   PriceBook.__init__  [py:pricing.py::PriceBook.__init__] @29-36

@@ -1,4 +1,4 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
 reports.py  python  79 lines  ids: py:reports.py::<QualifiedName>
 declares: 8 (5 functions, 2 constants, 1 class)
   REPORT_WIDTH @8, SEPARATOR @9, class ReportError @12, def stock_value @16, def reorder_report @29, def _format_row @47, def check_report_inputs @55, def summarise @69

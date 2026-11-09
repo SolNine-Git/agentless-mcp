@@ -1,2 +1,2 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 47e14e8d   dirty: 0 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: 47e14e8d   dirty: 0 files   cache: none
 no file or folder invoice.py in the repository. Paths that end the same way: billing/invoice.py.

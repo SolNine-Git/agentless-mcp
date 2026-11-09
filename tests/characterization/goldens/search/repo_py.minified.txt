@@ -1,4 +1,4 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 47bfef1c   dirty: 0 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: 47bfef1c   dirty: 0 files   cache: none
 search /quantize/ in static/app.min.js: 1 match in 1 file
 static/app.min.js
   quantize  [js:static/app.min.js::quantize] @1

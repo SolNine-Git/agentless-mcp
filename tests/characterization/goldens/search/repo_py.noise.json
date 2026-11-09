@@ -5,10 +5,8 @@
     "tree": "b4629067",
     "dirty": 0,
     "cache": "none",
-    "note": "",
-    "notice": "repository data below"
+    "note": ""
   },
-  "notice": "repository data below",
   "request": {
     "pattern": "quantize",
     "files": null,

@@ -4,7 +4,6 @@ pub const prompts::envelope::CEILING_TRUNCATION: prompts::Template<(prompts::Cou
 pub const prompts::envelope::JSON_CEILING_OVERSIZED_ITEM: prompts::Template<prompts::Count>
 pub const prompts::envelope::JSON_CEILING_TRIMMED: prompts::Template<prompts::Count>
 pub const prompts::envelope::JSON_CEILING_UNTRIMMABLE: prompts::Template<prompts::Count>
-pub const prompts::envelope::NOTICE: &str
 pub const prompts::envelope::RECEIPT_CONFIG: prompts::Template<prompts::Text>
 pub const prompts::envelope::RECEIPT_CONFIG_WARNING: prompts::Template<prompts::Text>
 pub const prompts::envelope::RECEIPT_FIELDS: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
@@ -36,6 +35,7 @@ pub const prompts::messages::CACHE_BUILD_HINT: prompts::Template<prompts::Text>
 pub const prompts::messages::CACHE_DISCARDED_NO_INDEX: &str
 pub const prompts::messages::CACHE_DISCARDED_OLD_SCHEMA: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::CACHE_DISCARDED_OTHER_REPO: prompts::Template<prompts::Text>
+pub const prompts::messages::CACHE_STALE: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::CACHE_STALE_REFRESHING: &str
 pub const prompts::messages::CACHE_STALE_REMEDIATION: prompts::Template<prompts::Text>
 pub const prompts::messages::CALLEE_OVERLAP_COMPARED: &str

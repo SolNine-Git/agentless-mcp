@@ -8,8 +8,8 @@ use app::{Chars4, ConfigView, Repo, Session, TokenCounter};
 use git::Snapshot;
 use io::ProjectConfig;
 use prompts::envelope::{
-    NOTICE, RECEIPT_CONFIG, RECEIPT_CONFIG_WARNING, RECEIPT_FIELDS, RECEIPT_FIELDS_REV,
-    RECEIPT_HEADER, RECEIPT_NOTE, RECEIPT_REPO, RECEIPT_SUMMARY,
+    RECEIPT_CONFIG, RECEIPT_CONFIG_WARNING, RECEIPT_FIELDS, RECEIPT_FIELDS_REV, RECEIPT_HEADER,
+    RECEIPT_NOTE, RECEIPT_REPO, RECEIPT_SUMMARY,
 };
 use serde::Serialize;
 
@@ -132,7 +132,6 @@ impl<'a> Receipt<'a> {
             dirty: self.dirty,
             cache: self.cache,
             note: self.note,
-            notice: NOTICE,
             config,
         }
     }
@@ -164,7 +163,6 @@ pub(crate) struct Fields<'a> {
     dirty: Option<usize>,
     cache: &'a str,
     note: &'a str,
-    notice: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     config: Option<ConfigView<'a>>,
 }

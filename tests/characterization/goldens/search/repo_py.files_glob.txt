@@ -1,4 +1,4 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
 search /Decimal\(/ files={pricing,reports}.py: 9 matches in 2 files
 pricing.py
   BASE_MARKUP  [py:pricing.py::BASE_MARKUP] @6

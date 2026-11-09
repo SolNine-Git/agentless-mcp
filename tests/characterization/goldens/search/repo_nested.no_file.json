@@ -5,10 +5,8 @@
     "tree": "cbd127a3",
     "dirty": 0,
     "cache": "none",
-    "note": "",
-    "notice": "repository data below"
+    "note": ""
   },
-  "notice": "repository data below",
   "request": {
     "pattern": "Decimal",
     "files": "*.py",

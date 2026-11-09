@@ -258,6 +258,37 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **The receipt is shorter: `// agentless-mcp receipt`, no JSON `notice`,
+  and short cache states.** The marker went on with `(repository data
+  below)`, and a JSON answer carried the same words twice, as `notice` in
+  the receipt object and at the top level. The line after the receipt says
+  nothing new: everything after the receipt lines is repository content, as
+  the agent guide states, and the textsafe escape that stops a forged marker
+  keys on `// agentless-mcp receipt` and stays as it is. The long cache
+  states become tokens that keep the cache generation: `g:<g> stale,
+  refreshing` in place of `g:<g> generation mismatch (repo g:<r>); changed
+  files parse live; a background refresh is in progress`, `g:<g> stale, run
+  agentless-mcp index --repo <root>` in place of the same mismatch with
+  `...; run agentless-mcp index --repo <root> for performance`, and
+  `none (refreshing)` in place of `none (a background refresh is in
+  progress)`; the agent guide says what each token means. Measured with
+  tiktoken `cl100k_base`: 5 tokens fewer on each text answer, 18 on each
+  JSON answer, and 20 (refreshing) or 17 (stale) fewer while the cache is
+  stale. No consumer reads the removed words: a grep of the bench harness
+  (swe-explore-bench) finds them only in recorded transcripts, and
+  `scripts/surface_cmp.py` matches the `// agentless-mcp receipt` prefix.
+  The 118 goldens that hold a receipt change by one mechanical edit each
+  (95 text goldens lose the words from line 1, 23 JSON goldens lose the two
+  `notice` lines), with their counts in
+  `crates/app/fixtures/read/tokens.json` (-5 and -18). The changed recorded
+  values: the receipt text in 12 fixture files (cli scenarios, render
+  envelope and capabilities, store receipts and cases, the guide copies)
+  and, in `crates/render/fixtures/envelope.json`, `read/envelope.json` and
+  `capabilities.json`, 27 ceiling cases whose cut point moves with the
+  shorter receipt: a text cut keeps 3 more 8-character lines (the marker is
+  24 characters shorter), an over-ceiling count is 19 tokens lower (the two
+  `notice` members), and a trimmed list keeps one more item.
+
 - **`lint --help` says what `reuse_candidates` reads.** The `--only` text
   named the check but described the reads of the other pair checks only. It
   now adds: "reuse_candidates reads the action names of every function from

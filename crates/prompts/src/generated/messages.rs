@@ -90,7 +90,7 @@ pub const ARGUMENT_UNKNOWN: Template<(Text, Text)> = Template::new(&[
 ]);
 
 /// A text that takes no values.
-pub const CACHE_ABSENT_REFRESHING: &str = "a background refresh is in progress";
+pub const CACHE_ABSENT_REFRESHING: &str = "refreshing";
 
 /// A template that takes `repo_root`.
 pub const CACHE_BUILD_HINT: Template<Text> = Template::new(&[
@@ -120,15 +120,21 @@ pub const CACHE_DISCARDED_OTHER_REPO: Template<Text> = Template::new(&[
     Piece::Value(0),
 ]);
 
+/// A template that takes (`sha`, `note`).
+pub const CACHE_STALE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("g:"),
+    Piece::Value(0),
+    Piece::Text(" stale, "),
+    Piece::Value(1),
+]);
+
 /// A text that takes no values.
-pub const CACHE_STALE_REFRESHING: &str = "changed files parse live; a background refresh is in \
-        progress";
+pub const CACHE_STALE_REFRESHING: &str = "refreshing";
 
 /// A template that takes `repo_root`.
 pub const CACHE_STALE_REMEDIATION: Template<Text> = Template::new(&[
-    Piece::Text("changed files parse live; run agentless-mcp index --repo "),
+    Piece::Text("run agentless-mcp index --repo "),
     Piece::Value(0),
-    Piece::Text(" for performance"),
 ]);
 
 /// A text that takes no values.

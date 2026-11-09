@@ -1,4 +1,4 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 45d898f1   dirty: 0 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: 45d898f1   dirty: 0 files   cache: none
 search /formatMoney/: 5 matches in 2 files
 pricing.ts
   formatMoney  [ts:pricing.ts::formatMoney] @94-96

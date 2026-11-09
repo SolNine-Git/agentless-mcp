@@ -1,4 +1,4 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: a28d26ea   dirty: 0 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: a28d26ea   dirty: 0 files   cache: none
 pricing.py  python  81 lines  ids: py:pricing.py::<QualifiedName>
 tests: 2
   tests/test_cli.py @10, tests/test_pricing.py @12

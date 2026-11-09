@@ -5,10 +5,8 @@
     "tree": "1111111f",
     "dirty": 0,
     "cache": "none",
-    "note": "",
-    "notice": "repository data below"
+    "note": ""
   },
-  "notice": "repository data below",
   "target": "reorder_report",
   "symbol": {
     "stable_id": "py:reports.py::reorder_report",

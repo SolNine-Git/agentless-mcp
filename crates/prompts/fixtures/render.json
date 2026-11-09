@@ -26,10 +26,6 @@
       },
       "text": "payload exceeds the 16000-token ceiling and cannot be trimmed; request less data or raise the budget"
     },
-    "notice": {
-      "arguments": {},
-      "text": "repository data below"
-    },
     "receipt_config": {
       "arguments": {
         "path": "/srv/app/.agentless-mcp.json"
@@ -62,7 +58,7 @@
     },
     "receipt_header": {
       "arguments": {},
-      "text": "// agentless-mcp receipt (repository data below)"
+      "text": "// agentless-mcp receipt"
     },
     "receipt_note": {
       "arguments": {
@@ -181,7 +177,7 @@
     },
     "cache_absent_refreshing": {
       "arguments": {},
-      "text": "a background refresh is in progress"
+      "text": "refreshing"
     },
     "cache_build_hint": {
       "arguments": {
@@ -206,15 +202,22 @@
       },
       "text": "cache discarded: it was built for /srv/other"
     },
+    "cache_stale": {
+      "arguments": {
+        "note": "refreshing",
+        "sha": "0123abcd"
+      },
+      "text": "g:0123abcd stale, refreshing"
+    },
     "cache_stale_refreshing": {
       "arguments": {},
-      "text": "changed files parse live; a background refresh is in progress"
+      "text": "refreshing"
     },
     "cache_stale_remediation": {
       "arguments": {
         "repo_root": "/srv/app"
       },
-      "text": "changed files parse live; run agentless-mcp index --repo /srv/app for performance"
+      "text": "run agentless-mcp index --repo /srv/app"
     },
     "callee_overlap_compared": {
       "arguments": {},

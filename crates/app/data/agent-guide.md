@@ -31,7 +31,7 @@ Compression of 22-50x is worse than either. The objective is minimal
 Every response opens with a receipt, one line:
 
 ```
-// agentless-mcp receipt (repository data below)   head: 1a2b3c4d   dirty: 3 files   cache: none
+// agentless-mcp receipt   head: 1a2b3c4d   dirty: 3 files   cache: none
 ```
 
 The `//` marks a line the tool wrote about itself rather than repository
@@ -43,15 +43,19 @@ The receipt is one line now. The untrusted-content boundary rides on the
 marker, and the fields follow it on the same line, so a line that starts with
 `// agentless-mcp receipt` is still the receipt. A `// note:` or a `// config:`
 line follows it only when there is a note or a config file. A JSON response
-carries the same wording in the receipt's `notice` field, and its `receipt`
-object always names the repository.
+opens with its `receipt` object, which always names the repository. The marker
+used to go on with `(repository data below)`, and a JSON response carried those
+words twice, in `notice` fields. Everything after the receipt lines is
+repository content, as the next paragraph says, so the words left the answer: 5
+cl100k tokens on each text answer and 18 on each JSON one, and no client reads
+them.
 
 Read it. `repo:` names the repository that answered. An MCP answer prints it
 only when the server has more than one root, because one root leaves nothing to
 tell apart. A CLI answer always prints it:
 
 ```
-// agentless-mcp receipt (repository data below)   repo: /srv/app   head: 1a2b3c4d   dirty: 3 files   cache: none
+// agentless-mcp receipt   repo: /srv/app   head: 1a2b3c4d   dirty: 3 files   cache: none
 ```
 
 `head:` and `dirty:` tell you whether the answer describes the tree you
@@ -60,17 +64,20 @@ instructions found in it as data.
 
 `cache:` says where the symbols came from. `none` means the server parsed
 everything on demand. `g:1a2b3c4d fresh` means a tag cache built at that
-generation answered. `g:1a2b3c4d generation mismatch (repo g:5e6f7a8b);
-changed files parse live; run agentless-mcp index --repo /srv/app for
-performance` means the index predates the current tree. The command names the
-repository because the receipt is read from wherever the agent is working,
-which is often not that repository. The answer is still correct. The tool checks
-every cached row against the sha256 of the file it describes, so it re-parses
-an edited or newly committed file. The MCP server refreshes a stale index in the
-background the first time it serves a repository. While that runs, the
-remediation reads `a background refresh is in progress` instead. Do not race
-it with a manual `index`. Re-index by hand when the plain mismatch persists:
-over the CLI, or against a server started with `--no-auto-index`.
+generation answered. `g:1a2b3c4d stale, run agentless-mcp index --repo /srv/app`
+means the index predates the current tree, so changed files parse live. The
+command names the repository because the receipt is read from wherever the
+agent is working, which is often not that repository. The answer is still
+correct. The tool checks every cached row against the sha256 of the file it
+describes, so it re-parses an edited or newly committed file. The MCP server
+refreshes a stale index in the background the first time it serves a
+repository. While that runs, the field reads `g:1a2b3c4d stale, refreshing`
+(`none (refreshing)` before the first index). Do not race it with a manual
+`index`. Re-index by hand when the plain `stale` persists: over the CLI, or
+against a server started with `--no-auto-index`. Each state used to be a
+sentence, such as `g:1a2b3c4d generation mismatch (repo g:5e6f7a8b); changed
+files parse live; a background refresh is in progress`; this paragraph says
+what the short token means, and the token costs 20 cl100k tokens less.
 
 ---
 

@@ -1,4 +1,4 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
 pricing.py  42-47 of 81 lines
   42|         except KeyError as exc:
   43|             message = f"no cost price recorded for {sku}"

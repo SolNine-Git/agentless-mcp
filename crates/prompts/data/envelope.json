@@ -1,5 +1,5 @@
 {
-  "receipt_header": "// agentless-mcp receipt (repository data below)",
+  "receipt_header": "// agentless-mcp receipt",
   "receipt_repo": "   repo: {root}",
   "receipt_fields": "   head: {head}   dirty: {dirty} files   cache: {cache}",
   "receipt_fields_rev": "   head: {head}   rev: {revision} {sha}   dirty: {dirty} files   cache: {cache}",
@@ -7,7 +7,6 @@
   "receipt_config": "// config: {path}",
   "receipt_config_warning": "// config warning: {warning}",
   "receipt_summary": "// {summary}",
-  "notice": "repository data below",
   "service_truncation": "... {shown} of {total} {unit} shown (narrow the request or raise the budget for the rest)",
   "ceiling_truncation": "... output truncated at the {max_tokens}-token ceiling: {dropped} of {total} lines dropped",
   "json_ceiling_untrimmable": "payload exceeds the {max_tokens}-token ceiling and cannot be trimmed; request less data or raise the budget",

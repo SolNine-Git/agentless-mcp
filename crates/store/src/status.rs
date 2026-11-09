@@ -2,7 +2,9 @@
 
 use std::path::PathBuf;
 
-use prompts::messages::{CACHE_ABSENT_REFRESHING, CACHE_STALE_REFRESHING, CACHE_STALE_REMEDIATION};
+use prompts::messages::{
+    CACHE_ABSENT_REFRESHING, CACHE_STALE, CACHE_STALE_REFRESHING, CACHE_STALE_REMEDIATION,
+};
 
 use crate::{Refusal, shell_quote};
 
@@ -57,17 +59,15 @@ impl CacheStatus {
             } if generation == repo_generation => format!("g:{generation} fresh"),
             CacheState::Indexed {
                 generation,
-                repo_generation,
                 repo_root,
+                ..
             } => {
                 let remediation = if refreshing {
                     CACHE_STALE_REFRESHING.to_owned()
                 } else {
                     CACHE_STALE_REMEDIATION.render(&shell_quote(repo_root))
                 };
-                format!(
-                    "g:{generation} generation mismatch (repo g:{repo_generation}); {remediation}"
-                )
+                CACHE_STALE.render((generation, &remediation))
             }
         }
     }

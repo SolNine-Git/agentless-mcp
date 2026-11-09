@@ -1,4 +1,4 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 2b62ec37   rev: base f5f25218   dirty: 2 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: 2b62ec37   rev: base f5f25218   dirty: 2 files   cache: none
 [py:pricing.py::format_money] @78-81  function
   def format_money(amount: Decimal) -> str
 callers: 4 bound

@@ -29,7 +29,6 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 400] = [
         &["max_tokens"],
         envelope::JSON_CEILING_UNTRIMMABLE.pieces(),
     ),
-    ("envelope", "notice", &[], &[Piece::Text(envelope::NOTICE)]),
     (
         "envelope",
         "receipt_config",
@@ -209,6 +208,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 400] = [
         "cache_discarded_other_repo",
         &["repo_root"],
         messages::CACHE_DISCARDED_OTHER_REPO.pieces(),
+    ),
+    (
+        "messages",
+        "cache_stale",
+        &["sha", "note"],
+        messages::CACHE_STALE.pieces(),
     ),
     (
         "messages",

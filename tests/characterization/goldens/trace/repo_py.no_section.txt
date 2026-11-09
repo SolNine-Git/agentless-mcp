@@ -1,2 +1,2 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
 more=callers does not apply to a file card. File sections: declares, imports, importers, tests, cycles.

@@ -3,7 +3,7 @@
 use json::{JsonForm, to_text};
 use prompts::envelope::{
     CEILING_TRUNCATION, JSON_CEILING_OVERSIZED_ITEM, JSON_CEILING_TRIMMED,
-    JSON_CEILING_UNTRIMMABLE, NOTICE, RECEIPT_HEADER, SERVICE_TRUNCATION,
+    JSON_CEILING_UNTRIMMABLE, RECEIPT_HEADER, SERVICE_TRUNCATION,
 };
 use serde::Serialize;
 use text::splitlines;
@@ -169,7 +169,6 @@ pub(crate) fn wrap_json_whole<P: Serialize>(
 #[derive(Serialize)]
 struct Document<'a, P, T> {
     receipt: &'a Fields<'a>,
-    notice: &'static str,
     #[serde(flatten)]
     payload: &'a P,
     #[serde(flatten)]
@@ -222,7 +221,6 @@ fn document<P: Serialize, T: Serialize>(
 ) -> Result<String, Error> {
     let document = Document {
         receipt,
-        notice: NOTICE,
         payload,
         note,
     };

@@ -1,4 +1,4 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 47e14e8d   dirty: 0 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: 47e14e8d   dirty: 0 files   cache: none
 ./  7 files, 253 lines
   billing/  4 files
   catalog/  3 files

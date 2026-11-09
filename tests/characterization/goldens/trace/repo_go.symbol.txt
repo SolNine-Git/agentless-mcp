@@ -1,4 +1,4 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 9fae3265   dirty: 0 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: 9fae3265   dirty: 0 files   cache: none
 [go:reports.go::StockValue] @30-44  function
   fn StockValue(inv *Inventory, prices *PriceBook, tier Tier) -> (float64, error)
 callers: none

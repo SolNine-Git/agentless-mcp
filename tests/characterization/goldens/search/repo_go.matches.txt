@@ -1,4 +1,4 @@
-// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 9fae3265   dirty: 0 files   cache: none
+// agentless-mcp receipt   repo: <REPO>   head: 9fae3265   dirty: 0 files   cache: none
 search /ReorderReport/: 2 matches in 1 file
 reports.go
     46| // ReorderReport renders a plain-text reorder report.
