@@ -55,7 +55,14 @@ Each byte count is of the served bytes.
   commit ids, with their counts in `crates/app/fixtures/read/tokens.json`;
   the door test replays each through the MCP tool and the CLI. The changed
   recorded values: the `trace` entry of
-  `crates/app/fixtures/surface/surface.json`.
+  `crates/app/fixtures/surface/surface.json`. Measured with the CLI
+  (release build of 7be0eb7, `/usr/bin/time`, no tag cache) on this
+  repository against main (2e8f807, 137 commits; design figure in
+  brackets, at 09847ed over code suffixes only): the default card 2,703 B
+  and 992 cl100k [2,550 B, 895] in 0.24-0.26 s and 62 MB [about 0.3 s];
+  545 source files (data files included) in 20 folders, 352 changed, 2,141
+  added, 336 removed and 15 moved symbols; `more=tree` 31,646 B and 10,472
+  cl100k; `more=declares` stops at the 16,000-token ceiling (63,761 B).
 
 - **`trace` reads a commit: `rev`.** A call with `rev` (MCP) or `--rev`
   (CLI), such as `rev=main`, answers each card as that commit holds the
