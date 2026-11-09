@@ -397,8 +397,16 @@ impl crate::Matchable for Named {
 #[test]
 fn pair_units_pairs_a_body_in_its_file_then_across_files_then_a_name() {
     use crate::{Match, Pairing, pair_units};
-    let old_a = [Named("same", "s", 1), Named("edited", "e1", 5), Named("gone", "g", 9)];
-    let new_a = [Named("same", "s", 1), Named("edited", "e2", 5), Named("fresh", "f", 9)];
+    let old_a = [
+        Named("same", "s", 1),
+        Named("edited", "e1", 5),
+        Named("gone", "g", 9),
+    ];
+    let new_a = [
+        Named("same", "s", 1),
+        Named("edited", "e2", 5),
+        Named("fresh", "f", 9),
+    ];
     let (old_b, new_b) = ([], [Named("gone", "g", 3)]);
     let files: [(&[Named], &[Named]); 2] = [(&old_a, &new_a), (&old_b, &new_b)];
     let pairings = pair_units(&files);
