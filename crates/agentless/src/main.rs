@@ -43,6 +43,9 @@ const SETTINGS: [(&str, SettingsRun); 3] = [
 // The hooks need no start-up directory, so only the other command lines stop on an unread one.
 fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
     let words: Vec<Option<&str>> = args.iter().map(|arg| arg.to_str()).collect();
+    if asks_hook_help(&words) {
+        return with_streams(cli::hook_help);
+    }
     if let [Some("hook"), Some(name)] = words.as_slice() {
         if *name == "erosion" {
             return erosion(env, services);
@@ -77,6 +80,18 @@ fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
                 cli::run(args, env, services, &mut io::stdin().lock(), streams)
             })
         }),
+    }
+}
+
+// `hook --help` and `hook <name> --help` for a hook; each settings command prints its own usage.
+fn asks_hook_help(words: &[Option<&str>]) -> bool {
+    let help = |word: &str| matches!(word, "-h" | "--help");
+    match words {
+        [Some("hook"), Some(flag)] => help(flag),
+        [Some("hook"), Some(name), Some(flag)] => {
+            help(flag) && (*name == "erosion" || hook::ContextHook::named(name).is_some())
+        }
+        _ => false,
     }
 }
 

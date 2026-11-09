@@ -136,6 +136,29 @@ fn a_hook_command_line_that_names_no_hook_is_refused() {
     }
 }
 
+#[test]
+fn hook_help_prints_the_usage_on_stdout_and_exits_0() {
+    let tree = sandbox();
+    let usage = HOOK_REFUSAL
+        .strip_prefix("agentless-mcp: ")
+        .expect("the refusal's prefix");
+    for args in [
+        &["hook", "--help"][..],
+        &["hook", "-h"],
+        &["hook", "read-card", "--help"],
+        &["hook", "prompt-map", "-h"],
+        &["hook", "erosion", "--help"],
+        &["hook", "gate-check", "--help"],
+    ] {
+        let ran = run(&tree, args, &[]);
+        assert_eq!(
+            (ran.code, ran.out.as_str(), ran.err.as_str()),
+            (Some(0), usage, ""),
+            "{args:?}"
+        );
+    }
+}
+
 // Runs `command` with `payload` on stdin and only the hermetic variables and `extra`, so no gate
 // log of the caller reaches the hook.
 fn fed(command: Command, tree: &Tree, payload: &str, extra: &[(&str, &str)]) -> Ran {

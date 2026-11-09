@@ -891,6 +891,12 @@ Each byte count is of the served bytes.
 
 ### Fixed
 
+- **`hook --help` and `hook <name> --help` print the usage.** Both forms
+  were refused with exit 2, as a hook command line that names no hook.
+  Now `agentless-mcp hook --help`, `hook -h`, and `hook <hook> --help` for
+  each hook name (erosion and the retired gate hooks included) print the
+  usage that the refusal holds on stdout and exit 0. `hook install`,
+  `hook status` and `hook uninstall` keep their own `--help`.
 - **A panic in the server's update of a kept graph reaches the call as a
   build's panic does.** The update ran on the graph thread outside
   `catch_unwind`, so a panic there ended the thread, and the waiting call
