@@ -1,0 +1,913 @@
+{
+ "cross_file_rows": 600,
+ "tied_at_rank_45": 155,
+ "top": [
+  {
+   "rank": 1,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/tcp/listener.rs",
+    265,
+    292
+   ],
+   "b": [
+    "tokio/src/net/tcp/stream.rs",
+    246,
+    273
+   ],
+   "shared": [
+    "cfg",
+    "from_raw_fd",
+    "from_raw_socket",
+    "into_inner",
+    "into_raw_fd",
+    "into_raw_socket",
+    "io",
+    "map"
+   ]
+  },
+  {
+   "rank": 2,
+   "score": "1.000",
+   "a": [
+    "tokio/src/runtime/scheduler/multi_thread_alt/trace.rs",
+    51,
+    60
+   ],
+   "b": [
+    "tokio/src/runtime/scheduler/multi_thread/trace.rs",
+    51,
+    60
+   ],
+   "shared": [
+    "compare_exchange",
+    "is_err",
+    "notify_all",
+    "trace_requested",
+    "yield_now"
+   ]
+  },
+  {
+   "rank": 3,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/windows/named_pipe.rs",
+    1599,
+    1603
+   ],
+   "b": [
+    "tokio/src/net/tcp/stream.rs",
+    972,
+    978
+   ],
+   "shared": [
+    "io",
+    "registration",
+    "try_io",
+    "write_vectored"
+   ]
+  },
+  {
+   "rank": 4,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/windows/named_pipe.rs",
+    387,
+    389
+   ],
+   "b": [
+    "tokio/src/net/tcp/stream.rs",
+    858,
+    860
+   ],
+   "shared": [
+    "io",
+    "map_ok",
+    "registration"
+   ]
+  },
+  {
+   "rank": 5,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/rename.rs",
+    12,
+    17
+   ],
+   "b": [
+    "tokio/src/fs/canonicalize.rs",
+    46,
+    49
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 6,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/create_dir_all.rs",
+    48,
+    51
+   ],
+   "b": [
+    "tokio/src/fs/copy.rs",
+    21,
+    25
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 7,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/read.rs",
+    46,
+    49
+   ],
+   "b": [
+    "tokio/src/fs/canonicalize.rs",
+    46,
+    49
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 8,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/file.rs",
+    444,
+    447
+   ],
+   "b": [
+    "tokio/src/fs/read_dir.rs",
+    300,
+    303
+   ],
+   "shared": [
+    "asyncify",
+    "clone",
+    "std"
+   ]
+  },
+  {
+   "rank": 9,
+   "score": "1.000",
+   "a": [
+    "tokio/src/sync/mutex.rs",
+    337,
+    375
+   ],
+   "b": [
+    "tokio/src/sync/semaphore.rs",
+    449,
+    478
+   ],
+   "shared": [
+    "all",
+    "any",
+    "caller",
+    "cfg",
+    "col",
+    "column",
+    "file",
+    "in_scope",
+    "line",
+    "not"
+   ]
+  },
+  {
+   "rank": 10,
+   "score": "1.000",
+   "a": [
+    "tokio/src/sync/mutex.rs",
+    1049,
+    1063
+   ],
+   "b": [
+    "tokio/src/sync/rwlock/owned_read_guard.rs",
+    75,
+    90
+   ],
+   "shared": [
+    "FnOnce",
+    "all",
+    "cfg",
+    "f",
+    "lock",
+    "resource_span",
+    "skip_drop"
+   ]
+  },
+  {
+   "rank": 11,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/symlink.rs",
+    11,
+    16
+   ],
+   "b": [
+    "tokio/src/fs/copy.rs",
+    21,
+    25
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 12,
+   "score": "1.000",
+   "a": [
+    "tokio/src/sync/rwlock/owned_write_guard.rs",
+    85,
+    101
+   ],
+   "b": [
+    "tokio/src/sync/rwlock/owned_write_guard_mapped.rs",
+    84,
+    100
+   ],
+   "shared": [
+    "FnOnce",
+    "all",
+    "cfg",
+    "f",
+    "lock",
+    "permits_acquired",
+    "resource_span",
+    "skip_drop"
+   ]
+  },
+  {
+   "rank": 13,
+   "score": "1.000",
+   "a": [
+    "tokio/src/sync/mutex.rs",
+    337,
+    375
+   ],
+   "b": [
+    "tokio/src/sync/rwlock.rs",
+    203,
+    254
+   ],
+   "shared": [
+    "all",
+    "any",
+    "caller",
+    "cfg",
+    "col",
+    "column",
+    "file",
+    "in_scope",
+    "line",
+    "not"
+   ]
+  },
+  {
+   "rank": 14,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/tcp/stream.rs",
+    1095,
+    1100
+   ],
+   "b": [
+    "tokio/src/net/udp.rs",
+    556,
+    561
+   ],
+   "shared": [
+    "async_io",
+    "io",
+    "registration"
+   ]
+  },
+  {
+   "rank": 15,
+   "score": "1.000",
+   "a": [
+    "tokio/src/sync/mutex.rs",
+    1314,
+    1327
+   ],
+   "b": [
+    "tokio/src/sync/rwlock/owned_read_guard.rs",
+    75,
+    90
+   ],
+   "shared": [
+    "FnOnce",
+    "all",
+    "cfg",
+    "f",
+    "lock",
+    "resource_span",
+    "skip_drop"
+   ]
+  },
+  {
+   "rank": 16,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/metadata.rs",
+    43,
+    46
+   ],
+   "b": [
+    "tokio/src/fs/canonicalize.rs",
+    46,
+    49
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 17,
+   "score": "1.000",
+   "a": [
+    "benches/sync_watch.rs",
+    9,
+    14
+   ],
+   "b": [
+    "benches/fs.rs",
+    14,
+    19
+   ],
+   "shared": [
+    "build",
+    "new_multi_thread",
+    "unwrap",
+    "worker_threads"
+   ]
+  },
+  {
+   "rank": 18,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/unix/stream.rs",
+    752,
+    761
+   ],
+   "b": [
+    "tokio/src/net/tcp/stream.rs",
+    1047,
+    1056
+   ],
+   "shared": [
+    "FnMut",
+    "io",
+    "registration",
+    "try_io"
+   ]
+  },
+  {
+   "rank": 19,
+   "score": "1.000",
+   "a": [
+    "benches/copy.rs",
+    170,
+    175
+   ],
+   "b": [
+    "tokio/src/signal/registry.rs",
+    265,
+    270
+   ],
+   "shared": [
+    "build",
+    "enable_time",
+    "new_current_thread",
+    "unwrap"
+   ]
+  },
+  {
+   "rank": 20,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/windows/named_pipe.rs",
+    748,
+    752
+   ],
+   "b": [
+    "tokio/src/net/unix/pipe.rs",
+    653,
+    657
+   ],
+   "shared": [
+    "io",
+    "registration",
+    "try_io",
+    "write"
+   ]
+  },
+  {
+   "rank": 21,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/symlink_file.rs",
+    14,
+    19
+   ],
+   "b": [
+    "tokio/src/fs/canonicalize.rs",
+    46,
+    49
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 22,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/remove_file.rs",
+    13,
+    16
+   ],
+   "b": [
+    "tokio/src/fs/canonicalize.rs",
+    46,
+    49
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 23,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/windows/named_pipe.rs",
+    848,
+    854
+   ],
+   "b": [
+    "tokio/src/net/udp.rs",
+    1458,
+    1466
+   ],
+   "shared": [
+    "FnOnce",
+    "io",
+    "registration"
+   ]
+  },
+  {
+   "rank": 24,
+   "score": "1.000",
+   "a": [
+    "tokio-util/src/time/wheel/mod.rs",
+    137,
+    139
+   ],
+   "b": [
+    "tokio/src/runtime/time/wheel/mod.rs",
+    137,
+    139
+   ],
+   "shared": [
+    "deadline",
+    "map",
+    "next_expiration"
+   ]
+  },
+  {
+   "rank": 25,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/unix/stream.rs",
+    247,
+    249
+   ],
+   "b": [
+    "tokio/src/net/tcp/stream.rs",
+    546,
+    548
+   ],
+   "shared": [
+    "io",
+    "map_ok",
+    "registration"
+   ]
+  },
+  {
+   "rank": 26,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/udp.rs",
+    1458,
+    1466
+   ],
+   "b": [
+    "tokio/src/net/unix/datagram/socket.rs",
+    1368,
+    1376
+   ],
+   "shared": [
+    "FnOnce",
+    "io",
+    "registration"
+   ]
+  },
+  {
+   "rank": 27,
+   "score": "1.000",
+   "a": [
+    "tokio/src/runtime/scheduler/multi_thread/queue.rs",
+    579,
+    584
+   ],
+   "b": [
+    "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+    571,
+    576
+   ],
+   "shared": [
+    "head",
+    "load",
+    "tail",
+    "unpack",
+    "wrapping_sub"
+   ]
+  },
+  {
+   "rank": 28,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/read_to_string.rs",
+    27,
+    30
+   ],
+   "b": [
+    "tokio/src/fs/copy.rs",
+    21,
+    25
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 29,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/unix/datagram/socket.rs",
+    629,
+    634
+   ],
+   "b": [
+    "tokio/src/net/tcp/stream.rs",
+    1095,
+    1100
+   ],
+   "shared": [
+    "async_io",
+    "io",
+    "registration"
+   ]
+  },
+  {
+   "rank": 30,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/tcp/stream.rs",
+    1012,
+    1020
+   ],
+   "b": [
+    "tokio/src/net/unix/datagram/socket.rs",
+    1368,
+    1376
+   ],
+   "shared": [
+    "FnOnce",
+    "io",
+    "registration"
+   ]
+  },
+  {
+   "rank": 31,
+   "score": "1.000",
+   "a": [
+    "tokio/src/runtime/scheduler/multi_thread/queue.rs",
+    572,
+    577
+   ],
+   "b": [
+    "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+    571,
+    576
+   ],
+   "shared": [
+    "head",
+    "load",
+    "tail",
+    "unpack",
+    "wrapping_sub"
+   ]
+  },
+  {
+   "rank": 32,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/write.rs",
+    26,
+    31
+   ],
+   "b": [
+    "tokio/src/fs/copy.rs",
+    21,
+    25
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 33,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/udp.rs",
+    1306,
+    1311
+   ],
+   "b": [
+    "tokio/src/net/tcp/stream.rs",
+    1095,
+    1100
+   ],
+   "shared": [
+    "async_io",
+    "io",
+    "registration"
+   ]
+  },
+  {
+   "rank": 34,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/symlink_metadata.rs",
+    12,
+    15
+   ],
+   "b": [
+    "tokio/src/fs/canonicalize.rs",
+    46,
+    49
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 35,
+   "score": "1.000",
+   "a": [
+    "tokio/src/sync/broadcast.rs",
+    851,
+    863
+   ],
+   "b": [
+    "tokio/src/sync/notify.rs",
+    335,
+    347
+   ],
+   "shared": [
+    "from",
+    "get_ref",
+    "into_guarded"
+   ]
+  },
+  {
+   "rank": 36,
+   "score": "1.000",
+   "a": [
+    "tokio/src/runtime/scheduler/multi_thread/worker/metrics.rs",
+    8,
+    10
+   ],
+   "b": [
+    "tokio/src/runtime/scheduler/multi_thread_alt/worker/metrics.rs",
+    8,
+    10
+   ],
+   "shared": [
+    "len",
+    "remotes",
+    "steal"
+   ]
+  },
+  {
+   "rank": 37,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/hard_link.rs",
+    39,
+    44
+   ],
+   "b": [
+    "tokio/src/fs/copy.rs",
+    21,
+    25
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 38,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/windows/named_pipe.rs",
+    1599,
+    1603
+   ],
+   "b": [
+    "tokio/src/net/unix/pipe.rs",
+    719,
+    723
+   ],
+   "shared": [
+    "io",
+    "registration",
+    "try_io",
+    "write_vectored"
+   ]
+  },
+  {
+   "rank": 39,
+   "score": "1.000",
+   "a": [
+    "tokio/src/sync/rwlock/write_guard.rs",
+    87,
+    103
+   ],
+   "b": [
+    "tokio/src/sync/rwlock/write_guard_mapped.rs",
+    84,
+    100
+   ],
+   "shared": [
+    "FnOnce",
+    "all",
+    "cfg",
+    "f",
+    "permits_acquired",
+    "resource_span",
+    "s",
+    "skip_drop"
+   ]
+  },
+  {
+   "rank": 40,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/tcp/stream.rs",
+    1095,
+    1100
+   ],
+   "b": [
+    "tokio/src/net/udp.rs",
+    776,
+    781
+   ],
+   "shared": [
+    "async_io",
+    "io",
+    "registration"
+   ]
+  },
+  {
+   "rank": 41,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/tcp/stream.rs",
+    1047,
+    1056
+   ],
+   "b": [
+    "tokio/src/net/udp.rs",
+    1493,
+    1502
+   ],
+   "shared": [
+    "FnMut",
+    "io",
+    "registration",
+    "try_io"
+   ]
+  },
+  {
+   "rank": 42,
+   "score": "1.000",
+   "a": [
+    "tokio/src/net/udp.rs",
+    735,
+    737
+   ],
+   "b": [
+    "tokio/src/net/unix/datagram/socket.rs",
+    366,
+    368
+   ],
+   "shared": [
+    "io",
+    "map_ok",
+    "poll_read_ready",
+    "registration"
+   ]
+  },
+  {
+   "rank": 43,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/set_permissions.rs",
+    12,
+    15
+   ],
+   "b": [
+    "tokio/src/fs/canonicalize.rs",
+    46,
+    49
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 44,
+   "score": "1.000",
+   "a": [
+    "tokio/src/fs/read_link.rs",
+    9,
+    12
+   ],
+   "b": [
+    "tokio/src/fs/copy.rs",
+    21,
+    25
+   ],
+   "shared": [
+    "as_ref",
+    "asyncify",
+    "to_owned"
+   ]
+  },
+  {
+   "rank": 45,
+   "score": "1.000",
+   "a": [
+    "benches/sync_watch.rs",
+    9,
+    14
+   ],
+   "b": [
+    "benches/sync_broadcast.rs",
+    9,
+    14
+   ],
+   "shared": [
+    "build",
+    "new_multi_thread",
+    "unwrap",
+    "worker_threads"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,4053 @@
+{
+ "repos": {
+  "tokio": {
+   "card": {
+    "precision": {
+     "k": 6,
+     "n": 58,
+     "p": 0.103,
+     "ci": [
+      0.048,
+      0.208
+     ]
+    },
+    "share": {
+     "with_row": 32,
+     "cards": 40,
+     "share": 0.8,
+     "ci": [
+      0.652,
+      0.895
+     ]
+    },
+    "false_positive": 0.897,
+    "bar_c": false,
+    "bar_a": false
+   },
+   "cross_file_card": {
+    "precision": {
+     "k": 4,
+     "n": 33,
+     "p": 0.121,
+     "ci": [
+      0.048,
+      0.273
+     ]
+    },
+    "share": {
+     "with_row": 20,
+     "cards": 40,
+     "share": 0.5,
+     "ci": [
+      0.352,
+      0.648
+     ]
+    },
+    "false_positive": 0.879,
+    "bar_c": false,
+    "bar_a": false
+   },
+   "cross": {
+    "k": 4,
+    "n": 33,
+    "p": 0.121,
+    "ci": [
+     0.048,
+     0.273
+    ]
+   },
+   "same": {
+    "k": 2,
+    "n": 25,
+    "p": 0.08,
+    "ci": [
+     0.022,
+     0.25
+    ]
+   },
+   "first_ranked": {
+    "k": 4,
+    "n": 32,
+    "p": 0.125,
+    "ci": [
+     0.05,
+     0.281
+    ]
+   },
+   "global45": {
+    "k": 9,
+    "n": 45,
+    "p": 0.2,
+    "ci": [
+     0.109,
+     0.338
+    ]
+   },
+   "agreement": {
+    "n": 20,
+    "three_way": 18,
+    "duplicate_or_not": 18,
+    "kappa": 0.615,
+    "dup_by_1": 2,
+    "dup_by_2": 4
+   },
+   "card_score_1": {
+    "k": 0,
+    "n": 7,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.354
+    ]
+   },
+   "explore": [
+    {
+     "floor": 0.3,
+     "min_shared": 1,
+     "k": 6,
+     "n": 58,
+     "p": 0.103,
+     "ci": [
+      0.048,
+      0.208
+     ],
+     "share_with_row": 32,
+     "share_cards": 40,
+     "share_share": 0.8,
+     "share_ci": [
+      0.652,
+      0.895
+     ]
+    },
+    {
+     "floor": 0.3,
+     "min_shared": 3,
+     "k": 6,
+     "n": 51,
+     "p": 0.118,
+     "ci": [
+      0.055,
+      0.234
+     ],
+     "share_with_row": 28,
+     "share_cards": 40,
+     "share_share": 0.7,
+     "share_ci": [
+      0.546,
+      0.819
+     ]
+    },
+    {
+     "floor": 0.3,
+     "min_shared": 4,
+     "k": 6,
+     "n": 32,
+     "p": 0.188,
+     "ci": [
+      0.089,
+      0.353
+     ],
+     "share_with_row": 19,
+     "share_cards": 40,
+     "share_share": 0.475,
+     "share_ci": [
+      0.329,
+      0.625
+     ]
+    },
+    {
+     "floor": 0.3,
+     "min_shared": 5,
+     "k": 5,
+     "n": 19,
+     "p": 0.263,
+     "ci": [
+      0.118,
+      0.488
+     ],
+     "share_with_row": 10,
+     "share_cards": 40,
+     "share_share": 0.25,
+     "share_ci": [
+      0.142,
+      0.402
+     ]
+    },
+    {
+     "floor": 0.4,
+     "min_shared": 1,
+     "k": 6,
+     "n": 53,
+     "p": 0.113,
+     "ci": [
+      0.053,
+      0.226
+     ],
+     "share_with_row": 29,
+     "share_cards": 40,
+     "share_share": 0.725,
+     "share_ci": [
+      0.572,
+      0.839
+     ]
+    },
+    {
+     "floor": 0.4,
+     "min_shared": 3,
+     "k": 6,
+     "n": 47,
+     "p": 0.128,
+     "ci": [
+      0.06,
+      0.252
+     ],
+     "share_with_row": 26,
+     "share_cards": 40,
+     "share_share": 0.65,
+     "share_ci": [
+      0.495,
+      0.779
+     ]
+    },
+    {
+     "floor": 0.4,
+     "min_shared": 4,
+     "k": 6,
+     "n": 28,
+     "p": 0.214,
+     "ci": [
+      0.102,
+      0.395
+     ],
+     "share_with_row": 16,
+     "share_cards": 40,
+     "share_share": 0.4,
+     "share_ci": [
+      0.263,
+      0.554
+     ]
+    },
+    {
+     "floor": 0.4,
+     "min_shared": 5,
+     "k": 5,
+     "n": 17,
+     "p": 0.294,
+     "ci": [
+      0.133,
+      0.531
+     ],
+     "share_with_row": 9,
+     "share_cards": 40,
+     "share_share": 0.225,
+     "share_ci": [
+      0.123,
+      0.375
+     ]
+    },
+    {
+     "floor": 0.5,
+     "min_shared": 1,
+     "k": 6,
+     "n": 46,
+     "p": 0.13,
+     "ci": [
+      0.061,
+      0.257
+     ],
+     "share_with_row": 27,
+     "share_cards": 40,
+     "share_share": 0.675,
+     "share_ci": [
+      0.52,
+      0.799
+     ]
+    },
+    {
+     "floor": 0.5,
+     "min_shared": 3,
+     "k": 6,
+     "n": 43,
+     "p": 0.14,
+     "ci": [
+      0.066,
+      0.273
+     ],
+     "share_with_row": 25,
+     "share_cards": 40,
+     "share_share": 0.625,
+     "share_ci": [
+      0.47,
+      0.758
+     ]
+    },
+    {
+     "floor": 0.5,
+     "min_shared": 4,
+     "k": 6,
+     "n": 26,
+     "p": 0.231,
+     "ci": [
+      0.11,
+      0.421
+     ],
+     "share_with_row": 15,
+     "share_cards": 40,
+     "share_share": 0.375,
+     "share_ci": [
+      0.242,
+      0.53
+     ]
+    },
+    {
+     "floor": 0.5,
+     "min_shared": 5,
+     "k": 5,
+     "n": 16,
+     "p": 0.312,
+     "ci": [
+      0.142,
+      0.556
+     ],
+     "share_with_row": 9,
+     "share_cards": 40,
+     "share_share": 0.225,
+     "share_ci": [
+      0.123,
+      0.375
+     ]
+    },
+    {
+     "floor": 0.6,
+     "min_shared": 1,
+     "k": 5,
+     "n": 35,
+     "p": 0.143,
+     "ci": [
+      0.063,
+      0.294
+     ],
+     "share_with_row": 23,
+     "share_cards": 40,
+     "share_share": 0.575,
+     "share_ci": [
+      0.422,
+      0.715
+     ]
+    },
+    {
+     "floor": 0.6,
+     "min_shared": 3,
+     "k": 5,
+     "n": 34,
+     "p": 0.147,
+     "ci": [
+      0.064,
+      0.301
+     ],
+     "share_with_row": 22,
+     "share_cards": 40,
+     "share_share": 0.55,
+     "share_ci": [
+      0.398,
+      0.693
+     ]
+    },
+    {
+     "floor": 0.6,
+     "min_shared": 4,
+     "k": 5,
+     "n": 22,
+     "p": 0.227,
+     "ci": [
+      0.101,
+      0.434
+     ],
+     "share_with_row": 15,
+     "share_cards": 40,
+     "share_share": 0.375,
+     "share_ci": [
+      0.242,
+      0.53
+     ]
+    },
+    {
+     "floor": 0.6,
+     "min_shared": 5,
+     "k": 4,
+     "n": 14,
+     "p": 0.286,
+     "ci": [
+      0.117,
+      0.546
+     ],
+     "share_with_row": 9,
+     "share_cards": 40,
+     "share_share": 0.225,
+     "share_ci": [
+      0.123,
+      0.375
+     ]
+    },
+    {
+     "floor": 0.7,
+     "min_shared": 1,
+     "k": 5,
+     "n": 24,
+     "p": 0.208,
+     "ci": [
+      0.092,
+      0.405
+     ],
+     "share_with_row": 17,
+     "share_cards": 40,
+     "share_share": 0.425,
+     "share_ci": [
+      0.285,
+      0.578
+     ]
+    },
+    {
+     "floor": 0.7,
+     "min_shared": 3,
+     "k": 5,
+     "n": 23,
+     "p": 0.217,
+     "ci": [
+      0.097,
+      0.419
+     ],
+     "share_with_row": 16,
+     "share_cards": 40,
+     "share_share": 0.4,
+     "share_ci": [
+      0.263,
+      0.554
+     ]
+    },
+    {
+     "floor": 0.7,
+     "min_shared": 4,
+     "k": 5,
+     "n": 14,
+     "p": 0.357,
+     "ci": [
+      0.163,
+      0.612
+     ],
+     "share_with_row": 10,
+     "share_cards": 40,
+     "share_share": 0.25,
+     "share_ci": [
+      0.142,
+      0.402
+     ]
+    },
+    {
+     "floor": 0.7,
+     "min_shared": 5,
+     "k": 4,
+     "n": 10,
+     "p": 0.4,
+     "ci": [
+      0.168,
+      0.687
+     ],
+     "share_with_row": 7,
+     "share_cards": 40,
+     "share_share": 0.175,
+     "share_ci": [
+      0.087,
+      0.32
+     ]
+    },
+    {
+     "floor": 0.8,
+     "min_shared": 1,
+     "k": 0,
+     "n": 9,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.299
+     ],
+     "share_with_row": 6,
+     "share_cards": 40,
+     "share_share": 0.15,
+     "share_ci": [
+      0.071,
+      0.291
+     ]
+    },
+    {
+     "floor": 0.8,
+     "min_shared": 3,
+     "k": 0,
+     "n": 9,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.299
+     ],
+     "share_with_row": 6,
+     "share_cards": 40,
+     "share_share": 0.15,
+     "share_ci": [
+      0.071,
+      0.291
+     ]
+    },
+    {
+     "floor": 0.8,
+     "min_shared": 4,
+     "k": 0,
+     "n": 4,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.49
+     ],
+     "share_with_row": 3,
+     "share_cards": 40,
+     "share_share": 0.075,
+     "share_ci": [
+      0.026,
+      0.199
+     ]
+    },
+    {
+     "floor": 0.8,
+     "min_shared": 5,
+     "k": 0,
+     "n": 2,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.658
+     ],
+     "share_with_row": 2,
+     "share_cards": 40,
+     "share_share": 0.05,
+     "share_ci": [
+      0.014,
+      0.165
+     ]
+    },
+    {
+     "floor": 0.9,
+     "min_shared": 1,
+     "k": 0,
+     "n": 7,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.354
+     ],
+     "share_with_row": 4,
+     "share_cards": 40,
+     "share_share": 0.1,
+     "share_ci": [
+      0.04,
+      0.231
+     ]
+    },
+    {
+     "floor": 0.9,
+     "min_shared": 3,
+     "k": 0,
+     "n": 7,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.354
+     ],
+     "share_with_row": 4,
+     "share_cards": 40,
+     "share_share": 0.1,
+     "share_ci": [
+      0.04,
+      0.231
+     ]
+    },
+    {
+     "floor": 0.9,
+     "min_shared": 4,
+     "k": 0,
+     "n": 2,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.658
+     ],
+     "share_with_row": 1,
+     "share_cards": 40,
+     "share_share": 0.025,
+     "share_ci": [
+      0.004,
+      0.129
+     ]
+    },
+    {
+     "floor": 0.9,
+     "min_shared": 5,
+     "k": 0,
+     "n": 0,
+     "p": null,
+     "ci": [
+      null,
+      null
+     ],
+     "share_with_row": 0,
+     "share_cards": 40,
+     "share_share": 0.0,
+     "share_ci": [
+      -0.0,
+      0.088
+     ]
+    },
+    {
+     "floor": 1.0,
+     "min_shared": 1,
+     "k": 0,
+     "n": 7,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.354
+     ],
+     "share_with_row": 4,
+     "share_cards": 40,
+     "share_share": 0.1,
+     "share_ci": [
+      0.04,
+      0.231
+     ]
+    },
+    {
+     "floor": 1.0,
+     "min_shared": 3,
+     "k": 0,
+     "n": 7,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.354
+     ],
+     "share_with_row": 4,
+     "share_cards": 40,
+     "share_share": 0.1,
+     "share_ci": [
+      0.04,
+      0.231
+     ]
+    },
+    {
+     "floor": 1.0,
+     "min_shared": 4,
+     "k": 0,
+     "n": 2,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.658
+     ],
+     "share_with_row": 1,
+     "share_cards": 40,
+     "share_share": 0.025,
+     "share_ci": [
+      0.004,
+      0.129
+     ]
+    },
+    {
+     "floor": 1.0,
+     "min_shared": 5,
+     "k": 0,
+     "n": 0,
+     "p": null,
+     "ci": [
+      null,
+      null
+     ],
+     "share_with_row": 0,
+     "share_cards": 40,
+     "share_share": 0.0,
+     "share_ci": [
+      -0.0,
+      0.088
+     ]
+    }
+   ]
+  },
+  "sympy": {
+   "card": {
+    "precision": {
+     "k": 8,
+     "n": 55,
+     "p": 0.145,
+     "ci": [
+      0.076,
+      0.262
+     ]
+    },
+    "share": {
+     "with_row": 30,
+     "cards": 40,
+     "share": 0.75,
+     "ci": [
+      0.598,
+      0.858
+     ]
+    },
+    "false_positive": 0.855,
+    "bar_c": false,
+    "bar_a": false
+   },
+   "cross_file_card": {
+    "precision": {
+     "k": 2,
+     "n": 22,
+     "p": 0.091,
+     "ci": [
+      0.025,
+      0.278
+     ]
+    },
+    "share": {
+     "with_row": 15,
+     "cards": 40,
+     "share": 0.375,
+     "ci": [
+      0.242,
+      0.53
+     ]
+    },
+    "false_positive": 0.909,
+    "bar_c": false,
+    "bar_a": false
+   },
+   "cross": {
+    "k": 2,
+    "n": 22,
+    "p": 0.091,
+    "ci": [
+     0.025,
+     0.278
+    ]
+   },
+   "same": {
+    "k": 6,
+    "n": 33,
+    "p": 0.182,
+    "ci": [
+     0.086,
+     0.344
+    ]
+   },
+   "first_ranked": {
+    "k": 8,
+    "n": 30,
+    "p": 0.267,
+    "ci": [
+     0.142,
+     0.444
+    ]
+   },
+   "global45": {
+    "k": 12,
+    "n": 45,
+    "p": 0.267,
+    "ci": [
+     0.16,
+     0.41
+    ]
+   },
+   "agreement": {
+    "n": 20,
+    "three_way": 19,
+    "duplicate_or_not": 19,
+    "kappa": 0.857,
+    "dup_by_1": 5,
+    "dup_by_2": 4
+   },
+   "card_score_1": {
+    "k": 0,
+    "n": 8,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.324
+    ]
+   },
+   "explore": [
+    {
+     "floor": 0.3,
+     "min_shared": 1,
+     "k": 8,
+     "n": 55,
+     "p": 0.145,
+     "ci": [
+      0.076,
+      0.262
+     ],
+     "share_with_row": 30,
+     "share_cards": 40,
+     "share_share": 0.75,
+     "share_ci": [
+      0.598,
+      0.858
+     ]
+    },
+    {
+     "floor": 0.3,
+     "min_shared": 3,
+     "k": 8,
+     "n": 48,
+     "p": 0.167,
+     "ci": [
+      0.087,
+      0.296
+     ],
+     "share_with_row": 27,
+     "share_cards": 40,
+     "share_share": 0.675,
+     "share_ci": [
+      0.52,
+      0.799
+     ]
+    },
+    {
+     "floor": 0.3,
+     "min_shared": 4,
+     "k": 4,
+     "n": 29,
+     "p": 0.138,
+     "ci": [
+      0.055,
+      0.306
+     ],
+     "share_with_row": 17,
+     "share_cards": 40,
+     "share_share": 0.425,
+     "share_ci": [
+      0.285,
+      0.578
+     ]
+    },
+    {
+     "floor": 0.3,
+     "min_shared": 5,
+     "k": 1,
+     "n": 17,
+     "p": 0.059,
+     "ci": [
+      0.01,
+      0.27
+     ],
+     "share_with_row": 10,
+     "share_cards": 40,
+     "share_share": 0.25,
+     "share_ci": [
+      0.142,
+      0.402
+     ]
+    },
+    {
+     "floor": 0.4,
+     "min_shared": 1,
+     "k": 7,
+     "n": 38,
+     "p": 0.184,
+     "ci": [
+      0.092,
+      0.334
+     ],
+     "share_with_row": 24,
+     "share_cards": 40,
+     "share_share": 0.6,
+     "share_ci": [
+      0.446,
+      0.737
+     ]
+    },
+    {
+     "floor": 0.4,
+     "min_shared": 3,
+     "k": 7,
+     "n": 34,
+     "p": 0.206,
+     "ci": [
+      0.103,
+      0.368
+     ],
+     "share_with_row": 22,
+     "share_cards": 40,
+     "share_share": 0.55,
+     "share_ci": [
+      0.398,
+      0.693
+     ]
+    },
+    {
+     "floor": 0.4,
+     "min_shared": 4,
+     "k": 4,
+     "n": 21,
+     "p": 0.19,
+     "ci": [
+      0.077,
+      0.4
+     ],
+     "share_with_row": 13,
+     "share_cards": 40,
+     "share_share": 0.325,
+     "share_ci": [
+      0.201,
+      0.48
+     ]
+    },
+    {
+     "floor": 0.4,
+     "min_shared": 5,
+     "k": 1,
+     "n": 13,
+     "p": 0.077,
+     "ci": [
+      0.014,
+      0.333
+     ],
+     "share_with_row": 8,
+     "share_cards": 40,
+     "share_share": 0.2,
+     "share_ci": [
+      0.105,
+      0.348
+     ]
+    },
+    {
+     "floor": 0.5,
+     "min_shared": 1,
+     "k": 5,
+     "n": 25,
+     "p": 0.2,
+     "ci": [
+      0.089,
+      0.391
+     ],
+     "share_with_row": 16,
+     "share_cards": 40,
+     "share_share": 0.4,
+     "share_ci": [
+      0.263,
+      0.554
+     ]
+    },
+    {
+     "floor": 0.5,
+     "min_shared": 3,
+     "k": 5,
+     "n": 24,
+     "p": 0.208,
+     "ci": [
+      0.092,
+      0.405
+     ],
+     "share_with_row": 15,
+     "share_cards": 40,
+     "share_share": 0.375,
+     "share_ci": [
+      0.242,
+      0.53
+     ]
+    },
+    {
+     "floor": 0.5,
+     "min_shared": 4,
+     "k": 3,
+     "n": 15,
+     "p": 0.2,
+     "ci": [
+      0.07,
+      0.452
+     ],
+     "share_with_row": 8,
+     "share_cards": 40,
+     "share_share": 0.2,
+     "share_ci": [
+      0.105,
+      0.348
+     ]
+    },
+    {
+     "floor": 0.5,
+     "min_shared": 5,
+     "k": 1,
+     "n": 8,
+     "p": 0.125,
+     "ci": [
+      0.022,
+      0.471
+     ],
+     "share_with_row": 4,
+     "share_cards": 40,
+     "share_share": 0.1,
+     "share_ci": [
+      0.04,
+      0.231
+     ]
+    },
+    {
+     "floor": 0.6,
+     "min_shared": 1,
+     "k": 5,
+     "n": 21,
+     "p": 0.238,
+     "ci": [
+      0.106,
+      0.451
+     ],
+     "share_with_row": 13,
+     "share_cards": 40,
+     "share_share": 0.325,
+     "share_ci": [
+      0.201,
+      0.48
+     ]
+    },
+    {
+     "floor": 0.6,
+     "min_shared": 3,
+     "k": 5,
+     "n": 20,
+     "p": 0.25,
+     "ci": [
+      0.112,
+      0.469
+     ],
+     "share_with_row": 12,
+     "share_cards": 40,
+     "share_share": 0.3,
+     "share_ci": [
+      0.181,
+      0.454
+     ]
+    },
+    {
+     "floor": 0.6,
+     "min_shared": 4,
+     "k": 3,
+     "n": 14,
+     "p": 0.214,
+     "ci": [
+      0.076,
+      0.476
+     ],
+     "share_with_row": 8,
+     "share_cards": 40,
+     "share_share": 0.2,
+     "share_ci": [
+      0.105,
+      0.348
+     ]
+    },
+    {
+     "floor": 0.6,
+     "min_shared": 5,
+     "k": 1,
+     "n": 7,
+     "p": 0.143,
+     "ci": [
+      0.026,
+      0.513
+     ],
+     "share_with_row": 4,
+     "share_cards": 40,
+     "share_share": 0.1,
+     "share_ci": [
+      0.04,
+      0.231
+     ]
+    },
+    {
+     "floor": 0.7,
+     "min_shared": 1,
+     "k": 4,
+     "n": 15,
+     "p": 0.267,
+     "ci": [
+      0.109,
+      0.52
+     ],
+     "share_with_row": 10,
+     "share_cards": 40,
+     "share_share": 0.25,
+     "share_ci": [
+      0.142,
+      0.402
+     ]
+    },
+    {
+     "floor": 0.7,
+     "min_shared": 3,
+     "k": 4,
+     "n": 15,
+     "p": 0.267,
+     "ci": [
+      0.109,
+      0.52
+     ],
+     "share_with_row": 10,
+     "share_cards": 40,
+     "share_share": 0.25,
+     "share_ci": [
+      0.142,
+      0.402
+     ]
+    },
+    {
+     "floor": 0.7,
+     "min_shared": 4,
+     "k": 3,
+     "n": 12,
+     "p": 0.25,
+     "ci": [
+      0.089,
+      0.532
+     ],
+     "share_with_row": 8,
+     "share_cards": 40,
+     "share_share": 0.2,
+     "share_ci": [
+      0.105,
+      0.348
+     ]
+    },
+    {
+     "floor": 0.7,
+     "min_shared": 5,
+     "k": 1,
+     "n": 6,
+     "p": 0.167,
+     "ci": [
+      0.03,
+      0.564
+     ],
+     "share_with_row": 4,
+     "share_cards": 40,
+     "share_share": 0.1,
+     "share_ci": [
+      0.04,
+      0.231
+     ]
+    },
+    {
+     "floor": 0.8,
+     "min_shared": 1,
+     "k": 2,
+     "n": 13,
+     "p": 0.154,
+     "ci": [
+      0.043,
+      0.422
+     ],
+     "share_with_row": 8,
+     "share_cards": 40,
+     "share_share": 0.2,
+     "share_ci": [
+      0.105,
+      0.348
+     ]
+    },
+    {
+     "floor": 0.8,
+     "min_shared": 3,
+     "k": 2,
+     "n": 13,
+     "p": 0.154,
+     "ci": [
+      0.043,
+      0.422
+     ],
+     "share_with_row": 8,
+     "share_cards": 40,
+     "share_share": 0.2,
+     "share_ci": [
+      0.105,
+      0.348
+     ]
+    },
+    {
+     "floor": 0.8,
+     "min_shared": 4,
+     "k": 1,
+     "n": 10,
+     "p": 0.1,
+     "ci": [
+      0.018,
+      0.404
+     ],
+     "share_with_row": 6,
+     "share_cards": 40,
+     "share_share": 0.15,
+     "share_ci": [
+      0.071,
+      0.291
+     ]
+    },
+    {
+     "floor": 0.8,
+     "min_shared": 5,
+     "k": 1,
+     "n": 6,
+     "p": 0.167,
+     "ci": [
+      0.03,
+      0.564
+     ],
+     "share_with_row": 4,
+     "share_cards": 40,
+     "share_share": 0.1,
+     "share_ci": [
+      0.04,
+      0.231
+     ]
+    },
+    {
+     "floor": 0.9,
+     "min_shared": 1,
+     "k": 0,
+     "n": 10,
+     "p": 0.0,
+     "ci": [
+      -0.0,
+      0.278
+     ],
+     "share_with_row": 5,
+     "share_cards": 40,
+     "share_share": 0.125,
+     "share_ci": [
+      0.055,
+      0.261
+     ]
+    },
+    {
+     "floor": 0.9,
+     "min_shared": 3,
+     "k": 0,
+     "n": 10,
+     "p": 0.0,
+     "ci": [
+      -0.0,
+      0.278
+     ],
+     "share_with_row": 5,
+     "share_cards": 40,
+     "share_share": 0.125,
+     "share_ci": [
+      0.055,
+      0.261
+     ]
+    },
+    {
+     "floor": 0.9,
+     "min_shared": 4,
+     "k": 0,
+     "n": 8,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.324
+     ],
+     "share_with_row": 4,
+     "share_cards": 40,
+     "share_share": 0.1,
+     "share_ci": [
+      0.04,
+      0.231
+     ]
+    },
+    {
+     "floor": 0.9,
+     "min_shared": 5,
+     "k": 0,
+     "n": 4,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.49
+     ],
+     "share_with_row": 2,
+     "share_cards": 40,
+     "share_share": 0.05,
+     "share_ci": [
+      0.014,
+      0.165
+     ]
+    },
+    {
+     "floor": 1.0,
+     "min_shared": 1,
+     "k": 0,
+     "n": 8,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.324
+     ],
+     "share_with_row": 4,
+     "share_cards": 40,
+     "share_share": 0.1,
+     "share_ci": [
+      0.04,
+      0.231
+     ]
+    },
+    {
+     "floor": 1.0,
+     "min_shared": 3,
+     "k": 0,
+     "n": 8,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.324
+     ],
+     "share_with_row": 4,
+     "share_cards": 40,
+     "share_share": 0.1,
+     "share_ci": [
+      0.04,
+      0.231
+     ]
+    },
+    {
+     "floor": 1.0,
+     "min_shared": 4,
+     "k": 0,
+     "n": 6,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.39
+     ],
+     "share_with_row": 3,
+     "share_cards": 40,
+     "share_share": 0.075,
+     "share_ci": [
+      0.026,
+      0.199
+     ]
+    },
+    {
+     "floor": 1.0,
+     "min_shared": 5,
+     "k": 0,
+     "n": 2,
+     "p": 0.0,
+     "ci": [
+      0.0,
+      0.658
+     ],
+     "share_with_row": 1,
+     "share_cards": 40,
+     "share_share": 0.025,
+     "share_ci": [
+      0.004,
+      0.129
+     ]
+    }
+   ]
+  }
+ },
+ "pooled": {
+  "card": {
+   "precision": {
+    "k": 14,
+    "n": 113,
+    "p": 0.124,
+    "ci": [
+     0.075,
+     0.197
+    ]
+   },
+   "share": {
+    "with_row": 62,
+    "cards": 80,
+    "share": 0.775,
+    "ci": [
+     0.672,
+     0.853
+    ]
+   },
+   "false_positive": 0.876,
+   "bar_c": false,
+   "bar_a": false
+  },
+  "cross_file_card": {
+   "precision": {
+    "k": 6,
+    "n": 55,
+    "p": 0.109,
+    "ci": [
+     0.051,
+     0.218
+    ]
+   },
+   "share": {
+    "with_row": 35,
+    "cards": 80,
+    "share": 0.438,
+    "ci": [
+     0.334,
+     0.547
+    ]
+   },
+   "false_positive": 0.891,
+   "bar_c": false,
+   "bar_a": false
+  },
+  "cross": {
+   "k": 6,
+   "n": 55,
+   "p": 0.109,
+   "ci": [
+    0.051,
+    0.218
+   ]
+  },
+  "same": {
+   "k": 8,
+   "n": 58,
+   "p": 0.138,
+   "ci": [
+    0.072,
+    0.249
+   ]
+  },
+  "fisher_cross_vs_same": 0.7775,
+  "first_ranked": {
+   "k": 12,
+   "n": 62,
+   "p": 0.194,
+   "ci": [
+    0.114,
+    0.309
+   ]
+  },
+  "first_ranked_cross": {
+   "k": 6,
+   "n": 29,
+   "p": 0.207,
+   "ci": [
+    0.098,
+    0.384
+   ]
+  },
+  "global45": {
+   "k": 21,
+   "n": 90,
+   "p": 0.233,
+   "ci": [
+    0.158,
+    0.331
+   ]
+  },
+  "score_1_distinct_pairs": {
+   "k": 21,
+   "n": 101,
+   "p": 0.208,
+   "ci": [
+    0.14,
+    0.297
+   ]
+  },
+  "card_score_1": {
+   "k": 0,
+   "n": 15,
+   "p": 0.0,
+   "ci": [
+    -0.0,
+    0.204
+   ]
+  },
+  "explore": [
+   {
+    "floor": 0.3,
+    "min_shared": 1,
+    "k": 14,
+    "n": 113,
+    "p": 0.124,
+    "ci": [
+     0.075,
+     0.197
+    ],
+    "share_with_row": 62,
+    "share_cards": 80,
+    "share_share": 0.775,
+    "share_ci": [
+     0.672,
+     0.853
+    ]
+   },
+   {
+    "floor": 0.3,
+    "min_shared": 3,
+    "k": 14,
+    "n": 99,
+    "p": 0.141,
+    "ci": [
+     0.086,
+     0.223
+    ],
+    "share_with_row": 55,
+    "share_cards": 80,
+    "share_share": 0.688,
+    "share_ci": [
+     0.579,
+     0.778
+    ]
+   },
+   {
+    "floor": 0.3,
+    "min_shared": 4,
+    "k": 10,
+    "n": 61,
+    "p": 0.164,
+    "ci": [
+     0.092,
+     0.276
+    ],
+    "share_with_row": 36,
+    "share_cards": 80,
+    "share_share": 0.45,
+    "share_ci": [
+     0.346,
+     0.559
+    ]
+   },
+   {
+    "floor": 0.3,
+    "min_shared": 5,
+    "k": 6,
+    "n": 36,
+    "p": 0.167,
+    "ci": [
+     0.079,
+     0.319
+    ],
+    "share_with_row": 20,
+    "share_cards": 80,
+    "share_share": 0.25,
+    "share_ci": [
+     0.168,
+     0.355
+    ]
+   },
+   {
+    "floor": 0.4,
+    "min_shared": 1,
+    "k": 13,
+    "n": 91,
+    "p": 0.143,
+    "ci": [
+     0.085,
+     0.229
+    ],
+    "share_with_row": 53,
+    "share_cards": 80,
+    "share_share": 0.662,
+    "share_ci": [
+     0.554,
+     0.757
+    ]
+   },
+   {
+    "floor": 0.4,
+    "min_shared": 3,
+    "k": 13,
+    "n": 81,
+    "p": 0.16,
+    "ci": [
+     0.096,
+     0.255
+    ],
+    "share_with_row": 48,
+    "share_cards": 80,
+    "share_share": 0.6,
+    "share_ci": [
+     0.49,
+     0.7
+    ]
+   },
+   {
+    "floor": 0.4,
+    "min_shared": 4,
+    "k": 10,
+    "n": 49,
+    "p": 0.204,
+    "ci": [
+     0.115,
+     0.336
+    ],
+    "share_with_row": 29,
+    "share_cards": 80,
+    "share_share": 0.362,
+    "share_ci": [
+     0.266,
+     0.472
+    ]
+   },
+   {
+    "floor": 0.4,
+    "min_shared": 5,
+    "k": 6,
+    "n": 30,
+    "p": 0.2,
+    "ci": [
+     0.095,
+     0.373
+    ],
+    "share_with_row": 17,
+    "share_cards": 80,
+    "share_share": 0.212,
+    "share_ci": [
+     0.137,
+     0.314
+    ]
+   },
+   {
+    "floor": 0.5,
+    "min_shared": 1,
+    "k": 11,
+    "n": 71,
+    "p": 0.155,
+    "ci": [
+     0.089,
+     0.257
+    ],
+    "share_with_row": 43,
+    "share_cards": 80,
+    "share_share": 0.537,
+    "share_ci": [
+     0.429,
+     0.643
+    ]
+   },
+   {
+    "floor": 0.5,
+    "min_shared": 3,
+    "k": 11,
+    "n": 67,
+    "p": 0.164,
+    "ci": [
+     0.094,
+     0.271
+    ],
+    "share_with_row": 40,
+    "share_cards": 80,
+    "share_share": 0.5,
+    "share_ci": [
+     0.393,
+     0.607
+    ]
+   },
+   {
+    "floor": 0.5,
+    "min_shared": 4,
+    "k": 9,
+    "n": 41,
+    "p": 0.22,
+    "ci": [
+     0.12,
+     0.367
+    ],
+    "share_with_row": 23,
+    "share_cards": 80,
+    "share_share": 0.287,
+    "share_ci": [
+     0.2,
+     0.395
+    ]
+   },
+   {
+    "floor": 0.5,
+    "min_shared": 5,
+    "k": 6,
+    "n": 24,
+    "p": 0.25,
+    "ci": [
+     0.12,
+     0.449
+    ],
+    "share_with_row": 13,
+    "share_cards": 80,
+    "share_share": 0.163,
+    "share_ci": [
+     0.097,
+     0.258
+    ]
+   },
+   {
+    "floor": 0.6,
+    "min_shared": 1,
+    "k": 10,
+    "n": 56,
+    "p": 0.179,
+    "ci": [
+     0.1,
+     0.298
+    ],
+    "share_with_row": 36,
+    "share_cards": 80,
+    "share_share": 0.45,
+    "share_ci": [
+     0.346,
+     0.559
+    ]
+   },
+   {
+    "floor": 0.6,
+    "min_shared": 3,
+    "k": 10,
+    "n": 54,
+    "p": 0.185,
+    "ci": [
+     0.104,
+     0.308
+    ],
+    "share_with_row": 34,
+    "share_cards": 80,
+    "share_share": 0.425,
+    "share_ci": [
+     0.323,
+     0.534
+    ]
+   },
+   {
+    "floor": 0.6,
+    "min_shared": 4,
+    "k": 8,
+    "n": 36,
+    "p": 0.222,
+    "ci": [
+     0.117,
+     0.381
+    ],
+    "share_with_row": 23,
+    "share_cards": 80,
+    "share_share": 0.287,
+    "share_ci": [
+     0.2,
+     0.395
+    ]
+   },
+   {
+    "floor": 0.6,
+    "min_shared": 5,
+    "k": 5,
+    "n": 21,
+    "p": 0.238,
+    "ci": [
+     0.106,
+     0.451
+    ],
+    "share_with_row": 13,
+    "share_cards": 80,
+    "share_share": 0.163,
+    "share_ci": [
+     0.097,
+     0.258
+    ]
+   },
+   {
+    "floor": 0.7,
+    "min_shared": 1,
+    "k": 9,
+    "n": 39,
+    "p": 0.231,
+    "ci": [
+     0.126,
+     0.383
+    ],
+    "share_with_row": 27,
+    "share_cards": 80,
+    "share_share": 0.338,
+    "share_ci": [
+     0.243,
+     0.446
+    ]
+   },
+   {
+    "floor": 0.7,
+    "min_shared": 3,
+    "k": 9,
+    "n": 38,
+    "p": 0.237,
+    "ci": [
+     0.13,
+     0.392
+    ],
+    "share_with_row": 26,
+    "share_cards": 80,
+    "share_share": 0.325,
+    "share_ci": [
+     0.232,
+     0.434
+    ]
+   },
+   {
+    "floor": 0.7,
+    "min_shared": 4,
+    "k": 8,
+    "n": 26,
+    "p": 0.308,
+    "ci": [
+     0.165,
+     0.5
+    ],
+    "share_with_row": 18,
+    "share_cards": 80,
+    "share_share": 0.225,
+    "share_ci": [
+     0.147,
+     0.328
+    ]
+   },
+   {
+    "floor": 0.7,
+    "min_shared": 5,
+    "k": 5,
+    "n": 16,
+    "p": 0.312,
+    "ci": [
+     0.142,
+     0.556
+    ],
+    "share_with_row": 11,
+    "share_cards": 80,
+    "share_share": 0.138,
+    "share_ci": [
+     0.079,
+     0.23
+    ]
+   },
+   {
+    "floor": 0.8,
+    "min_shared": 1,
+    "k": 2,
+    "n": 22,
+    "p": 0.091,
+    "ci": [
+     0.025,
+     0.278
+    ],
+    "share_with_row": 14,
+    "share_cards": 80,
+    "share_share": 0.175,
+    "share_ci": [
+     0.107,
+     0.273
+    ]
+   },
+   {
+    "floor": 0.8,
+    "min_shared": 3,
+    "k": 2,
+    "n": 22,
+    "p": 0.091,
+    "ci": [
+     0.025,
+     0.278
+    ],
+    "share_with_row": 14,
+    "share_cards": 80,
+    "share_share": 0.175,
+    "share_ci": [
+     0.107,
+     0.273
+    ]
+   },
+   {
+    "floor": 0.8,
+    "min_shared": 4,
+    "k": 1,
+    "n": 14,
+    "p": 0.071,
+    "ci": [
+     0.013,
+     0.315
+    ],
+    "share_with_row": 9,
+    "share_cards": 80,
+    "share_share": 0.113,
+    "share_ci": [
+     0.06,
+     0.2
+    ]
+   },
+   {
+    "floor": 0.8,
+    "min_shared": 5,
+    "k": 1,
+    "n": 8,
+    "p": 0.125,
+    "ci": [
+     0.022,
+     0.471
+    ],
+    "share_with_row": 6,
+    "share_cards": 80,
+    "share_share": 0.075,
+    "share_ci": [
+     0.035,
+     0.154
+    ]
+   },
+   {
+    "floor": 0.9,
+    "min_shared": 1,
+    "k": 0,
+    "n": 17,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.184
+    ],
+    "share_with_row": 9,
+    "share_cards": 80,
+    "share_share": 0.113,
+    "share_ci": [
+     0.06,
+     0.2
+    ]
+   },
+   {
+    "floor": 0.9,
+    "min_shared": 3,
+    "k": 0,
+    "n": 17,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.184
+    ],
+    "share_with_row": 9,
+    "share_cards": 80,
+    "share_share": 0.113,
+    "share_ci": [
+     0.06,
+     0.2
+    ]
+   },
+   {
+    "floor": 0.9,
+    "min_shared": 4,
+    "k": 0,
+    "n": 10,
+    "p": 0.0,
+    "ci": [
+     -0.0,
+     0.278
+    ],
+    "share_with_row": 5,
+    "share_cards": 80,
+    "share_share": 0.062,
+    "share_ci": [
+     0.027,
+     0.138
+    ]
+   },
+   {
+    "floor": 0.9,
+    "min_shared": 5,
+    "k": 0,
+    "n": 4,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.49
+    ],
+    "share_with_row": 2,
+    "share_cards": 80,
+    "share_share": 0.025,
+    "share_ci": [
+     0.007,
+     0.087
+    ]
+   },
+   {
+    "floor": 1.0,
+    "min_shared": 1,
+    "k": 0,
+    "n": 15,
+    "p": 0.0,
+    "ci": [
+     -0.0,
+     0.204
+    ],
+    "share_with_row": 8,
+    "share_cards": 80,
+    "share_share": 0.1,
+    "share_ci": [
+     0.052,
+     0.185
+    ]
+   },
+   {
+    "floor": 1.0,
+    "min_shared": 3,
+    "k": 0,
+    "n": 15,
+    "p": 0.0,
+    "ci": [
+     -0.0,
+     0.204
+    ],
+    "share_with_row": 8,
+    "share_cards": 80,
+    "share_share": 0.1,
+    "share_ci": [
+     0.052,
+     0.185
+    ]
+   },
+   {
+    "floor": 1.0,
+    "min_shared": 4,
+    "k": 0,
+    "n": 8,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.324
+    ],
+    "share_with_row": 4,
+    "share_cards": 80,
+    "share_share": 0.05,
+    "share_ci": [
+     0.02,
+     0.122
+    ]
+   },
+   {
+    "floor": 1.0,
+    "min_shared": 5,
+    "k": 0,
+    "n": 2,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.658
+    ],
+    "share_with_row": 1,
+    "share_cards": 80,
+    "share_share": 0.013,
+    "share_ci": [
+     0.002,
+     0.067
+    ]
+   }
+  ],
+  "explore_cross": [
+   {
+    "floor": 0.3,
+    "min_shared": 1,
+    "k": 6,
+    "n": 55,
+    "p": 0.109,
+    "ci": [
+     0.051,
+     0.218
+    ],
+    "share_with_row": 35,
+    "share_cards": 80,
+    "share_share": 0.438,
+    "share_ci": [
+     0.334,
+     0.547
+    ]
+   },
+   {
+    "floor": 0.3,
+    "min_shared": 3,
+    "k": 6,
+    "n": 48,
+    "p": 0.125,
+    "ci": [
+     0.059,
+     0.247
+    ],
+    "share_with_row": 30,
+    "share_cards": 80,
+    "share_share": 0.375,
+    "share_ci": [
+     0.277,
+     0.485
+    ]
+   },
+   {
+    "floor": 0.3,
+    "min_shared": 4,
+    "k": 5,
+    "n": 27,
+    "p": 0.185,
+    "ci": [
+     0.082,
+     0.367
+    ],
+    "share_with_row": 18,
+    "share_cards": 80,
+    "share_share": 0.225,
+    "share_ci": [
+     0.147,
+     0.328
+    ]
+   },
+   {
+    "floor": 0.3,
+    "min_shared": 5,
+    "k": 3,
+    "n": 15,
+    "p": 0.2,
+    "ci": [
+     0.07,
+     0.452
+    ],
+    "share_with_row": 9,
+    "share_cards": 80,
+    "share_share": 0.113,
+    "share_ci": [
+     0.06,
+     0.2
+    ]
+   },
+   {
+    "floor": 0.4,
+    "min_shared": 1,
+    "k": 6,
+    "n": 39,
+    "p": 0.154,
+    "ci": [
+     0.072,
+     0.297
+    ],
+    "share_with_row": 27,
+    "share_cards": 80,
+    "share_share": 0.338,
+    "share_ci": [
+     0.243,
+     0.446
+    ]
+   },
+   {
+    "floor": 0.4,
+    "min_shared": 3,
+    "k": 6,
+    "n": 35,
+    "p": 0.171,
+    "ci": [
+     0.081,
+     0.327
+    ],
+    "share_with_row": 25,
+    "share_cards": 80,
+    "share_share": 0.312,
+    "share_ci": [
+     0.222,
+     0.421
+    ]
+   },
+   {
+    "floor": 0.4,
+    "min_shared": 4,
+    "k": 5,
+    "n": 18,
+    "p": 0.278,
+    "ci": [
+     0.125,
+     0.509
+    ],
+    "share_with_row": 13,
+    "share_cards": 80,
+    "share_share": 0.163,
+    "share_ci": [
+     0.097,
+     0.258
+    ]
+   },
+   {
+    "floor": 0.4,
+    "min_shared": 5,
+    "k": 3,
+    "n": 12,
+    "p": 0.25,
+    "ci": [
+     0.089,
+     0.532
+    ],
+    "share_with_row": 9,
+    "share_cards": 80,
+    "share_share": 0.113,
+    "share_ci": [
+     0.06,
+     0.2
+    ]
+   },
+   {
+    "floor": 0.5,
+    "min_shared": 1,
+    "k": 5,
+    "n": 29,
+    "p": 0.172,
+    "ci": [
+     0.076,
+     0.345
+    ],
+    "share_with_row": 20,
+    "share_cards": 80,
+    "share_share": 0.25,
+    "share_ci": [
+     0.168,
+     0.355
+    ]
+   },
+   {
+    "floor": 0.5,
+    "min_shared": 3,
+    "k": 5,
+    "n": 29,
+    "p": 0.172,
+    "ci": [
+     0.076,
+     0.345
+    ],
+    "share_with_row": 20,
+    "share_cards": 80,
+    "share_share": 0.25,
+    "share_ci": [
+     0.168,
+     0.355
+    ]
+   },
+   {
+    "floor": 0.5,
+    "min_shared": 4,
+    "k": 5,
+    "n": 14,
+    "p": 0.357,
+    "ci": [
+     0.163,
+     0.612
+    ],
+    "share_with_row": 10,
+    "share_cards": 80,
+    "share_share": 0.125,
+    "share_ci": [
+     0.069,
+     0.215
+    ]
+   },
+   {
+    "floor": 0.5,
+    "min_shared": 5,
+    "k": 3,
+    "n": 8,
+    "p": 0.375,
+    "ci": [
+     0.137,
+     0.694
+    ],
+    "share_with_row": 6,
+    "share_cards": 80,
+    "share_share": 0.075,
+    "share_ci": [
+     0.035,
+     0.154
+    ]
+   },
+   {
+    "floor": 0.6,
+    "min_shared": 1,
+    "k": 5,
+    "n": 24,
+    "p": 0.208,
+    "ci": [
+     0.092,
+     0.405
+    ],
+    "share_with_row": 16,
+    "share_cards": 80,
+    "share_share": 0.2,
+    "share_ci": [
+     0.127,
+     0.3
+    ]
+   },
+   {
+    "floor": 0.6,
+    "min_shared": 3,
+    "k": 5,
+    "n": 24,
+    "p": 0.208,
+    "ci": [
+     0.092,
+     0.405
+    ],
+    "share_with_row": 16,
+    "share_cards": 80,
+    "share_share": 0.2,
+    "share_ci": [
+     0.127,
+     0.3
+    ]
+   },
+   {
+    "floor": 0.6,
+    "min_shared": 4,
+    "k": 5,
+    "n": 14,
+    "p": 0.357,
+    "ci": [
+     0.163,
+     0.612
+    ],
+    "share_with_row": 10,
+    "share_cards": 80,
+    "share_share": 0.125,
+    "share_ci": [
+     0.069,
+     0.215
+    ]
+   },
+   {
+    "floor": 0.6,
+    "min_shared": 5,
+    "k": 3,
+    "n": 8,
+    "p": 0.375,
+    "ci": [
+     0.137,
+     0.694
+    ],
+    "share_with_row": 6,
+    "share_cards": 80,
+    "share_share": 0.075,
+    "share_ci": [
+     0.035,
+     0.154
+    ]
+   },
+   {
+    "floor": 0.7,
+    "min_shared": 1,
+    "k": 5,
+    "n": 17,
+    "p": 0.294,
+    "ci": [
+     0.133,
+     0.531
+    ],
+    "share_with_row": 12,
+    "share_cards": 80,
+    "share_share": 0.15,
+    "share_ci": [
+     0.088,
+     0.244
+    ]
+   },
+   {
+    "floor": 0.7,
+    "min_shared": 3,
+    "k": 5,
+    "n": 17,
+    "p": 0.294,
+    "ci": [
+     0.133,
+     0.531
+    ],
+    "share_with_row": 12,
+    "share_cards": 80,
+    "share_share": 0.15,
+    "share_ci": [
+     0.088,
+     0.244
+    ]
+   },
+   {
+    "floor": 0.7,
+    "min_shared": 4,
+    "k": 5,
+    "n": 12,
+    "p": 0.417,
+    "ci": [
+     0.193,
+     0.68
+    ],
+    "share_with_row": 9,
+    "share_cards": 80,
+    "share_share": 0.113,
+    "share_ci": [
+     0.06,
+     0.2
+    ]
+   },
+   {
+    "floor": 0.7,
+    "min_shared": 5,
+    "k": 3,
+    "n": 8,
+    "p": 0.375,
+    "ci": [
+     0.137,
+     0.694
+    ],
+    "share_with_row": 6,
+    "share_cards": 80,
+    "share_share": 0.075,
+    "share_ci": [
+     0.035,
+     0.154
+    ]
+   },
+   {
+    "floor": 0.8,
+    "min_shared": 1,
+    "k": 0,
+    "n": 7,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.354
+    ],
+    "share_with_row": 4,
+    "share_cards": 80,
+    "share_share": 0.05,
+    "share_ci": [
+     0.02,
+     0.122
+    ]
+   },
+   {
+    "floor": 0.8,
+    "min_shared": 3,
+    "k": 0,
+    "n": 7,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.354
+    ],
+    "share_with_row": 4,
+    "share_cards": 80,
+    "share_share": 0.05,
+    "share_ci": [
+     0.02,
+     0.122
+    ]
+   },
+   {
+    "floor": 0.8,
+    "min_shared": 4,
+    "k": 0,
+    "n": 3,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.562
+    ],
+    "share_with_row": 2,
+    "share_cards": 80,
+    "share_share": 0.025,
+    "share_ci": [
+     0.007,
+     0.087
+    ]
+   },
+   {
+    "floor": 0.8,
+    "min_shared": 5,
+    "k": 0,
+    "n": 1,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.793
+    ],
+    "share_with_row": 1,
+    "share_cards": 80,
+    "share_share": 0.013,
+    "share_ci": [
+     0.002,
+     0.067
+    ]
+   },
+   {
+    "floor": 0.9,
+    "min_shared": 1,
+    "k": 0,
+    "n": 6,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.39
+    ],
+    "share_with_row": 3,
+    "share_cards": 80,
+    "share_share": 0.037,
+    "share_ci": [
+     0.013,
+     0.105
+    ]
+   },
+   {
+    "floor": 0.9,
+    "min_shared": 3,
+    "k": 0,
+    "n": 6,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.39
+    ],
+    "share_with_row": 3,
+    "share_cards": 80,
+    "share_share": 0.037,
+    "share_ci": [
+     0.013,
+     0.105
+    ]
+   },
+   {
+    "floor": 0.9,
+    "min_shared": 4,
+    "k": 0,
+    "n": 2,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.658
+    ],
+    "share_with_row": 1,
+    "share_cards": 80,
+    "share_share": 0.013,
+    "share_ci": [
+     0.002,
+     0.067
+    ]
+   },
+   {
+    "floor": 0.9,
+    "min_shared": 5,
+    "k": 0,
+    "n": 0,
+    "p": null,
+    "ci": [
+     null,
+     null
+    ],
+    "share_with_row": 0,
+    "share_cards": 80,
+    "share_share": 0.0,
+    "share_ci": [
+     -0.0,
+     0.046
+    ]
+   },
+   {
+    "floor": 1.0,
+    "min_shared": 1,
+    "k": 0,
+    "n": 6,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.39
+    ],
+    "share_with_row": 3,
+    "share_cards": 80,
+    "share_share": 0.037,
+    "share_ci": [
+     0.013,
+     0.105
+    ]
+   },
+   {
+    "floor": 1.0,
+    "min_shared": 3,
+    "k": 0,
+    "n": 6,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.39
+    ],
+    "share_with_row": 3,
+    "share_cards": 80,
+    "share_share": 0.037,
+    "share_ci": [
+     0.013,
+     0.105
+    ]
+   },
+   {
+    "floor": 1.0,
+    "min_shared": 4,
+    "k": 0,
+    "n": 2,
+    "p": 0.0,
+    "ci": [
+     0.0,
+     0.658
+    ],
+    "share_with_row": 1,
+    "share_cards": 80,
+    "share_share": 0.013,
+    "share_ci": [
+     0.002,
+     0.067
+    ]
+   },
+   {
+    "floor": 1.0,
+    "min_shared": 5,
+    "k": 0,
+    "n": 0,
+    "p": null,
+    "ci": [
+     null,
+     null
+    ],
+    "share_with_row": 0,
+    "share_cards": 80,
+    "share_share": 0.0,
+    "share_ci": [
+     -0.0,
+     0.046
+    ]
+   }
+  ]
+ },
+ "controls": [
+  {
+   "id": "S002",
+   "repo": "sympy",
+   "batch": 1,
+   "of": "P310",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "S009",
+   "repo": "sympy",
+   "batch": 2,
+   "of": "P225",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "S014",
+   "repo": "sympy",
+   "batch": 2,
+   "of": "P221",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "S016",
+   "repo": "sympy",
+   "batch": 2,
+   "of": "P049",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "S019",
+   "repo": "sympy",
+   "batch": 1,
+   "of": "P308",
+   "known": "related",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "S025",
+   "repo": "sympy",
+   "batch": 2,
+   "of": "P060",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": false
+  },
+  {
+   "id": "S052",
+   "repo": "sympy",
+   "batch": 1,
+   "of": "P122",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "S055",
+   "repo": "sympy",
+   "batch": 2,
+   "of": "P169",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "S063",
+   "repo": "sympy",
+   "batch": 1,
+   "of": "P327",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "S068",
+   "repo": "sympy",
+   "batch": 1,
+   "of": "P256",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "S087",
+   "repo": "sympy",
+   "batch": 2,
+   "of": "P244",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "S088",
+   "repo": "sympy",
+   "batch": 1,
+   "of": "P328",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "S094",
+   "repo": "sympy",
+   "batch": 1,
+   "of": "P301",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "S096",
+   "repo": "sympy",
+   "batch": 1,
+   "of": "P094",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "S100",
+   "repo": "sympy",
+   "batch": 2,
+   "of": "P027",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "S113",
+   "repo": "sympy",
+   "batch": 2,
+   "of": "P031",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "T007",
+   "repo": "tokio",
+   "batch": 2,
+   "of": "P144",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "T008",
+   "repo": "tokio",
+   "batch": 2,
+   "of": "P160",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "T009",
+   "repo": "tokio",
+   "batch": 2,
+   "of": "P239",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "T019",
+   "repo": "tokio",
+   "batch": 2,
+   "of": "P023",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "T025",
+   "repo": "tokio",
+   "batch": 1,
+   "of": "P260",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "T026",
+   "repo": "tokio",
+   "batch": 1,
+   "of": "P243",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "T032",
+   "repo": "tokio",
+   "batch": 2,
+   "of": "P034",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": false
+  },
+  {
+   "id": "T034",
+   "repo": "tokio",
+   "batch": 1,
+   "of": "P097",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "T037",
+   "repo": "tokio",
+   "batch": 2,
+   "of": "P002",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": false
+  },
+  {
+   "id": "T049",
+   "repo": "tokio",
+   "batch": 2,
+   "of": "P067",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "T060",
+   "repo": "tokio",
+   "batch": 1,
+   "of": "P048",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "T068",
+   "repo": "tokio",
+   "batch": 1,
+   "of": "P041",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "T075",
+   "repo": "tokio",
+   "batch": 2,
+   "of": "P299",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "T088",
+   "repo": "tokio",
+   "batch": 1,
+   "of": "P125",
+   "known": "related",
+   "label": "related",
+   "low": false
+  },
+  {
+   "id": "T098",
+   "repo": "tokio",
+   "batch": 1,
+   "of": "P063",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  },
+  {
+   "id": "T100",
+   "repo": "tokio",
+   "batch": 1,
+   "of": "P130",
+   "known": "duplicate",
+   "label": "duplicate",
+   "low": true
+  }
+ ],
+ "low_confidence_duplicates": 23,
+ "card_rows": [
+  {
+   "repo": "tokio",
+   "id": "T001",
+   "card": 23,
+   "rank": 2,
+   "score": 0.418,
+   "shared": 2,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T003",
+   "card": 8,
+   "rank": 1,
+   "score": 0.535,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T004",
+   "card": 35,
+   "rank": 1,
+   "score": 0.789,
+   "shared": 4,
+   "cross_file": true,
+   "label": "duplicate"
+  },
+  {
+   "repo": "tokio",
+   "id": "T005",
+   "card": 39,
+   "rank": 1,
+   "score": 0.826,
+   "shared": 6,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T006",
+   "card": 5,
+   "rank": 1,
+   "score": 0.776,
+   "shared": 19,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T011",
+   "card": 5,
+   "rank": 2,
+   "score": 0.376,
+   "shared": 10,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T013",
+   "card": 10,
+   "rank": 1,
+   "score": 0.799,
+   "shared": 8,
+   "cross_file": true,
+   "label": "duplicate"
+  },
+  {
+   "repo": "tokio",
+   "id": "T014",
+   "card": 32,
+   "rank": 2,
+   "score": 0.689,
+   "shared": 4,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T015",
+   "card": 27,
+   "rank": 2,
+   "score": 0.436,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T016",
+   "card": 32,
+   "rank": 1,
+   "score": 0.689,
+   "shared": 4,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T018",
+   "card": 25,
+   "rank": 1,
+   "score": 0.774,
+   "shared": 5,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T020",
+   "card": 14,
+   "rank": 1,
+   "score": 0.555,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T022",
+   "card": 33,
+   "rank": 1,
+   "score": 0.408,
+   "shared": 2,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T027",
+   "card": 33,
+   "rank": 2,
+   "score": 0.408,
+   "shared": 2,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T028",
+   "card": 4,
+   "rank": 1,
+   "score": 0.338,
+   "shared": 4,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T035",
+   "card": 8,
+   "rank": 2,
+   "score": 0.535,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T036",
+   "card": 15,
+   "rank": 2,
+   "score": 1.0,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T038",
+   "card": 34,
+   "rank": 2,
+   "score": 0.607,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T039",
+   "card": 19,
+   "rank": 1,
+   "score": 0.678,
+   "shared": 6,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T039",
+   "card": 26,
+   "rank": 1,
+   "score": 0.678,
+   "shared": 6,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T042",
+   "card": 7,
+   "rank": 2,
+   "score": 0.593,
+   "shared": 2,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T044",
+   "card": 0,
+   "rank": 2,
+   "score": 1.0,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T045",
+   "card": 10,
+   "rank": 2,
+   "score": 0.799,
+   "shared": 8,
+   "cross_file": false,
+   "label": "duplicate"
+  },
+  {
+   "repo": "tokio",
+   "id": "T047",
+   "card": 25,
+   "rank": 2,
+   "score": 0.459,
+   "shared": 5,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T048",
+   "card": 28,
+   "rank": 2,
+   "score": 0.44,
+   "shared": 4,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T050",
+   "card": 30,
+   "rank": 2,
+   "score": 0.546,
+   "shared": 4,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T051",
+   "card": 12,
+   "rank": 2,
+   "score": 0.544,
+   "shared": 4,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T052",
+   "card": 37,
+   "rank": 2,
+   "score": 0.543,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T053",
+   "card": 13,
+   "rank": 2,
+   "score": 0.536,
+   "shared": 8,
+   "cross_file": false,
+   "label": "duplicate"
+  },
+  {
+   "repo": "tokio",
+   "id": "T054",
+   "card": 7,
+   "rank": 1,
+   "score": 0.593,
+   "shared": 2,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T055",
+   "card": 16,
+   "rank": 1,
+   "score": 0.376,
+   "shared": 2,
+   "cross_file": true,
+   "label": "unrelated"
+  },
+  {
+   "repo": "tokio",
+   "id": "T056",
+   "card": 18,
+   "rank": 1,
+   "score": 1.0,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T058",
+   "card": 2,
+   "rank": 2,
+   "score": 0.667,
+   "shared": 7,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T059",
+   "card": 15,
+   "rank": 1,
+   "score": 1.0,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T064",
+   "card": 11,
+   "rank": 1,
+   "score": 0.777,
+   "shared": 4,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T065",
+   "card": 14,
+   "rank": 2,
+   "score": 0.373,
+   "shared": 4,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T066",
+   "card": 12,
+   "rank": 1,
+   "score": 0.604,
+   "shared": 4,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T066",
+   "card": 30,
+   "rank": 1,
+   "score": 0.604,
+   "shared": 4,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T071",
+   "card": 3,
+   "rank": 2,
+   "score": 0.742,
+   "shared": 5,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T074",
+   "card": 26,
+   "rank": 2,
+   "score": 0.67,
+   "shared": 6,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T077",
+   "card": 0,
+   "rank": 1,
+   "score": 1.0,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T078",
+   "card": 38,
+   "rank": 1,
+   "score": 1.0,
+   "shared": 4,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T079",
+   "card": 9,
+   "rank": 1,
+   "score": 0.311,
+   "shared": 9,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T081",
+   "card": 39,
+   "rank": 2,
+   "score": 0.707,
+   "shared": 6,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T082",
+   "card": 3,
+   "rank": 1,
+   "score": 0.742,
+   "shared": 5,
+   "cross_file": true,
+   "label": "duplicate"
+  },
+  {
+   "repo": "tokio",
+   "id": "T086",
+   "card": 20,
+   "rank": 2,
+   "score": 0.746,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T087",
+   "card": 19,
+   "rank": 2,
+   "score": 0.548,
+   "shared": 6,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T089",
+   "card": 23,
+   "rank": 1,
+   "score": 0.71,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T091",
+   "card": 20,
+   "rank": 1,
+   "score": 0.746,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T097",
+   "card": 13,
+   "rank": 1,
+   "score": 0.76,
+   "shared": 7,
+   "cross_file": true,
+   "label": "duplicate"
+  },
+  {
+   "repo": "tokio",
+   "id": "T101",
+   "card": 34,
+   "rank": 1,
+   "score": 0.607,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T103",
+   "card": 38,
+   "rank": 2,
+   "score": 1.0,
+   "shared": 4,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T105",
+   "card": 18,
+   "rank": 2,
+   "score": 0.618,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T107",
+   "card": 29,
+   "rank": 1,
+   "score": 0.721,
+   "shared": 2,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T108",
+   "card": 37,
+   "rank": 1,
+   "score": 0.756,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T110",
+   "card": 2,
+   "rank": 1,
+   "score": 0.802,
+   "shared": 8,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T111",
+   "card": 28,
+   "rank": 1,
+   "score": 0.442,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "tokio",
+   "id": "T113",
+   "card": 27,
+   "rank": 1,
+   "score": 0.5,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S001",
+   "card": 35,
+   "rank": 1,
+   "score": 0.608,
+   "shared": 2,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S005",
+   "card": 19,
+   "rank": 2,
+   "score": 0.924,
+   "shared": 6,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S006",
+   "card": 12,
+   "rank": 1,
+   "score": 0.805,
+   "shared": 3,
+   "cross_file": false,
+   "label": "duplicate"
+  },
+  {
+   "repo": "sympy",
+   "id": "S007",
+   "card": 39,
+   "rank": 2,
+   "score": 0.372,
+   "shared": 6,
+   "cross_file": true,
+   "label": "unrelated"
+  },
+  {
+   "repo": "sympy",
+   "id": "S008",
+   "card": 22,
+   "rank": 1,
+   "score": 1.0,
+   "shared": 4,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S011",
+   "card": 0,
+   "rank": 2,
+   "score": 0.39,
+   "shared": 2,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S013",
+   "card": 10,
+   "rank": 1,
+   "score": 0.515,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S015",
+   "card": 33,
+   "rank": 1,
+   "score": 0.562,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S017",
+   "card": 30,
+   "rank": 2,
+   "score": 1.0,
+   "shared": 4,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S018",
+   "card": 14,
+   "rank": 2,
+   "score": 0.636,
+   "shared": 10,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S020",
+   "card": 23,
+   "rank": 1,
+   "score": 0.336,
+   "shared": 3,
+   "cross_file": true,
+   "label": "unrelated"
+  },
+  {
+   "repo": "sympy",
+   "id": "S021",
+   "card": 25,
+   "rank": 2,
+   "score": 0.317,
+   "shared": 4,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S022",
+   "card": 36,
+   "rank": 2,
+   "score": 0.646,
+   "shared": 4,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S023",
+   "card": 8,
+   "rank": 2,
+   "score": 1.0,
+   "shared": 5,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S026",
+   "card": 0,
+   "rank": 1,
+   "score": 0.454,
+   "shared": 3,
+   "cross_file": true,
+   "label": "duplicate"
+  },
+  {
+   "repo": "sympy",
+   "id": "S027",
+   "card": 8,
+   "rank": 1,
+   "score": 1.0,
+   "shared": 5,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S028",
+   "card": 11,
+   "rank": 1,
+   "score": 0.656,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S029",
+   "card": 26,
+   "rank": 1,
+   "score": 0.366,
+   "shared": 3,
+   "cross_file": false,
+   "label": "duplicate"
+  },
+  {
+   "repo": "sympy",
+   "id": "S030",
+   "card": 20,
+   "rank": 1,
+   "score": 0.354,
+   "shared": 2,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S033",
+   "card": 32,
+   "rank": 1,
+   "score": 0.424,
+   "shared": 5,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S035",
+   "card": 16,
+   "rank": 1,
+   "score": 0.868,
+   "shared": 19,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S038",
+   "card": 22,
+   "rank": 2,
+   "score": 1.0,
+   "shared": 4,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S043",
+   "card": 18,
+   "rank": 2,
+   "score": 0.351,
+   "shared": 2,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S045",
+   "card": 38,
+   "rank": 1,
+   "score": 0.317,
+   "shared": 10,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S046",
+   "card": 33,
+   "rank": 2,
+   "score": 0.38,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S049",
+   "card": 10,
+   "rank": 2,
+   "score": 0.449,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S050",
+   "card": 27,
+   "rank": 2,
+   "score": 0.328,
+   "shared": 6,
+   "cross_file": true,
+   "label": "unrelated"
+  },
+  {
+   "repo": "sympy",
+   "id": "S051",
+   "card": 32,
+   "rank": 2,
+   "score": 0.349,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S054",
+   "card": 25,
+   "rank": 1,
+   "score": 0.392,
+   "shared": 6,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S056",
+   "card": 28,
+   "rank": 2,
+   "score": 0.359,
+   "shared": 4,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S058",
+   "card": 17,
+   "rank": 2,
+   "score": 0.395,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S060",
+   "card": 28,
+   "rank": 1,
+   "score": 0.394,
+   "shared": 4,
+   "cross_file": true,
+   "label": "unrelated"
+  },
+  {
+   "repo": "sympy",
+   "id": "S062",
+   "card": 16,
+   "rank": 2,
+   "score": 0.54,
+   "shared": 12,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S064",
+   "card": 14,
+   "rank": 1,
+   "score": 0.847,
+   "shared": 13,
+   "cross_file": false,
+   "label": "duplicate"
+  },
+  {
+   "repo": "sympy",
+   "id": "S066",
+   "card": 24,
+   "rank": 1,
+   "score": 0.471,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S073",
+   "card": 13,
+   "rank": 2,
+   "score": 0.427,
+   "shared": 2,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S077",
+   "card": 27,
+   "rank": 1,
+   "score": 0.455,
+   "shared": 9,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S078",
+   "card": 23,
+   "rank": 2,
+   "score": 0.319,
+   "shared": 4,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S080",
+   "card": 13,
+   "rank": 1,
+   "score": 0.428,
+   "shared": 2,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S081",
+   "card": 29,
+   "rank": 1,
+   "score": 0.703,
+   "shared": 4,
+   "cross_file": true,
+   "label": "duplicate"
+  },
+  {
+   "repo": "sympy",
+   "id": "S083",
+   "card": 35,
+   "rank": 2,
+   "score": 0.426,
+   "shared": 2,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S085",
+   "card": 30,
+   "rank": 1,
+   "score": 1.0,
+   "shared": 4,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S086",
+   "card": 4,
+   "rank": 1,
+   "score": 1.0,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S091",
+   "card": 17,
+   "rank": 1,
+   "score": 0.593,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S092",
+   "card": 1,
+   "rank": 2,
+   "score": 0.407,
+   "shared": 11,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S093",
+   "card": 39,
+   "rank": 1,
+   "score": 0.405,
+   "shared": 6,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S095",
+   "card": 24,
+   "rank": 2,
+   "score": 0.453,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S097",
+   "card": 11,
+   "rank": 2,
+   "score": 0.6,
+   "shared": 3,
+   "cross_file": true,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S098",
+   "card": 37,
+   "rank": 1,
+   "score": 0.437,
+   "shared": 4,
+   "cross_file": false,
+   "label": "duplicate"
+  },
+  {
+   "repo": "sympy",
+   "id": "S102",
+   "card": 4,
+   "rank": 2,
+   "score": 1.0,
+   "shared": 3,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S105",
+   "card": 19,
+   "rank": 1,
+   "score": 0.924,
+   "shared": 6,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S108",
+   "card": 36,
+   "rank": 1,
+   "score": 0.763,
+   "shared": 4,
+   "cross_file": false,
+   "label": "duplicate"
+  },
+  {
+   "repo": "sympy",
+   "id": "S109",
+   "card": 37,
+   "rank": 2,
+   "score": 0.312,
+   "shared": 3,
+   "cross_file": true,
+   "label": "unrelated"
+  },
+  {
+   "repo": "sympy",
+   "id": "S112",
+   "card": 1,
+   "rank": 1,
+   "score": 0.469,
+   "shared": 12,
+   "cross_file": false,
+   "label": "related"
+  },
+  {
+   "repo": "sympy",
+   "id": "S115",
+   "card": 18,
+   "rank": 1,
+   "score": 0.625,
+   "shared": 3,
+   "cross_file": false,
+   "label": "duplicate"
+  }
+ ]
+}

@@ -1,0 +1,404 @@
+[
+  {
+    "id": "T020",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Both read the runtime context, but one flips the block_in_place flag behind a guard and the other only returns the current state."
+  },
+  {
+    "id": "T079",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two batch-semaphore methods that drain and wake waiters for separate jobs: assigning permits versus closing the semaphore."
+  },
+  {
+    "id": "T040",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Queue accessors with different formulas: len uses the real head while remaining_slots uses the steal head and the capacity."
+  },
+  {
+    "id": "T076",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Thin per-type adapters of registration().async_io for different operations (peek versus send)."
+  },
+  {
+    "id": "T051",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling builder methods that enqueue different mock actions."
+  },
+  {
+    "id": "T046",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Both build the same OwnedRwLockMappedWriteGuard from skip_drop fields, so a change to that construction must be made in both."
+  },
+  {
+    "id": "T112",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Identical one-line delegations to registration().try_io on two pipe types; the body is only shared library calls."
+  },
+  {
+    "id": "T003",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Both turn a raw fd into a mio type and wrap it with from_mio, but for different types and with different checks."
+  },
+  {
+    "id": "T072",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Separate constructors for RwLock and Mutex that share only the tracing resource-span boilerplate pattern."
+  },
+  {
+    "id": "T101",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Both use registration().async_io, but peek is a plain adapter and connect adds its own WouldBlock handling."
+  },
+  {
+    "id": "T017",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Thin per-type async_io adapters for different operations (recv versus peek)."
+  },
+  {
+    "id": "T081",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Same ManuallyDrop field-copy pattern applied to two different guard types with different fields."
+  },
+  {
+    "id": "T086",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling Inject methods that lock synced for different operations (pop versus close)."
+  },
+  {
+    "id": "T048",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "lock_shard picks the shard and push checks the handle is in that shard: producer and consumer of the shard id."
+  },
+  {
+    "id": "T063",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two asyncify wrappers around different std::fs calls."
+  },
+  {
+    "id": "T011",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two different benchmarks that share only the runtime-plus-counter benchmarking pattern."
+  },
+  {
+    "id": "T029",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two asyncify wrappers around different std::fs calls."
+  },
+  {
+    "id": "T094",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two asyncify wrappers around different std::fs calls."
+  },
+  {
+    "id": "T080",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two asyncify wrappers around different std::fs calls."
+  },
+  {
+    "id": "T047",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Both match on scheduler::Handle variants, but one inhibits auto-advance and the other returns the driver handle."
+  },
+  {
+    "id": "T107",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling Either-listener methods that dispatch different operations to the left or right listener."
+  },
+  {
+    "id": "T010",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Per-type try_io adapters that differ: the UDP one wraps the closure in the mio try_io and the pipe one does not."
+  },
+  {
+    "id": "T033",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Identical one-line delegations to registration().poll_read_ready on two stream types; only shared library calls."
+  },
+  {
+    "id": "T099",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Separate constructors for Mutex and Semaphore that share only the tracing resource-span boilerplate pattern."
+  },
+  {
+    "id": "T039",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling task-state transitions with different ref-count contracts (by value consumes a ref, by ref does not)."
+  },
+  {
+    "id": "T066",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling builder methods that enqueue different mock actions."
+  },
+  {
+    "id": "T060",
+    "label": "duplicate",
+    "low_confidence": true,
+    "reason": "Both are test fixtures that spell out the same neutral Symbol field defaults, which must stay in step."
+  },
+  {
+    "id": "T052",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two OwnedTasks methods that check the owner id for different jobs (remove versus assert_owner)."
+  },
+  {
+    "id": "T100",
+    "label": "duplicate",
+    "low_confidence": true,
+    "reason": "Both are test fixtures that build a Package with the same neutral Target defaults, in two test modules."
+  },
+  {
+    "id": "T031",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Identical one-line delegations to registration().try_io on two types; only shared library calls."
+  },
+  {
+    "id": "T027",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two async_io adapters over a registration, one passes the closure through and one passes the inner reference."
+  },
+  {
+    "id": "T018",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Accessor family that matches on the same Handle variants to return different values."
+  },
+  {
+    "id": "T015",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Same job in the forked schedulers, but the alt scheduler moves the decision into try_transition_worker_to_searching."
+  },
+  {
+    "id": "T084",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two asyncify wrappers around different std::fs calls."
+  },
+  {
+    "id": "T068",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two permission tests for different functions (create_private_dir versus is_private_directory)."
+  },
+  {
+    "id": "T059",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two asyncify wrappers around different std::fs calls."
+  },
+  {
+    "id": "T097",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Same ring-buffer push logic in the forked multi_thread and multi_thread_alt queues; a fix to one applies to the other."
+  },
+  {
+    "id": "T013",
+    "label": "duplicate",
+    "low_confidence": true,
+    "reason": "try_map holds the same mapped-guard construction from skip_drop as map, and that shared part must change together."
+  },
+  {
+    "id": "T025",
+    "label": "duplicate",
+    "low_confidence": true,
+    "reason": "A holds B's whole assertion after a parse step, so the shared problem-matching rule must change together."
+  },
+  {
+    "id": "T016",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two ways to open a file asynchronously (configured options versus default), not one copied rule."
+  },
+  {
+    "id": "T071",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Queue accessors with different formulas: remaining_slots uses the steal head and len uses the real head."
+  },
+  {
+    "id": "T098",
+    "label": "duplicate",
+    "low_confidence": true,
+    "reason": "Both hold the same root-path rule (expand ~, join a relative path to cwd, resolve); B adds a directory check."
+  },
+  {
+    "id": "T001",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Both are closure-based cell accessors, but one exposes a raw pointer and the other a mutable Option<Rc>."
+  },
+  {
+    "id": "T002",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Thin per-type async_io adapters for different operations (send versus peek)."
+  },
+  {
+    "id": "T034",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Both collect imported names from a syntax tree, but for different grammars with different selection rules."
+  },
+  {
+    "id": "T026",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Display impls for two unrelated error enums; only the formatting pattern is shared."
+  },
+  {
+    "id": "T055",
+    "label": "unrelated",
+    "low_confidence": false,
+    "reason": "Clearing a timer-wheel slot and taking a task-local value share only the word take."
+  },
+  {
+    "id": "T023",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "The same per-platform raw fd and socket conversion in two types; a platform fix must be made in both."
+  },
+  {
+    "id": "T070",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Identical try_io delegations on two socket types; only shared library calls."
+  },
+  {
+    "id": "T082",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Same remaining_slots formula in the forked queues, which differ only in where the capacity comes from."
+  },
+  {
+    "id": "T096",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Both build the same RwLockMappedWriteGuard from skip_drop fields, so a change to that construction must be made in both."
+  },
+  {
+    "id": "T038",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Both use registration().async_io, but send is a plain adapter and connect adds its own WouldBlock handling."
+  },
+  {
+    "id": "T087",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling task-state transitions with different jobs: notify by value versus notify-and-cancel."
+  },
+  {
+    "id": "T028",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "get_cfg builds the driver Cfg and Driver::new consumes it: producer and consumer."
+  },
+  {
+    "id": "T102",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Parallel constructors of two different waiter-list types that follow one guarded-list pattern."
+  },
+  {
+    "id": "T091",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling Inject methods that lock synced for different operations (pop versus is_closed)."
+  },
+  {
+    "id": "T103",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Each bench file sets up its own runtime with identical builder calls; no shared rule must change together."
+  },
+  {
+    "id": "T093",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Identical one-line delegations to registration().poll_read_ready on two datagram types; only shared library calls."
+  },
+  {
+    "id": "T069",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "asyncify adapters on two types that call different std metadata methods."
+  },
+  {
+    "id": "T024",
+    "label": "duplicate",
+    "low_confidence": false,
+    "reason": "Identical trace-request handshake in the forked multi_thread and multi_thread_alt schedulers."
+  },
+  {
+    "id": "T109",
+    "label": "duplicate",
+    "low_confidence": true,
+    "reason": "Same poll_at rule in two copies of the timer wheel, one in tokio and one in tokio-util."
+  },
+  {
+    "id": "T092",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Identical async_io delegations on two stream types; only shared library calls."
+  },
+  {
+    "id": "T088",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Display impls for two different error enums; only the formatting pattern is shared."
+  },
+  {
+    "id": "T061",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two asyncify wrappers around different filesystem calls."
+  },
+  {
+    "id": "T074",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Sibling task-state transitions with different jobs: notify by reference versus notify-and-cancel."
+  },
+  {
+    "id": "T113",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Inverse sibling transitions of the searching state."
+  },
+  {
+    "id": "T077",
+    "label": "related",
+    "low_confidence": false,
+    "reason": "Two asyncify wrappers around different std::fs calls."
+  }
+]

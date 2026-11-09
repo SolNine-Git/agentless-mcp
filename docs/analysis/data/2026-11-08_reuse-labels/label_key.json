@@ -1,0 +1,7283 @@
+[
+ {
+  "a": [
+   "sympy/matrices/repmatrix.py",
+   524,
+   547
+  ],
+  "b": [
+   "sympy/matrices/repmatrix.py",
+   472,
+   495
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 35,
+    "rank": 1,
+    "score": "0.608",
+    "shared": [
+     "cols",
+     "f"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S001",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P310",
+  "known": "related",
+  "a": [
+   "crates/patchcheck/src/arity.rs",
+   17,
+   39
+  ],
+  "b": [
+   "crates/patchcheck/src/shadowing.rs",
+   13,
+   35
+  ],
+  "owner": 1,
+  "id": "S002",
+  "repo": "sympy",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/fortran.py",
+   643,
+   648
+  ],
+  "b": [
+   "sympy/printing/c.py",
+   564,
+   566
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 35,
+    "score": "1.000",
+    "shared": [
+     "_print",
+     "format",
+     "kwargs"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S003",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/polyclasses.py",
+   1621,
+   1623
+  ],
+  "b": [
+   "sympy/polys/polytools.py",
+   966,
+   980
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 28,
+    "score": "1.000",
+    "shared": [
+     "dom",
+     "rep",
+     "to_sympy"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S004",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/mathml.py",
+   1281,
+   1290
+  ],
+  "b": [
+   "sympy/printing/mathml.py",
+   1927,
+   1937
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 19,
+    "rank": 2,
+    "score": "0.924",
+    "shared": [
+     "_print",
+     "appendChild",
+     "createElement",
+     "createTextNode",
+     "dom",
+     "setAttribute"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S005",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/tensor/tensor.py",
+   706,
+   709
+  ],
+  "b": [
+   "sympy/tensor/tensor.py",
+   711,
+   714
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 12,
+    "rank": 1,
+    "score": "0.805",
+    "shared": [
+     "inv",
+     "parse_data",
+     "tomatrix"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S006",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/core/power.py",
+   619,
+   641
+  ],
+  "b": [
+   "sympy/core/mul.py",
+   1583,
+   1616
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 39,
+    "rank": 2,
+    "score": "0.372",
+    "shared": [
+     "is_extended_negative",
+     "is_extended_nonpositive",
+     "is_extended_positive",
+     "is_finite",
+     "is_negative",
+     "is_zero"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S007",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/polytools.py",
+   3248,
+   3267
+  ],
+  "b": [
+   "sympy/polys/polytools.py",
+   765,
+   784
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 22,
+    "rank": 1,
+    "score": "1.000",
+    "shared": [
+     "OperationNotSupported",
+     "hasattr",
+     "per",
+     "rep"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S008",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "of": "P225",
+  "known": "related",
+  "a": [
+   "crates/cli/src/steps.rs",
+   228,
+   234
+  ],
+  "b": [
+   "crates/mcp/src/validate/coerce.rs",
+   157,
+   167
+  ],
+  "owner": 2,
+  "id": "S009",
+  "repo": "sympy",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/assumptions/handlers/matrices.py",
+   88,
+   90
+  ],
+  "b": [
+   "sympy/matrices/expressions/transpose.py",
+   90,
+   103
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 43,
+    "score": "1.000",
+    "shared": [
+     "arg",
+     "ask",
+     "symmetric"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S010",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/aesaracode.py",
+   190,
+   199
+  ],
+  "b": [
+   "sympy/printing/aesaracode.py",
+   183,
+   188
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 0,
+    "rank": 2,
+    "score": "0.390",
+    "shared": [
+     "_print",
+     "dot"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S011",
+  "repo": "sympy",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/aesaracode.py",
+   171,
+   179
+  ],
+  "b": [
+   "sympy/printing/theanocode.py",
+   177,
+   185
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 33,
+    "score": "1.000",
+    "shared": [
+     "NotImplementedError",
+     "_print",
+     "hasattr",
+     "stacklists",
+     "tolist"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S012",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/combinatorics/coset_table.py",
+   729,
+   751
+  ],
+  "b": [
+   "sympy/combinatorics/fp_groups.py",
+   828,
+   941
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 10,
+    "rank": 1,
+    "score": "0.515",
+    "shared": [
+     "A",
+     "A_dict",
+     "table"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S013",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P221",
+  "known": "duplicate",
+  "a": [
+   "crates/hook/src/destination.rs",
+   108,
+   121
+  ],
+  "b": [
+   "crates/app/src/patches.rs",
+   145,
+   160
+  ],
+  "owner": 2,
+  "id": "S014",
+  "repo": "sympy",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/matrices/expressions/transpose.py",
+   64,
+   66
+  ],
+  "b": [
+   "sympy/matrices/expressions/trace.py",
+   105,
+   117
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 33,
+    "rank": 1,
+    "score": "0.562",
+    "shared": [
+     "Trace",
+     "arg",
+     "trace"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S015",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "of": "P049",
+  "known": "related",
+  "a": [
+   "xtask/src/tokens.rs",
+   232,
+   243
+  ],
+  "b": [
+   "crates/patchcheck/src/lexer.rs",
+   331,
+   343
+  ],
+  "owner": 2,
+  "id": "S016",
+  "repo": "sympy",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/polytools.py",
+   1330,
+   1352
+  ],
+  "b": [
+   "sympy/polys/polytools.py",
+   786,
+   805
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 30,
+    "rank": 2,
+    "score": "1.000",
+    "shared": [
+     "OperationNotSupported",
+     "hasattr",
+     "per",
+     "rep"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S017",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/functions/special/error_functions.py",
+   1898,
+   1912
+  ],
+  "b": [
+   "sympy/functions/special/error_functions.py",
+   2615,
+   2642
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 14,
+    "rank": 2,
+    "score": "0.636",
+    "shared": [
+     "Add",
+     "Infinity",
+     "NegativeOne",
+     "Order",
+     "cos",
+     "factorial",
+     "order",
+     "series",
+     "sin",
+     "super"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S018",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P308",
+  "known": "related",
+  "a": [
+   "scripts/hook_latency.py",
+   174,
+   208
+  ],
+  "b": [
+   "packaging/check_wheel.py",
+   103,
+   114
+  ],
+  "owner": 1,
+  "id": "S019",
+  "repo": "sympy",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/functions/special/hyper.py",
+   204,
+   210
+  ],
+  "b": [
+   "sympy/printing/latex.py",
+   1435,
+   1444
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 23,
+    "rank": 1,
+    "score": "0.336",
+    "shared": [
+     "ap",
+     "argument",
+     "bq"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S020",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/combinatorics/coset_table.py",
+   283,
+   378
+  ],
+  "b": [
+   "sympy/combinatorics/fp_groups.py",
+   1208,
+   1242
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 25,
+    "rank": 2,
+    "score": "0.317",
+    "shared": [
+     "A_dict",
+     "P",
+     "identity",
+     "table"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S021",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/functions/elementary/trigonometric.py",
+   1095,
+   1108
+  ],
+  "b": [
+   "sympy/functions/elementary/trigonometric.py",
+   417,
+   429
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 36,
+    "rank": 2,
+    "score": "0.646",
+    "shared": [
+     "NegativeOne",
+     "Zero",
+     "factorial",
+     "sympify"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S022",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/compatibility.py",
+   1003,
+   1004
+  ],
+  "b": [
+   "sympy/polys/compatibility.py",
+   1012,
+   1013
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 8,
+    "rank": 2,
+    "score": "1.000",
+    "shared": [
+     "dom",
+     "domain",
+     "from_gf_dense",
+     "mod",
+     "to_gf_dense"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S023",
+  "repo": "sympy",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/julia.py",
+   195,
+   199
+  ],
+  "b": [
+   "sympy/printing/glsl.py",
+   305,
+   309
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 32,
+    "score": "1.000",
+    "shared": [
+     "_print",
+     "format",
+     "lhs",
+     "rel_op",
+     "rhs"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S024",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P060",
+  "known": "duplicate",
+  "a": [
+   "crates/store/src/reader.rs",
+   77,
+   82
+  ],
+  "b": [
+   "crates/io/src/read.rs",
+   71,
+   76
+  ],
+  "owner": 2,
+  "id": "S025",
+  "repo": "sympy",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/theanocode.py",
+   196,
+   205
+  ],
+  "b": [
+   "sympy/printing/aesaracode.py",
+   190,
+   199
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 0,
+    "rank": 1,
+    "score": "0.454",
+    "shared": [
+     "NotImplementedError",
+     "_print",
+     "dot"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S026",
+  "repo": "sympy",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/compatibility.py",
+   1012,
+   1013
+  ],
+  "b": [
+   "sympy/polys/compatibility.py",
+   1000,
+   1001
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 8,
+    "rank": 1,
+    "score": "1.000",
+    "shared": [
+     "dom",
+     "domain",
+     "from_gf_dense",
+     "mod",
+     "to_gf_dense"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S027",
+  "repo": "sympy",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/rcode.py",
+   219,
+   229
+  ],
+  "b": [
+   "sympy/printing/str.py",
+   157,
+   158
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 11,
+    "rank": 1,
+    "score": "0.656",
+    "shared": [
+     "_print",
+     "cond",
+     "expr"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S028",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/c.py",
+   421,
+   432
+  ],
+  "b": [
+   "sympy/printing/c.py",
+   434,
+   445
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 26,
+    "rank": 1,
+    "score": "0.366",
+    "shared": [
+     "_print",
+     "_print_Function",
+     "known_functions"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S029",
+  "repo": "sympy",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/matrices/common.py",
+   2448,
+   2450
+  ],
+  "b": [
+   "sympy/core/relational.py",
+   501,
+   503
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 20,
+    "rank": 1,
+    "score": "0.354",
+    "shared": [
+     "simplify",
+     "trigsimp"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S030",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/fractionfield.py",
+   83,
+   85
+  ],
+  "b": [
+   "sympy/polys/domains/polynomialring.py",
+   125,
+   127
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 30,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "domain"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S031",
+  "repo": "sympy",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/physics/quantum/piab.py",
+   30,
+   32
+  ],
+  "b": [
+   "sympy/physics/quantum/cartesian.py",
+   51,
+   53
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 23,
+    "score": "1.000",
+    "shared": [
+     "Infinity",
+     "Interval",
+     "L2",
+     "NegativeInfinity"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S032",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/assumptions/handlers/sets.py",
+   67,
+   93
+  ],
+  "b": [
+   "sympy/assumptions/handlers/ntheory.py",
+   144,
+   183
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 32,
+    "rank": 1,
+    "score": "0.424",
+    "shared": [
+     "ask",
+     "even",
+     "integer",
+     "irrational",
+     "is_number"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S033",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/octave.py",
+   213,
+   217
+  ],
+  "b": [
+   "sympy/printing/c.py",
+   401,
+   405
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 12,
+    "score": "1.000",
+    "shared": [
+     "_print",
+     "format",
+     "lhs",
+     "rel_op",
+     "rhs"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S034",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "examples/advanced/pyglet_plotting.py",
+   141,
+   193
+  ],
+  "b": [
+   "examples/advanced/pyglet_plotting.py",
+   143,
+   190
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 16,
+    "rank": 1,
+    "score": "0.868",
+    "shared": [
+     "FF",
+     "FG",
+     "PlotInterval",
+     "diff",
+     "draw",
+     "draw_arrow",
+     "draw_gradient_vectors",
+     "frange",
+     "gl",
+     "glBegin",
+     "glColor3f",
+     "glEnd",
+     "glVertex3f",
+     "intervals",
+     "lambdify",
+     "plot_interval",
+     "plotting",
+     "postdraw",
+     "v_steps"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S035",
+  "repo": "sympy",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/fractionfield.py",
+   83,
+   85
+  ],
+  "b": [
+   "sympy/polys/domains/polynomialring.py",
+   97,
+   99
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 11,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "domain"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S036",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/physics/quantum/piab.py",
+   30,
+   32
+  ],
+  "b": [
+   "sympy/physics/quantum/cartesian.py",
+   81,
+   83
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 44,
+    "score": "1.000",
+    "shared": [
+     "Infinity",
+     "Interval",
+     "L2",
+     "NegativeInfinity"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S037",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/polytools.py",
+   786,
+   805
+  ],
+  "b": [
+   "sympy/polys/polytools.py",
+   3248,
+   3267
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 22,
+    "rank": 2,
+    "score": "1.000",
+    "shared": [
+     "OperationNotSupported",
+     "hasattr",
+     "per",
+     "rep"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S038",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/old_polynomialring.py",
+   69,
+   71
+  ],
+  "b": [
+   "sympy/polys/domains/algebraicfield.py",
+   369,
+   371
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 4,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "dom"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S039",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/julia.py",
+   423,
+   427
+  ],
+  "b": [
+   "sympy/printing/octave.py",
+   447,
+   451
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 2,
+    "score": "1.000",
+    "shared": [
+     "Half",
+     "Pi",
+     "_print",
+     "argument",
+     "bessely",
+     "functions",
+     "order",
+     "sqrt"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S040",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/old_polynomialring.py",
+   77,
+   79
+  ],
+  "b": [
+   "sympy/polys/domains/algebraicfield.py",
+   365,
+   367
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 15,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "dom"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S041",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/fractionfield.py",
+   83,
+   85
+  ],
+  "b": [
+   "sympy/polys/domains/polynomialring.py",
+   93,
+   95
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 39,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "domain"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S042",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/stats/rv.py",
+   1711,
+   1755
+  ],
+  "b": [
+   "sympy/physics/units/dimensions.py",
+   325,
+   333
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 18,
+    "rank": 2,
+    "score": "0.351",
+    "shared": [
+     "Symbol",
+     "TypeError"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S043",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/physics/quantum/cartesian.py",
+   51,
+   53
+  ],
+  "b": [
+   "sympy/physics/quantum/piab.py",
+   42,
+   44
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 37,
+    "score": "1.000",
+    "shared": [
+     "Infinity",
+     "Interval",
+     "L2",
+     "NegativeInfinity"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S044",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/functions/elementary/piecewise.py",
+   610,
+   636
+  ],
+  "b": [
+   "sympy/functions/elementary/piecewise.py",
+   583,
+   747
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 38,
+    "rank": 1,
+    "score": "0.317",
+    "shared": [
+     "Infinity",
+     "NegativeInfinity",
+     "Or",
+     "_solve_inequality",
+     "false",
+     "free_symbols",
+     "nonsymfail",
+     "rel_op",
+     "rhs",
+     "true"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S045",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/matrices/expressions/trace.py",
+   105,
+   117
+  ],
+  "b": [
+   "sympy/matrices/expressions/adjoint.py",
+   56,
+   58
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 33,
+    "rank": 2,
+    "score": "0.380",
+    "shared": [
+     "Trace",
+     "arg",
+     "trace"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S046",
+  "repo": "sympy",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/octave.py",
+   360,
+   378
+  ],
+  "b": [
+   "sympy/printing/julia.py",
+   366,
+   384
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 36,
+    "score": "1.000",
+    "shared": [
+     "_print",
+     "colslice",
+     "join",
+     "parent",
+     "rowslice",
+     "shape",
+     "strslice"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S047",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/algebraicfield.py",
+   365,
+   367
+  ],
+  "b": [
+   "sympy/polys/domains/old_fractionfield.py",
+   89,
+   91
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 34,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "dom"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S048",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/combinatorics/coset_table.py",
+   842,
+   870
+  ],
+  "b": [
+   "sympy/combinatorics/coset_table.py",
+   729,
+   751
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 10,
+    "rank": 2,
+    "score": "0.449",
+    "shared": [
+     "A",
+     "A_dict",
+     "table"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S049",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/functions/combinatorial/factorials.py",
+   940,
+   962
+  ],
+  "b": [
+   "sympy/functions/special/zeta_functions.py",
+   692,
+   700
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 27,
+    "rank": 2,
+    "score": "0.328",
+    "shared": [
+     "One",
+     "Zero",
+     "functions",
+     "gamma",
+     "gamma_functions",
+     "special"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S050",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/assumptions/handlers/ntheory.py",
+   259,
+   267
+  ],
+  "b": [
+   "sympy/assumptions/handlers/sets.py",
+   67,
+   93
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 32,
+    "rank": 2,
+    "score": "0.349",
+    "shared": [
+     "ask",
+     "even",
+     "integer"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S051",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "of": "P122",
+  "known": "related",
+  "a": [
+   "crates/patchcheck/src/shadowing.rs",
+   13,
+   35
+  ],
+  "b": [
+   "crates/patchcheck/src/callers.rs",
+   14,
+   53
+  ],
+  "owner": 1,
+  "id": "S052",
+  "repo": "sympy",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/polynomialring.py",
+   101,
+   103
+  ],
+  "b": [
+   "sympy/polys/domains/fractionfield.py",
+   79,
+   81
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 14,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "domain"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S053",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/combinatorics/coset_table.py",
+   283,
+   378
+  ],
+  "b": [
+   "sympy/combinatorics/coset_table.py",
+   130,
+   167
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 25,
+    "rank": 1,
+    "score": "0.392",
+    "shared": [
+     "A_dict",
+     "A_dict_inv",
+     "P",
+     "_grp",
+     "identity",
+     "table"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S054",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "of": "P169",
+  "known": "duplicate",
+  "a": [
+   "crates/io/src/testing.rs",
+   236,
+   263
+  ],
+  "b": [
+   "xtask/src/repo.rs",
+   172,
+   180
+  ],
+  "owner": 2,
+  "id": "S055",
+  "repo": "sympy",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/matrices/expressions/funcmatrix.py",
+   112,
+   115
+  ],
+  "b": [
+   "sympy/matrices/expressions/trace.py",
+   48,
+   57
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 28,
+    "rank": 2,
+    "score": "0.359",
+    "shared": [
+     "concrete",
+     "doit",
+     "rewrite",
+     "summations"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S056",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/latex.py",
+   2675,
+   2678
+  ],
+  "b": [
+   "sympy/printing/pretty/pretty.py",
+   2704,
+   2707
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 9,
+    "score": "1.000",
+    "shared": [
+     "NamedMorphism",
+     "_print_NamedMorphism",
+     "categories",
+     "codomain",
+     "domain"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S057",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/liealgebras/weyl_group.py",
+   367,
+   403
+  ],
+  "b": [
+   "sympy/liealgebras/weyl_group.py",
+   46,
+   82
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 17,
+    "rank": 2,
+    "score": "0.395",
+    "shared": [
+     "cartan_type",
+     "rank",
+     "series"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S058",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/old_polynomialring.py",
+   93,
+   95
+  ],
+  "b": [
+   "sympy/polys/domains/algebraicfield.py",
+   369,
+   371
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 29,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "dom"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S059",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/matrices/expressions/trace.py",
+   48,
+   57
+  ],
+  "b": [
+   "sympy/core/evalf.py",
+   1311,
+   1317
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 28,
+    "rank": 1,
+    "score": "0.394",
+    "shared": [
+     "concrete",
+     "doit",
+     "rewrite",
+     "summations"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S060",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/glsl.py",
+   305,
+   309
+  ],
+  "b": [
+   "sympy/printing/octave.py",
+   213,
+   217
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 7,
+    "score": "1.000",
+    "shared": [
+     "_print",
+     "format",
+     "lhs",
+     "rel_op",
+     "rhs"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S061",
+  "repo": "sympy",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "examples/advanced/pyglet_plotting.py",
+   149,
+   186
+  ],
+  "b": [
+   "examples/advanced/pyglet_plotting.py",
+   141,
+   193
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 16,
+    "rank": 2,
+    "score": "0.540",
+    "shared": [
+     "FF",
+     "FG",
+     "diff",
+     "draw",
+     "draw_arrow",
+     "frange",
+     "glBegin",
+     "glColor3f",
+     "glEnd",
+     "glVertex3f",
+     "lambdify",
+     "v_steps"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S062",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P327",
+  "known": "duplicate",
+  "a": [
+   "xtask/src/generate/rules.rs",
+   97,
+   102
+  ],
+  "b": [
+   "xtask/src/generate/templates.rs",
+   73,
+   81
+  ],
+  "owner": 1,
+  "id": "S063",
+  "repo": "sympy",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/functions/special/error_functions.py",
+   2459,
+   2486
+  ],
+  "b": [
+   "sympy/functions/special/error_functions.py",
+   2615,
+   2642
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 14,
+    "rank": 1,
+    "score": "0.847",
+    "shared": [
+     "Add",
+     "Half",
+     "Infinity",
+     "NegativeOne",
+     "Order",
+     "cos",
+     "factorial",
+     "order",
+     "series",
+     "sin",
+     "sqrt",
+     "subs",
+     "super"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S064",
+  "repo": "sympy",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/fortran.py",
+   379,
+   381
+  ],
+  "b": [
+   "sympy/printing/julia.py",
+   387,
+   389
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 24,
+    "score": "1.000",
+    "shared": [
+     "_print",
+     "base",
+     "indices",
+     "join",
+     "label"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S065",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/assumptions/handlers/matrices.py",
+   539,
+   545
+  ],
+  "b": [
+   "sympy/assumptions/handlers/matrices.py",
+   560,
+   563
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 24,
+    "rank": 1,
+    "score": "0.471",
+    "shared": [
+     "all",
+     "ask",
+     "diagonal"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S066",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/rationalfield.py",
+   97,
+   103
+  ],
+  "b": [
+   "sympy/polys/domains/integerring.py",
+   116,
+   122
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 27,
+    "score": "1.000",
+    "shared": [
+     "LC",
+     "convert",
+     "dom",
+     "is_ground"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S067",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "of": "P256",
+  "known": "duplicate",
+  "a": [
+   "crates/hook/src/destination.rs",
+   85,
+   91
+  ],
+  "b": [
+   "crates/git/src/snapshot.rs",
+   139,
+   144
+  ],
+  "owner": 1,
+  "id": "S068",
+  "repo": "sympy",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/algebraicfield.py",
+   365,
+   367
+  ],
+  "b": [
+   "sympy/polys/domains/old_polynomialring.py",
+   81,
+   83
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 16,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "dom"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S069",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/physics/quantum/cartesian.py",
+   81,
+   83
+  ],
+  "b": [
+   "sympy/physics/quantum/piab.py",
+   42,
+   44
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 1,
+    "score": "1.000",
+    "shared": [
+     "Infinity",
+     "Interval",
+     "L2",
+     "NegativeInfinity"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S070",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/rcode.py",
+   161,
+   163
+  ],
+  "b": [
+   "sympy/printing/fortran.py",
+   379,
+   381
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 40,
+    "score": "1.000",
+    "shared": [
+     "_print",
+     "base",
+     "indices",
+     "join",
+     "label"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S071",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/polyclasses.py",
+   1621,
+   1623
+  ],
+  "b": [
+   "sympy/polys/polytools.py",
+   868,
+   888
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 20,
+    "score": "1.000",
+    "shared": [
+     "dom",
+     "rep",
+     "to_sympy"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S072",
+  "repo": "sympy",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/polyclasses.py",
+   696,
+   710
+  ],
+  "b": [
+   "sympy/polys/polyclasses.py",
+   1644,
+   1646
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 13,
+    "rank": 2,
+    "score": "0.427",
+    "shared": [
+     "per",
+     "unify"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S073",
+  "repo": "sympy",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/algebraicfield.py",
+   369,
+   371
+  ],
+  "b": [
+   "sympy/polys/domains/old_polynomialring.py",
+   77,
+   79
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 3,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "dom"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S074",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/physics/optics/polarization.py",
+   97,
+   193
+  ],
+  "b": [
+   "sympy/physics/vector/frame.py",
+   765,
+   778
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 22,
+    "score": "1.000",
+    "shared": [
+     "Matrix",
+     "cos",
+     "sin"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S075",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/c.py",
+   401,
+   405
+  ],
+  "b": [
+   "sympy/printing/rcode.py",
+   246,
+   250
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 6,
+    "score": "1.000",
+    "shared": [
+     "_print",
+     "format",
+     "lhs",
+     "rel_op",
+     "rhs"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S076",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/functions/combinatorial/factorials.py",
+   940,
+   962
+  ],
+  "b": [
+   "sympy/functions/combinatorial/numbers.py",
+   1266,
+   1277
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 27,
+    "rank": 1,
+    "score": "0.455",
+    "shared": [
+     "Zero",
+     "functions",
+     "gamma",
+     "gamma_functions",
+     "is_integer",
+     "is_negative",
+     "is_nonnegative",
+     "is_zero",
+     "special"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S077",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/simplify/hyperexpand.py",
+   1697,
+   1722
+  ],
+  "b": [
+   "sympy/functions/special/hyper.py",
+   204,
+   210
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 23,
+    "rank": 2,
+    "score": "0.319",
+    "shared": [
+     "Mul",
+     "Tuple",
+     "ap",
+     "bq"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S078",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/algebraicfield.py",
+   365,
+   367
+  ],
+  "b": [
+   "sympy/polys/domains/old_fractionfield.py",
+   73,
+   75
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 21,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "dom"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S079",
+  "repo": "sympy",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/polyclasses.py",
+   454,
+   457
+  ],
+  "b": [
+   "sympy/polys/polyclasses.py",
+   696,
+   710
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 13,
+    "rank": 1,
+    "score": "0.428",
+    "shared": [
+     "per",
+     "unify"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S080",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/aesaracode.py",
+   223,
+   238
+  ],
+  "b": [
+   "sympy/printing/theanocode.py",
+   232,
+   247
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 29,
+    "rank": 1,
+    "score": "0.703",
+    "shared": [
+     "Piecewise",
+     "_print",
+     "nan",
+     "switch"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S081",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/octave.py",
+   381,
+   383
+  ],
+  "b": [
+   "sympy/printing/julia.py",
+   387,
+   389
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 13,
+    "score": "1.000",
+    "shared": [
+     "_print",
+     "base",
+     "indices",
+     "join",
+     "label"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S082",
+  "repo": "sympy",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/matrices/common.py",
+   1930,
+   1932
+  ],
+  "b": [
+   "sympy/matrices/repmatrix.py",
+   472,
+   495
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 35,
+    "rank": 2,
+    "score": "0.426",
+    "shared": [
+     "cols",
+     "f"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S083",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/fractionfield.py",
+   79,
+   81
+  ],
+  "b": [
+   "sympy/polys/domains/polynomialring.py",
+   117,
+   119
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 26,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "domain"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S084",
+  "repo": "sympy",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/polytools.py",
+   765,
+   784
+  ],
+  "b": [
+   "sympy/polys/polytools.py",
+   1330,
+   1352
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 30,
+    "rank": 1,
+    "score": "1.000",
+    "shared": [
+     "OperationNotSupported",
+     "hasattr",
+     "per",
+     "rep"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S085",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/compatibility.py",
+   305,
+   306
+  ],
+  "b": [
+   "sympy/polys/compatibility.py",
+   271,
+   272
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 4,
+    "rank": 1,
+    "score": "1.000",
+    "shared": [
+     "domain",
+     "from_dense",
+     "to_dense"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S086",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P244",
+  "known": "related",
+  "a": [
+   "crates/hook/src/report/log.rs",
+   190,
+   204
+  ],
+  "b": [
+   "crates/hook/src/payload.rs",
+   63,
+   77
+  ],
+  "owner": 2,
+  "id": "S087",
+  "repo": "sympy",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "of": "P328",
+  "known": "duplicate",
+  "a": [
+   "crates/facts/src/extract/rationales.rs",
+   46,
+   55
+  ],
+  "b": [
+   "crates/graph/src/owners.rs",
+   8,
+   16
+  ],
+  "owner": 1,
+  "id": "S088",
+  "repo": "sympy",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/physics/vector/vector.py",
+   592,
+   630
+  ],
+  "b": [
+   "sympy/vector/dyadic.py",
+   139,
+   182
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 45,
+    "score": "1.000",
+    "shared": [
+     "Matrix",
+     "dot",
+     "reshape"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S089",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/jscode.py",
+   112,
+   114
+  ],
+  "b": [
+   "sympy/printing/rcode.py",
+   157,
+   159
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 19,
+    "score": "1.000",
+    "shared": [
+     "int",
+     "p",
+     "q"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S090",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/liealgebras/weyl_group.py",
+   46,
+   82
+  ],
+  "b": [
+   "sympy/liealgebras/weyl_group.py",
+   84,
+   114
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 17,
+    "rank": 1,
+    "score": "0.593",
+    "shared": [
+     "cartan_type",
+     "rank",
+     "series"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S091",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/physics/vector/frame.py",
+   594,
+   681
+  ],
+  "b": [
+   "sympy/physics/vector/frame.py",
+   822,
+   920
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 1,
+    "rank": 2,
+    "score": "0.407",
+    "shared": [
+     "T",
+     "_ang_vel_dict",
+     "_check_frame",
+     "_dcm",
+     "_t",
+     "_var_dict",
+     "diff",
+     "functions",
+     "physics",
+     "update",
+     "vector"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S092",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/core/mul.py",
+   1583,
+   1616
+  ],
+  "b": [
+   "sympy/core/power.py",
+   594,
+   617
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 39,
+    "rank": 1,
+    "score": "0.405",
+    "shared": [
+     "is_extended_negative",
+     "is_extended_nonnegative",
+     "is_extended_nonpositive",
+     "is_extended_positive",
+     "is_finite",
+     "is_zero"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S093",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "of": "P301",
+  "known": "duplicate",
+  "a": [
+   "crates/patch/src/unidiff/hunks.rs",
+   73,
+   81
+  ],
+  "b": [
+   "crates/patch/src/unidiff.rs",
+   135,
+   147
+  ],
+  "owner": 1,
+  "id": "S094",
+  "repo": "sympy",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/assumptions/handlers/matrices.py",
+   580,
+   587
+  ],
+  "b": [
+   "sympy/assumptions/handlers/matrices.py",
+   539,
+   545
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 24,
+    "rank": 2,
+    "score": "0.453",
+    "shared": [
+     "_is_empty_or_1x1",
+     "ask",
+     "diagonal"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S095",
+  "repo": "sympy",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "of": "P094",
+  "known": "related",
+  "a": [
+   "crates/json/src/write.rs",
+   220,
+   235
+  ],
+  "b": [
+   "crates/app/src/capabilities.rs",
+   396,
+   403
+  ],
+  "owner": 1,
+  "id": "S096",
+  "repo": "sympy",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/str.py",
+   157,
+   158
+  ],
+  "b": [
+   "sympy/printing/latex.py",
+   1671,
+   1682
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 11,
+    "rank": 2,
+    "score": "0.600",
+    "shared": [
+     "_print",
+     "cond",
+     "expr"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S097",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/integrals/integrals.py",
+   1169,
+   1179
+  ],
+  "b": [
+   "sympy/integrals/integrals.py",
+   1159,
+   1167
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 37,
+    "rank": 1,
+    "score": "0.437",
+    "shared": [
+     "as_dummy",
+     "function",
+     "integrate",
+     "limits"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S098",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/str.py",
+   671,
+   674
+  ],
+  "b": [
+   "sympy/printing/mathematica.py",
+   155,
+   158
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 5,
+    "score": "1.000",
+    "shared": [
+     "base",
+     "exp",
+     "parenthesize",
+     "precedence"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S099",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P027",
+  "known": "related",
+  "a": [
+   "crates/hook/src/report/log.rs",
+   111,
+   118
+  ],
+  "b": [
+   "crates/store/src/value.rs",
+   106,
+   114
+  ],
+  "owner": 2,
+  "id": "S100",
+  "repo": "sympy",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/domains/old_polynomialring.py",
+   89,
+   91
+  ],
+  "b": [
+   "sympy/polys/domains/algebraicfield.py",
+   365,
+   367
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 8,
+    "score": "1.000",
+    "shared": [
+     "K1",
+     "convert",
+     "dom"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S101",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/polys/compatibility.py",
+   275,
+   276
+  ],
+  "b": [
+   "sympy/polys/compatibility.py",
+   305,
+   306
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 4,
+    "rank": 2,
+    "score": "1.000",
+    "shared": [
+     "domain",
+     "from_dense",
+     "to_dense"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S102",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/matrices/matrices.py",
+   274,
+   279
+  ],
+  "b": [
+   "sympy/matrices/common.py",
+   91,
+   94
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 38,
+    "score": "1.000",
+    "shared": [
+     "_new",
+     "cols",
+     "entry",
+     "rows"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S103",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/physics/quantum/boson.py",
+   110,
+   114
+  ],
+  "b": [
+   "sympy/physics/quantum/fermion.py",
+   92,
+   96
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 25,
+    "score": "1.000",
+    "shared": [
+     "is_annihilation",
+     "name",
+     "str"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S104",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/mathml.py",
+   1281,
+   1290
+  ],
+  "b": [
+   "sympy/printing/mathml.py",
+   1915,
+   1925
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 19,
+    "rank": 1,
+    "score": "0.924",
+    "shared": [
+     "_print",
+     "appendChild",
+     "createElement",
+     "createTextNode",
+     "dom",
+     "setAttribute"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S105",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/matrices/matrices.py",
+   235,
+   240
+  ],
+  "b": [
+   "sympy/matrices/common.py",
+   96,
+   105
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 31,
+    "score": "1.000",
+    "shared": [
+     "_new",
+     "cols",
+     "entry",
+     "rows"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S106",
+  "repo": "sympy",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/latex.py",
+   632,
+   636
+  ],
+  "b": [
+   "sympy/printing/str.py",
+   601,
+   605
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 41,
+    "score": "1.000",
+    "shared": [
+     "_print",
+     "as_expr",
+     "as_poly",
+     "is_aliased"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S107",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/functions/elementary/trigonometric.py",
+   746,
+   758
+  ],
+  "b": [
+   "sympy/functions/elementary/trigonometric.py",
+   417,
+   429
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 36,
+    "rank": 1,
+    "score": "0.763",
+    "shared": [
+     "NegativeOne",
+     "Zero",
+     "factorial",
+     "sympify"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S108",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/series/kauers.py",
+   27,
+   51
+  ],
+  "b": [
+   "sympy/integrals/integrals.py",
+   1169,
+   1179
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 37,
+    "rank": 2,
+    "score": "0.312",
+    "shared": [
+     "function",
+     "limits",
+     "subs"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S109",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/julia.py",
+   221,
+   224
+  ],
+  "b": [
+   "sympy/printing/str.py",
+   671,
+   674
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 10,
+    "score": "1.000",
+    "shared": [
+     "base",
+     "exp",
+     "parenthesize",
+     "precedence"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S110",
+  "repo": "sympy",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/aesaracode.py",
+   240,
+   242
+  ],
+  "b": [
+   "sympy/printing/theanocode.py",
+   249,
+   251
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 17,
+    "score": "1.000",
+    "shared": [
+     "_print",
+     "p",
+     "q",
+     "true_div"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S111",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/physics/vector/frame.py",
+   1020,
+   1110
+  ],
+  "b": [
+   "sympy/physics/vector/frame.py",
+   594,
+   681
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 1,
+    "rank": 1,
+    "score": "0.469",
+    "shared": [
+     "Matrix",
+     "_ang_vel_dict",
+     "_check_frame",
+     "_dcm",
+     "_t",
+     "_var_dict",
+     "diff",
+     "functions",
+     "physics",
+     "sympify",
+     "update",
+     "vector"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S112",
+  "repo": "sympy",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "of": "P031",
+  "known": "duplicate",
+  "a": [
+   "crates/app/src/proposed.rs",
+   61,
+   67
+  ],
+  "b": [
+   "crates/app/src/patches/sources.rs",
+   52,
+   69
+  ],
+  "owner": 2,
+  "id": "S113",
+  "repo": "sympy",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/fortran.py",
+   361,
+   363
+  ],
+  "b": [
+   "sympy/printing/rust.py",
+   364,
+   366
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 18,
+    "score": "1.000",
+    "shared": [
+     "int",
+     "p",
+     "q"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S114",
+  "repo": "sympy",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "sympy/physics/units/dimensions.py",
+   304,
+   313
+  ],
+  "b": [
+   "sympy/physics/units/dimensions.py",
+   325,
+   333
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 18,
+    "rank": 1,
+    "score": "0.625",
+    "shared": [
+     "Dimension",
+     "Symbol",
+     "TypeError"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "S115",
+  "repo": "sympy",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "sympy/printing/pretty/pretty.py",
+   2464,
+   2468
+  ],
+  "b": [
+   "sympy/printing/str.py",
+   601,
+   605
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 42,
+    "score": "1.000",
+    "shared": [
+     "_print",
+     "as_expr",
+     "as_poly",
+     "is_aliased"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "S116",
+  "repo": "sympy",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/loom/std/unsafe_cell.rs",
+   9,
+   12
+  ],
+  "b": [
+   "tokio/src/util/rc_cell.rs",
+   28,
+   39
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 23,
+    "rank": 2,
+    "score": "0.418",
+    "shared": [
+     "FnOnce",
+     "f"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T001",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/unix/datagram/socket.rs",
+   629,
+   634
+  ],
+  "b": [
+   "tokio/src/net/tcp/stream.rs",
+   1095,
+   1100
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 29,
+    "score": "1.000",
+    "shared": [
+     "async_io",
+     "io",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T002",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/unix/pipe.rs",
+   494,
+   498
+  ],
+  "b": [
+   "tokio/src/net/unix/socket.rs",
+   230,
+   245
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 8,
+    "rank": 1,
+    "score": "0.535",
+    "shared": [
+     "from_mio",
+     "from_raw_fd",
+     "into_raw_fd"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T003",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "benches/sync_broadcast.rs",
+   16,
+   27
+  ],
+  "b": [
+   "benches/sync_watch.rs",
+   16,
+   27
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 35,
+    "rank": 1,
+    "score": "0.789",
+    "shared": [
+     "as_bytes",
+     "fold",
+     "iter",
+     "map"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T004",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/sync/mutex.rs",
+   1187,
+   1195
+  ],
+  "b": [
+   "tokio/src/sync/rwlock/read_guard.rs",
+   34,
+   44
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 39,
+    "rank": 1,
+    "score": "0.826",
+    "shared": [
+     "all",
+     "cfg",
+     "data",
+     "read",
+     "resource_span",
+     "s"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T005",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "benches/sync_watch.rs",
+   29,
+   72
+  ],
+  "b": [
+   "benches/sync_broadcast.rs",
+   29,
+   69
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 5,
+    "rank": 1,
+    "score": "0.776",
+    "shared": [
+     "bench_function",
+     "black_box",
+     "block_on",
+     "clone",
+     "do_work",
+     "fetch_add",
+     "fetch_sub",
+     "is_ok",
+     "iter",
+     "load",
+     "notified",
+     "notify_one",
+     "rt",
+     "seed_from_u64",
+     "send",
+     "spawn",
+     "subscribe",
+     "to_string",
+     "unwrap"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T006",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "of": "P144",
+  "known": "related",
+  "a": [
+   "crates/app/src/health.rs",
+   277,
+   305
+  ],
+  "b": [
+   "crates/render/src/health.rs",
+   142,
+   160
+  ],
+  "owner": 2,
+  "id": "T007",
+  "repo": "tokio",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "of": "P160",
+  "known": "duplicate",
+  "a": [
+   "crates/patchcheck/src/manifest.rs",
+   237,
+   251
+  ],
+  "b": [
+   "crates/patch/src/natural.rs",
+   97,
+   107
+  ],
+  "owner": 2,
+  "id": "T008",
+  "repo": "tokio",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "of": "P239",
+  "known": "related",
+  "a": [
+   "crates/app/src/pairs.rs",
+   192,
+   199
+  ],
+  "b": [
+   "crates/checks/src/pair.rs",
+   137,
+   143
+  ],
+  "owner": 2,
+  "id": "T009",
+  "repo": "tokio",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/udp.rs",
+   1458,
+   1466
+  ],
+  "b": [
+   "tokio/src/net/windows/named_pipe.rs",
+   848,
+   854
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 23,
+    "score": "1.000",
+    "shared": [
+     "FnOnce",
+     "io",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T010",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "benches/rt_multi_threaded.rs",
+   19,
+   45
+  ],
+  "b": [
+   "benches/sync_broadcast.rs",
+   29,
+   69
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 5,
+    "rank": 2,
+    "score": "0.376",
+    "shared": [
+     "bench_function",
+     "block_on",
+     "clone",
+     "fetch_sub",
+     "iter",
+     "recv",
+     "rt",
+     "send",
+     "spawn",
+     "unwrap"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T011",
+  "repo": "tokio",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/multi_thread_alt/worker/metrics.rs",
+   8,
+   10
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/multi_thread/worker/metrics.rs",
+   8,
+   10
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 36,
+    "score": "1.000",
+    "shared": [
+     "len",
+     "remotes",
+     "steal"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T012",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/sync/rwlock/owned_write_guard.rs",
+   85,
+   101
+  ],
+  "b": [
+   "tokio/src/sync/rwlock/owned_write_guard_mapped.rs",
+   135,
+   157
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 10,
+    "rank": 1,
+    "score": "0.799",
+    "shared": [
+     "FnOnce",
+     "all",
+     "cfg",
+     "f",
+     "lock",
+     "permits_acquired",
+     "resource_span",
+     "skip_drop"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T013",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/file.rs",
+   190,
+   194
+  ],
+  "b": [
+   "tokio/src/fs/open_options.rs",
+   388,
+   394
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 32,
+    "rank": 2,
+    "score": "0.689",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "from_std",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T014",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/multi_thread/worker.rs",
+   875,
+   881
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/multi_thread_alt/worker.rs",
+   1253,
+   1259
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 27,
+    "rank": 2,
+    "score": "0.436",
+    "shared": [
+     "idle",
+     "is_searching",
+     "shared"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T015",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/open_options.rs",
+   388,
+   394
+  ],
+  "b": [
+   "tokio/src/fs/file.rs",
+   152,
+   157
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 32,
+    "rank": 1,
+    "score": "0.689",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "from_std",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T016",
+  "repo": "tokio",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/udp.rs",
+   776,
+   781
+  ],
+  "b": [
+   "tokio/src/net/tcp/stream.rs",
+   1095,
+   1100
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 40,
+    "score": "1.000",
+    "shared": [
+     "async_io",
+     "io",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T017",
+  "repo": "tokio",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/mod.rs",
+   60,
+   75
+  ],
+  "b": [
+   "tokio/src/runtime/handle.rs",
+   369,
+   377
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 25,
+    "rank": 1,
+    "score": "0.774",
+    "shared": [
+     "CurrentThread",
+     "MultiThread",
+     "MultiThreadAlt",
+     "all",
+     "cfg"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T018",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P023",
+  "known": "duplicate",
+  "a": [
+   "crates/git/src/testing.rs",
+   85,
+   98
+  ],
+  "b": [
+   "crates/io/src/testing.rs",
+   212,
+   227
+  ],
+  "owner": 2,
+  "id": "T019",
+  "repo": "tokio",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/context/blocking.rs",
+   34,
+   50
+  ],
+  "b": [
+   "tokio/src/runtime/context/runtime_mt.rs",
+   4,
+   6
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 14,
+    "rank": 1,
+    "score": "0.555",
+    "shared": [
+     "get",
+     "runtime",
+     "with"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T020",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/canonicalize.rs",
+   46,
+   49
+  ],
+  "b": [
+   "tokio/src/fs/symlink_metadata.rs",
+   12,
+   15
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 34,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T021",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/windows/named_pipe.rs",
+   881,
+   887
+  ],
+  "b": [
+   "tokio/src/io/async_fd.rs",
+   820,
+   828
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 33,
+    "rank": 1,
+    "score": "0.408",
+    "shared": [
+     "FnMut",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T022",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/tcp/stream.rs",
+   246,
+   273
+  ],
+  "b": [
+   "tokio/src/net/tcp/listener.rs",
+   265,
+   292
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 1,
+    "score": "1.000",
+    "shared": [
+     "cfg",
+     "from_raw_fd",
+     "from_raw_socket",
+     "into_inner",
+     "into_raw_fd",
+     "into_raw_socket",
+     "io",
+     "map"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T023",
+  "repo": "tokio",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/multi_thread/trace.rs",
+   51,
+   60
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/multi_thread_alt/trace.rs",
+   51,
+   60
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 2,
+    "score": "1.000",
+    "shared": [
+     "compare_exchange",
+     "is_err",
+     "notify_all",
+     "trace_requested",
+     "yield_now"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T024",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P260",
+  "known": "duplicate",
+  "a": [
+   "xtask/src/generate/descriptions.rs",
+   31,
+   40
+  ],
+  "b": [
+   "xtask/src/generate/templates.rs",
+   284,
+   292
+  ],
+  "owner": 1,
+  "id": "T025",
+  "repo": "tokio",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P243",
+  "known": "related",
+  "a": [
+   "crates/git/src/worktree.rs",
+   492,
+   532
+  ],
+  "b": [
+   "crates/io/src/warning.rs",
+   78,
+   101
+  ],
+  "owner": 1,
+  "id": "T026",
+  "repo": "tokio",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/windows/named_pipe.rs",
+   1670,
+   1676
+  ],
+  "b": [
+   "tokio/src/io/async_fd.rs",
+   820,
+   828
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 33,
+    "rank": 2,
+    "score": "0.408",
+    "shared": [
+     "FnMut",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T027",
+  "repo": "tokio",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/builder.rs",
+   705,
+   720
+  ],
+  "b": [
+   "tokio/src/runtime/driver.rs",
+   47,
+   64
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 4,
+    "rank": 1,
+    "score": "0.338",
+    "shared": [
+     "enable_io",
+     "enable_time",
+     "nevents",
+     "start_paused"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T028",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/canonicalize.rs",
+   46,
+   49
+  ],
+  "b": [
+   "tokio/src/fs/metadata.rs",
+   43,
+   46
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 16,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T029",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/sync/rwlock/owned_read_guard.rs",
+   75,
+   90
+  ],
+  "b": [
+   "tokio/src/sync/mutex.rs",
+   1049,
+   1063
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 10,
+    "score": "1.000",
+    "shared": [
+     "FnOnce",
+     "all",
+     "cfg",
+     "f",
+     "lock",
+     "resource_span",
+     "skip_drop"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T030",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/windows/named_pipe.rs",
+   1599,
+   1603
+  ],
+  "b": [
+   "tokio/src/net/tcp/stream.rs",
+   972,
+   978
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 3,
+    "score": "1.000",
+    "shared": [
+     "io",
+     "registration",
+     "try_io",
+     "write_vectored"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T031",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P034",
+  "known": "duplicate",
+  "a": [
+   "crates/syntax/src/parsed.rs",
+   228,
+   234
+  ],
+  "b": [
+   "crates/syntax/src/cursor.rs",
+   36,
+   42
+  ],
+  "owner": 2,
+  "id": "T032",
+  "repo": "tokio",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/tcp/stream.rs",
+   546,
+   548
+  ],
+  "b": [
+   "tokio/src/net/unix/stream.rs",
+   247,
+   249
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 25,
+    "score": "1.000",
+    "shared": [
+     "io",
+     "map_ok",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T033",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P097",
+  "known": "related",
+  "a": [
+   "crates/facts/src/extract/python_scopes.rs",
+   390,
+   410
+  ],
+  "b": [
+   "crates/facts/src/extract/generic_imports.rs",
+   68,
+   86
+  ],
+  "owner": 1,
+  "id": "T034",
+  "repo": "tokio",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/unix/socket.rs",
+   230,
+   245
+  ],
+  "b": [
+   "tokio/src/net/unix/pipe.rs",
+   990,
+   994
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 8,
+    "rank": 2,
+    "score": "0.535",
+    "shared": [
+     "from_mio",
+     "from_raw_fd",
+     "into_raw_fd"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T035",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/create_dir_all.rs",
+   48,
+   51
+  ],
+  "b": [
+   "tokio/src/fs/copy.rs",
+   21,
+   25
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 6,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   },
+   {
+    "set": "card",
+    "card": 15,
+    "rank": 2,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T036",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "of": "P002",
+  "known": "duplicate",
+  "a": [
+   "crates/cli/src/commands.rs",
+   203,
+   217
+  ],
+  "b": [
+   "crates/cli/src/gate_report.rs",
+   91,
+   104
+  ],
+  "owner": 2,
+  "id": "T037",
+  "repo": "tokio",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/udp.rs",
+   556,
+   561
+  ],
+  "b": [
+   "tokio/src/net/windows/named_pipe.rs",
+   191,
+   201
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 34,
+    "rank": 2,
+    "score": "0.607",
+    "shared": [
+     "async_io",
+     "io",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T038",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/task/state.rs",
+   209,
+   244
+  ],
+  "b": [
+   "tokio/src/runtime/task/state.rs",
+   247,
+   266
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 19,
+    "rank": 1,
+    "score": "0.678",
+    "shared": [
+     "fetch_update_action",
+     "is_complete",
+     "is_notified",
+     "is_running",
+     "ref_inc",
+     "set_notified"
+    ]
+   },
+   {
+    "set": "card",
+    "card": 26,
+    "rank": 1,
+    "score": "0.678",
+    "shared": [
+     "fetch_update_action",
+     "is_complete",
+     "is_notified",
+     "is_running",
+     "ref_inc",
+     "set_notified"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T039",
+  "repo": "tokio",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+   571,
+   576
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/multi_thread/queue.rs",
+   572,
+   577
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 31,
+    "score": "1.000",
+    "shared": [
+     "head",
+     "load",
+     "tail",
+     "unpack",
+     "wrapping_sub"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T040",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/symlink.rs",
+   11,
+   16
+  ],
+  "b": [
+   "tokio/src/fs/copy.rs",
+   21,
+   25
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 11,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T041",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio-util/src/task/task_tracker.rs",
+   363,
+   367
+  ],
+  "b": [
+   "tokio-util/src/task/task_tracker.rs",
+   356,
+   360
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 7,
+    "rank": 2,
+    "score": "0.593",
+    "shared": [
+     "load",
+     "state"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T042",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/udp.rs",
+   1306,
+   1311
+  ],
+  "b": [
+   "tokio/src/net/tcp/stream.rs",
+   1095,
+   1100
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 33,
+    "score": "1.000",
+    "shared": [
+     "async_io",
+     "io",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T043",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/copy.rs",
+   21,
+   25
+  ],
+  "b": [
+   "tokio/src/fs/rename.rs",
+   12,
+   17
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 0,
+    "rank": 2,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T044",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/sync/rwlock/owned_write_guard_mapped.rs",
+   135,
+   157
+  ],
+  "b": [
+   "tokio/src/sync/rwlock/owned_write_guard_mapped.rs",
+   84,
+   100
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 10,
+    "rank": 2,
+    "score": "0.799",
+    "shared": [
+     "FnOnce",
+     "all",
+     "cfg",
+     "f",
+     "lock",
+     "permits_acquired",
+     "resource_span",
+     "skip_drop"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T045",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/sync/rwlock/owned_write_guard_mapped.rs",
+   84,
+   100
+  ],
+  "b": [
+   "tokio/src/sync/rwlock/owned_write_guard.rs",
+   85,
+   101
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 12,
+    "score": "1.000",
+    "shared": [
+     "FnOnce",
+     "all",
+     "cfg",
+     "f",
+     "lock",
+     "permits_acquired",
+     "resource_span",
+     "skip_drop"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T046",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/blocking/schedule.rs",
+   18,
+   36
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/mod.rs",
+   60,
+   75
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 25,
+    "rank": 2,
+    "score": "0.459",
+    "shared": [
+     "CurrentThread",
+     "MultiThread",
+     "MultiThreadAlt",
+     "all",
+     "cfg"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T047",
+  "repo": "tokio",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/util/sharded_list.rs",
+   94,
+   102
+  ],
+  "b": [
+   "tokio/src/util/sharded_list.rs",
+   137,
+   143
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 28,
+    "rank": 2,
+    "score": "0.440",
+    "shared": [
+     "added",
+     "as_raw",
+     "count",
+     "get_shard_id"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T048",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P067",
+  "known": "related",
+  "a": [
+   "crates/facts/src/values.rs",
+   284,
+   300
+  ],
+  "b": [
+   "crates/facts/src/extract.rs",
+   128,
+   136
+  ],
+  "owner": 2,
+  "id": "T049",
+  "repo": "tokio",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio-test/src/io.rs",
+   151,
+   154
+  ],
+  "b": [
+   "tokio-test/src/io.rs",
+   160,
+   164
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 30,
+    "rank": 2,
+    "score": "0.546",
+    "shared": [
+     "into",
+     "send",
+     "tx",
+     "unwrap"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T050",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio-test/src/io.rs",
+   160,
+   164
+  ],
+  "b": [
+   "tokio-test/src/io.rs",
+   170,
+   173
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 12,
+    "rank": 2,
+    "score": "0.544",
+    "shared": [
+     "into",
+     "send",
+     "tx",
+     "unwrap"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T051",
+  "repo": "tokio",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/task/list.rs",
+   179,
+   189
+  ],
+  "b": [
+   "tokio/src/runtime/task/list.rs",
+   130,
+   139
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 37,
+    "rank": 2,
+    "score": "0.543",
+    "shared": [
+     "get_owner_id",
+     "header",
+     "id"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T052",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+   117,
+   161
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+   209,
+   227
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 13,
+    "rank": 2,
+    "score": "0.536",
+    "shared": [
+     "as_mut_ptr",
+     "buffer",
+     "mask",
+     "store",
+     "tail",
+     "with_mut",
+     "wrapping_add",
+     "write"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T053",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio-util/src/task/task_tracker.rs",
+   363,
+   367
+  ],
+  "b": [
+   "tokio-util/src/task/task_tracker.rs",
+   349,
+   353
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 7,
+    "rank": 1,
+    "score": "0.593",
+    "shared": [
+     "load",
+     "state"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T054",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/time/wheel/level.rs",
+   143,
+   147
+  ],
+  "b": [
+   "tokio/src/task/task_local.rs",
+   373,
+   376
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 16,
+    "rank": 1,
+    "score": "0.376",
+    "shared": [
+     "slot",
+     "take"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T055",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/loom/std/unsafe_cell.rs",
+   14,
+   17
+  ],
+  "b": [
+   "tokio/src/loom/std/unsafe_cell.rs",
+   9,
+   12
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 18,
+    "rank": 1,
+    "score": "1.000",
+    "shared": [
+     "FnOnce",
+     "f",
+     "get"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T056",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/udp.rs",
+   1458,
+   1466
+  ],
+  "b": [
+   "tokio/src/net/unix/datagram/socket.rs",
+   1368,
+   1376
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 26,
+    "score": "1.000",
+    "shared": [
+     "FnOnce",
+     "io",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T057",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "benches/spawn.rs",
+   48,
+   61
+  ],
+  "b": [
+   "benches/spawn.rs",
+   13,
+   26
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 2,
+    "rank": 2,
+    "score": "0.667",
+    "shared": [
+     "bench_function",
+     "block_on",
+     "build",
+     "iter",
+     "spawn",
+     "unwrap",
+     "work"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T058",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/create_dir_all.rs",
+   48,
+   51
+  ],
+  "b": [
+   "tokio/src/fs/canonicalize.rs",
+   46,
+   49
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 15,
+    "rank": 1,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T059",
+  "repo": "tokio",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "of": "P048",
+  "known": "duplicate",
+  "a": [
+   "crates/facts/src/extract.rs",
+   65,
+   79
+  ],
+  "b": [
+   "crates/facts/src/stable_id.rs",
+   197,
+   211
+  ],
+  "owner": 1,
+  "id": "T060",
+  "repo": "tokio",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/symlink_file.rs",
+   14,
+   19
+  ],
+  "b": [
+   "tokio/src/fs/canonicalize.rs",
+   46,
+   49
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 21,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T061",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/unix/pipe.rs",
+   719,
+   723
+  ],
+  "b": [
+   "tokio/src/net/windows/named_pipe.rs",
+   1599,
+   1603
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 38,
+    "score": "1.000",
+    "shared": [
+     "io",
+     "registration",
+     "try_io",
+     "write_vectored"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T062",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/read_to_string.rs",
+   27,
+   30
+  ],
+  "b": [
+   "tokio/src/fs/copy.rs",
+   21,
+   25
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 28,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T063",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/util/sharded_list.rs",
+   64,
+   71
+  ],
+  "b": [
+   "tokio/src/util/sharded_list.rs",
+   81,
+   91
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 11,
+    "rank": 1,
+    "score": "0.777",
+    "shared": [
+     "count",
+     "decrement",
+     "is_some",
+     "shard_inner"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T064",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/context/blocking.rs",
+   34,
+   50
+  ],
+  "b": [
+   "tokio/src/runtime/context/runtime_mt.rs",
+   10,
+   36
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 14,
+    "rank": 2,
+    "score": "0.373",
+    "shared": [
+     "get",
+     "runtime",
+     "set",
+     "with"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T065",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio-test/src/io.rs",
+   151,
+   154
+  ],
+  "b": [
+   "tokio-test/src/io.rs",
+   170,
+   173
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 12,
+    "rank": 1,
+    "score": "0.604",
+    "shared": [
+     "into",
+     "send",
+     "tx",
+     "unwrap"
+    ]
+   },
+   {
+    "set": "card",
+    "card": 30,
+    "rank": 1,
+    "score": "0.604",
+    "shared": [
+     "into",
+     "send",
+     "tx",
+     "unwrap"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T066",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+   571,
+   576
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/multi_thread/queue.rs",
+   579,
+   584
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 27,
+    "score": "1.000",
+    "shared": [
+     "head",
+     "load",
+     "tail",
+     "unpack",
+     "wrapping_sub"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T067",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "of": "P041",
+  "known": "related",
+  "a": [
+   "crates/io/src/files.rs",
+   258,
+   275
+  ],
+  "b": [
+   "crates/io/src/owner.rs",
+   61,
+   74
+  ],
+  "owner": 1,
+  "id": "T068",
+  "repo": "tokio",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/read_dir.rs",
+   300,
+   303
+  ],
+  "b": [
+   "tokio/src/fs/file.rs",
+   444,
+   447
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 8,
+    "score": "1.000",
+    "shared": [
+     "asyncify",
+     "clone",
+     "std"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T069",
+  "repo": "tokio",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/unix/datagram/socket.rs",
+   1368,
+   1376
+  ],
+  "b": [
+   "tokio/src/net/tcp/stream.rs",
+   1012,
+   1020
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 30,
+    "score": "1.000",
+    "shared": [
+     "FnOnce",
+     "io",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T070",
+  "repo": "tokio",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+   564,
+   569
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/multi_thread/queue.rs",
+   579,
+   584
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 3,
+    "rank": 2,
+    "score": "0.742",
+    "shared": [
+     "head",
+     "load",
+     "tail",
+     "unpack",
+     "wrapping_sub"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T071",
+  "repo": "tokio",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/sync/rwlock.rs",
+   203,
+   254
+  ],
+  "b": [
+   "tokio/src/sync/mutex.rs",
+   337,
+   375
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 13,
+    "score": "1.000",
+    "shared": [
+     "all",
+     "any",
+     "caller",
+     "cfg",
+     "col",
+     "column",
+     "file",
+     "in_scope",
+     "line",
+     "not"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T072",
+  "repo": "tokio",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/sync/mutex.rs",
+   1314,
+   1327
+  ],
+  "b": [
+   "tokio/src/sync/rwlock/owned_read_guard.rs",
+   75,
+   90
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 15,
+    "score": "1.000",
+    "shared": [
+     "FnOnce",
+     "all",
+     "cfg",
+     "f",
+     "lock",
+     "resource_span",
+     "skip_drop"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T073",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/task/state.rs",
+   247,
+   266
+  ],
+  "b": [
+   "tokio/src/runtime/task/state.rs",
+   296,
+   326
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 26,
+    "rank": 2,
+    "score": "0.670",
+    "shared": [
+     "fetch_update_action",
+     "is_complete",
+     "is_notified",
+     "is_running",
+     "ref_inc",
+     "set_notified"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T074",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P299",
+  "known": "related",
+  "a": [
+   "xtask/src/generate/syntax.rs",
+   425,
+   453
+  ],
+  "b": [
+   "crates/render/src/capabilities.rs",
+   146,
+   158
+  ],
+  "owner": 2,
+  "id": "T075",
+  "repo": "tokio",
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/tcp/stream.rs",
+   1095,
+   1100
+  ],
+  "b": [
+   "tokio/src/net/udp.rs",
+   556,
+   561
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 14,
+    "score": "1.000",
+    "shared": [
+     "async_io",
+     "io",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T076",
+  "repo": "tokio",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/canonicalize.rs",
+   46,
+   49
+  ],
+  "b": [
+   "tokio/src/fs/rename.rs",
+   12,
+   17
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 5,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   },
+   {
+    "set": "card",
+    "card": 0,
+    "rank": 1,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T077",
+  "repo": "tokio",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "benches/sync_watch.rs",
+   9,
+   14
+  ],
+  "b": [
+   "benches/fs.rs",
+   14,
+   19
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 17,
+    "score": "1.000",
+    "shared": [
+     "build",
+     "new_multi_thread",
+     "unwrap",
+     "worker_threads"
+    ]
+   },
+   {
+    "set": "card",
+    "card": 38,
+    "rank": 1,
+    "score": "1.000",
+    "shared": [
+     "build",
+     "new_multi_thread",
+     "unwrap",
+     "worker_threads"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T078",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/sync/batch_semaphore.rs",
+   306,
+   370
+  ],
+  "b": [
+   "tokio/src/sync/batch_semaphore.rs",
+   242,
+   259
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 9,
+    "rank": 1,
+    "score": "0.311",
+    "shared": [
+     "as_mut",
+     "lock",
+     "permits",
+     "pop_back",
+     "queue",
+     "take",
+     "waiters",
+     "waker",
+     "with_mut"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T079",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/copy.rs",
+   21,
+   25
+  ],
+  "b": [
+   "tokio/src/fs/write.rs",
+   26,
+   31
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 32,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T080",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/sync/mutex.rs",
+   1187,
+   1195
+  ],
+  "b": [
+   "tokio/src/sync/rwlock/write_guard.rs",
+   38,
+   49
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 39,
+    "rank": 2,
+    "score": "0.707",
+    "shared": [
+     "all",
+     "cfg",
+     "data",
+     "read",
+     "resource_span",
+     "s"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T081",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/multi_thread/queue.rs",
+   572,
+   577
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+   564,
+   569
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 3,
+    "rank": 1,
+    "score": "0.742",
+    "shared": [
+     "head",
+     "load",
+     "tail",
+     "unpack",
+     "wrapping_sub"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T082",
+  "repo": "tokio",
+  "owner": 2,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/hard_link.rs",
+   39,
+   44
+  ],
+  "b": [
+   "tokio/src/fs/copy.rs",
+   21,
+   25
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 37,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T083",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/copy.rs",
+   21,
+   25
+  ],
+  "b": [
+   "tokio/src/fs/read_link.rs",
+   9,
+   12
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 44,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T084",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/windows/named_pipe.rs",
+   387,
+   389
+  ],
+  "b": [
+   "tokio/src/net/tcp/stream.rs",
+   858,
+   860
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 4,
+    "score": "1.000",
+    "shared": [
+     "io",
+     "map_ok",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T085",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/inject.rs",
+   63,
+   71
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/inject.rs",
+   49,
+   52
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 20,
+    "rank": 2,
+    "score": "0.746",
+    "shared": [
+     "lock",
+     "shared",
+     "synced"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T086",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/task/state.rs",
+   296,
+   326
+  ],
+  "b": [
+   "tokio/src/runtime/task/state.rs",
+   209,
+   244
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 19,
+    "rank": 2,
+    "score": "0.548",
+    "shared": [
+     "fetch_update_action",
+     "is_complete",
+     "is_notified",
+     "is_running",
+     "ref_inc",
+     "set_notified"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T087",
+  "repo": "tokio",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "of": "P125",
+  "known": "related",
+  "a": [
+   "crates/git/src/worktree.rs",
+   492,
+   532
+  ],
+  "b": [
+   "crates/git/src/run.rs",
+   183,
+   195
+  ],
+  "owner": 1,
+  "id": "T088",
+  "repo": "tokio",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/task/list.rs",
+   308,
+   317
+  ],
+  "b": [
+   "tokio/src/util/rc_cell.rs",
+   28,
+   39
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 23,
+    "rank": 1,
+    "score": "0.710",
+    "shared": [
+     "FnOnce",
+     "f",
+     "with_mut"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T089",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/tcp/stream.rs",
+   1047,
+   1056
+  ],
+  "b": [
+   "tokio/src/net/udp.rs",
+   1493,
+   1502
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 41,
+    "score": "1.000",
+    "shared": [
+     "FnMut",
+     "io",
+     "registration",
+     "try_io"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T090",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/inject.rs",
+   63,
+   71
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/inject.rs",
+   41,
+   45
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 20,
+    "rank": 1,
+    "score": "0.746",
+    "shared": [
+     "lock",
+     "shared",
+     "synced"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T091",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/tcp/stream.rs",
+   1047,
+   1056
+  ],
+  "b": [
+   "tokio/src/net/unix/stream.rs",
+   752,
+   761
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 18,
+    "score": "1.000",
+    "shared": [
+     "FnMut",
+     "io",
+     "registration",
+     "try_io"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T092",
+  "repo": "tokio",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/udp.rs",
+   735,
+   737
+  ],
+  "b": [
+   "tokio/src/net/unix/datagram/socket.rs",
+   366,
+   368
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 42,
+    "score": "1.000",
+    "shared": [
+     "io",
+     "map_ok",
+     "poll_read_ready",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T093",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/canonicalize.rs",
+   46,
+   49
+  ],
+  "b": [
+   "tokio/src/fs/remove_file.rs",
+   13,
+   16
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 22,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T094",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/set_permissions.rs",
+   12,
+   15
+  ],
+  "b": [
+   "tokio/src/fs/canonicalize.rs",
+   46,
+   49
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 43,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T095",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/sync/rwlock/write_guard.rs",
+   87,
+   103
+  ],
+  "b": [
+   "tokio/src/sync/rwlock/write_guard_mapped.rs",
+   84,
+   100
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 39,
+    "score": "1.000",
+    "shared": [
+     "FnOnce",
+     "all",
+     "cfg",
+     "f",
+     "permits_acquired",
+     "resource_span",
+     "s",
+     "skip_drop"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T096",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/multi_thread_alt/queue.rs",
+   209,
+   227
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/multi_thread/queue.rs",
+   223,
+   241
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 13,
+    "rank": 1,
+    "score": "0.760",
+    "shared": [
+     "as_mut_ptr",
+     "buffer",
+     "store",
+     "tail",
+     "with_mut",
+     "wrapping_add",
+     "write"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T097",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "of": "P063",
+  "known": "duplicate",
+  "a": [
+   "crates/mcp/src/roots.rs",
+   197,
+   209
+  ],
+  "b": [
+   "crates/cli/src/server_args.rs",
+   274,
+   292
+  ],
+  "owner": 1,
+  "id": "T098",
+  "repo": "tokio",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/sync/mutex.rs",
+   337,
+   375
+  ],
+  "b": [
+   "tokio/src/sync/semaphore.rs",
+   449,
+   478
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 9,
+    "score": "1.000",
+    "shared": [
+     "all",
+     "any",
+     "caller",
+     "cfg",
+     "col",
+     "column",
+     "file",
+     "in_scope",
+     "line",
+     "not"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T099",
+  "repo": "tokio",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ },
+ {
+  "of": "P130",
+  "known": "duplicate",
+  "a": [
+   "xtask/src/public_api.rs",
+   58,
+   73
+  ],
+  "b": [
+   "xtask/src/sources.rs",
+   387,
+   406
+  ],
+  "owner": 1,
+  "id": "T100",
+  "repo": "tokio",
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/tcp/stream.rs",
+   1095,
+   1100
+  ],
+  "b": [
+   "tokio/src/net/windows/named_pipe.rs",
+   191,
+   201
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 34,
+    "rank": 1,
+    "score": "0.607",
+    "shared": [
+     "async_io",
+     "io",
+     "registration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T101",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/sync/notify.rs",
+   335,
+   347
+  ],
+  "b": [
+   "tokio/src/sync/broadcast.rs",
+   851,
+   863
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 35,
+    "score": "1.000",
+    "shared": [
+     "from",
+     "get_ref",
+     "into_guarded"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T102",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "benches/sync_broadcast.rs",
+   9,
+   14
+  ],
+  "b": [
+   "benches/sync_watch.rs",
+   9,
+   14
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 45,
+    "score": "1.000",
+    "shared": [
+     "build",
+     "new_multi_thread",
+     "unwrap",
+     "worker_threads"
+    ]
+   },
+   {
+    "set": "card",
+    "card": 38,
+    "rank": 2,
+    "score": "1.000",
+    "shared": [
+     "build",
+     "new_multi_thread",
+     "unwrap",
+     "worker_threads"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T103",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/fs/read.rs",
+   46,
+   49
+  ],
+  "b": [
+   "tokio/src/fs/canonicalize.rs",
+   46,
+   49
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 7,
+    "score": "1.000",
+    "shared": [
+     "as_ref",
+     "asyncify",
+     "to_owned"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T104",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/loom/std/unsafe_cell.rs",
+   14,
+   17
+  ],
+  "b": [
+   "tokio/src/loom/std/atomic_usize.rs",
+   30,
+   33
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 18,
+    "rank": 2,
+    "score": "0.618",
+    "shared": [
+     "FnOnce",
+     "f",
+     "get"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T105",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/signal/registry.rs",
+   265,
+   270
+  ],
+  "b": [
+   "benches/copy.rs",
+   170,
+   175
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 19,
+    "score": "1.000",
+    "shared": [
+     "build",
+     "enable_time",
+     "new_current_thread",
+     "unwrap"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T106",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio-util/src/net/mod.rs",
+   85,
+   96
+  ],
+  "b": [
+   "tokio-util/src/net/mod.rs",
+   71,
+   82
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 29,
+    "rank": 1,
+    "score": "0.721",
+    "shared": [
+     "Left",
+     "Right"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T107",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/task/list.rs",
+   130,
+   139
+  ],
+  "b": [
+   "tokio/src/runtime/task/list.rs",
+   295,
+   306
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 37,
+    "rank": 1,
+    "score": "0.756",
+    "shared": [
+     "get_owner_id",
+     "header",
+     "id"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T108",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio-util/src/time/wheel/mod.rs",
+   137,
+   139
+  ],
+  "b": [
+   "tokio/src/runtime/time/wheel/mod.rs",
+   137,
+   139
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 24,
+    "score": "1.000",
+    "shared": [
+     "deadline",
+     "map",
+     "next_expiration"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T109",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "benches/spawn.rs",
+   13,
+   26
+  ],
+  "b": [
+   "benches/spawn.rs",
+   28,
+   46
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 2,
+    "rank": 1,
+    "score": "0.802",
+    "shared": [
+     "bench_function",
+     "block_on",
+     "build",
+     "iter",
+     "new_current_thread",
+     "spawn",
+     "unwrap",
+     "work"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T110",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/util/sharded_list.rs",
+   94,
+   102
+  ],
+  "b": [
+   "tokio/src/util/sharded_list.rs",
+   81,
+   91
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 28,
+    "rank": 1,
+    "score": "0.442",
+    "shared": [
+     "count",
+     "get_shard_id",
+     "shard_inner"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T111",
+  "repo": "tokio",
+  "owner": 2,
+  "batches": [
+   2
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/net/windows/named_pipe.rs",
+   748,
+   752
+  ],
+  "b": [
+   "tokio/src/net/unix/pipe.rs",
+   653,
+   657
+  ],
+  "sources": [
+   {
+    "set": "global",
+    "rank": 20,
+    "score": "1.000",
+    "shared": [
+     "io",
+     "registration",
+     "try_io",
+     "write"
+    ]
+   }
+  ],
+  "cross_file": true,
+  "id": "T112",
+  "repo": "tokio",
+  "owner": 1,
+  "batches": [
+   1
+  ]
+ },
+ {
+  "a": [
+   "tokio/src/runtime/scheduler/multi_thread_alt/worker.rs",
+   1262,
+   1269
+  ],
+  "b": [
+   "tokio/src/runtime/scheduler/multi_thread_alt/worker.rs",
+   1253,
+   1259
+  ],
+  "sources": [
+   {
+    "set": "card",
+    "card": 27,
+    "rank": 1,
+    "score": "0.500",
+    "shared": [
+     "idle",
+     "is_searching",
+     "shared"
+    ]
+   }
+  ],
+  "cross_file": false,
+  "id": "T113",
+  "repo": "tokio",
+  "owner": 1,
+  "double": true,
+  "batches": [
+   1,
+   2
+  ]
+ }
+]

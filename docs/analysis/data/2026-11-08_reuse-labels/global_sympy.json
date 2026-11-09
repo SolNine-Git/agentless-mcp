@@ -1,0 +1,900 @@
+{
+ "cross_file_rows": 3257,
+ "tied_at_rank_45": 190,
+ "top": [
+  {
+   "rank": 1,
+   "score": "1.000",
+   "a": [
+    "sympy/physics/quantum/piab.py",
+    42,
+    44
+   ],
+   "b": [
+    "sympy/physics/quantum/cartesian.py",
+    81,
+    83
+   ],
+   "shared": [
+    "Infinity",
+    "Interval",
+    "L2",
+    "NegativeInfinity"
+   ]
+  },
+  {
+   "rank": 2,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/julia.py",
+    423,
+    427
+   ],
+   "b": [
+    "sympy/printing/octave.py",
+    447,
+    451
+   ],
+   "shared": [
+    "Half",
+    "Pi",
+    "_print",
+    "argument",
+    "bessely",
+    "functions",
+    "order",
+    "sqrt"
+   ]
+  },
+  {
+   "rank": 3,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/old_polynomialring.py",
+    77,
+    79
+   ],
+   "b": [
+    "sympy/polys/domains/algebraicfield.py",
+    369,
+    371
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "dom"
+   ]
+  },
+  {
+   "rank": 4,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/old_polynomialring.py",
+    69,
+    71
+   ],
+   "b": [
+    "sympy/polys/domains/algebraicfield.py",
+    369,
+    371
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "dom"
+   ]
+  },
+  {
+   "rank": 5,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/str.py",
+    671,
+    674
+   ],
+   "b": [
+    "sympy/printing/mathematica.py",
+    155,
+    158
+   ],
+   "shared": [
+    "base",
+    "exp",
+    "parenthesize",
+    "precedence"
+   ]
+  },
+  {
+   "rank": 6,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/rcode.py",
+    246,
+    250
+   ],
+   "b": [
+    "sympy/printing/c.py",
+    401,
+    405
+   ],
+   "shared": [
+    "_print",
+    "format",
+    "lhs",
+    "rel_op",
+    "rhs"
+   ]
+  },
+  {
+   "rank": 7,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/octave.py",
+    213,
+    217
+   ],
+   "b": [
+    "sympy/printing/glsl.py",
+    305,
+    309
+   ],
+   "shared": [
+    "_print",
+    "format",
+    "lhs",
+    "rel_op",
+    "rhs"
+   ]
+  },
+  {
+   "rank": 8,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/old_polynomialring.py",
+    89,
+    91
+   ],
+   "b": [
+    "sympy/polys/domains/algebraicfield.py",
+    365,
+    367
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "dom"
+   ]
+  },
+  {
+   "rank": 9,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/latex.py",
+    2675,
+    2678
+   ],
+   "b": [
+    "sympy/printing/pretty/pretty.py",
+    2704,
+    2707
+   ],
+   "shared": [
+    "NamedMorphism",
+    "_print_NamedMorphism",
+    "categories",
+    "codomain",
+    "domain"
+   ]
+  },
+  {
+   "rank": 10,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/str.py",
+    671,
+    674
+   ],
+   "b": [
+    "sympy/printing/julia.py",
+    221,
+    224
+   ],
+   "shared": [
+    "base",
+    "exp",
+    "parenthesize",
+    "precedence"
+   ]
+  },
+  {
+   "rank": 11,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/polynomialring.py",
+    97,
+    99
+   ],
+   "b": [
+    "sympy/polys/domains/fractionfield.py",
+    83,
+    85
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "domain"
+   ]
+  },
+  {
+   "rank": 12,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/octave.py",
+    213,
+    217
+   ],
+   "b": [
+    "sympy/printing/c.py",
+    401,
+    405
+   ],
+   "shared": [
+    "_print",
+    "format",
+    "lhs",
+    "rel_op",
+    "rhs"
+   ]
+  },
+  {
+   "rank": 13,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/julia.py",
+    387,
+    389
+   ],
+   "b": [
+    "sympy/printing/octave.py",
+    381,
+    383
+   ],
+   "shared": [
+    "_print",
+    "base",
+    "indices",
+    "join",
+    "label"
+   ]
+  },
+  {
+   "rank": 14,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/polynomialring.py",
+    101,
+    103
+   ],
+   "b": [
+    "sympy/polys/domains/fractionfield.py",
+    79,
+    81
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "domain"
+   ]
+  },
+  {
+   "rank": 15,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/old_polynomialring.py",
+    77,
+    79
+   ],
+   "b": [
+    "sympy/polys/domains/algebraicfield.py",
+    365,
+    367
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "dom"
+   ]
+  },
+  {
+   "rank": 16,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/old_polynomialring.py",
+    81,
+    83
+   ],
+   "b": [
+    "sympy/polys/domains/algebraicfield.py",
+    365,
+    367
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "dom"
+   ]
+  },
+  {
+   "rank": 17,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/aesaracode.py",
+    240,
+    242
+   ],
+   "b": [
+    "sympy/printing/theanocode.py",
+    249,
+    251
+   ],
+   "shared": [
+    "_print",
+    "p",
+    "q",
+    "true_div"
+   ]
+  },
+  {
+   "rank": 18,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/rust.py",
+    364,
+    366
+   ],
+   "b": [
+    "sympy/printing/fortran.py",
+    361,
+    363
+   ],
+   "shared": [
+    "int",
+    "p",
+    "q"
+   ]
+  },
+  {
+   "rank": 19,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/jscode.py",
+    112,
+    114
+   ],
+   "b": [
+    "sympy/printing/rcode.py",
+    157,
+    159
+   ],
+   "shared": [
+    "int",
+    "p",
+    "q"
+   ]
+  },
+  {
+   "rank": 20,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/polyclasses.py",
+    1621,
+    1623
+   ],
+   "b": [
+    "sympy/polys/polytools.py",
+    868,
+    888
+   ],
+   "shared": [
+    "dom",
+    "rep",
+    "to_sympy"
+   ]
+  },
+  {
+   "rank": 21,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/old_fractionfield.py",
+    73,
+    75
+   ],
+   "b": [
+    "sympy/polys/domains/algebraicfield.py",
+    365,
+    367
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "dom"
+   ]
+  },
+  {
+   "rank": 22,
+   "score": "1.000",
+   "a": [
+    "sympy/physics/vector/frame.py",
+    765,
+    778
+   ],
+   "b": [
+    "sympy/physics/optics/polarization.py",
+    97,
+    193
+   ],
+   "shared": [
+    "Matrix",
+    "cos",
+    "sin"
+   ]
+  },
+  {
+   "rank": 23,
+   "score": "1.000",
+   "a": [
+    "sympy/physics/quantum/piab.py",
+    30,
+    32
+   ],
+   "b": [
+    "sympy/physics/quantum/cartesian.py",
+    51,
+    53
+   ],
+   "shared": [
+    "Infinity",
+    "Interval",
+    "L2",
+    "NegativeInfinity"
+   ]
+  },
+  {
+   "rank": 24,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/fortran.py",
+    379,
+    381
+   ],
+   "b": [
+    "sympy/printing/julia.py",
+    387,
+    389
+   ],
+   "shared": [
+    "_print",
+    "base",
+    "indices",
+    "join",
+    "label"
+   ]
+  },
+  {
+   "rank": 25,
+   "score": "1.000",
+   "a": [
+    "sympy/physics/quantum/boson.py",
+    110,
+    114
+   ],
+   "b": [
+    "sympy/physics/quantum/fermion.py",
+    92,
+    96
+   ],
+   "shared": [
+    "is_annihilation",
+    "name",
+    "str"
+   ]
+  },
+  {
+   "rank": 26,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/polynomialring.py",
+    117,
+    119
+   ],
+   "b": [
+    "sympy/polys/domains/fractionfield.py",
+    79,
+    81
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "domain"
+   ]
+  },
+  {
+   "rank": 27,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/integerring.py",
+    116,
+    122
+   ],
+   "b": [
+    "sympy/polys/domains/rationalfield.py",
+    97,
+    103
+   ],
+   "shared": [
+    "LC",
+    "convert",
+    "dom",
+    "is_ground"
+   ]
+  },
+  {
+   "rank": 28,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/polytools.py",
+    966,
+    980
+   ],
+   "b": [
+    "sympy/polys/polyclasses.py",
+    1621,
+    1623
+   ],
+   "shared": [
+    "dom",
+    "rep",
+    "to_sympy"
+   ]
+  },
+  {
+   "rank": 29,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/old_polynomialring.py",
+    93,
+    95
+   ],
+   "b": [
+    "sympy/polys/domains/algebraicfield.py",
+    369,
+    371
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "dom"
+   ]
+  },
+  {
+   "rank": 30,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/polynomialring.py",
+    125,
+    127
+   ],
+   "b": [
+    "sympy/polys/domains/fractionfield.py",
+    83,
+    85
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "domain"
+   ]
+  },
+  {
+   "rank": 31,
+   "score": "1.000",
+   "a": [
+    "sympy/matrices/matrices.py",
+    235,
+    240
+   ],
+   "b": [
+    "sympy/matrices/common.py",
+    96,
+    105
+   ],
+   "shared": [
+    "_new",
+    "cols",
+    "entry",
+    "rows"
+   ]
+  },
+  {
+   "rank": 32,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/julia.py",
+    195,
+    199
+   ],
+   "b": [
+    "sympy/printing/glsl.py",
+    305,
+    309
+   ],
+   "shared": [
+    "_print",
+    "format",
+    "lhs",
+    "rel_op",
+    "rhs"
+   ]
+  },
+  {
+   "rank": 33,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/aesaracode.py",
+    171,
+    179
+   ],
+   "b": [
+    "sympy/printing/theanocode.py",
+    177,
+    185
+   ],
+   "shared": [
+    "NotImplementedError",
+    "_print",
+    "hasattr",
+    "stacklists",
+    "tolist"
+   ]
+  },
+  {
+   "rank": 34,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/old_fractionfield.py",
+    89,
+    91
+   ],
+   "b": [
+    "sympy/polys/domains/algebraicfield.py",
+    365,
+    367
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "dom"
+   ]
+  },
+  {
+   "rank": 35,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/c.py",
+    564,
+    566
+   ],
+   "b": [
+    "sympy/printing/fortran.py",
+    643,
+    648
+   ],
+   "shared": [
+    "_print",
+    "format",
+    "kwargs"
+   ]
+  },
+  {
+   "rank": 36,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/julia.py",
+    366,
+    384
+   ],
+   "b": [
+    "sympy/printing/octave.py",
+    360,
+    378
+   ],
+   "shared": [
+    "_print",
+    "colslice",
+    "join",
+    "parent",
+    "rowslice",
+    "shape",
+    "strslice"
+   ]
+  },
+  {
+   "rank": 37,
+   "score": "1.000",
+   "a": [
+    "sympy/physics/quantum/piab.py",
+    42,
+    44
+   ],
+   "b": [
+    "sympy/physics/quantum/cartesian.py",
+    51,
+    53
+   ],
+   "shared": [
+    "Infinity",
+    "Interval",
+    "L2",
+    "NegativeInfinity"
+   ]
+  },
+  {
+   "rank": 38,
+   "score": "1.000",
+   "a": [
+    "sympy/matrices/matrices.py",
+    274,
+    279
+   ],
+   "b": [
+    "sympy/matrices/common.py",
+    91,
+    94
+   ],
+   "shared": [
+    "_new",
+    "cols",
+    "entry",
+    "rows"
+   ]
+  },
+  {
+   "rank": 39,
+   "score": "1.000",
+   "a": [
+    "sympy/polys/domains/polynomialring.py",
+    93,
+    95
+   ],
+   "b": [
+    "sympy/polys/domains/fractionfield.py",
+    83,
+    85
+   ],
+   "shared": [
+    "K1",
+    "convert",
+    "domain"
+   ]
+  },
+  {
+   "rank": 40,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/rcode.py",
+    161,
+    163
+   ],
+   "b": [
+    "sympy/printing/fortran.py",
+    379,
+    381
+   ],
+   "shared": [
+    "_print",
+    "base",
+    "indices",
+    "join",
+    "label"
+   ]
+  },
+  {
+   "rank": 41,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/latex.py",
+    632,
+    636
+   ],
+   "b": [
+    "sympy/printing/str.py",
+    601,
+    605
+   ],
+   "shared": [
+    "_print",
+    "as_expr",
+    "as_poly",
+    "is_aliased"
+   ]
+  },
+  {
+   "rank": 42,
+   "score": "1.000",
+   "a": [
+    "sympy/printing/pretty/pretty.py",
+    2464,
+    2468
+   ],
+   "b": [
+    "sympy/printing/str.py",
+    601,
+    605
+   ],
+   "shared": [
+    "_print",
+    "as_expr",
+    "as_poly",
+    "is_aliased"
+   ]
+  },
+  {
+   "rank": 43,
+   "score": "1.000",
+   "a": [
+    "sympy/assumptions/handlers/matrices.py",
+    88,
+    90
+   ],
+   "b": [
+    "sympy/matrices/expressions/transpose.py",
+    90,
+    103
+   ],
+   "shared": [
+    "arg",
+    "ask",
+    "symmetric"
+   ]
+  },
+  {
+   "rank": 44,
+   "score": "1.000",
+   "a": [
+    "sympy/physics/quantum/piab.py",
+    30,
+    32
+   ],
+   "b": [
+    "sympy/physics/quantum/cartesian.py",
+    81,
+    83
+   ],
+   "shared": [
+    "Infinity",
+    "Interval",
+    "L2",
+    "NegativeInfinity"
+   ]
+  },
+  {
+   "rank": 45,
+   "score": "1.000",
+   "a": [
+    "sympy/physics/vector/vector.py",
+    592,
+    630
+   ],
+   "b": [
+    "sympy/vector/dyadic.py",
+    139,
+    182
+   ],
+   "shared": [
+    "Matrix",
+    "dot",
+    "reshape"
+   ]
+  }
+ ]
+}
