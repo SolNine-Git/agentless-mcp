@@ -147,6 +147,18 @@ fn a_cut_file_shows_the_context_after_its_last_kept_match_and_none_of_a_match_it
 }
 
 #[test]
+fn a_crlf_file_matches_an_end_anchor_and_shows_no_carriage_return() {
+    let files = [("a.py", "hit = 1\r\nhit = 2\r\n\r\n")];
+    let found = matches(&files, &request(Some("2$")));
+    assert_eq!(found.matches, 1);
+    let mut asked = request(Some("hit"));
+    asked.context = IntArg::from_usize(1);
+    let shown = shown_lines(&matches(&files, &asked));
+    let texts: Vec<&str> = shown.iter().map(|(_, _, text)| text.as_str()).collect();
+    assert_eq!(texts, ["hit = 1", "hit = 2", ""]);
+}
+
+#[test]
 fn a_text_in_three_places_prints_once_with_every_place_and_one_in_two_places_stays() {
     let files = [
         ("a.py", "import os\nx = 1\n"),
