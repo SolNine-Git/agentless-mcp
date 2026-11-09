@@ -769,6 +769,13 @@ Each byte count is of the served bytes.
   the note than in hook status. The file list (the user file, then
   `.claude/settings.json` and `.claude/settings.local.json` below the root)
   also has one home, `app::hooks::settings_files`.
+- **prompt-map runs in the frame of the other context hooks, and its gate
+  log line has their record.** The line is now `ts`, `hook`, `event`,
+  `reason`, `session_id`, `agent_id`, then `seeds` and `files` once the hook
+  has found them, then `ms`. Before, prompt-map wrote its own record:
+  `session_id` second, no `agent_id`, and `seeds` and `files` as null before
+  the seed step. An `agent_id` that is not a string is now
+  `malformed_payload`, as in the other hooks.
 - **history and churn now pass each path to git as a literal pathspec, so a
   path with a glob character matches only itself.**
 - **Three Python import rules remove false import edges, and some true

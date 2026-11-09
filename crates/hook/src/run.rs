@@ -32,6 +32,8 @@ const RECORDED: &str = "recorded";
 
 const HOOK_KEY: &str = "hook";
 const AGENT_ID_KEY: &str = "agent_id";
+const SEEDS_KEY: &str = "seeds";
+const FILES_KEY: &str = "files";
 const MS_KEY: &str = "ms";
 
 pub(crate) type Fields = Vec<(CodePointString, JsonValue)>;
@@ -100,11 +102,14 @@ pub(crate) enum Outcome {
     Recorded(&'static str),
 }
 
-// What the log line records besides the decision.
+// What the log line records besides the decision. Only a hook that maps seeds records them and
+// the files it named.
 #[derive(Default)]
 pub(crate) struct Facts {
     pub(crate) session: Option<String>,
     pub(crate) agent: Option<String>,
+    pub(crate) seeds: Option<Vec<String>>,
+    pub(crate) files: Option<Vec<String>>,
     pub(crate) ms: Option<u128>,
 }
 
@@ -194,13 +199,24 @@ fn entry(
     let ms = facts
         .ms
         .map_or(JsonValue::Null, |ms| JsonValue::Int(ms.to_string()));
-    vec![
+    let mut entry = vec![
         (key::TS, ts),
         (HOOK_KEY, log::text(hook)),
         (key::EVENT, log::text(event)),
         (key::REASON, log::text(reason)),
         (key::SESSION_ID, text(facts.session.as_ref())),
         (AGENT_ID_KEY, text(facts.agent.as_ref())),
-        (MS_KEY, Cow::Owned(ms)),
-    ]
+    ];
+    for (name, items) in [(SEEDS_KEY, &facts.seeds), (FILES_KEY, &facts.files)] {
+        if let Some(items) = items {
+            entry.push((name, texts(items)));
+        }
+    }
+    entry.push((MS_KEY, Cow::Owned(ms)));
+    entry
+}
+
+fn texts(items: &[String]) -> Cow<'static, JsonValue> {
+    let items = (items.iter()).map(|item| JsonValue::Str(item.as_str().into()));
+    Cow::Owned(JsonValue::Array(items.collect()))
 }

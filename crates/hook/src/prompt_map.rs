@@ -3,51 +3,32 @@
 
 pub(crate) mod seeds;
 
-use std::borrow::Cow;
-use std::ffi::OsStr;
 use std::io::{Read, Write};
-use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
+use app::hooks::Hook;
 use app::{EnvConfig, IntArg, MapRequest, MapResult, Reading, Repo, Services, Session};
 use io::Granularity;
-use json::JsonValue;
-use kernel::{Clock, SystemClock};
+use kernel::SystemClock;
+use text::CodePointString;
 
-use crate::reply::{self, EMITTED, INTERNAL};
 use crate::repository;
-use crate::run;
-use crate::search::log::{self, Entry, key};
-use crate::search::{Parsed, parsed, text_field};
+use crate::run::{self, Facts, NO_REPOSITORY, Outcome, Run};
+use crate::search::text_field;
 use crate::state::{self, Claim};
 use crate::text::sha256_hex;
-use crate::worker;
 
 pub(crate) type MapFn = fn(&Services, &Path, &MapRequest) -> Result<MapResult, app::Error>;
 
 const MARKER_DIR: &str = "agentless_prompt_map";
-const DEADLINE: Duration = Duration::from_secs(5);
-const THREAD: &str = "prompt-map";
-const HOOK: &str = "prompt-map";
-const EVENT_NAME: &str = "UserPromptSubmit";
 
-const SILENT: &str = "silent";
 const ALREADY_ENRICHED: &str = "already_enriched";
-const MALFORMED_PAYLOAD: &str = "malformed_payload";
-const NO_SESSION_ID: &str = "no_session_id";
 const NO_PROMPT: &str = "no_prompt";
-const NO_REPOSITORY: &str = "no_repository";
 const NO_SEED: &str = "no_seed";
 const NO_SEED_RESOLVED: &str = "no_seed_resolved";
 const MAP_FAILED: &str = "map_failed";
 const TOO_LONG: &str = "too_long";
 const MARKER_STORAGE_UNAVAILABLE: &str = "marker_storage_unavailable";
-
-const HOOK_KEY: &str = "hook";
-const SEEDS_KEY: &str = "seeds";
-const FILES_KEY: &str = "files";
-const MS_KEY: &str = "ms";
 
 /// Answers the `UserPromptSubmit` payload on `stdin` with one JSON object on `stdout` that names
 /// the map's first files for the prompt's names, or with nothing, and returns 0.
@@ -58,32 +39,20 @@ pub fn prompt_map(
     stdout: &mut dyn Write,
 ) -> u8 {
     let clock = SystemClock;
-    let hook = Hook {
-        markers: marker_dir(env),
-        log: env.var(log::LOG_ENV),
-        cwd: env.cwd().ok(),
-        clock: &clock,
+    let hook = PromptMap {
+        run: Run::of(Hook::PromptMap, env, &clock),
+        markers: state::temporary_dir(env, MARKER_DIR),
         map: in_process,
-        deadline: DEADLINE,
     };
     answer(&hook, services, stdin, stdout);
     0
 }
 
-// What one run reads from its process: the marker directory, the log variable, the start-up
-// directory, the clock, the map and its deadline.
-pub(crate) struct Hook<'a> {
+// A run of the prompt map: the shared run, the marker directory and the map.
+pub(crate) struct PromptMap<'a> {
+    pub(crate) run: Run<'a>,
     pub(crate) markers: PathBuf,
-    pub(crate) log: Option<&'a OsStr>,
-    // None when the start-up directory cannot be read.
-    pub(crate) cwd: Option<&'a Path>,
-    pub(crate) clock: &'a dyn Clock,
     pub(crate) map: MapFn,
-    pub(crate) deadline: Duration,
-}
-
-fn marker_dir(env: &EnvConfig) -> PathBuf {
-    state::temporary_dir(env, MARKER_DIR)
 }
 
 // The map of one prompt, as the command line's `map` makes it.
@@ -97,63 +66,47 @@ pub(crate) fn in_process(
     app::map(services, &Reading::of(&session), request).value
 }
 
-// What the log line records besides the decision.
-#[derive(Default)]
-struct Facts {
-    session: Option<String>,
-    seeds: Option<Vec<String>>,
-    files: Option<Vec<String>>,
-    ms: Option<u128>,
-}
-
-// Fail open: a panic prints nothing, and every run logs one line.
 pub(crate) fn answer(
-    hook: &Hook<'_>,
+    hook: &PromptMap<'_>,
     services: &Services,
     stdin: &mut dyn Read,
     stdout: &mut dyn Write,
 ) {
-    let ts = log::now(hook.clock);
-    let mut facts = Facts::default();
-    let decided = panic::catch_unwind(AssertUnwindSafe(|| {
-        decide(hook, services, stdin, &mut facts)
-    }));
-    let reason = match decided {
-        Ok(Ok(context)) => reply::written(stdout, EVENT_NAME, &context),
-        Ok(Err(reason)) => reason,
-        Err(_) => INTERNAL,
-    };
-    // The log is the hook's only channel: a failed append has nowhere to be reported.
-    drop(log::append(hook.log, &entry(ts, &facts, reason)));
+    run::answered(&hook.run, stdout, |facts| {
+        decide(hook, services, stdin, facts)
+    });
 }
 
 // The steps in order. A prompt with no seed writes no marker, so a later prompt can still emit.
 fn decide(
-    hook: &Hook<'_>,
+    hook: &PromptMap<'_>,
     services: &Services,
     stdin: &mut dyn Read,
     facts: &mut Facts,
-) -> Result<String, &'static str> {
-    let document = parsed(stdin);
-    let Ok(Parsed::Value(JsonValue::Object(fields))) = &document else {
-        return Err(MALFORMED_PAYLOAD);
-    };
-    let session = text_field(fields, "session_id").and_then(|session| session.as_str());
-    let session = session.ok_or(NO_SESSION_ID)?;
-    facts.session = Some(session.to_owned());
-    let prompt = text_field(fields, "prompt").and_then(|prompt| prompt.as_str());
+) -> Result<Outcome, &'static str> {
+    let run = &hook.run;
+    let fields = run::fields(stdin)?;
+    let context = run::context(&fields, facts)?;
+    let prompt = text_field(&fields, "prompt").and_then(CodePointString::as_str);
     let prompt = prompt.ok_or(NO_PROMPT)?;
-    let cwd = text_field(fields, "cwd").and_then(|cwd| cwd.as_str());
-    let cwd = cwd.map(Path::new).or(hook.cwd).ok_or(NO_REPOSITORY)?;
-    let root = repository::root_of(services, cwd).ok_or(NO_REPOSITORY)?;
+    let cwd = run.cwd(&fields).ok_or(NO_REPOSITORY)?;
+    let root = repository::root_of(services, &cwd).ok_or(NO_REPOSITORY)?;
     let found = seeds::seeds(prompt, &|rel| root.join(rel).is_file());
     facts.seeds = Some(found.clone());
     if found.is_empty() {
         return Err(NO_SEED);
     }
-    claim(&hook.markers, session)?;
-    let result = mapped(hook, services, root, found.clone(), facts)?;
-    context(&result, &found, facts)
+    claim(&hook.markers, &context.session)?;
+    let request = MapRequest {
+        focus: found.clone(),
+        budget: None,
+        max_files: Some(IntArg::from_usize(seeds::MAX_FILES)),
+        granularity: Some(Granularity::File),
+    };
+    let (services, map) = (services.clone(), hook.map);
+    let finished = run.timed(move || map(&services, &root, &request), facts);
+    let result = run::finished(finished, MAP_FAILED)?;
+    context_sentence(&result, &found, facts).map(Outcome::Context)
 }
 
 // The session's one try: the marker is written before the map runs, so a deadline or a crash
@@ -169,37 +122,8 @@ fn claim(markers: &Path, session: &str) -> Result<(), &'static str> {
     }
 }
 
-fn mapped(
-    hook: &Hook<'_>,
-    services: &Services,
-    root: PathBuf,
-    focus: Vec<String>,
-    facts: &mut Facts,
-) -> Result<MapResult, &'static str> {
-    let request = MapRequest {
-        focus,
-        budget: None,
-        max_files: Some(IntArg::from_usize(seeds::MAX_FILES)),
-        granularity: Some(Granularity::File),
-    };
-    let (services, map) = (services.clone(), hook.map);
-    let started = hook.clock.now();
-    let finished = worker::run(
-        THREAD,
-        move || map(&services, &root, &request),
-        hook.deadline,
-    );
-    facts.ms = Some(
-        hook.clock
-            .now()
-            .saturating_duration_since(started)
-            .as_millis(),
-    );
-    run::finished(finished, MAP_FAILED)
-}
-
 // The names are the seeds that the map resolved. A map that resolved none gives no sentence.
-fn context(
+fn context_sentence(
     result: &MapResult,
     found: &[String],
     facts: &mut Facts,
@@ -217,41 +141,6 @@ fn context(
         return Err(NO_SEED_RESOLVED);
     }
     seeds::context_text(&names, &files).ok_or(TOO_LONG)
-}
-
-fn entry(ts: Cow<'static, JsonValue>, facts: &Facts, reason: &'static str) -> Entry<'static> {
-    let event = if reason == EMITTED { EMITTED } else { SILENT };
-    vec![
-        (key::TS, ts),
-        (
-            key::SESSION_ID,
-            optional(facts.session.as_deref().map(log::text)),
-        ),
-        (HOOK_KEY, log::text(HOOK)),
-        (key::EVENT, log::text(event)),
-        (key::REASON, log::text(reason)),
-        (SEEDS_KEY, optional(facts.seeds.as_deref().map(texts))),
-        (FILES_KEY, optional(facts.files.as_deref().map(texts))),
-        (
-            MS_KEY,
-            optional(
-                facts
-                    .ms
-                    .map(|ms| Cow::Owned(JsonValue::Int(ms.to_string()))),
-            ),
-        ),
-    ]
-}
-
-fn optional(value: Option<Cow<'static, JsonValue>>) -> Cow<'static, JsonValue> {
-    value.unwrap_or(Cow::Owned(JsonValue::Null))
-}
-
-fn texts(items: &[String]) -> Cow<'static, JsonValue> {
-    let items = items
-        .iter()
-        .map(|item| JsonValue::Str(item.as_str().into()));
-    Cow::Owned(JsonValue::Array(items.collect()))
 }
 
 #[cfg(test)]

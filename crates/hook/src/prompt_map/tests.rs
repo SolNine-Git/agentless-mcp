@@ -6,10 +6,12 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use app::Services;
+use app::hooks::Hook;
 use serde_json::{Value, json};
 
 use super::seeds::{MAX_CONTEXT_BYTES, context_text, seeds};
-use super::{Hook, MapFn, answer, in_process, prompt_map};
+use super::{MapFn, PromptMap, answer, in_process, prompt_map};
+use crate::run::Run;
 use crate::testing::{Sandbox, Steps};
 use crate::text::sha256_hex;
 
@@ -217,18 +219,23 @@ impl Rig {
         self.sandbox.path().join(MARKERS)
     }
 
-    fn hook<'a>(&'a self, clock: &'a Steps, map: MapFn, deadline: Duration) -> Hook<'a> {
-        Hook {
-            markers: self.markers(),
+    fn hook<'a>(&'a self, clock: &'a Steps, map: MapFn, deadline: Duration) -> PromptMap<'a> {
+        let run = Run {
+            hook: Hook::PromptMap,
+            ledger: self.sandbox.path().join("ledger"),
             log: Some(self.log.as_os_str()),
             cwd: None,
             clock,
-            map,
             deadline,
+        };
+        PromptMap {
+            run,
+            markers: self.markers(),
+            map,
         }
     }
 
-    fn run_with(&self, hook: &Hook<'_>, stdin: &str) -> String {
+    fn run_with(&self, hook: &PromptMap<'_>, stdin: &str) -> String {
         let mut stdout = Vec::new();
         answer(hook, &self.services, &mut stdin.as_bytes(), &mut stdout);
         String::from_utf8(stdout).expect("UTF-8 stdout")
@@ -438,10 +445,11 @@ fn the_log_line_holds_its_keys_in_order() {
         .collect();
     let order = [
         "ts",
-        "session_id",
         "hook",
         "event",
         "reason",
+        "session_id",
+        "agent_id",
         "seeds",
         "files",
         "ms",
@@ -453,8 +461,9 @@ fn the_log_line_holds_its_keys_in_order() {
     });
     assert!(at.is_sorted(), "{text}");
     let tail = format!(
-        "\"session_id\": \"s1\", \"hook\": \"prompt-map\", \"event\": \"emitted\", \
-         \"reason\": \"emitted\", \"seeds\": [\"{INVOICE}\", \"InvoiceTotal\"], \"files\": [\"{INVOICE}\""
+        "\"hook\": \"prompt-map\", \"event\": \"emitted\", \"reason\": \"emitted\", \
+         \"session_id\": \"s1\", \"agent_id\": null, \"seeds\": [\"{INVOICE}\", \"InvoiceTotal\"], \
+         \"files\": [\"{INVOICE}\""
     );
     assert!(text.starts_with("{\"ts\": 1760000000.0, "), "{text}");
     assert!(text.contains(&tail), "{text}");
@@ -467,10 +476,8 @@ fn an_unset_or_empty_log_variable_writes_no_line() {
     let clock = Steps::fixed();
     let root = rig.sandbox.root();
     for (session, log) in [("s1", None), ("s2", Some(OsStr::new("")))] {
-        let hook = Hook {
-            log,
-            ..rig.hook(&clock, in_process, Duration::from_secs(30))
-        };
+        let mut hook = rig.hook(&clock, in_process, Duration::from_secs(30));
+        hook.run.log = log;
         assert!(
             !rig.run_with(&hook, &payload(session, SEEDED, &root))
                 .is_empty()
@@ -492,10 +499,8 @@ fn a_payload_without_a_cwd_maps_the_start_up_directory() {
     let rig = Rig::new();
     let clock = Steps::fixed();
     let root = rig.sandbox.root();
-    let hook = Hook {
-        cwd: Some(root.as_path()),
-        ..rig.hook(&clock, in_process, Duration::from_secs(30))
-    };
+    let mut hook = rig.hook(&clock, in_process, Duration::from_secs(30));
+    hook.run.cwd = Some(root.as_path());
     let stdin = json!({"session_id": "s1", "prompt": SEEDED}).to_string();
     assert!(context_of(&rig.run_with(&hook, &stdin)).contains(INVOICE));
 }
