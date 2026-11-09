@@ -34,6 +34,24 @@ fn each_lint_document_wraps_as_the_fixture_says() {
     }
 }
 
+#[test]
+fn a_whole_payload_over_the_ceiling_is_over_ceiling_and_a_cut_one_is_truncated() {
+    let all: Vec<(ReceiptRow, Vec<Value>, usize, String)> = cases("envelope", "json");
+    let largest = all.iter().max_by_key(|(_, rows, _, _)| rows.len());
+    let (row, rows, _, _) = largest.unwrap_or_else(|| panic!("no lint case"));
+    assert!(rows.len() > 1);
+    let config = row.config();
+    let keys = |rows: &[Value]| {
+        let wrapped = wrap_json(&row.receipt(&config), &report(rows), &chars4(1));
+        let text = wrapped.unwrap_or_else(|error| panic!("{error}"));
+        let document: serde_json::Map<String, Value> =
+            serde_json::from_str(&text).unwrap_or_else(|error| panic!("{error}"));
+        ["truncated", "over_ceiling"].map(|key| document.contains_key(key))
+    };
+    assert_eq!(keys(&rows[..1]), [false, true]);
+    assert_eq!(keys(rows), [true, false]);
+}
+
 // The envelope writes these keys itself, so no payload may hold one at its top level.
 #[test]
 fn no_payload_holds_a_key_of_the_envelope() {
@@ -52,7 +70,7 @@ fn no_payload_holds_a_key_of_the_envelope() {
     ];
     for keys in payloads {
         assert!(!keys.is_empty());
-        for reserved in ["receipt", "notice", "truncated"] {
+        for reserved in ["receipt", "notice", "truncated", "over_ceiling"] {
             assert!(
                 !keys.iter().any(|key| key == reserved),
                 "{reserved} in {keys:?}"

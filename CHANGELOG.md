@@ -218,6 +218,18 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **CLI JSON contract: a whole payload over the token ceiling carries
+  `over_ceiling`, not `truncated`.** A `--json` answer over the ceiling whose
+  items were all kept (one oversized item, an empty list, or a payload with no
+  list to trim) said `"truncated": {...}`, so a consumer that checks
+  `truncated` for completeness read a complete report as cut: `lint --since
+  2e8f807 --json` on this repository gave `"truncated"` with `"shown": 1,
+  "total": 1` (review D1). That object is now `"over_ceiling"`, with the same
+  fields; `truncated` stays for an answer whose ceiling dropped items. The
+  changed recorded values are the key of 16 expected documents: 2 in
+  `crates/render/fixtures/envelope.json` and 14 in
+  `crates/render/fixtures/read/envelope.json`.
+
 - **`refs --shared-callers` counts no parameter or local as a caller, and says
   when no bound caller shares a row.** A site that scope analysis binds to a
   parameter or a local of the target's name spells another binding, so it no
