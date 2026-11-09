@@ -45,6 +45,12 @@ pub(crate) enum Stop {
     Help,
 }
 
+impl From<String> for Stop {
+    fn from(message: String) -> Self {
+        Stop::Refused(message)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Options {
     pub(crate) scope: Scope,
@@ -78,14 +84,14 @@ pub(crate) fn parsed(args: &[OsString], takes: Takes) -> Result<Options, Stop> {
         }
         if !takes_value(name, takes) {
             let command = format!("hook {}", takes.command);
-            return Err(Stop::Refused(ARGUMENT_UNKNOWN.render((&command, &word))));
+            return Err(ARGUMENT_UNKNOWN.render((&command, &word)).into());
         }
         let value =
             attached.or_else(|| words.next().map(|next| next.to_string_lossy().into_owned()));
         let value = value
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| ARGUMENT_MISSING.render((ACCEPTS_TEXT, name)));
-        set(&mut options, name, value.map_err(Stop::Refused)?).map_err(Stop::Refused)?;
+            .ok_or_else(|| ARGUMENT_MISSING.render((ACCEPTS_TEXT, name)))?;
+        set(&mut options, name, value)?;
     }
     Ok(options)
 }
