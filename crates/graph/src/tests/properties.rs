@@ -155,7 +155,7 @@ fn outputs(corpus: &Corpus) -> Vec<String> {
     let symbols = SymbolGraph::build(&resolver, None).expect("no deadline stops it");
     let symbol_edges: Vec<Value> = symbols.edges().iter().map(edge).collect();
     let ambiguous: Vec<Value> = symbols.ambiguous().iter().map(reference).collect();
-    let cycles = import_cycles(&SymbolGraph::imports(&scopes));
+    let cycles = import_cycles(&SymbolGraph::imports(&scopes), &scopes);
     let paths = paths(&symbols);
     vec![
         json!(edges).to_string(),

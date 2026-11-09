@@ -84,7 +84,8 @@ fn edited_texts(
 }
 
 fn cycles_of<'a>(files: &'a [&'a FileFacts]) -> Vec<Cycle<'a>> {
-    import_cycles(&SymbolGraph::imports(&Scopes::build(files)))
+    let scopes = Scopes::build(files);
+    import_cycles(&SymbolGraph::imports(&scopes), &scopes)
 }
 
 // Each scanned file with only what the import graph reads, read again from the patched text for

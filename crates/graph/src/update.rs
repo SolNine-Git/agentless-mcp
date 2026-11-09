@@ -88,7 +88,7 @@ pub fn update<'s>(
     if let Some(imports) = imports {
         let paired = imports.reimported(scopes, &rebound);
         if let Some(cycles) = cycles.filter(|_| paired) {
-            *cycles = import_cycles(imports);
+            *cycles = import_cycles(imports, scopes);
         }
     }
     if graph.is_none() && aliases.is_none() {

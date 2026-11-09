@@ -218,6 +218,25 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **A Rust import of names that its target only re-exports is a cycle edge to
+  the files that define them.** A child module's `use crate::X` against a
+  crate root's `pub use child::X` made an import edge to `lib.rs`, so nearly
+  every module of a crate sat in one import cycle through its root. For the
+  import cycles only, a Rust import that takes from a module file only names
+  that the file itself imports now counts as an import of the files that
+  define those names (up to 4 re-export hops); an import of the module, a
+  glob, a name that the file defines, or a leaf that binds no name keeps its
+  target. The import edges, the imports and importers sections and every
+  other language are unchanged. `trace` file cards, `more=cycles`, the
+  `cycles` view and the lint cycle checks read the same cycles (a kept graph
+  already builds again when a Rust `use` or `mod` item changes). Measured on
+  this repository with the debug build of this change (`cycles --json`): 22
+  Rust cycles holding 225 files before, 24 holding 144 after; 81 Rust file
+  cards lose their cycle line and none gains one. The 64-file cycle of
+  `crates/app` through `lib.rs` splits into the parent-child cycles that
+  remain, such as `crates/app/src/search.rs -> crates/app/src/search/files.rs`.
+  No golden or recorded fixture holds a Rust cycle, so none changes.
+
 - **`more=body` asked of a file card names the calls that give lines.** The
   answer "more=body does not apply to a file card. File sections: ..." now
   goes on: "Read reads a file, trace path:start-end gives its numbered lines,

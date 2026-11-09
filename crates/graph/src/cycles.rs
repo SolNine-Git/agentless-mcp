@@ -2,9 +2,13 @@
 //! files, each with one shortest chain that closes it; and the shortest chain from one file to
 //! another.
 
+mod reexports;
+
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use crate::scopes::Scopes;
 use crate::symbols::{Relation, SymbolEdge, SymbolGraph};
+use reexports::defining_files;
 
 // A component of one file is not a cycle.
 const SMALLEST_CYCLE: usize = 2;
@@ -19,15 +23,18 @@ pub struct Cycle<'a> {
 
 pub(crate) type Adjacency<'a> = BTreeMap<&'a str, Vec<&'a str>>;
 
-/// Return the import cycles of `graph`, ordered by chain length, then by chain.
+/// Return the import cycles of `graph`, whose imports `scopes` binds, ordered by chain length,
+/// then by chain.
 #[must_use]
-pub fn import_cycles<'a>(graph: &SymbolGraph<'a>) -> Vec<Cycle<'a>> {
+pub fn import_cycles<'a>(graph: &SymbolGraph<'a>, scopes: &Scopes<'a>) -> Vec<Cycle<'a>> {
     let mut adjacency: Adjacency<'a> = BTreeMap::new();
     for edge in graph.import_edges() {
-        adjacency
-            .entry(edge.source().path())
-            .or_default()
-            .push(edge.target().path());
+        let (source, target) = (edge.source().path(), edge.target().path());
+        let targets = adjacency.entry(source).or_default();
+        match defining_files(scopes, source, target) {
+            Some(defining) => targets.extend(defining),
+            None => targets.push(target),
+        }
     }
     for targets in adjacency.values_mut() {
         targets.sort_unstable();
