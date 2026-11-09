@@ -604,6 +604,7 @@ impl core::panic::unwind_safe::UnwindSafe for app::search::SearchError
 pub enum app::search::Searched
 pub app::search::Searched::Listing(app::search::Listing)
 pub app::search::Searched::Matches(app::search::Matches)
+pub app::search::Searched::NoFile
 impl core::clone::Clone for app::search::Searched
 pub fn app::search::Searched::clone(&self) -> Self
 impl core::cmp::Eq for app::search::Searched

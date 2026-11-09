@@ -276,6 +276,23 @@ fn a_listing_gives_each_file_its_lines_and_its_symbols_and_braces_expand() {
 }
 
 #[test]
+fn a_glob_that_selects_no_file_says_so_with_or_without_a_pattern() {
+    let mut asked = request(Some("marker_dir"));
+    asked.files = Some("*.py".to_owned());
+    let found = answered(&CODE_AND_DOC, &asked);
+    assert!(matches!(found, Ok(Searched::NoFile)), "{found:?}");
+    asked.pattern = None;
+    let found = answered(&CODE_AND_DOC, &asked);
+    assert!(matches!(found, Ok(Searched::NoFile)), "{found:?}");
+    asked.files = Some("**/*.py".to_owned());
+    let found = answered(&CODE_AND_DOC, &asked);
+    assert!(
+        matches!(&found, Ok(Searched::Listing(listing)) if listing.files == 1),
+        "{found:?}"
+    );
+}
+
+#[test]
 fn a_folder_path_scopes_the_search_and_an_unknown_path_is_refused() {
     let files = [("a/x.py", "hit = 1\n"), ("b/y.py", "hit = 2\n")];
     let mut asked = request(Some("hit"));

@@ -84,6 +84,8 @@ pub enum Searched {
     Matches(Matches),
     /// The answer to a request with a glob and no pattern.
     Listing(Listing),
+    /// The glob, inside the path, selects no file.
+    NoFile,
 }
 
 /// The match lines of a search, the counts behind them, and what the answer counts apart.
@@ -268,6 +270,9 @@ impl Asked {
         reading: &Reading<'_>,
         files: &[&RepoFile],
     ) -> Noted<Result<Searched, SearchError>> {
+        if files.is_empty() && self.globs.is_some() {
+            return Noted::new(Ok(Searched::NoFile));
+        }
         let Some(regex) = &self.regex else {
             let mut rows = Noted::new(Vec::new());
             for file in files.iter().take(self.limit) {

@@ -1859,6 +1859,10 @@
       },
       "text": "!function(e){...[+1834 chars]"
     },
+    "search_glob_root": {
+      "arguments": {},
+      "text": "A glob matches the path from the root. Start it with **/ to match at any depth."
+    },
     "search_listing": {
       "arguments": {
         "count": 7,
@@ -1866,6 +1870,13 @@
         "query": ""
       },
       "text": "search files=crates/hook/src/search/*.rs: 7 files"
+    },
+    "search_listing_no_file": {
+      "arguments": {
+        "glob": "*.rs",
+        "query": " in crates/app"
+      },
+      "text": "search files=*.rs in crates/app: no file matches the glob."
     },
     "search_listing_rest": {
       "arguments": {
@@ -1879,6 +1890,13 @@
         "count": 4
       },
       "text": "4 more files"
+    },
+    "search_no_file": {
+      "arguments": {
+        "pattern": "RegexBuilder",
+        "query": " files=search*/**"
+      },
+      "text": "search /RegexBuilder/ files=search*/**: no file matches the glob."
     },
     "search_noise": {
       "arguments": {

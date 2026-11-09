@@ -1,0 +1,19 @@
+{
+  "receipt": {
+    "repo": "<REPO>",
+    "head": "47e14e8d",
+    "tree": "cbd127a3",
+    "dirty": 0,
+    "cache": "none",
+    "note": "",
+    "notice": "repository data below"
+  },
+  "notice": "repository data below",
+  "request": {
+    "pattern": "Decimal",
+    "files": "*.py",
+    "path": null,
+    "ignore_case": false
+  },
+  "answer": "no_file"
+}

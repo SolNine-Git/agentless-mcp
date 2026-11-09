@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 374] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 377] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1698,9 +1698,21 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 374] = [
     ),
     (
         "messages",
+        "search_glob_root",
+        &[],
+        &[Piece::Text(messages::SEARCH_GLOB_ROOT)],
+    ),
+    (
+        "messages",
         "search_listing",
         &["query", "count", "glob"],
         messages::SEARCH_LISTING.pieces(),
+    ),
+    (
+        "messages",
+        "search_listing_no_file",
+        &["query", "glob"],
+        messages::SEARCH_LISTING_NO_FILE.pieces(),
     ),
     (
         "messages",
@@ -1713,6 +1725,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 374] = [
         "search_more_files",
         &["count"],
         messages::SEARCH_MORE_FILES.pieces(),
+    ),
+    (
+        "messages",
+        "search_no_file",
+        &["query", "pattern"],
+        messages::SEARCH_NO_FILE.pieces(),
     ),
     (
         "messages",

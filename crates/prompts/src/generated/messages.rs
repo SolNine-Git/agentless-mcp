@@ -2542,6 +2542,10 @@ pub const SEARCH_CUT: Template<(Count, Text)> = Template::new(&[
     Piece::Text("]"),
 ]);
 
+/// A text that takes no values.
+pub const SEARCH_GLOB_ROOT: &str = "A glob matches the path from the root. Start it with **/ to \
+        match at any depth.";
+
 /// A template that takes (`query`, `count`, `glob`).
 pub const SEARCH_LISTING: Template<(Text, Count, Text)> = Template::new(&[
     Piece::Text("search files="),
@@ -2551,6 +2555,14 @@ pub const SEARCH_LISTING: Template<(Text, Count, Text)> = Template::new(&[
     Piece::Value(1),
     Piece::Text(" "),
     Piece::Choice(1, "file", "files"),
+]);
+
+/// A template that takes (`query`, `glob`).
+pub const SEARCH_LISTING_NO_FILE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("search files="),
+    Piece::Value(1),
+    Piece::Value(0),
+    Piece::Text(": no file matches the glob."),
 ]);
 
 /// A template that takes (`shown`, `total`).
@@ -2567,6 +2579,15 @@ pub const SEARCH_MORE_FILES: Template<Count> = Template::new(&[
     Piece::Value(0),
     Piece::Text(" more "),
     Piece::Choice(0, "file", "files"),
+]);
+
+/// A template that takes (`query`, `pattern`).
+pub const SEARCH_NO_FILE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("search /"),
+    Piece::Value(1),
+    Piece::Text("/"),
+    Piece::Value(0),
+    Piece::Text(": no file matches the glob."),
 ]);
 
 /// A template that takes (`kind`, `count`, `total`, `listed`).

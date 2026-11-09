@@ -197,6 +197,23 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **`search` says when its glob selects no file, reads CRLF lines, and shows
+  no context of a match that it leaves out.** A `files` glob that selects no
+  file (inside `path`, when the request gives one) now answers "search /P/
+  files=G: no file matches the glob. A glob matches the path from the root.
+  Start it with **/ to match at any depth." (or "search files=G: ..."
+  without a pattern), where it said "0 matches in 0 files searched." or "0
+  files"; the CLI JSON gives `"answer": "no_file"`. A line of a CRLF file is
+  matched and shown without its "\r", so `2$` matches `hit = 2\r\n`. When
+  the limit cuts a file and `context` is above 0, the file shows its lines
+  through the last shown match and the context after it, and no longer the
+  leading context of a match that it left out. The read keeps the lines and
+  the text of a file only while the limit can still show one of its match
+  lines, and the enclosing symbols come from that text, so each shown file is
+  read once. New goldens: `search/repo_nested.no_file` (text and JSON) and
+  `search/repo_nested.listing_no_file`, with their counts in
+  `crates/app/fixtures/read/tokens.json`.
+
 - **The `near_duplicates` message says what the check matches.** It said
   that the body "normalises to the same token stream" as an existing one, but
   the check compares the body as written, with comments and indentation left
