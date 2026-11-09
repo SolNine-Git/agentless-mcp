@@ -102,8 +102,16 @@ impl Git {
     pub fn changes(&self, root: &Path, commit: &str) -> GitOutcome {
         // --raw carries both modes, which name a symlink or a submodule. --relative keeps every
         // path relative to -C when the root is below the git top level.
-        let rest = ["--raw", "-z", "-M", "--relative", commit, "--"].map(OsStr::new);
-        self.run(root, "diff", &rest, LISTING)
+        let rest = [
+            "--raw",
+            "-z",
+            "-M",
+            "--relative",
+            "--end-of-options",
+            commit,
+            "--",
+        ];
+        self.run(root, "diff", &rest.map(OsStr::new), LISTING)
     }
 
     /// Lists the untracked files that no ignore rule excludes, NUL-separated.
@@ -125,7 +133,12 @@ impl Git {
     #[must_use]
     pub fn commits_since(&self, root: &Path, base: &str) -> GitOutcome {
         let range = OsString::from(format!("{base}..HEAD"));
-        self.run_offline(root, "rev-list", &[OsStr::new("--count"), &range], COMMIT)
+        let rest = [
+            OsStr::new("--count"),
+            OsStr::new("--end-of-options"),
+            &range,
+        ];
+        self.run_offline(root, "rev-list", &rest, COMMIT)
     }
 
     /// Prints `path` as `commit` has it, up to the per-file cap.

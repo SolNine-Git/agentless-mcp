@@ -17,6 +17,7 @@ const RANGE: &str = "08ec32abb9b149de9d10310c24bd12bd1fe8d874..HEAD";
 
 type Row = (String, String, String, String, String);
 type Call = fn(&Git, &Path) -> GitOutcome;
+type Call2 = fn(&Git, &Path, &str) -> GitOutcome;
 
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -62,7 +63,16 @@ fn calls() -> [(Call, Vec<&'static str>, usize); 6] {
         ),
         (
             |git, root| git.changes(root, SHA),
-            vec!["diff", "--raw", "-z", "-M", "--relative", SHA, "--"],
+            vec![
+                "diff",
+                "--raw",
+                "-z",
+                "-M",
+                "--relative",
+                "--end-of-options",
+                SHA,
+                "--",
+            ],
             8_000_000,
         ),
         (
@@ -82,7 +92,7 @@ fn calls() -> [(Call, Vec<&'static str>, usize); 6] {
         ),
         (
             |git, root| git.commits_since(root, SHA),
-            vec!["rev-list", "--count", RANGE],
+            vec!["rev-list", "--count", "--end-of-options", RANGE],
             4_096,
         ),
     ]
@@ -285,4 +295,41 @@ fn merge_base_is_the_fork_point_and_commits_since_counts_head_past_it() {
     assert_eq!(commit_of(git.merge_base(&root, &side)), fork);
     let count = git.commits_since(&root, &fork);
     assert_eq!(count, GitOutcome::Printed(b"2\n".to_vec()));
+}
+
+// Each revision is bound after --end-of-options, so one that starts with "-" names no commit and
+// never reaches git as an option such as --output.
+#[test]
+fn a_revision_that_starts_with_a_dash_is_an_unknown_revision_and_writes_no_file() {
+    let scratch = Scratch::new();
+    let root = scratch.repo("repo", &[("a.py", "x = 1\n")]);
+    let git = scratch.git();
+    let written = scratch.root.join("written");
+    let option = format!("--output={}", written.display());
+    let calls: [(&str, Call2); 2] = [
+        ("diff", |git, root, revision| git.changes(root, revision)),
+        ("rev-list", |git, root, revision| {
+            git.commits_since(root, revision)
+        }),
+    ];
+    for (subcommand, call) in calls {
+        let outcome = call(&git, &root, &option);
+        let GitOutcome::Failed(failure) = outcome else {
+            panic!("{subcommand}: an unknown revision fails, not {outcome:?}");
+        };
+        let note = failure.to_string();
+        assert!(note.contains(&format!("git {subcommand}")), "{note}");
+        let stray = fs::read_dir(&scratch.root).expect("the scratch folder");
+        let names: Vec<String> = stray
+            .map(|entry| {
+                entry
+                    .expect("an entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .filter(|name| name.starts_with("written"))
+            .collect();
+        assert!(names.is_empty(), "{subcommand} wrote {names:?}");
+    }
 }
