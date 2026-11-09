@@ -23,6 +23,7 @@ pub const prompts::messages::ACCEPTS_INTEGER_FROM: prompts::Template<prompts::Co
 pub const prompts::messages::ACCEPTS_NUMBER: prompts::Template<(prompts::Count, prompts::Text)>
 pub const prompts::messages::ACCEPTS_OBJECT: &str
 pub const prompts::messages::ACCEPTS_SCHEMA: &str
+pub const prompts::messages::ACCEPTS_SERVER_NAME: &str
 pub const prompts::messages::ACCEPTS_TEXT: &str
 pub const prompts::messages::ACCEPTS_TEXTS: &str
 pub const prompts::messages::ACCEPTS_TEXT_OR_TEXTS: prompts::Template<(prompts::Count, prompts::Count)>

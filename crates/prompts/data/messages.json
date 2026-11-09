@@ -21,6 +21,7 @@
   "accepts_array": "an array",
   "accepts_any_number": "a number",
   "accepts_schema": "a value that fits its schema in tools/list",
+  "accepts_server_name": "a name of ASCII letters, digits, _ and -",
   "listed_or": "{listed} or {name}",
   "listed_and": "{listed} and {name}",
   "path_needs_endpoints": "{tool} operation 'path' needs both source and target: each is a stable id, a qualified name, or a repository-relative file path. Retry naming both ends.",

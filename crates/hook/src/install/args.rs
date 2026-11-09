@@ -4,7 +4,8 @@
 use std::ffi::OsString;
 
 use prompts::messages::{
-    ACCEPTS_CHOICE, ACCEPTS_TEXT, ARGUMENT_INVALID, ARGUMENT_MISSING, ARGUMENT_UNKNOWN, LISTED_OR,
+    ACCEPTS_CHOICE, ACCEPTS_SERVER_NAME, ACCEPTS_TEXT, ARGUMENT_INVALID, ARGUMENT_MISSING,
+    ARGUMENT_UNKNOWN, LISTED_OR,
 };
 
 const SCOPE: &str = "--scope";
@@ -89,9 +90,20 @@ fn set(options: &mut Options, name: &str, value: String) -> Result<(), String> {
     match name {
         SCOPE => options.scope = scope(&value)?,
         REPO => options.repo = Some(value),
-        _ => options.server_name = Some(value),
+        _ => options.server_name = Some(server_name(value)?),
     }
     Ok(())
+}
+
+// Claude Code reads the ledger-mark matcher as a regular expression, so a name holds none of its
+// operators.
+fn server_name(value: String) -> Result<String, String> {
+    let plain = (value.bytes()).all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte));
+    if plain {
+        Ok(value)
+    } else {
+        Err(ARGUMENT_INVALID.render((ACCEPTS_SERVER_NAME, SERVER_NAME, &value)))
+    }
 }
 
 fn scope(value: &str) -> Result<Scope, String> {

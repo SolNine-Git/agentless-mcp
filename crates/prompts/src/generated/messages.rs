@@ -46,6 +46,9 @@ pub const ACCEPTS_OBJECT: &str = "an object";
 pub const ACCEPTS_SCHEMA: &str = "a value that fits its schema in tools/list";
 
 /// A text that takes no values.
+pub const ACCEPTS_SERVER_NAME: &str = "a name of ASCII letters, digits, _ and -";
+
+/// A text that takes no values.
 pub const ACCEPTS_TEXT: &str = "a string";
 
 /// A template that takes (`minimum`, `maximum`).

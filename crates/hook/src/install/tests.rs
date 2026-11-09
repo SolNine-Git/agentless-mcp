@@ -590,6 +590,28 @@ fn an_option_that_a_command_does_not_take_is_a_usage_error() {
     assert!(!rig.settings().exists());
 }
 
+// Claude Code reads the ledger-mark matcher as a regular expression: `a|b` would match `b__trace`.
+#[test]
+fn a_server_name_with_a_character_outside_the_name_set_is_a_usage_error() {
+    let rig = Rig::new();
+    for name in ["a|b", "a.*", "a b", "na\u{ef}ve", "x(y)"] {
+        for output in [
+            rig.install(&["--server-name", name]),
+            rig.status(&["--server-name", name]),
+        ] {
+            let message = format!(
+                "agentless-mcp: --server-name is {name}, but must be a name of ASCII letters, \
+                 digits, _ and -.\n"
+            );
+            assert_eq!(rig.shown(&output), (2, String::new(), message), "{name}");
+        }
+    }
+    assert!(!rig.settings().exists());
+    let output = rig.install(&["--server-name=Tools_2-b"]);
+    assert_eq!(output.code, 0, "{}", output.stderr);
+    assert!(text(&rig.settings()).contains("\"matcher\": \"mcp__Tools_2-b__trace\""));
+}
+
 #[test]
 fn the_layout_is_two_space_json_in_key_order() {
     let value =

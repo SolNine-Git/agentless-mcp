@@ -757,6 +757,11 @@ Each byte count is of the served bytes.
   written back as `NaN` or `Infinity`, which JSON.parse rejects, so Claude
   Code could not read the file. Now the command writes nothing and exits 1
   with the new refusal row `hook_install_not_finite`.
+- **hook install and hook status refuse a `--server-name` with a character
+  other than an ASCII letter, a digit, `_` or `-`** (exit 2, the new row
+  `accepts_server_name`). Claude Code reads the ledger-mark matcher
+  `mcp__<name>__trace` as a regular expression, so `a|b` matched every tool
+  whose name holds `b__trace`.
 - **history and churn now pass each path to git as a literal pathspec, so a
   path with a glob character matches only itself.**
 - **Three Python import rules remove false import edges, and some true

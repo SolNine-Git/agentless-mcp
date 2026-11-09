@@ -128,6 +128,10 @@
       "arguments": {},
       "text": "a value that fits its schema in tools/list"
     },
+    "accepts_server_name": {
+      "arguments": {},
+      "text": "a name of ASCII letters, digits, _ and -"
+    },
     "accepts_text": {
       "arguments": {},
       "text": "a string"
