@@ -19,7 +19,7 @@ use crate::bounds::within;
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
 use files::in_scope;
 use lines::hits_in;
-use shape::{Shaped, owner_blocks, shaped};
+use shape::{Gathered, Shaped, owner_blocks, shaped};
 
 pub(crate) use files::file_row;
 pub use files::{FileRow, Measure, is_source_path};
@@ -282,12 +282,12 @@ impl Asked {
                 }))
             });
         };
-        let read = match read_hits(reading, files, regex, self.context) {
+        let gathered = Gathered::new(self.selected.file(), self.limit, self.context);
+        let read = match read_hits(reading, files, regex, gathered) {
             Ok(read) => read,
             Err(error) => return Noted::new(Err(SearchError::Refused(error))),
         };
-        let shaped = shaped(read.hits, self.selected.file(), self.limit, self.context);
-        owned(reading, shaped).map(|shaped| {
+        owned(reading, shaped(read.gathered)).map(|shaped| {
             Ok(Searched::Matches(Matches {
                 searched: read.searched,
                 skipped: read.skipped,
@@ -304,34 +304,40 @@ fn expanded(glob: &str) -> Result<Vec<String>, SearchError> {
 }
 
 // The files read, the ones that could not be read, and the hits of each file with a match.
-struct Read {
-    hits: Vec<FileHits>,
+struct Read<'n> {
+    gathered: Gathered<'n>,
     searched: usize,
     skipped: Vec<Skipped>,
 }
 
-// Each file gets one check of the call's deadline before it is read.
-fn read_hits(
+impl Read<'_> {
+    fn search(&mut self, path: &str, bytes: &[u8], regex: &Regex) {
+        let Some(text) = searched_text(bytes) else {
+            return;
+        };
+        self.searched += 1;
+        if let Some(hits) = hits_in(path, &text, regex, self.gathered.context()) {
+            self.gathered.add(hits, || files::parsed_text(path, bytes));
+        }
+    }
+}
+
+// Each file is read once, after one check of the call's deadline.
+fn read_hits<'n>(
     reading: &Reading<'_>,
     files: &[&RepoFile],
     regex: &Regex,
-    context: usize,
-) -> Result<Read, Error> {
+    gathered: Gathered<'n>,
+) -> Result<Read<'n>, Error> {
     let mut read = Read {
-        hits: Vec::new(),
+        gathered,
         searched: 0,
         skipped: Vec::new(),
     };
     for file in files {
         checkpoint(reading.deadline)?;
         match io::read_bounded(&reading.repo.root.join(&file.path)) {
-            Ok(bytes) => {
-                let Some(text) = searched_text(&bytes) else {
-                    continue;
-                };
-                read.searched += 1;
-                read.hits.extend(hits_in(&file.path, &text, regex, context));
-            }
+            Ok(bytes) => read.search(&file.path, &bytes, regex),
             Err(skipped) => read.skipped.push(Skipped {
                 path: file.path.clone(),
                 reason: skipped.to_string(),
@@ -341,12 +347,14 @@ fn read_hits(
     Ok(read)
 }
 
-// The shaped answer with the owner of each shown line, from each file's symbols.
+// The shaped answer with the owner of each shown line, from the symbols of the text that the
+// search read.
 fn owned(reading: &Reading<'_>, shaped: Shaped) -> Noted<Matches> {
     let mut diagnostics = Vec::new();
     let groups = (shaped.groups.into_iter())
         .map(|(path, lines)| {
-            let symbols = files::symbols_of(reading, &path);
+            let symbols = (shaped.texts.get(&path))
+                .map_or_else(|| Noted::new(None), |text| files::symbols_of(reading, text));
             diagnostics.extend(symbols.diagnostics);
             let blocks = owner_blocks(&path, lines, symbols.value.as_ref());
             FileMatches { path, blocks }

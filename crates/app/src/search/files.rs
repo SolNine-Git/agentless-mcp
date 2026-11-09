@@ -133,7 +133,8 @@ pub(crate) fn file_row(reading: &Reading<'_>, path: &str) -> Noted<FileRow> {
         Ok(bytes) => bytes,
         Err(skipped) => return Noted::new(row(Measure::Unread(skipped.to_string()))),
     };
-    let symbols = symbols_in(reading, path, &bytes);
+    let symbols = parsed_text(path, &bytes)
+        .map_or_else(|| Noted::new(None), |text| symbols_of(reading, &text));
     let lines = line_count(&String::from_utf8_lossy(&bytes));
     symbols.map(|symbols| {
         row(Measure::Counted {
@@ -143,20 +144,14 @@ pub(crate) fn file_row(reading: &Reading<'_>, path: &str) -> Noted<FileRow> {
     })
 }
 
-// The symbols of the file at `path`, or `None` when it cannot be read or no grammar reads it.
-pub(super) fn symbols_of(reading: &Reading<'_>, path: &str) -> Noted<Option<Vec<Symbol>>> {
-    match io::read_bounded(&reading.repo.root.join(path)) {
-        Ok(bytes) => symbols_in(reading, path, &bytes),
-        Err(_) => Noted::new(None),
-    }
+// The text of the file at `path` that the symbol reader takes, or `None` when no grammar reads it.
+pub(super) fn parsed_text(path: &str, bytes: &[u8]) -> Option<FileText> {
+    Language::from_path(path).map(|language| FileText::decode(path.to_owned(), language, bytes))
 }
 
-fn symbols_in(reading: &Reading<'_>, path: &str, bytes: &[u8]) -> Noted<Option<Vec<Symbol>>> {
-    let Some(language) = Language::from_path(path) else {
-        return Noted::new(None);
-    };
-    let text = FileText::decode(path.to_owned(), language, bytes);
-    let Served { value, warning } = reading.facts.symbols(&text, reading.deadline);
+// The symbols of `text`, or `None` when its grammar refused it.
+pub(super) fn symbols_of(reading: &Reading<'_>, text: &FileText) -> Noted<Option<Vec<Symbol>>> {
+    let Served { value, warning } = reading.facts.symbols(text, reading.deadline);
     Noted {
         value: value.ok(),
         diagnostics: warning.iter().map(ToString::to_string).collect(),

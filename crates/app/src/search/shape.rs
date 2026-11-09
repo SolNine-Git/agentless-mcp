@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 use facts::{StableId, Symbol};
 use graph::enclosing_symbol;
+use store::FileText;
 use syntax::Language;
 
 use super::lines::FileHits;
@@ -12,32 +13,97 @@ use super::{
     Block, FileCount, Line, Matches, Noise, NoiseClass, Owner, Place, REPEAT_PLACES, Repeat,
 };
 
-// The shown lines by file, in answer order, and the rest of the answer with no groups yet.
+// The shown lines by file, in answer order, the text of each file that the limit can show, and
+// the rest of the answer with no groups yet.
 pub(super) struct Shaped {
     pub(super) groups: Vec<(String, Vec<Line>)>,
+    pub(super) texts: BTreeMap<String, FileText>,
     pub(super) matches: Matches,
 }
 
-// `named` is the file that the request's path names; its class does not hide it. The repeats are
-// found only with no context, where every shown line is a match line.
-pub(super) fn shaped(
-    hits: Vec<FileHits>,
-    named: Option<&str>,
+// The hits of the files read so far. Every file keeps its count; a file keeps its lines and its
+// text only while the limit can still show one of its match lines in answer order.
+pub(super) struct Gathered<'n> {
+    // The file that the request's path names: its class does not hide it.
+    named: Option<&'n str>,
     limit: usize,
     context: usize,
-) -> Shaped {
-    let matches = hits.iter().map(|file| file.matches).sum();
-    let files = hits.len();
-    let (noisy, plain): (Vec<FileHits>, Vec<FileHits>) = (hits.into_iter())
-        .partition(|file| file.class.is_some() && named != Some(file.path.as_str()));
-    let limited = limited(ordered(plain), limit, context);
-    let (groups, repeats) = if context == 0 {
+    noisy: Vec<FileHits>,
+    plain: Vec<FileHits>,
+    texts: BTreeMap<String, FileText>,
+    // The plain files that keep their lines, by answer order, with their index in `plain`, and the
+    // match lines of those files.
+    showing: BTreeMap<(bool, String), usize>,
+    showing_matches: usize,
+}
+
+impl<'n> Gathered<'n> {
+    pub(super) fn new(named: Option<&'n str>, limit: usize, context: usize) -> Gathered<'n> {
+        Gathered {
+            named,
+            limit,
+            context,
+            noisy: Vec::new(),
+            plain: Vec::new(),
+            texts: BTreeMap::new(),
+            showing: BTreeMap::new(),
+            showing_matches: 0,
+        }
+    }
+
+    pub(super) fn context(&self) -> usize {
+        self.context
+    }
+
+    // A noise file keeps only its count. `text` runs only for a file that the limit can show.
+    pub(super) fn add(&mut self, mut file: FileHits, text: impl FnOnce() -> Option<FileText>) {
+        if file.class.is_some() && self.named != Some(file.path.as_str()) {
+            file.lines = Vec::new();
+            self.noisy.push(file);
+            return;
+        }
+        file.lines = first_matches(file.lines, self.limit, self.context);
+        let (later, path) = answer_key(&file);
+        let key = (later, path.to_owned());
+        self.showing.insert(key.clone(), self.plain.len());
+        self.showing_matches += file.matches;
+        self.plain.push(file);
+        self.drop_unshown();
+        if self.showing.contains_key(&key) {
+            self.texts.extend(text().map(|text| (key.1, text)));
+        }
+    }
+
+    // The last file in answer order goes when the files before it hold the limit's match lines.
+    fn drop_unshown(&mut self) {
+        while let Some(last) = self.showing.last_entry() {
+            let file = &mut self.plain[*last.get()];
+            if self.showing_matches - file.matches < self.limit {
+                return;
+            }
+            self.showing_matches -= file.matches;
+            file.lines = Vec::new();
+            self.texts.remove(&file.path);
+            last.remove();
+        }
+    }
+}
+
+// The repeats are found only with no context, where every shown line is a match line.
+pub(super) fn shaped(kept: Gathered<'_>) -> Shaped {
+    let matches = (kept.noisy.iter().chain(&kept.plain))
+        .map(|file| file.matches)
+        .sum();
+    let files = kept.noisy.len() + kept.plain.len();
+    let limited = limited(ordered(kept.plain), kept.limit, kept.context);
+    let (groups, repeats) = if kept.context == 0 {
         repeated(limited.groups)
     } else {
         (limited.groups, Vec::new())
     };
     Shaped {
         groups,
+        texts: kept.texts,
         matches: Matches {
             matches,
             files,
@@ -46,15 +112,19 @@ pub(super) fn shaped(
             repeats,
             shown: limited.shown,
             rest: limited.rest,
-            noise: noise(&noisy),
+            noise: noise(&kept.noisy),
             skipped: Vec::new(),
         },
     }
 }
 
 // Source files first, each part in path order.
+fn answer_key(file: &FileHits) -> (bool, &str) {
+    (!file.source, &file.path)
+}
+
 fn ordered(mut files: Vec<FileHits>) -> Vec<FileHits> {
-    files.sort_by(|a, b| (!a.source, &a.path).cmp(&(!b.source, &b.path)));
+    files.sort_by(|a, b| answer_key(a).cmp(&answer_key(b)));
     files
 }
 
@@ -227,3 +297,6 @@ pub(super) fn first_places(files: Vec<FileHits>, cap: usize) -> Vec<Place> {
         .take(cap)
         .collect()
 }
+
+#[cfg(test)]
+mod tests;
