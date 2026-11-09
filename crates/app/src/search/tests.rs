@@ -127,6 +127,26 @@ fn the_limit_cuts_in_answer_order_and_counts_what_it_left_out_per_file() {
 }
 
 #[test]
+fn a_cut_file_shows_the_context_after_its_last_kept_match_and_none_of_a_match_it_left_out() {
+    let text = |hits: [usize; 2]| {
+        (1..=13)
+            .map(|at| if hits.contains(&at) { "hit\n" } else { "x\n" })
+            .collect::<String>()
+    };
+    let (apart, near) = (text([3, 11]), text([3, 7]));
+    let mut asked = request(Some("hit"));
+    (asked.context, asked.limit) = (IntArg::from_usize(2), IntArg::from_usize(1));
+    for file in [apart.as_str(), near.as_str()] {
+        let found = matches(&[("a.py", file)], &asked);
+        let numbers: Vec<u32> = (shown_lines(&found).into_iter())
+            .map(|(_, number, _)| number)
+            .collect();
+        assert_eq!(numbers, [1, 2, 3, 4, 5], "{file:?}");
+        assert_eq!((found.shown, found.rest[0].count), (1, 1));
+    }
+}
+
+#[test]
 fn a_text_in_three_places_prints_once_with_every_place_and_one_in_two_places_stays() {
     let files = [
         ("a.py", "import os\nx = 1\n"),

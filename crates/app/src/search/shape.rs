@@ -30,7 +30,7 @@ pub(super) fn shaped(
     let files = hits.len();
     let (noisy, plain): (Vec<FileHits>, Vec<FileHits>) = (hits.into_iter())
         .partition(|file| file.class.is_some() && named != Some(file.path.as_str()));
-    let limited = limited(ordered(plain), limit);
+    let limited = limited(ordered(plain), limit, context);
     let (groups, repeats) = if context == 0 {
         repeated(limited.groups)
     } else {
@@ -67,7 +67,7 @@ struct Limited {
 
 // The limit is spent in answer order. A file that it cuts keeps the context lines after its last
 // kept match, and the rest of its matches are counted.
-fn limited(files: Vec<FileHits>, limit: usize) -> Limited {
+fn limited(files: Vec<FileHits>, limit: usize, context: usize) -> Limited {
     let mut kept = Limited {
         groups: Vec::new(),
         shown: 0,
@@ -78,7 +78,7 @@ fn limited(files: Vec<FileHits>, limit: usize) -> Limited {
         let taken = file.matches.min(room);
         if taken > 0 {
             kept.groups
-                .push((file.path.clone(), first_matches(file.lines, taken)));
+                .push((file.path.clone(), first_matches(file.lines, taken, context)));
         }
         kept.shown += taken;
         if taken < file.matches {
@@ -91,9 +91,11 @@ fn limited(files: Vec<FileHits>, limit: usize) -> Limited {
     kept
 }
 
-// The lines up to the next match line after the first `taken` match lines.
-fn first_matches(lines: Vec<Line>, taken: usize) -> Vec<Line> {
+// The lines through the `taken`-th match line and the `context` lines after it, short of the next
+// match line.
+fn first_matches(lines: Vec<Line>, taken: usize, context: usize) -> Vec<Line> {
     let mut seen = 0;
+    let mut last = None;
     let mut kept = Vec::new();
     for line in lines {
         if line.matched {
@@ -101,10 +103,18 @@ fn first_matches(lines: Vec<Line>, taken: usize) -> Vec<Line> {
                 break;
             }
             seen += 1;
+            last = (seen == taken).then_some(line.number);
+        } else if last.is_some_and(|last| after(last, line.number) > context) {
+            break;
         }
         kept.push(line);
     }
     kept
+}
+
+// How many lines `line` is after `last`.
+fn after(last: u32, line: u32) -> usize {
+    usize::try_from(line.saturating_sub(last)).unwrap_or(usize::MAX)
 }
 
 // Each text that `REPEAT_PLACES` or more shown lines hold leaves its groups for one repeat, in
