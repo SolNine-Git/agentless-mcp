@@ -17,17 +17,13 @@ use crate::run::{self, Facts, NO_REPOSITORY, Outcome, Run};
 use crate::search::text_field;
 use crate::state::{self, Claim};
 use crate::text::sha256_hex;
+use seeds::{MAP_FAILED, NO_PROMPT, NO_SEED, NO_SEED_RESOLVED, TOO_LONG};
 
 pub(crate) type MapFn = fn(&Services, &Path, &MapRequest) -> Result<MapResult, app::Error>;
 
 const MARKER_DIR: &str = "agentless_prompt_map";
 
 const ALREADY_ENRICHED: &str = "already_enriched";
-const NO_PROMPT: &str = "no_prompt";
-const NO_SEED: &str = "no_seed";
-const NO_SEED_RESOLVED: &str = "no_seed_resolved";
-const MAP_FAILED: &str = "map_failed";
-const TOO_LONG: &str = "too_long";
 const MARKER_STORAGE_UNAVAILABLE: &str = "marker_storage_unavailable";
 
 /// Answers the `UserPromptSubmit` payload on `stdin` with one JSON object on `stdout` that names
@@ -122,7 +118,6 @@ fn claim(markers: &Path, session: &str) -> Result<(), &'static str> {
     }
 }
 
-// The names are the seeds that the map resolved. A map that resolved none gives no sentence.
 fn context_sentence(
     result: &MapResult,
     found: &[String],
@@ -133,11 +128,8 @@ fn context_sentence(
         .map(|file| file.path.clone())
         .collect();
     facts.files = Some(files.clone());
-    let names: Vec<String> = (found.iter())
-        .filter(|seed| !result.unresolved_seeds.contains(seed))
-        .cloned()
-        .collect();
-    if result.seeds.is_empty() || names.is_empty() || files.is_empty() {
+    let names = seeds::resolved(result, found)?;
+    if files.is_empty() {
         return Err(NO_SEED_RESOLVED);
     }
     seeds::context_text(&names, &files).ok_or(TOO_LONG)

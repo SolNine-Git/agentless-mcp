@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 
+use app::MapResult;
 use prompts::messages::PROMPT_MAP_CONTEXT;
 use prompts::{Template, Text};
 use text::{is_word, strip};
@@ -15,6 +16,13 @@ const MAX_SUFFIX: usize = 6;
 pub(crate) const MAX_FILES: usize = 2;
 const SHOWN_NAMES: usize = 4;
 pub(crate) const MAX_CONTEXT_BYTES: usize = 768;
+
+// The reasons of the two map hooks.
+pub(crate) const NO_PROMPT: &str = "no_prompt";
+pub(crate) const NO_SEED: &str = "no_seed";
+pub(crate) const NO_SEED_RESOLVED: &str = "no_seed_resolved";
+pub(crate) const MAP_FAILED: &str = "map_failed";
+pub(crate) const TOO_LONG: &str = "too_long";
 
 // The seeds of a text, and the repository files that it names, in order.
 pub(crate) struct Seeded {
@@ -63,6 +71,18 @@ pub(crate) fn seeded(prompt: &str, is_file: &dyn Fn(&str) -> bool) -> Seeded {
         .map(str::to_owned)
         .collect();
     Seeded { seeds, files }
+}
+
+// The seeds that the map resolved, in order. A map that resolved none gives no sentence.
+pub(crate) fn resolved(result: &MapResult, seeds: &[String]) -> Result<Vec<String>, &'static str> {
+    let names: Vec<String> = (seeds.iter())
+        .filter(|seed| !result.unresolved_seeds.contains(seed))
+        .cloned()
+        .collect();
+    if result.seeds.is_empty() || names.is_empty() {
+        return Err(NO_SEED_RESOLVED);
+    }
+    Ok(names)
 }
 
 pub(crate) fn context_text(names: &[String], files: &[String]) -> Option<String> {

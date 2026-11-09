@@ -16,7 +16,7 @@ use text::CodePointString;
 
 use crate::ledger;
 use crate::prompt_map::MapFn;
-use crate::prompt_map::seeds::{self, Seeded};
+use crate::prompt_map::seeds::{self, MAP_FAILED, NO_PROMPT, NO_SEED, Seeded, TOO_LONG};
 use crate::repository;
 use crate::run::{self, Facts, LEDGER_STORAGE_UNAVAILABLE, NO_REPOSITORY, Outcome, Run};
 use crate::search::text_field;
@@ -40,16 +40,11 @@ const FILES_KEY: &str = "files";
 
 const RECORDED: &str = "recorded";
 const FORKED: &str = "fork";
-const NO_PROMPT: &str = "no_prompt";
 const NO_AGENT_TYPE: &str = "no_agent_type";
 const NO_RECORD: &str = "no_record";
 const AMBIGUOUS_PAIRING: &str = "ambiguous_pairing";
 const RECORD_UNREADABLE: &str = "record_unreadable";
-const NO_SEED: &str = "no_seed";
-const NO_SEED_RESOLVED: &str = "no_seed_resolved";
 const NO_NEW_FILE: &str = "no_new_file";
-const MAP_FAILED: &str = "map_failed";
-const TOO_LONG: &str = "too_long";
 
 // A brief with no seed is recorded too: a record of every brief keeps a pairing honest.
 pub(crate) fn recorded(
@@ -227,16 +222,9 @@ fn owned_text(value: &JsonValue) -> Option<String> {
     }
 }
 
-// The names are the seeds that the map resolved; the files are the first 2 of the first 5
-// ranked files that the brief does not name.
+// The files are the first 2 of the first 5 ranked files that the brief does not name.
 fn sentence(result: &MapResult, brief: &Brief) -> Result<String, &'static str> {
-    let names: Vec<String> = (brief.seeds.iter())
-        .filter(|seed| !result.unresolved_seeds.contains(seed))
-        .cloned()
-        .collect();
-    if result.seeds.is_empty() || names.is_empty() {
-        return Err(NO_SEED_RESOLVED);
-    }
+    let names = seeds::resolved(result, &brief.seeds)?;
     let files: Vec<String> = (result.files.iter().take(RANKED_FILES))
         .map(|file| file.path.clone())
         .filter(|path| !brief.files.contains(path))
