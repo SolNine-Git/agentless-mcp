@@ -17,6 +17,7 @@ mod views;
 use std::path::Path;
 
 use app::ops::{Op, Value as Declared};
+use app::trace::Revision;
 use app::{IntArg, Services, Session};
 use render::{Receipt, View};
 
@@ -176,13 +177,26 @@ pub(crate) fn emit_then<V: View>(
     streams: &mut Streams<'_>,
     finish: impl FnOnce(&V) -> (String, u8),
 ) -> u8 {
+    emit_with(outcome, answering, None, streams, finish)
+}
+
+// As `emit_then`, for an answer that read `revision`, which the receipt names.
+pub(crate) fn emit_with<V: View>(
+    outcome: app::Noted<Result<V, app::Error>>,
+    answering: &Answering<'_>,
+    revision: Option<&Revision>,
+    streams: &mut Streams<'_>,
+    finish: impl FnOnce(&V) -> (String, u8),
+) -> u8 {
     crate::steps::diagnostics(streams, &outcome.diagnostics);
     let view = match outcome.value {
         Ok(view) => view,
         Err(error) => return failed(streams.err, &error),
     };
     let counter = &*answering.services.counter;
-    let receipt = Receipt::of(answering.session).counted_by(counter);
+    let receipt = Receipt::of(answering.session)
+        .counted_by(counter)
+        .at_revision(revision);
     let rendered = if answering.flags.json {
         render::json(&receipt, &view)
     } else {

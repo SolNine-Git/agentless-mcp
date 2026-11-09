@@ -7,6 +7,7 @@ mod trace;
 use std::borrow::Cow;
 use std::path::PathBuf;
 
+use app::trace::Revision;
 use app::{Reading, Session};
 use git::Snapshot;
 use kernel::Deadline;
@@ -37,12 +38,18 @@ impl Context<'_> {
     // The text of `view` under the receipt, whose cache field reads as of now. The allowlist holds
     // each root once, so its length is the count of selectable roots.
     pub(crate) fn rendered(&self, view: &impl View) -> String {
+        self.rendered_at(view, None)
+    }
+
+    // As `rendered`, for an answer that read `revision`, which the receipt names.
+    pub(crate) fn rendered_at(&self, view: &impl View, revision: Option<&Revision>) -> String {
         let cache = self.cache_field();
         let session = self.session;
         let snapshot = self.noted_snapshot();
         let receipt = Receipt::new(&session.repo, &snapshot, &cache)
             .counted_by(&*self.inner.services.counter)
-            .among(self.allowed.len());
+            .among(self.allowed.len())
+            .at_revision(revision);
         render::text(&receipt, view)
     }
 

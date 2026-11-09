@@ -20,8 +20,8 @@ const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 const READ_LIMIT: Duration = Duration::from_secs(20);
 // The CHANGELOG's figures for tools/list: the served bytes of its tools, and the cl100k count of
 // the compact array of its entries, each cut to name, description and inputSchema.
-const SURFACE_BYTES: usize = 2_858;
-const SURFACE_TOKENS: usize = 551;
+const SURFACE_BYTES: usize = 3_033;
+const SURFACE_TOKENS: usize = 593;
 // How long a test waits to see that a call does not start while the gate is full.
 const QUIET: Duration = Duration::from_millis(200);
 

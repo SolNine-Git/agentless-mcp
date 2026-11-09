@@ -261,7 +261,7 @@ fn a_refusal_judges_each_parameter_once_in_declaration_order() {
             "target is 3, but must be a string or a list of 1 to 8 strings. more is \"bodies\", but \
              must be one of candidates, callers, callees, tests, similar, history, body, \
              declares, imports, importers, cycles or tree. trace has no parameter operation. \
-             trace takes target, repo_root and more.",
+             trace takes target, repo_root, more and rev.",
         ),
         (
             "trace",

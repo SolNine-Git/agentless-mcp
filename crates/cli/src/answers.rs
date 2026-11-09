@@ -8,9 +8,9 @@ use render::{SearchAnswer, TraceAnswer, search_refusal};
 
 use crate::Streams;
 use crate::args::{Namespace, Value};
-use crate::exit::{EXIT_USAGE, fail, failed};
+use crate::exit::{EXIT_OK, EXIT_USAGE, fail, failed};
 use crate::invocation::{Answer, AnswerCall, repo_flags};
-use crate::read::{emit, open_reading};
+use crate::read::{Answering, emit, emit_with, open_reading};
 use crate::steps::diagnostics;
 
 pub(crate) fn run(call: &AnswerCall, services: &Services, streams: &mut Streams<'_>) -> u8 {
@@ -21,8 +21,8 @@ pub(crate) fn run(call: &AnswerCall, services: &Services, streams: &mut Streams<
 }
 
 fn trace(namespace: &Namespace, services: &Services, streams: &mut Streams<'_>) -> u8 {
-    let request = match trace_request(namespace) {
-        Ok(request) => request,
+    let (request, rev) = match trace_request(namespace) {
+        Ok(asked) => asked,
         Err(refusal) => return fail(streams.err, &refusal, EXIT_USAGE),
     };
     let flags = repo_flags(namespace);
@@ -30,10 +30,11 @@ fn trace(namespace: &Namespace, services: &Services, streams: &mut Streams<'_>) 
         Ok(session) => session,
         Err(code) => return code,
     };
+    let reading = Reading::of(&session);
     let Noted {
         value,
         diagnostics: notes,
-    } = app::trace::trace(services, &Reading::of(&session), &request);
+    } = app::trace::trace_at(services, &reading, &request, rev.as_deref());
     let trace = match value {
         Ok(trace) => trace,
         Err(error) => {
@@ -49,7 +50,15 @@ fn trace(namespace: &Namespace, services: &Services, streams: &mut Streams<'_>) 
         value: Ok(view),
         diagnostics: notes,
     };
-    emit(outcome, &session, services, &flags, streams)
+    let answering = Answering {
+        session: &session,
+        services,
+        flags: &flags,
+    };
+    let revision = trace.revision.as_ref();
+    emit_with(outcome, &answering, revision, streams, |_| {
+        (String::new(), EXIT_OK)
+    })
 }
 
 fn search(namespace: &Namespace, services: &Services, streams: &mut Streams<'_>) -> u8 {
@@ -84,15 +93,20 @@ fn search(namespace: &Namespace, services: &Services, streams: &mut Streams<'_>)
     emit(outcome, &session, services, &flags, streams)
 }
 
-// The tools take each target as text, so a target that is not UTF-8 is refused.
-fn trace_request(namespace: &Namespace) -> Result<TraceRequest, String> {
+// The tools take each target and the rev as text, so one that is not UTF-8 is refused.
+fn trace_request(namespace: &Namespace) -> Result<(TraceRequest, Option<String>), String> {
     let targets = (namespace.list("target").iter())
         .map(|target| target.utf8("TARGET"))
         .collect::<Result<_, _>>()?;
-    Ok(TraceRequest {
+    let rev = namespace
+        .text("rev")
+        .map(|arg| arg.utf8("--rev"))
+        .transpose()?;
+    let request = TraceRequest {
         targets,
         more: (namespace.text("more")).and_then(|arg| Section::from_name(&arg.text)),
-    })
+    };
+    Ok((request, rev))
 }
 
 fn search_request(namespace: &Namespace) -> Result<SearchRequest, String> {

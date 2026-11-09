@@ -13,14 +13,15 @@ pub(super) fn answer(context: &Context<'_>, arguments: &Arguments) -> Result<Str
         more: arguments.text("more").and_then(Section::from_name),
     };
     let services = &context.inner.services;
-    let graphs = &context.inner.graphs;
-    let outcome = app::trace::trace_kept(services, &context.reading, &request, graphs);
+    let at = (arguments.text("rev"), &context.inner.graphs);
+    let outcome = app::trace::trace_kept_at(services, &context.reading, &request, at);
     context.logged(&outcome.diagnostics);
     let trace = outcome.value?;
-    Ok(context.rendered(&TraceAnswer {
+    let answer = TraceAnswer {
         request: &request,
         trace: &trace,
-    }))
+    };
+    Ok(context.rendered_at(&answer, trace.revision.as_ref()))
 }
 
 // One target as given, or each target of a list; the validation lets only these two through.

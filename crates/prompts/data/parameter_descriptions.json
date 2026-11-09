@@ -50,6 +50,7 @@
   "history_budget": "Maximum tokens for commit bodies. Default 12000.",
   "trace_target": "A name, a path, path:line, path:start-end or a stable id. A list traces each one.",
   "trace_more": "One section to show in full.",
+  "trace_rev": "A git revision, such as main or a commit id. Omit it for the working tree.",
   "search_pattern": "A regular expression, matched line by line. Omit it to list files.",
   "search_files": "A glob on repository-relative paths, such as **/*.rs or src/{a,b}/**.",
   "search_path": "A repository-relative file or folder. Default: the root.",

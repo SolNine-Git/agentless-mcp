@@ -183,6 +183,7 @@ static TRACE: Tool = Tool {
             Shape::Literal(&MORE_SECTIONS),
             parameter::TRACE_MORE,
         ),
+        optional("rev", Shape::Text, parameter::TRACE_REV),
     ],
 };
 

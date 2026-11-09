@@ -26,6 +26,7 @@ fn receipt(config: &ProjectConfig) -> Receipt<'_> {
         warnings: Vec::new(),
         counter: &app::Chars4,
         names_repo: false,
+        revision: None,
     }
 }
 

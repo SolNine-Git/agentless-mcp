@@ -191,6 +191,10 @@ pub const SYMBOLS_OPERATION: &str = "The tool description says what each one req
 /// The parameter description keyed `trace_more`.
 pub const TRACE_MORE: &str = "One section to show in full.";
 
+/// The parameter description keyed `trace_rev`.
+pub const TRACE_REV: &str = "A git revision, such as main or a commit id. Omit it for the working \
+        tree.";
+
 /// The parameter description keyed `trace_target`.
 pub const TRACE_TARGET: &str = "A name, a path, path:line, path:start-end or a stable id. A list \
         traces each one.";

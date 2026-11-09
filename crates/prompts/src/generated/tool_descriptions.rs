@@ -259,5 +259,6 @@ pub const TRACE: &str = "Show what a code target is and how it connects. target 
         the symbols in them. A folder gives its tree. Each section \
         shows how many rows it hides, and more shows one section in \
         full. more=body gives the numbered body. more=similar lists the \
-        symbols that share callers with the target. A list of targets \
+        symbols that share callers with the target. rev reads the code \
+        at a git revision, not the working tree. A list of targets \
         gives one card per target in one call.";

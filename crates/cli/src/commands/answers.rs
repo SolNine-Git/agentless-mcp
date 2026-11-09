@@ -23,7 +23,8 @@ pub(super) fn trace() -> Parser {
         },
         ..option(&["--more"], "more", None, parameter::TRACE_MORE)
     };
-    let mut actions = vec![crate::args::help_action(), target, more];
+    let rev = option(&["--rev"], "rev", Some("REV"), parameter::TRACE_REV);
+    let mut actions = vec![crate::args::help_action(), target, more, rev];
     actions.extend(repo_flags());
     subcommand("trace", actions)
 }
