@@ -4,6 +4,8 @@
 //! that owns everything it reads. A server's call starts the build of its scan's graph on a helper
 //! of that thread, so a later card finds it built.
 
+use std::any::Any;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
@@ -391,6 +393,9 @@ pub(crate) struct Counts {
     waits: AtomicUsize,
     #[cfg(test)]
     gate: Option<Gate>,
+    // In a test, the payload that each update panics with in place of updating.
+    #[cfg(test)]
+    update_panic: Option<&'static str>,
     // The bounds of an update: the server's, or a test's.
     bounds: Updates,
 }
@@ -416,6 +421,19 @@ fn waited(counts: &Counts) {
 #[cfg(not(test))]
 fn gated(_counts: &Counts, build: impl FnOnce()) {
     build();
+}
+
+#[cfg(not(test))]
+fn updating<R>(_counts: &Counts, update: impl FnOnce() -> R) -> R {
+    update()
+}
+
+#[cfg(test)]
+fn updating<R>(counts: &Counts, update: impl FnOnce() -> R) -> R {
+    if let Some(payload) = counts.update_panic {
+        panic::panic_any(payload);
+    }
+    update()
 }
 
 // A test's prebuild waits until the test opens the gate, and says when it is done.
@@ -565,6 +583,16 @@ impl KeptGraphs {
         KeptGraphs::with_counts(clock, builds)
     }
 
+    // A server's empty state whose every update panics with `payload`.
+    #[cfg(test)]
+    fn panicking(clock: Arc<dyn Clock>, payload: &'static str) -> KeptGraphs {
+        let builds = Counts {
+            update_panic: Some(payload),
+            ..Counts::default()
+        };
+        KeptGraphs::with_counts(clock, builds)
+    }
+
     #[cfg(test)]
     fn with_counts(clock: Arc<dyn Clock>, builds: Counts) -> KeptGraphs {
         KeptGraphs {
@@ -671,8 +699,12 @@ impl KeptGraphs {
     }
 }
 
-// The work of a job: it answers over a call graph and sends the answer back.
-type Work = Box<dyn FnOnce(&CallGraph<'_, '_>) + Send>;
+// The work of a job: it answers over a call graph, or with the panic of the update of its scan,
+// and sends the answer back.
+type Work = Box<dyn FnOnce(Result<&CallGraph<'_, '_>, Panic>) + Send>;
+
+// The payload of a panic.
+type Panic = Box<dyn Any + Send>;
 
 // One question for a root's graph: the scan that the call read, and what the call asks of its
 // graph.
@@ -697,8 +729,9 @@ impl Job {
         work: impl FnOnce(&CallGraph<'_, '_>) -> Result<R, Error> + Send + 'static,
     ) -> (Job, Replied<R>) {
         let (reply, replied) = mpsc::channel();
-        let work = Box::new(move |graph: &CallGraph<'_, '_>| {
-            let answered = panic::catch_unwind(AssertUnwindSafe(|| work(graph)));
+        let work = Box::new(move |graph: Result<&CallGraph<'_, '_>, Panic>| {
+            let answered =
+                graph.and_then(|graph| panic::catch_unwind(AssertUnwindSafe(|| work(graph))));
             // A call that stopped has left, and nobody waits for its answer.
             drop(reply.send(answered));
         });
@@ -709,7 +742,7 @@ impl Job {
     // A build that the call runs over its own graph is left to the call's work.
     fn run(self, graph: &CallGraph<'_, '_>) {
         if let Asked::Work(work) = self.asked {
-            work(graph);
+            work(Ok(graph));
         }
     }
 }
@@ -745,6 +778,7 @@ fn served(jobs: &Receiver<Job>, builds: &Counts, kept: &Weak<Kept>) {
         queue: jobs,
         kept,
         builds,
+        panicked: Cell::new(None),
     };
     let mut next = next_job(jobs, kept);
     while let Some(job) = next {
@@ -764,12 +798,23 @@ fn next_job(jobs: &Receiver<Job>, kept: &Weak<Kept>) -> Option<Job> {
     }
 }
 
-// The jobs of a graph thread, the weak handle that it sweeps the idle roots through, and the
-// counts that it adds to.
+// The jobs of a graph thread, the weak handle that it sweeps the idle roots through, the counts
+// that it adds to, and the scan whose update panicked with the panic.
 struct Jobs<'j> {
     queue: &'j Receiver<Job>,
     kept: &'j Weak<Kept>,
     builds: &'j Counts,
+    panicked: Cell<Option<PanickedScan>>,
+}
+
+// The scan whose update panicked, and the panic.
+type PanickedScan = (Arc<Vec<Arc<FileFacts>>>, Panic);
+
+// How the update of a kept state to a later scan ended.
+enum Updated {
+    Done(Resolved),
+    Rebuild,
+    Panicked(Panic),
 }
 
 impl Jobs<'_> {
@@ -784,16 +829,45 @@ impl Jobs<'_> {
             let next = self.scanned(job, scan, &built)?;
             let after = scan.then(&next.files);
             stored.add(scan.listed(), after.listed());
-            let bounds = &self.builds.bounds;
-            let updated = (!stored.passes(bounds))
-                .then(|| built.updated(scan.listed(), after.listed(), bounds.sites));
-            let Some(Ok(work)) = updated else {
-                self.builds.rebuilds.fetch_add(1, Ordering::Relaxed);
-                return Some(next);
+            let updated = if stored.passes(&self.builds.bounds) {
+                Updated::Rebuild
+            } else {
+                self.update(&mut built, scan.listed(), after.listed())
+            };
+            let work = match updated {
+                Updated::Done(work) => work,
+                Updated::Rebuild => return Some(self.rebuilt(next, None)),
+                Updated::Panicked(panic) => return Some(self.rebuilt(next, Some(panic))),
             };
             self.builds.updated(work);
             (scan, job) = (after, next);
         }
+    }
+
+    // Carries `built` from the scan `before` to `after` within the update bounds.
+    fn update<'s>(
+        &self,
+        built: &mut Built<'s>,
+        before: &'s [&'s FileFacts],
+        after: &'s [&'s FileFacts],
+    ) -> Updated {
+        let sites = self.builds.bounds.sites;
+        let update = || updating(self.builds, || built.updated(before, after, sites));
+        match panic::catch_unwind(AssertUnwindSafe(update)) {
+            Ok(Ok(work)) => Updated::Done(work),
+            Ok(Err(_)) => Updated::Rebuild,
+            Err(panic) => Updated::Panicked(panic),
+        }
+    }
+
+    // `next`, the first job of a state that builds its scan in full. A panic can leave the parts
+    // half updated, so the first call over the scan gets it, as a build's panic reaches its call.
+    fn rebuilt(&self, next: Job, panic: Option<Panic>) -> Job {
+        if let Some(panic) = panic {
+            self.panicked.set(Some((Arc::clone(&next.files), panic)));
+        }
+        self.builds.rebuilds.fetch_add(1, Ordering::Relaxed);
+        next
     }
 
     // Answers each job of the first job's scan over `built`, and returns the first job of another
@@ -845,7 +919,7 @@ impl Jobs<'_> {
         let mut matched: Weak<Vec<Arc<FileFacts>>> = Weak::new();
         loop {
             match job.asked {
-                Asked::Work(work) => work(graph),
+                Asked::Work(work) => work(self.unpanicked(&job.files).map(|()| graph)),
                 Asked::Build => start(),
             }
             job = next_job(self.queue, self.kept)?;
@@ -855,6 +929,17 @@ impl Jobs<'_> {
                 return Some(job);
             }
             matched = Arc::downgrade(&job.files);
+        }
+    }
+
+    // The panic of the update of `files`, which the first work over that scan answers with.
+    fn unpanicked(&self, files: &Arc<Vec<Arc<FileFacts>>>) -> Result<(), Panic> {
+        match self.panicked.take() {
+            Some((scan, panic)) if Arc::ptr_eq(&scan, files) => Err(panic),
+            held => {
+                self.panicked.set(held);
+                Ok(())
+            }
         }
     }
 }

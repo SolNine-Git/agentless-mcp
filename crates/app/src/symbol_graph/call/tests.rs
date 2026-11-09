@@ -1,3 +1,4 @@
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -343,6 +344,28 @@ fn a_body_edit_of_one_file_resolves_that_file_again_and_builds_nothing() {
     assert_eq!(built, (1, 1, 1, 0));
     let resolved = (builds.updates, builds.resolved_files, builds.resolved_sites);
     assert_eq!(resolved, (1, 1, resolvable("m11.py", text)));
+}
+
+#[test]
+fn a_panic_in_an_update_reaches_the_call_as_a_build_panic_does_and_the_next_call_builds() {
+    let scanned = chained_repo();
+    let clock = Arc::new(PinnedClock::at(SystemTime::UNIX_EPOCH));
+    let graphs = KeptGraphs::panicking(clock, "the update broke");
+    trace_text(&graphs, &scanned, "step10");
+    let text = "from m10 import step10\n\n\ndef step11():\n    return step10() + step10()\n";
+    edit(&scanned, "m11.py", text);
+
+    let call = panic::catch_unwind(AssertUnwindSafe(|| trace_text(&graphs, &scanned, "step10")));
+
+    let payload = call.expect_err("the update's panic reaches the call");
+    assert_eq!(payload.downcast_ref::<&str>(), Some(&"the update broke"));
+    let after = trace_text(&graphs, &scanned, "step10");
+    assert_eq!(
+        after,
+        trace_text(&pinned_graphs(UPDATED), &scanned, "step10")
+    );
+    let builds = graphs.builds();
+    assert_eq!((builds.graphs, builds.updates, builds.rebuilds), (2, 0, 1));
 }
 
 #[test]
