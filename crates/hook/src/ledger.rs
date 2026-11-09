@@ -75,7 +75,7 @@ pub(crate) fn claim(base: &Path, context: &Context, canonical: &Path, bytes: &[u
 
 // A held entry stays held at the cap; only a new one counts against it.
 fn held_or_full(dir: &Path, entry: &Path) -> Option<Claimed> {
-    if fs::symlink_metadata(entry).is_ok_and(|metadata| metadata.file_type().is_file()) {
+    if state::is_plain_file(entry) {
         return Some(Claimed::Held);
     }
     match fs::read_dir(dir) {

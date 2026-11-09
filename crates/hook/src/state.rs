@@ -43,6 +43,6 @@ pub(crate) fn claim(path: &Path) -> Claim {
     }
 }
 
-fn is_plain_file(path: &Path) -> bool {
+pub(crate) fn is_plain_file(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
 }
