@@ -513,14 +513,16 @@ fn tool_answer(session: &mut Session, tool: &str, arguments: &Value) -> (String,
 // A late git gives a card that says so in one door and not the other; a retry reads the commit.
 const LAST_CHANGE_TRIES: usize = 3;
 
+// nextest runs the parts side by side, so each part stays inside the 60 s test limit.
+const PARTS: usize = 4;
+
 // For every request beside a trace or search golden, the command line answers with the text of
 // the tool, below the receipt, or refuses with the refusal of the tool.
-#[test]
-fn the_command_line_answers_as_the_tools_answer() {
+fn doors_answer_alike(part: usize) {
     let mut differences = Vec::new();
     let requests = requests();
     assert!(requests.len() > 50, "{} requests", requests.len());
-    for (stem, request) in &requests {
+    for (stem, request) in requests.iter().skip(part).step_by(PARTS) {
         let tree = sandbox();
         let root = rig(&tree, request);
         let mut session = Session::start(&tree, &["--root", &root.display().to_string()]);
@@ -548,4 +550,24 @@ fn the_command_line_answers_as_the_tools_answer() {
         assert_eq!(session.ended(), Some(0), "{stem}");
     }
     assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn the_command_line_answers_as_the_tools_answer_part_1() {
+    doors_answer_alike(0);
+}
+
+#[test]
+fn the_command_line_answers_as_the_tools_answer_part_2() {
+    doors_answer_alike(1);
+}
+
+#[test]
+fn the_command_line_answers_as_the_tools_answer_part_3() {
+    doors_answer_alike(2);
+}
+
+#[test]
+fn the_command_line_answers_as_the_tools_answer_part_4() {
+    doors_answer_alike(3);
 }
