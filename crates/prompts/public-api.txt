@@ -8,6 +8,7 @@ pub const prompts::envelope::NOTICE: &str
 pub const prompts::envelope::RECEIPT_CONFIG: prompts::Template<prompts::Text>
 pub const prompts::envelope::RECEIPT_CONFIG_WARNING: prompts::Template<prompts::Text>
 pub const prompts::envelope::RECEIPT_FIELDS: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::envelope::RECEIPT_FIELDS_REV: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::envelope::RECEIPT_HEADER: &str
 pub const prompts::envelope::RECEIPT_NOTE: prompts::Template<prompts::Text>
 pub const prompts::envelope::RECEIPT_REPO: prompts::Template<prompts::Text>
@@ -346,6 +347,7 @@ pub const prompts::messages::TRACE_LINE_PAST_END: prompts::Template<prompts::Cou
 pub const prompts::messages::TRACE_LITERAL: prompts::Template<(prompts::Text, prompts::Count, prompts::Text)>
 pub const prompts::messages::TRACE_LITERAL_NONE: &str
 pub const prompts::messages::TRACE_MORE_HINT: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_MORE_HINT_REV: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::TRACE_NAME_ONLY: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_NAME_ONLY_FILES: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::TRACE_NAME_ONLY_FILES_FLOOR: prompts::Template<(prompts::Count, prompts::Count)>
@@ -368,6 +370,12 @@ pub const prompts::messages::TRACE_RANGE_PAST_END: prompts::Template<(prompts::T
 pub const prompts::messages::TRACE_RANGE_REVERSED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::TRACE_RANGE_SYMBOLS: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_RANGE_SYMBOLS_NONE: &str
+pub const prompts::messages::TRACE_REV_NOT_A_NAME: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_REV_NO_FILE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::TRACE_REV_NO_MATCH: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::TRACE_REV_SHALLOW: &str
+pub const prompts::messages::TRACE_REV_UNKNOWN: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::TRACE_REV_UNREAD: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::messages::TRACE_ROWS_UNLISTED: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_ROWS_UNLISTED_FLOOR: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_SAME_CARD: prompts::Template<prompts::Count>
@@ -446,6 +454,7 @@ pub const prompts::parameter_descriptions::SYMBOLS_LIMIT: &str
 pub const prompts::parameter_descriptions::SYMBOLS_OPERATION: &str
 pub const prompts::parameter_descriptions::SYMBOL_KIND: &str
 pub const prompts::parameter_descriptions::TRACE_MORE: &str
+pub const prompts::parameter_descriptions::TRACE_REV: &str
 pub const prompts::parameter_descriptions::TRACE_TARGET: &str
 pub const prompts::parameter_descriptions::TREE_DEPTH: &str
 pub const prompts::parameter_descriptions::TREE_MAX_ENTRIES: &str

@@ -1,0 +1,22 @@
+{
+  "tool": "trace",
+  "fixture": "repo_py",
+  "tag": "base",
+  "commits": [
+    {
+      "message": "Round in its own function, and add VAT",
+      "files": {
+        "pricing.py": "\"\"\"Price calculation with tiered discounts.\"\"\"\n\nfrom decimal import ROUND_HALF_UP, Decimal\nfrom enum import Enum\n\nBASE_MARKUP = Decimal(\"1.35\")\nCURRENCY = \"EUR\"\nCENTS = Decimal(\"0.01\")\n\n\nclass Tier(str, Enum):\n    \"\"\"Customer pricing tiers.\"\"\"\n\n    RETAIL = \"retail\"\n    TRADE = \"trade\"\n    WHOLESALE = \"wholesale\"\n\n\nDISCOUNTS = {\n    Tier.RETAIL: Decimal(\"0.00\"),\n    Tier.TRADE: Decimal(\"0.10\"),\n    Tier.WHOLESALE: Decimal(\"0.22\"),\n}\n\n\nclass PriceBook:\n    \"\"\"Cost prices keyed by SKU, plus the rules that turn them into quotes.\"\"\"\n\n    def __init__(self, costs: dict[str, Decimal]) -> None:\n        \"\"\"Hold a copy of the cost table so callers cannot mutate it later.\"\"\"\n        self._costs: dict[str, Decimal] = {}\n        for sku, cost in costs.items():\n            if cost < 0:\n                message = f\"negative cost price for {sku}\"\n                raise ValueError(message)\n            self._costs[sku] = Decimal(cost)\n\n    def cost_of(self, sku: str) -> Decimal:\n        \"\"\"Return the cost price for a SKU.\"\"\"\n        try:\n            return self._costs[sku]\n        except KeyError as exc:\n            message = f\"no cost price recorded for {sku}\"\n            raise LookupError(message) from exc\n\n    def quote(self, sku: str, tier: Tier, quantity: int = 1) -> Decimal:\n        \"\"\"Quote a line total for a SKU at a tier.\"\"\"\n        if quantity < 1:\n            message = \"quantity must be at least one\"\n            raise ValueError(message)\n        unit = self.cost_of(sku) * BASE_MARKUP\n        # Discounts apply to the marked-up price, not the cost price.\n        discount = DISCOUNTS[tier]\n        discounted = unit * (Decimal(\"1.00\") - discount)\n        line_total = discounted * quantity\n        return line_total.quantize(CENTS, rounding=ROUND_HALF_UP)\n\n    def price_list(self, tier: Tier) -> list[tuple[str, Decimal]]:\n        \"\"\"Return every SKU with its unit price at a tier, SKU order.\"\"\"\n        rows: list[tuple[str, Decimal]] = []\n        for sku in sorted(self._costs):\n            rows.append((sku, self.quote(sku, tier)))\n        return rows\n\n    def cheapest(self, tier: Tier) -> str:\n        \"\"\"Return the SKU with the lowest unit price at a tier.\"\"\"\n        rows = self.price_list(tier)\n        if not rows:\n            message = \"price book is empty\"\n            raise LookupError(message)\n        best_sku, best_price = rows[0]\n        for sku, price in rows[1:]:\n            if price < best_price:\n                best_sku, best_price = sku, price\n        return best_sku\n\n\ndef round_cents(amount: Decimal) -> Decimal:\n    \"\"\"Round an amount to whole cents.\"\"\"\n    return amount.quantize(CENTS, rounding=ROUND_HALF_UP)\n\n\ndef format_money(amount: Decimal) -> str:\n    \"\"\"Render an amount with the configured currency prefix.\"\"\"\n    return f\"{CURRENCY} {round_cents(amount)}\"\n",
+        "taxes.py": "\"\"\"Value-added tax.\"\"\"\n\nfrom decimal import Decimal\n\nVAT = Decimal(\"0.20\")\n\n\ndef with_vat(amount: Decimal) -> Decimal:\n    \"\"\"Return an amount with VAT added.\"\"\"\n    return amount * (1 + VAT)\n"
+      }
+    }
+  ],
+  "working": {
+    "taxes.py": "\"\"\"Value-added tax.\"\"\"\n\nfrom decimal import Decimal\n\nVAT = Decimal(\"0.21\")\n\n\ndef with_vat(amount: Decimal) -> Decimal:\n    \"\"\"Return an amount with VAT added.\"\"\"\n    return amount * (1 + VAT)\n",
+    "notes.py": "TODO = 1\n"
+  },
+  "arguments": {
+    "target": ".",
+    "rev": "base"
+  }
+}

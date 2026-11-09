@@ -1143,6 +1143,8 @@ impl<T> core::marker::UnsafeUnpin for app::trace::Linked<T> where T: core::marke
 impl<T> core::panic::unwind_safe::RefUnwindSafe for app::trace::Linked<T> where T: core::panic::unwind_safe::RefUnwindSafe
 impl<T> core::panic::unwind_safe::UnwindSafe for app::trace::Linked<T> where T: core::panic::unwind_safe::UnwindSafe
 pub enum app::trace::Miss
+pub app::trace::Miss::AbsentAtRevision
+pub app::trace::Miss::AbsentAtRevision::path: alloc::string::String
 pub app::trace::Miss::BadRange
 pub app::trace::Miss::BadRange::end: u32
 pub app::trace::Miss::BadRange::path: alloc::string::String
@@ -1510,6 +1512,26 @@ impl core::marker::Unpin for app::trace::RangeTrace
 impl core::marker::UnsafeUnpin for app::trace::RangeTrace
 impl core::panic::unwind_safe::RefUnwindSafe for app::trace::RangeTrace
 impl core::panic::unwind_safe::UnwindSafe for app::trace::RangeTrace
+pub struct app::trace::Revision
+pub app::trace::Revision::commit: alloc::string::String
+pub app::trace::Revision::name: alloc::string::String
+impl app::trace::Revision
+pub fn app::trace::Revision::short(&self) -> &str
+impl core::clone::Clone for app::trace::Revision
+pub fn app::trace::Revision::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::Revision
+impl core::cmp::PartialEq for app::trace::Revision
+pub fn app::trace::Revision::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::Revision
+pub fn app::trace::Revision::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::Revision
+impl core::marker::Freeze for app::trace::Revision
+impl core::marker::Send for app::trace::Revision
+impl core::marker::Sync for app::trace::Revision
+impl core::marker::Unpin for app::trace::Revision
+impl core::marker::UnsafeUnpin for app::trace::Revision
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Revision
+impl core::panic::unwind_safe::UnwindSafe for app::trace::Revision
 pub struct app::trace::Similar
 pub app::trace::Similar::bound_total: app::trace::Tally
 pub app::trace::Similar::rows: alloc::vec::Vec<app::trace::SimilarRow>
@@ -1625,6 +1647,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::trace::TierTotal
 impl core::panic::unwind_safe::UnwindSafe for app::trace::TierTotal
 pub struct app::trace::Trace
 pub app::trace::Trace::cards: alloc::vec::Vec<app::trace::Traced>
+pub app::trace::Trace::revision: core::option::Option<app::trace::Revision>
 impl core::clone::Clone for app::trace::Trace
 pub fn app::trace::Trace::clone(&self) -> Self
 impl core::cmp::PartialEq for app::trace::Trace
@@ -1693,7 +1716,9 @@ pub const app::trace::RANGE_SYMBOLS: usize
 pub const app::trace::SYMBOL_ROWS: usize
 pub fn app::trace::card_files(&app::Services, &app::Reading<'_>, &[alloc::string::String]) -> app::Noted<core::result::Result<alloc::vec::Vec<alloc::string::String>, app::Error>>
 pub fn app::trace::trace(&app::Services, &app::Reading<'_>, &app::trace::TraceRequest) -> app::Noted<core::result::Result<app::trace::Trace, app::Error>>
+pub fn app::trace::trace_at(&app::Services, &app::Reading<'_>, &app::trace::TraceRequest, core::option::Option<&str>) -> app::Noted<core::result::Result<app::trace::Trace, app::Error>>
 pub fn app::trace::trace_kept(&app::Services, &app::Reading<'_>, &app::trace::TraceRequest, &app::trace::KeptGraphs) -> app::Noted<core::result::Result<app::trace::Trace, app::Error>>
+pub fn app::trace::trace_kept_at(&app::Services, &app::Reading<'_>, &app::trace::TraceRequest, (core::option::Option<&str>, &app::trace::KeptGraphs)) -> app::Noted<core::result::Result<app::trace::Trace, app::Error>>
 pub enum app::After
 pub app::After::File(std::path::PathBuf)
 pub app::After::Text(alloc::string::String)

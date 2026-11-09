@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use app::trace::{Card, Change, Outcome, Section, Trace, TraceRequest};
+use app::trace::{Card, Change, Outcome, Revision, Section, Trace, TraceRequest};
 use app::{EnvConfig, Reading, Repo, Services};
 use git::Snapshot;
 use io::testing::{Identity, Tree, hermetic_env, run_git};
@@ -76,7 +76,7 @@ pub(super) fn golden(kind: &str, stem: &str, suffix: &str) -> Option<String> {
 }
 
 // A copy of one fixture repository with the request's extra files, committed with the pinned
-// identity, read with its git state.
+// identity, then the request's history, read with its git state.
 pub(super) struct Rig {
     _tree: Tree,
     pub(super) services: Services,
@@ -100,6 +100,7 @@ impl Rig {
         ] {
             drop(run_git(&root, args, &env, &IDENTITY));
         }
+        history(request, &tree, |args| drop(run_git(&root, args, &env, &IDENTITY)));
         let services = Services::new(&EnvConfig::new(env, root.clone()));
         let repo = Repo::load(&services, &root).unwrap_or_else(|error| panic!("{error}"));
         let snapshot = services.git.snapshot(&repo.root, Some(&repo.root));
@@ -123,12 +124,21 @@ impl Rig {
 
     // The answer under its receipt, with the root as its placeholder.
     pub(super) fn text(&self, view: &impl View) -> String {
-        let receipt = Receipt::new(&self.repo, &self.snapshot, "none");
-        text(&receipt, view).replace(&self.repo.root.display().to_string(), PLACEHOLDER)
+        self.text_at(view, None)
     }
 
     pub(super) fn json(&self, view: &impl View) -> String {
-        let receipt = Receipt::new(&self.repo, &self.snapshot, "none");
+        self.json_at(view, None)
+    }
+
+    // As `text`, under the receipt of an answer that read `revision`.
+    fn text_at(&self, view: &impl View, revision: Option<&Revision>) -> String {
+        let receipt = Receipt::new(&self.repo, &self.snapshot, "none").at_revision(revision);
+        text(&receipt, view).replace(&self.repo.root.display().to_string(), PLACEHOLDER)
+    }
+
+    fn json_at(&self, view: &impl View, revision: Option<&Revision>) -> String {
+        let receipt = Receipt::new(&self.repo, &self.snapshot, "none").at_revision(revision);
         let document = json(&receipt, view).unwrap_or_else(|error| panic!("{error}"));
         document.replace(&self.repo.root.display().to_string(), PLACEHOLDER)
     }
@@ -155,16 +165,7 @@ fn copied(from: &Path, tree: &Tree, below: &str) {
 
 // The request's `files` are written as given; each `sparse` file is that many zero bytes.
 fn extras(request: &Value, tree: &Tree) {
-    let files = request["files"].as_object().into_iter().flatten();
-    for (path, text) in files {
-        let relative = format!("repo/{path}");
-        if let Some((parent, _)) = relative.rsplit_once('/') {
-            drop(tree.mkdir(parent));
-        }
-        let text = text.as_str().expect("a file's text");
-        let written = tree.write_file(&relative, text);
-        written.unwrap_or_else(|error| panic!("{relative}: {error}"));
-    }
+    written(&request["files"], tree);
     for (path, size) in request["sparse"].as_object().into_iter().flatten() {
         let relative = format!("repo/{path}");
         let written = tree.write_file(&relative, "");
@@ -173,6 +174,33 @@ fn extras(request: &Value, tree: &Tree) {
         let sized = tree.set_len(&relative, size);
         sized.unwrap_or_else(|error| panic!("{relative}: {error}"));
     }
+}
+
+fn written(files: &Value, tree: &Tree) {
+    for (path, text) in files.as_object().into_iter().flatten() {
+        let relative = format!("repo/{path}");
+        if let Some((parent, _)) = relative.rsplit_once('/') {
+            drop(tree.mkdir(parent));
+        }
+        let text = text.as_str().expect("a file's text");
+        let written = tree.write_file(&relative, text);
+        written.unwrap_or_else(|error| panic!("{relative}: {error}"));
+    }
+}
+
+// The request's `tag` on the fixture commit, each of its `commits` with its files and message, and
+// then its `working` files, which no commit holds.
+fn history(request: &Value, tree: &Tree, git: impl Fn(&[&str])) {
+    if let Some(tag) = request["tag"].as_str() {
+        git(&["tag", tag]);
+    }
+    for commit in request["commits"].as_array().into_iter().flatten() {
+        written(&commit["files"], tree);
+        let message = commit["message"].as_str().expect("a commit message");
+        git(&["add", "-A"]);
+        git(&["commit", "--quiet", "-m", message]);
+    }
+    written(&request["working"], tree);
 }
 
 fn trace_request(arguments: &Value) -> TraceRequest {
@@ -197,18 +225,18 @@ fn late(trace: &Trace) -> bool {
     })
 }
 
-fn traced(rig: &Rig, request: &TraceRequest) -> Trace {
+fn traced(rig: &Rig, asked: (&TraceRequest, Option<&str>)) -> Trace {
     for _ in 1..LAST_CHANGE_TRIES {
-        let trace = traced_once(rig, request);
+        let trace = traced_once(rig, asked);
         if !late(&trace) {
             return trace;
         }
     }
-    traced_once(rig, request)
+    traced_once(rig, asked)
 }
 
-fn traced_once(rig: &Rig, request: &TraceRequest) -> Trace {
-    let noted = app::trace::trace(&rig.services, &rig.reading(), request);
+fn traced_once(rig: &Rig, (request, rev): (&TraceRequest, Option<&str>)) -> Trace {
+    let noted = app::trace::trace_at(&rig.services, &rig.reading(), request, rev);
     assert!(noted.diagnostics.is_empty(), "{:?}", noted.diagnostics);
     noted.value.unwrap_or_else(|error| panic!("{error}"))
 }
@@ -219,16 +247,18 @@ fn the_trace_goldens_come_out_byte_for_byte() {
     for (stem, request) in requests("trace") {
         let rig = Rig::new(&request);
         let asked = trace_request(&request["arguments"]);
-        let trace = traced(&rig, &asked);
+        let rev = request["arguments"]["rev"].as_str();
+        let trace = traced(&rig, (&asked, rev));
         let answer = TraceAnswer {
             request: &asked,
             trace: &trace,
         };
+        let revision = trace.revision.as_ref();
         mismatches.extend(compared(
             "trace",
             &stem,
-            &rig.text(&answer),
-            &rig.json(&answer),
+            &rig.text_at(&answer, revision),
+            &rig.json_at(&answer, revision),
         ));
     }
     assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));

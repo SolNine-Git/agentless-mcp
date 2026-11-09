@@ -20,6 +20,7 @@ impl !core::panic::unwind_safe::UnwindSafe for render::Error
 pub struct render::Receipt<'a>
 impl<'a> render::Receipt<'a>
 pub fn render::Receipt<'a>::among(self, usize) -> render::Receipt<'a>
+pub fn render::Receipt<'a>::at_revision(self, core::option::Option<&'a app::trace::Revision>) -> render::Receipt<'a>
 pub fn render::Receipt<'a>::counted_by(self, &'a dyn app::tokens::TokenCounter) -> render::Receipt<'a>
 pub fn render::Receipt<'a>::new(&'a app::repo::Repo, &'a git::snapshot::Snapshot, &'a str) -> render::Receipt<'a>
 pub fn render::Receipt<'a>::of(&'a app::tags::Session) -> render::Receipt<'a>

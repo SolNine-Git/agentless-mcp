@@ -10,6 +10,46 @@ Each byte count is of the served bytes.
 
 ### Added
 
+- **`trace` reads a commit: `rev`.** A call with `rev` (MCP) or `--rev`
+  (CLI), such as `rev=main`, answers each card as that commit holds the
+  code (design DES2, docs/plans/2026-11-08_rev-and-diff-card.md). A stable
+  id or a `path:line` with `more=body` or `more=history` reads one blob of
+  its file and parses it; every other card scans the commit: `git ls-tree`
+  lists its files, `git diff --raw -M` names the paths whose bytes on disk
+  differ, those read as blobs and every other path from disk. The symbol
+  card's last change runs `git log -L` at the commit, and the file card's
+  `git log -1 <commit> -- <path>`. Git reads at a revision set
+  `GIT_NO_LAZY_FETCH=1`, so a partial clone never fetches, and nothing is
+  written: a test proves that `agentless.db` stays byte-equal. The receipt
+  names the revision after `head` (`rev: main 2e8f8074`), each `(more=...)`
+  hint repeats it (`(more=callers, rev=main)`), the JSON carries
+  `"rev": {"name", "commit"}`, and the misses name the commit: a path that
+  the commit lacks and the working tree holds answers "no file <path> at
+  main (2e8f8074). It is in the working tree: trace it with no rev.". A
+  `rev` that holds `:` or starts with `-` is refused before git runs, and an
+  unknown one names git's note, with "The clone is shallow: ..." in a
+  shallow clone. A server keeps the state of a revision beside the working
+  tree's, keyed by root and commit; the retention bound (2) counts states,
+  and a revision's first scan shares the working tree's facts of each
+  unchanged file. tools/list grows from 2,858 to 3,033 bytes and from 551
+  to 593 cl100k tokens (`trace` 290 to 332), as predicted from the design's
+  +172 B / +40 before the build; the test
+  `tools_list_has_the_bytes_and_the_cl100k_count_that_the_changelog_states`
+  pins both. New goldens: `trace/repo_py.rev_body`, `rev_history`,
+  `rev_symbol` (text and JSON), `rev_file`, `rev_folder`,
+  `rev_absent_path` and `rev_absent_symbol`, over a request history (a tag
+  on the fixture commit, one later commit, an edited and an untracked
+  file), with their counts in `crates/app/fixtures/read/tokens.json`. The
+  changed recorded value is the `trace` entry of
+  `crates/app/fixtures/surface/surface.json`. Measured with the CLI
+  (`/usr/bin/time`, 3 runs, warm HEAD cache, `--no-auto-warm`; design
+  estimate in brackets): on this repository at 09847ed with `rev=main`
+  (2e8f807), a symbol card 0.42-0.43 s and 163-165 MB [0.4 s] against
+  0.33-0.34 s at HEAD, and `more=body` 0.05-0.06 s and 14 MB [0.06 s]; on
+  the druid case (main d41e8c2f, 3,375 files changed), a symbol card
+  4.31-4.42 s and 1.09 GB [4.6 s] against 3.54-3.70 s at HEAD, and
+  `more=body` 0.16-0.17 s [0.23 s].
+
 - **`trace` reads a range of lines: `path:start-end`.** A target `path:A-B`
   (1-based and inclusive) of a file in the walk gives a range card: the
   header `path  A-B of N lines`, the numbered lines in the gutter of
@@ -851,6 +891,13 @@ Each byte count is of the served bytes.
 
 ### Fixed
 
+- **A panic in the server's update of a kept graph reaches the call as a
+  build's panic does.** The update ran on the graph thread outside
+  `catch_unwind`, so a panic there ended the thread, and the waiting call
+  panicked with "the graph thread ended in a build" in place of the panic
+  itself. Now the state ends, the call over that scan resumes the update's
+  own payload, and the next call over the scan builds in full (a test makes
+  every update panic and counts 2 graphs, 0 updates, 1 rebuild).
 - **hook install and hook uninstall refuse a settings file that holds a
   number with no JSON text.** NaN, Infinity and a number past the 64-bit
   float range, such as 1e400 (which the parse reads as Infinity), were

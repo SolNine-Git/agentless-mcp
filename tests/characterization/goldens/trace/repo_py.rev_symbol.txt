@@ -1,0 +1,9 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 2b62ec37   rev: base f5f25218   dirty: 2 files   cache: none
+[py:pricing.py::format_money] @78-81  function
+  def format_money(amount: Decimal) -> str
+callers: 4 bound
+  reports.py  imported  (module level) @6, reorder_report @43, _format_row @51, summarise @75
+callees: 2 bound
+  pricing.py  same-file  CENTS @8, CURRENCY @7
+tests: none
+last change: f5f25218 2026-02-01 fixture  (more=history, rev=base)
