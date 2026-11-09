@@ -156,6 +156,29 @@ fn a_bash_view_of_one_source_file_gets_the_card_of_that_file() {
     assert_eq!(rig.reasons(), expected);
 }
 
+// Claude Code runs a Bash read in the folder that a `cd` before it names.
+#[test]
+fn a_cd_then_a_view_gets_the_card_of_the_file_below_the_folder() {
+    let rig = Rig::new();
+    let root = rig.sandbox.root();
+    let elsewhere = rig.sandbox.mkdir("elsewhere");
+    let billing = root.join("src/billing").display().to_string();
+    for (session, command, cwd) in [
+        ("s1", format!("cd {billing} && cat invoice.py"), &elsewhere),
+        (
+            "s2",
+            "cd src/billing && head -n 5 invoice.py".to_owned(),
+            &root,
+        ),
+    ] {
+        let context = context_of(&rig.read(&bash_payload(session, &command, cwd)), EVENT);
+        assert!(context.starts_with(HEAD), "{command}: {context}");
+    }
+    let compound = format!("cd {billing} && cat invoice.py && ls");
+    assert_eq!(rig.read(&bash_payload("s3", &compound, &root)), "");
+    assert_eq!(rig.reasons(), ["emitted", "emitted", "not_a_read"]);
+}
+
 #[test]
 fn a_read_that_is_not_of_a_source_file_in_a_repository_is_silent() {
     let rig = Rig::new();

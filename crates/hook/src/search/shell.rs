@@ -1,5 +1,6 @@
-//! The read-before-edit views in a shell command: the one file that a view of one file reads. A
-//! shape the rules cannot read with certainty reads no file.
+//! The read-before-edit views in a shell command: the one file that a view of one file reads,
+//! alone or after one `cd` to a literal folder. A shape the rules cannot read with certainty
+//! reads no file.
 
 use text::{CodePointString, posix_name, split_shell_code_points};
 
@@ -12,6 +13,12 @@ const SED_QUIET: &str = "-n";
 const OPERATORS: [char; 6] = ['|', '&', ';', '<', '>', '`'];
 const LINE_BREAKS: [char; 2] = ['\n', '\r'];
 const END_OF_OPTIONS: &str = "--";
+const CD: &str = "cd";
+const AND: &str = "&&";
+// The place of the `&&` among the words of `cd DIR && VIEW`.
+const AND_AT: usize = 2;
+// The characters that make a shell expand a word: a variable, a home, a glob or a brace.
+const EXPANDS: [char; 6] = ['$', '~', '*', '?', '[', '{'];
 // The grep and rg options whose value is the pattern: every operand after them is a file.
 const PATTERN_SHORT: &str = "ef";
 const PATTERN_LONG: [&str; 2] = ["--regexp", "--file"];
@@ -99,19 +106,49 @@ struct Operands<'w> {
     pattern_given: bool,
 }
 
-// The file of a read-before-edit view of one file, as written. A doubtful shape reads no file.
+// The file of a read-before-edit view of one file, as written, below the folder of a `cd`
+// before it. A doubtful shape reads no file.
 pub(crate) fn single_file_read(command: &CodePointString) -> Option<CodePointString> {
-    if has_operator(command) {
-        return None;
-    }
+    let operators = operators(command)?;
     let words = split_shell_code_points(command).ok()?;
+    match operators.as_slice() {
+        [] => viewed(&words).cloned(),
+        [(AND_AT, operator)] if lossy(operator) == AND => after_cd(&words),
+        _ => None,
+    }
+}
+
+fn viewed(words: &[CodePointString]) -> Option<&CodePointString> {
     let (first, rest) = words.split_first()?;
-    let file = match view(posix_name(&lossy(first)))? {
+    match view(posix_name(&lossy(first)))? {
         View::Plain(values) => only(&operands(rest, values).words),
         View::Sed => sed_print(rest),
         View::Search(values) => searched_file(rest, values),
+    }
+}
+
+// `cd DIR && VIEW`, with DIR a word that the shell does not expand and `&&` a word of its own.
+fn after_cd(words: &[CodePointString]) -> Option<CodePointString> {
+    let [cd, dir, and, view @ ..] = words else {
+        return None;
     };
-    file.cloned()
+    let folder = lossy(dir);
+    let literal = !folder.is_empty() && !folder.starts_with('-') && !folder.contains(EXPANDS);
+    if lossy(cd) != CD || lossy(and) != AND || !literal {
+        return None;
+    }
+    let file = viewed(view)?;
+    if lossy(file).starts_with('/') {
+        return Some(file.clone());
+    }
+    let mut below = dir.clone();
+    if !folder.ends_with('/') {
+        below.push(u32::from('/'));
+    }
+    for code in file.code_points() {
+        below.push(code);
+    }
+    Some(below)
 }
 
 // How a view names its file: its only operand, sed's operand after the range, or a search's
@@ -138,31 +175,28 @@ fn view(program: &str) -> Option<View> {
     Some(found)
 }
 
-// An operator inside quotes is text, so each operator character gets spaces around it before the
-// split: one outside quotes then stands as a word of its own, and one inside stays in its word.
-fn has_operator(command: &CodePointString) -> bool {
+// Each operator run outside quotes, with its place among the words. Spaces around each run make
+// one outside quotes a word of its own, while one inside quotes stays in its word.
+fn operators(command: &CodePointString) -> Option<Vec<(usize, CodePointString)>> {
     let is = |code: u32, set: &[char]| char::from_u32(code).is_some_and(|c| set.contains(&c));
     if command.code_points().any(|code| is(code, &LINE_BREAKS)) {
-        return true;
+        return None;
     }
     let mut padded = CodePointString::default();
+    let mut in_run = false;
     for code in command.code_points() {
         let operator = is(code, &OPERATORS);
-        if operator {
+        if operator != in_run {
             padded.push(u32::from(' '));
         }
         padded.push(code);
-        if operator {
-            padded.push(u32::from(' '));
-        }
+        in_run = operator;
     }
-    match split_shell_code_points(&padded) {
-        Ok(words) => words.iter().any(|word| {
-            word.code_points().next().is_some()
-                && word.code_points().all(|code| is(code, &OPERATORS))
-        }),
-        Err(_) => true,
-    }
+    let words = split_shell_code_points(&padded).ok()?;
+    let operators = words.into_iter().enumerate().filter(|(_, word)| {
+        word.code_points().next().is_some() && word.code_points().all(|code| is(code, &OPERATORS))
+    });
+    Some(operators.collect())
 }
 
 fn only<'w>(words: &[&'w CodePointString]) -> Option<&'w CodePointString> {

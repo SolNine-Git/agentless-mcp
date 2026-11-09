@@ -784,6 +784,12 @@ Each byte count is of the served bytes.
   `git rev-parse timed out after 2.0 s`), and the removal error of a
   ledger-reset that cannot remove the main context's entries. brief-record
   still records a brief whose git failed, without a root, and logs the error.
+- **read-card reads `cd DIR && VIEW FILE` as a read of `DIR/FILE`.** The
+  command must be exactly one `cd` to a folder that the shell does not
+  expand (no `$`, `~`, glob or brace), a stand-alone `&&`, and one
+  read-before-edit view of one file. Every other compound stays
+  `not_a_read`. Agents often prefix a read with a `cd`, and such a read got
+  no card.
 - **history and churn now pass each path to git as a literal pathspec, so a
   path with a glob character matches only itself.**
 - **Three Python import rules remove false import edges, and some true

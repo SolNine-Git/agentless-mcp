@@ -77,3 +77,45 @@ fn a_command_that_is_more_than_one_view_of_one_file_names_no_file() {
         assert_eq!(read(command), None, "{command:?}");
     }
 }
+
+// `cd DIR && VIEW` reads the view's file below DIR, as the shell would.
+#[test]
+fn one_cd_to_a_literal_folder_then_one_view_reads_the_file_below_it() {
+    for (command, file) in [
+        ("cd /r && cat src/a.py", "/r/src/a.py"),
+        ("cd /r/ && cat a.py", "/r/a.py"),
+        ("cd src && sed -n '1,5p' a.py", "src/a.py"),
+        ("cd '/my dir' && head -n 5 a.py", "/my dir/a.py"),
+        ("cd '/a&&b' && grep -n 'x|y' a.py", "/a&&b/a.py"),
+        ("cd /r && cat /abs/a.py", "/abs/a.py"),
+    ] {
+        assert_eq!(read(command).as_deref(), Some(file), "{command}");
+    }
+}
+
+#[test]
+fn any_other_compound_with_a_cd_reads_no_file() {
+    for command in [
+        "cd /r && cat a.py | head",
+        "cd /r && cat a.py && ls",
+        "cd /r && cat a.py b.py",
+        "cd /r && ls",
+        "cd /r || cat a.py",
+        "cd /r; cat a.py",
+        "cd /r & cat a.py",
+        "cd /r&&cat a.py",
+        "cd && cat a.py",
+        "cd -P /r && cat a.py",
+        "cd - && cat a.py",
+        "cd $HOME && cat a.py",
+        "cd ~/r && cat a.py",
+        "cd /r/* && cat a.py",
+        "cd /r/{a,b} && cat a.py",
+        "pushd /r && cat a.py",
+        "ls /r && cat a.py",
+        "cd /r && cd /s && cat a.py",
+        "cd /r\n&& cat a.py",
+    ] {
+        assert_eq!(read(command), None, "{command:?}");
+    }
+}
