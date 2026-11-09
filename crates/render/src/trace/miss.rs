@@ -59,9 +59,20 @@ pub(super) fn miss_lines(miss: &Miss, target: &str, revision: Option<&Revision>)
         }
         Miss::NoGrammar { path } => vec![no_grammar(path)],
         Miss::NotScanned { path } => vec![TRACE_NOT_SCANNED.render(&one_line(path))],
+        Miss::LinePastEnd { .. }
+        | Miss::RangePastEnd { .. }
+        | Miss::BadRange { .. }
+        | Miss::Binary { .. } => vec![lines_miss(miss)],
+    }
+}
+
+// A miss of a file's lines: a line or a range past the end, a range out of order, or a binary
+// file.
+fn lines_miss(miss: &Miss) -> String {
+    match miss {
         Miss::LinePastEnd { path, line, lines } => {
             let note = TARGET_NO_LINE.render((&one_line(path), *line as usize));
-            vec![note + &TRACE_LINE_PAST_END.render(*lines as usize)]
+            note + &TRACE_LINE_PAST_END.render(*lines as usize)
         }
         Miss::RangePastEnd {
             path,
@@ -71,13 +82,14 @@ pub(super) fn miss_lines(miss: &Miss, target: &str, revision: Option<&Revision>)
         } => {
             let note =
                 TRACE_RANGE_PAST_END.render((&one_line(path), *start as usize, *end as usize));
-            vec![note + &TRACE_LINE_PAST_END.render(*lines as usize)]
+            note + &TRACE_LINE_PAST_END.render(*lines as usize)
         }
         Miss::BadRange { path, start, end } => {
             let range = (&*one_line(path), *start as usize, *end as usize);
-            vec![TRACE_RANGE_REVERSED.render(range)]
+            TRACE_RANGE_REVERSED.render(range)
         }
-        Miss::Binary { path } => vec![TRACE_RANGE_BINARY.render(&one_line(path))],
+        Miss::Binary { path } => TRACE_RANGE_BINARY.render(&one_line(path)),
+        other => unreachable!("{other:?} is no miss of a file's lines"),
     }
 }
 

@@ -691,6 +691,16 @@ impl<'a> MissJson<'a> {
             Miss::NotParsed { path, reason } => MissJson::NotParsed { path, reason },
             Miss::NoGrammar { path } => MissJson::NoGrammar { path },
             Miss::NotScanned { path } => MissJson::NotScanned { path },
+            Miss::LinePastEnd { .. }
+            | Miss::RangePastEnd { .. }
+            | Miss::BadRange { .. }
+            | Miss::Binary { .. } => MissJson::of_lines(miss),
+        }
+    }
+
+    // A miss of a file's lines, as `lines_miss` words it in the text.
+    fn of_lines(miss: &'a Miss) -> Self {
+        match miss {
             Miss::LinePastEnd { path, line, lines } => MissJson::LinePastEnd {
                 path,
                 line: *line,
@@ -713,6 +723,7 @@ impl<'a> MissJson<'a> {
                 end: *end,
             },
             Miss::Binary { path } => MissJson::Binary { path },
+            other => unreachable!("{other:?} is no miss of a file's lines"),
         }
     }
 }
