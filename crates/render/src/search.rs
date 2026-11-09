@@ -20,7 +20,7 @@ use text::{MAX_BRACE_GLOBS, one_line};
 
 use crate::envelope::{Listing, wrap_json};
 use crate::skipped::{SkippedJson, skipped_json};
-use crate::trace::{PlaceJson, RowJson, listing_row, places};
+use crate::trace::{PlaceJson, RowJson, listing_row, places, span};
 use crate::{Rendered, View};
 
 // The flag that a case-insensitive pattern carries after its closing slash.
@@ -131,11 +131,7 @@ fn group_lines(group: &FileMatches) -> Vec<String> {
 }
 
 fn owner_line(owner: &Owner) -> String {
-    let span = if owner.start_line == owner.end_line {
-        owner.start_line.to_string()
-    } else {
-        format!("{}-{}", owner.start_line, owner.end_line)
-    };
+    let span = span(owner.start_line, owner.end_line);
     let id = locator(&owner.stable_id, "", Some(&span));
     format!("{ROW_INDENT}{}  {id}", one_line(&owner.qualname))
 }

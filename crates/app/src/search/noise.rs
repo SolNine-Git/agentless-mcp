@@ -3,6 +3,8 @@
 
 use text::{posix_name, split_suffix};
 
+use crate::scope::has_directory;
+
 /// A file whose mean line is this long or longer, and whose longest line passes
 /// [`MINIFIED_LONGEST_LINE_BYTES`], is minified.
 pub const MINIFIED_MEAN_LINE_BYTES: usize = 300;
@@ -74,10 +76,7 @@ fn is_lock(path: &str) -> bool {
 }
 
 fn is_vendored(path: &str) -> bool {
-    let directories = path
-        .rsplit_once('/')
-        .map_or("", |(directories, _)| directories);
-    (directories.split('/')).any(|segment| VENDOR_DIRECTORIES.contains(&segment))
+    has_directory(path, &VENDOR_DIRECTORIES)
 }
 
 // A `.min.js` style name, or long lines on average with one very long line.

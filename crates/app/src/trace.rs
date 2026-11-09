@@ -16,7 +16,8 @@ use git::RepoFile;
 use prompts::messages::TRACE_TARGET_COUNT;
 
 use crate::ops::limits::{FIND_USAGE_FILES, MAX_LIMIT};
-use crate::search::{FileRow, Place, walked_files};
+use crate::scan::walked_files;
+use crate::search::{FileRow, Place};
 use crate::symbol_graph::{CallGraph, CallScan, Keeping, over_walked_scan, with_call_graph};
 use crate::{
     CycleRow, EdgeRow, Error, HistoryEntry, HistoryResult, Noted, Reading, RefGroup, Services,

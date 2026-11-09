@@ -478,13 +478,9 @@ impl<'a> SymbolGraph<'a> {
     // Each kept endpoint of a moved symbol takes the symbol's new line.
     fn refreshed(&mut self, moved: &BTreeMap<String, u32>) {
         for (id, &line) in moved {
-            let edges = &self.edges;
-            let start =
-                (self.by_target).partition_point(|&at| edges[at].target.node() < id.as_str());
-            let end =
-                (self.by_target).partition_point(|&at| edges[at].target.node() <= id.as_str());
-            for &at in &self.by_target[start..end] {
-                self.edges[at].target.line = line;
+            for at in self.arriving(id) {
+                let edge = self.by_target[at];
+                self.edges[edge].target.line = line;
             }
             let Some(held) = self.candidates_at.get_mut(id.as_str()) else {
                 continue;

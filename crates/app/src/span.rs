@@ -11,7 +11,9 @@ use prompts::messages::{SPAN_DATA_KEY_UNLISTED, SPAN_SYMBOL_UNDEFINED};
 use store::{FileText, Served};
 use syntax::Language;
 
-use crate::{Noted, Reading};
+use crate::bounds::within;
+use crate::ops::limits::MAX_LIMIT;
+use crate::{Error, IntArg, Noted, Reading};
 
 // One symbol, the file that declares it, and its lines in the working tree.
 #[derive(Clone, Debug)]
@@ -63,6 +65,25 @@ pub(crate) fn resolve_symbol_span(
     raw: &str,
 ) -> Noted<Result<SymbolSpan, Missed>> {
     resolve_symbol_span_in(reading, raw, &mut ParsedFiles::new())
+}
+
+// A refused limit and a data key need no scan: a data key's span goes to `keyed` with the
+// limit, and any other target gets the limit to `answer`.
+pub(crate) fn limited<T>(
+    reading: &Reading<'_>,
+    target: &str,
+    limit: &IntArg,
+    keyed: impl FnOnce(Result<SymbolSpan, Missed>, usize) -> T,
+    answer: impl FnOnce(usize) -> Noted<Result<T, Error>>,
+) -> Noted<Result<T, Error>> {
+    let limit = match within(limit, 1, MAX_LIMIT, "limit") {
+        Ok(limit) => limit,
+        Err(error) => return Noted::new(Err(error)),
+    };
+    if let Some(found) = data_key_span(reading, target) {
+        return found.map(|span| Ok(keyed(span, limit)));
+    }
+    answer(limit)
 }
 
 // The key that a data file's stable id names, or why it names none; `None` when `raw` is no data

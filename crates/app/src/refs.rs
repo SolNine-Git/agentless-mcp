@@ -13,14 +13,12 @@ use graph::{
 };
 use kernel::{Bounded, Deadline};
 
-use crate::bounds::within;
 use crate::detached::answered_over;
 use crate::endpoints::{
     BindingStatus, Bound, Coverage, Scope, TARGET_WORDING, TargetBinding, bind, data_key_binding,
 };
-use crate::ops::limits::MAX_LIMIT;
 use crate::scan::RepoFacts;
-use crate::span::{Missed, SymbolSpan, data_key_span};
+use crate::span::{Missed, SymbolSpan, limited};
 use crate::symbol_graph::{CallGraph, CallScan};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
 
@@ -235,20 +233,13 @@ pub(crate) fn refs_in(
     })
 }
 
-// A refused limit and a data key need no scan; any other request gets its limit to `fanned`.
 fn with_limit(
     reading: &Reading<'_>,
     request: &RefsRequest,
     fanned: impl FnOnce(usize) -> Noted<Result<RefsResult, Error>>,
 ) -> Noted<Result<RefsResult, Error>> {
-    let limit = match within(&request.limit, 1, MAX_LIMIT, "limit") {
-        Ok(limit) => limit,
-        Err(error) => return Noted::new(Err(error)),
-    };
-    if let Some(found) = data_key_span(reading, &request.target) {
-        return found.map(|span| Ok(keyed(request, limit, span)));
-    }
-    fanned(limit)
+    let keyed = |span, limit| keyed(request, limit, span);
+    limited(reading, &request.target, &request.limit, keyed, fanned)
 }
 
 // What one fan-in reads: the resolver and the aliases of the scan, the files it passed over, the

@@ -2,7 +2,6 @@
 //! and of the tree before it, the import graph of each, and the load-time chains between files.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::sync::Arc;
 
 use checks::{
     BudgetSpent, ChainHop, DodgeTree, ImportTarget, LoadChains, LoadedModule, LocalImport,
@@ -13,7 +12,7 @@ use graph::{FileFacts, Scopes, SymbolGraph, enclosing_symbol, import_chain, is_p
 use kernel::{Deadline, Span, checkpoint};
 use syntax::{ImportRule, Language};
 
-use crate::scan::line_count;
+use crate::scan::parsed_file;
 use crate::tree_scan::TreeScan;
 use crate::{Error, in_metric_scope};
 
@@ -104,14 +103,7 @@ fn before_files(files: &[FileFacts], pairs: &[&Pair]) -> Vec<FileFacts> {
 }
 
 fn old_facts(pair: &Pair) -> Option<FileFacts> {
-    let (language, text) = (pair.language()?, pair.old_text()?);
-    let parsed = syntax::parse(language, Arc::from(text)).ok()?;
-    let file = FileFacts {
-        path: pair.path().to_owned(),
-        language,
-        line_count: line_count(text),
-        facts: facts::extract(&parsed),
-    };
+    let file = parsed_file(pair.path(), pair.language()?, pair.old_text()?)?;
     Some(import_facts(&file))
 }
 

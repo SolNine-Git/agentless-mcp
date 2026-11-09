@@ -15,7 +15,7 @@ use metrics::FileMetrics;
 use syntax::Language;
 
 use crate::rows::{bounded_read, decoded};
-use crate::scan::{self, line_count};
+use crate::scan;
 use crate::symbol_graph::with_resolved;
 use crate::tree_scan::TreeScan;
 use crate::{Error, Services, in_metric_scope};
@@ -245,14 +245,7 @@ fn partial_links(
 }
 
 fn parsed_facts(path: &str, text: &str) -> Option<FileFacts> {
-    let language = Language::from_path(path)?;
-    let parsed = syntax::parse(language, Arc::from(text)).ok()?;
-    Some(FileFacts {
-        path: path.to_owned(),
-        language,
-        line_count: line_count(text),
-        facts: facts::extract(&parsed),
-    })
+    scan::parsed_file(path, Language::from_path(path)?, text)
 }
 
 // The links whose two functions reference each other, either way, at a binding tier.

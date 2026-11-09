@@ -16,14 +16,15 @@ use kernel::checkpoint;
 use regex::Regex;
 
 use crate::bounds::within;
+use crate::scan::walked_files;
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
 use files::in_scope;
 use lines::hits_in;
 use shape::{Gathered, Shaped, owner_blocks, shaped};
 
+pub(crate) use files::Selected;
 pub(crate) use files::file_row;
 pub use files::{FileRow, Measure, is_source_path};
-pub(crate) use files::{Selected, walked_files};
 pub(crate) use lines::FileHits;
 pub use noise::{
     MINIFIED_KEEP_CHARS, MINIFIED_LONGEST_LINE_BYTES, MINIFIED_MEAN_LINE_BYTES, NoiseClass,

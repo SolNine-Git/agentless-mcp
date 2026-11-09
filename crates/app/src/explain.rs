@@ -5,13 +5,11 @@ use graph::{Definition, SymbolEdge, SymbolGraph, Tier};
 use kernel::Bounded;
 use prompts::messages::DATA_KEY_NO_FAN_IN;
 
-use crate::bounds::within;
 use crate::endpoints::{
     BindingStatus, Coverage, Scope, TARGET_WORDING, TargetBinding, best_band, bind,
     data_key_binding,
 };
-use crate::ops::limits::MAX_LIMIT;
-use crate::span::{Missed, SymbolSpan, data_key_span};
+use crate::span::{Missed, SymbolSpan, limited};
 use crate::symbol_graph::{CallGraph, Keeping, over_call_scan, tier_at, verbs, with_call_graph};
 use crate::{
     Error, IntArg, Noted, RationaleNode, Reading, Services, Skipped, SymbolCard, rationale_nodes,
@@ -143,7 +141,9 @@ pub(crate) fn file_imports_in(
     skipped: &[Skipped],
 ) -> Noted<Result<FileImports, Error>> {
     let keyed = |explained: Explanation| (explained.imports_out, explained.imports_in);
-    limited(reading, request, keyed, |limit| {
+    let target = request.target.as_str();
+    let keyed_span = |span, _| keyed(self::keyed(target, span));
+    limited(reading, target, &request.limit, keyed_span, |limit| {
         let (skipped, root) = (skipped.to_vec(), reading.repo.root.clone());
         let target = request.target.clone();
         graph.over(move |graph| {
@@ -161,31 +161,19 @@ pub(crate) fn file_imports_in(
     })
 }
 
-// A refused limit and a data key need no graph; any other request gets its limit to `explained`.
 fn with_limit(
     reading: &Reading<'_>,
     request: &ExplainRequest,
     explained: impl FnOnce(usize) -> Noted<Result<Explanation, Error>>,
 ) -> Noted<Result<Explanation, Error>> {
-    limited(reading, request, |keyed| keyed, explained)
-}
-
-// As `with_limit`, for an answer that `keyed` takes from a data key's explanation.
-fn limited<T>(
-    reading: &Reading<'_>,
-    request: &ExplainRequest,
-    keyed: impl FnOnce(Explanation) -> T,
-    answer: impl FnOnce(usize) -> Noted<Result<T, Error>>,
-) -> Noted<Result<T, Error>> {
-    let limit = match within(&request.limit, 1, MAX_LIMIT, "limit") {
-        Ok(limit) => limit,
-        Err(error) => return Noted::new(Err(error)),
-    };
     let target = request.target.as_str();
-    if let Some(found) = data_key_span(reading, target) {
-        return found.map(|span| Ok(keyed(self::keyed(target, span))));
-    }
-    answer(limit)
+    limited(
+        reading,
+        target,
+        &request.limit,
+        |span, _| keyed(target, span),
+        explained,
+    )
 }
 
 // The work owns what it reads, as a kept graph answers it on the root's graph thread.

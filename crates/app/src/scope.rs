@@ -66,7 +66,7 @@ fn is_rust_test_module(path: &str, stem: &str) -> bool {
 }
 
 // Whole segments only, and the file name is not a directory.
-fn has_directory(path: &str, names: &[&str]) -> bool {
+pub(crate) fn has_directory(path: &str, names: &[&str]) -> bool {
     let Some((directories, _)) = path.rsplit_once('/') else {
         return false;
     };

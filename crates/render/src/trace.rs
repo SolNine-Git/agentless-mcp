@@ -8,7 +8,7 @@ mod range;
 mod symbol;
 
 use app::trace::{Card, Outcome, Section, Tally, Trace, TraceRequest, Traced};
-use app::{ROW_INDENT, SymbolCard, locator};
+use app::{ROW_INDENT, SymbolCard};
 use prompts::messages::{
     TRACE_AT_LEAST, TRACE_MORE_HINT, TRACE_ROWS_UNLISTED, TRACE_ROWS_UNLISTED_FLOOR,
     TRACE_SAME_CARD, TRACE_SECTION_NONE, TRACE_TARGET,
@@ -80,11 +80,9 @@ fn card_lines(card: &Card, target: &str, more: Option<Section>) -> Vec<String> {
     }
 }
 
-// One definition as a candidates card or a range card lists it: its id, span and kind.
+// One definition as a candidates card or a range card lists it: the symbol card's header.
 fn card_row(card: &SymbolCard) -> String {
-    let at = span(card.start_line, card.end_line);
-    let id = locator(&card.stable_id, "", Some(&at));
-    format!("{ROW_INDENT}{id}  {}", one_line(card.kind))
+    format!("{ROW_INDENT}{}", symbol::header(card))
 }
 
 // The head of a section: its name, then its parts, then the hint at `more` when the default card
@@ -133,7 +131,7 @@ fn item_lines(items: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn span(start: u32, end: u32) -> String {
+pub(crate) fn span(start: u32, end: u32) -> String {
     if start == end {
         start.to_string()
     } else {
