@@ -20,9 +20,10 @@ use app::hooks::{
 use json::JsonValue;
 use prompts::messages::{
     ACCEPTS_TEXT, ARGUMENT_MISSING, HOOK_INSTALL_BAD_JSON, HOOK_INSTALL_COUNTS,
-    HOOK_INSTALL_DRY_RUN, HOOK_INSTALL_RACED, HOOK_INSTALL_UNCHANGED, HOOK_INSTALL_WROTE,
-    HOOK_STATUS_CURRENT, HOOK_STATUS_MISSING, HOOK_STATUS_OTHER_PATH, HOOK_STATUS_RETIRED,
-    HOOK_STATUS_STALE, HOOK_UNINSTALL_NONE, HOOK_UNINSTALL_REPORT, HOOKS_UNREADABLE,
+    HOOK_INSTALL_DRY_RUN, HOOK_INSTALL_NOT_FINITE, HOOK_INSTALL_RACED, HOOK_INSTALL_UNCHANGED,
+    HOOK_INSTALL_WROTE, HOOK_STATUS_CURRENT, HOOK_STATUS_MISSING, HOOK_STATUS_OTHER_PATH,
+    HOOK_STATUS_RETIRED, HOOK_STATUS_STALE, HOOK_UNINSTALL_NONE, HOOK_UNINSTALL_REPORT,
+    HOOKS_UNREADABLE,
 };
 
 use crate::Output;
@@ -96,6 +97,7 @@ fn with_binary(run: impl FnOnce(&str) -> Output) -> Output {
 pub(crate) enum NoEdit {
     BadJson(String),
     Unshaped(Misshaped),
+    NotFinite,
     NothingToRemove,
 }
 
@@ -113,7 +115,7 @@ pub(crate) fn installed(args: &[OsString], env: &EnvConfig, binary: &str) -> Out
     let edit = |before: Option<&[u8]>| {
         let document = before.map_or_else(|| Ok(JsonValue::Object(Vec::new())), document)?;
         let edited = edit::installed(&document, binary, server).map_err(NoEdit::Unshaped)?;
-        Ok((layout::indented(&edited.0), counts(&edited.1, server)))
+        Ok((laid_out(&edited.0)?, counts(&edited.1, server)))
     };
     let shown = shown(&target);
     if options.dry_run {
@@ -179,7 +181,11 @@ fn uninstall_edit(before: Option<&[u8]>) -> Result<(String, Removed), NoEdit> {
     if removed.current.is_empty() && removed.retired.is_empty() {
         return Err(NoEdit::NothingToRemove);
     }
-    Ok((layout::indented(&edited), removed))
+    Ok((laid_out(&edited)?, removed))
+}
+
+fn laid_out(document: &JsonValue) -> Result<String, NoEdit> {
+    layout::indented(document).map_err(|_| NoEdit::NotFinite)
 }
 
 pub(crate) fn statused(args: &[OsString], env: &EnvConfig, binary: &str) -> Output {
@@ -319,6 +325,7 @@ fn no_edit_output(no_edit: &NoEdit, shown: &str, command: &str) -> Output {
     match no_edit {
         NoEdit::BadJson(error) => failed(&HOOK_INSTALL_BAD_JSON.render((shown, command, error))),
         NoEdit::Unshaped(shape) => failed(&HOOKS_UNREADABLE.render((shown, &shape.text()))),
+        NoEdit::NotFinite => failed(&HOOK_INSTALL_NOT_FINITE.render((shown, command))),
         NoEdit::NothingToRemove => done(&HOOK_UNINSTALL_NONE.render(shown)),
     }
 }

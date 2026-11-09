@@ -232,6 +232,35 @@ fn a_file_that_is_not_json_or_not_shaped_as_settings_is_refused_and_kept() {
     );
 }
 
+// JSON.parse rejects NaN and Infinity, and json::parse reads 1e400 as Infinity.
+#[test]
+fn a_number_that_json_cannot_write_is_refused_and_kept() {
+    let rig = Rig::new();
+    let entry = r#""hooks": {"Stop": [{"hooks": [{"type": "command", "command": "/a/agentless-mcp hook erosion"}]}]}"#;
+    for number in ["1e400", "-1e400", "NaN", "[Infinity]"] {
+        let written = format!("{{\"x\": {number}, {entry}}}");
+        rig.put_settings(&written);
+        for (output, command) in [
+            (rig.install(&[]), "install"),
+            (rig.install(&["--dry-run"]), "install"),
+            (rig.uninstall(&[]), "uninstall"),
+        ] {
+            let stderr = format!(
+                "agentless-mcp: <SANDBOX>/config/settings.json holds a number that JSON cannot \
+                 write: NaN, Infinity, or a number past the 64-bit float range, such as 1e400. \
+                 hook {command} wrote nothing.\n"
+            );
+            assert_eq!(rig.shown(&output), (1, String::new(), stderr), "{number}");
+            assert_eq!(text(&rig.settings()), written);
+        }
+    }
+    let backup = rig
+        .sandbox
+        .path()
+        .join("config/settings.json.agentless-backup");
+    assert!(!backup.exists());
+}
+
 #[test]
 fn a_symlinked_settings_file_is_written_at_its_target() {
     let rig = Rig::new();
@@ -568,6 +597,9 @@ fn the_layout_is_two_space_json_in_key_order() {
             .expect("JSON");
     let expected = "{\n  \"b\": [],\n  \"a\": {},\n  \"c\": [\n    1,\n    {\n      \"x\": null\n    \
                     }\n  ],\n  \"d\": \"q\\\"\\u00e9\",\n  \"e\": 1.5\n}\n";
-    assert_eq!(indented(&value), expected);
-    assert_eq!(indented(&json::JsonValue::Object(Vec::new())), "{}\n");
+    assert_eq!(indented(&value).as_deref(), Ok(expected));
+    assert_eq!(
+        indented(&json::JsonValue::Object(Vec::new())).as_deref(),
+        Ok("{}\n")
+    );
 }

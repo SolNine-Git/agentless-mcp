@@ -347,6 +347,7 @@
   "hook_install_dry_run": "{summary}; --dry-run wrote nothing to {path}",
   "hook_install_unchanged": "no change: {path} holds the current entries",
   "hook_install_bad_json": "{path} is not valid JSON: {error}. hook {command} wrote nothing.",
+  "hook_install_not_finite": "{path} holds a number that JSON cannot write: NaN, Infinity, or a number past the 64-bit float range, such as 1e400. hook {command} wrote nothing.",
   "hook_install_raced": "{path} changed twice while hook {command} wrote it. hook {command} wrote nothing. Run it again.",
   "hook_uninstall_report": "removed {removed} agentless {removed:handler|handlers}, kept {kept} other {kept:handler|handlers}; wrote {path}",
   "hook_uninstall_none": "nothing to remove: {path} holds no agentless entry",

@@ -751,6 +751,12 @@ Each byte count is of the served bytes.
 
 ### Fixed
 
+- **hook install and hook uninstall refuse a settings file that holds a
+  number with no JSON text.** NaN, Infinity and a number past the 64-bit
+  float range, such as 1e400 (which the parse reads as Infinity), were
+  written back as `NaN` or `Infinity`, which JSON.parse rejects, so Claude
+  Code could not read the file. Now the command writes nothing and exits 1
+  with the new refusal row `hook_install_not_finite`.
 - **history and churn now pass each path to git as a literal pathspec, so a
   path with a glob character matches only itself.**
 - **Three Python import rules remove false import edges, and some true

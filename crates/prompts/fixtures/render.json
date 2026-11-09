@@ -1179,6 +1179,13 @@
       },
       "text": "added 7, replaced 0, removed 0 retired, kept 0 other handlers; --dry-run wrote nothing to /home/u/.claude/settings.json"
     },
+    "hook_install_not_finite": {
+      "arguments": {
+        "command": "uninstall",
+        "path": "/home/u/.claude/settings.json"
+      },
+      "text": "/home/u/.claude/settings.json holds a number that JSON cannot write: NaN, Infinity, or a number past the 64-bit float range, such as 1e400. hook uninstall wrote nothing."
+    },
     "hook_install_raced": {
       "arguments": {
         "command": "uninstall",

@@ -1618,6 +1618,17 @@ pub const HOOK_INSTALL_DRY_RUN: Template<(Text, Text)> = Template::new(&[
 ]);
 
 /// A template that takes (`path`, `command`).
+pub const HOOK_INSTALL_NOT_FINITE: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(
+        " holds a number that JSON cannot write: NaN, Infinity, or a \
+        number past the 64-bit float range, such as 1e400. hook ",
+    ),
+    Piece::Value(1),
+    Piece::Text(" wrote nothing."),
+]);
+
+/// A template that takes (`path`, `command`).
 pub const HOOK_INSTALL_RACED: Template<(Text, Text)> = Template::new(&[
     Piece::Value(0),
     Piece::Text(" changed twice while hook "),

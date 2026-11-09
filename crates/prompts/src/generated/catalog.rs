@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 374] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 375] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1069,6 +1069,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 374] = [
         "hook_install_dry_run",
         &["path", "summary"],
         messages::HOOK_INSTALL_DRY_RUN.pieces(),
+    ),
+    (
+        "messages",
+        "hook_install_not_finite",
+        &["path", "command"],
+        messages::HOOK_INSTALL_NOT_FINITE.pieces(),
     ),
     (
         "messages",

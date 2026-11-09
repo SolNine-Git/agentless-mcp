@@ -1,6 +1,7 @@
 //! A settings document as Claude Code lays one out: one item per line, two spaces of indent per
 //! level, `": "` after each key, and an empty container on one line. The keys keep their order,
-//! and each scalar is the JSON text that the json crate writes for it.
+//! and each scalar is the JSON text that the json crate writes for it. A number that is not
+//! finite has no JSON text, so the layout refuses it.
 
 use json::JsonValue;
 use text::CodePointString;
@@ -15,13 +16,17 @@ enum Step<'a> {
     Line(usize),
 }
 
+// A value that holds NaN or an infinity: JSON.parse reads neither, and 1e400 parses to one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct NotFinite;
+
 // A work stack, not recursion: a parsed value can nest 9998 levels deep.
-pub(crate) fn indented(value: &JsonValue) -> String {
+pub(crate) fn indented(value: &JsonValue) -> Result<String, NotFinite> {
     let mut text = String::new();
     let mut pending = vec![Step::Value(value, 0)];
     while let Some(step) = pending.pop() {
         match step {
-            Step::Value(value, depth) => push_value(&mut text, value, depth, &mut pending),
+            Step::Value(value, depth) => push_value(&mut text, value, depth, &mut pending)?,
             Step::Key(key) => text.push_str(&json::value_text(&JsonValue::Str(key.clone()))),
             Step::Text(raw) => text.push_str(raw),
             Step::Line(depth) => {
@@ -31,7 +36,7 @@ pub(crate) fn indented(value: &JsonValue) -> String {
         }
     }
     text.push('\n');
-    text
+    Ok(text)
 }
 
 fn push_value<'a>(
@@ -39,7 +44,7 @@ fn push_value<'a>(
     value: &'a JsonValue,
     depth: usize,
     pending: &mut Vec<Step<'a>>,
-) {
+) -> Result<(), NotFinite> {
     match value {
         JsonValue::Array(items) if !items.is_empty() => {
             text.push('[');
@@ -57,8 +62,10 @@ fn push_value<'a>(
             });
             push_items(pending, "}", depth, pairs);
         }
+        JsonValue::Float(number) if !number.is_finite() => return Err(NotFinite),
         scalar => text.push_str(&json::value_text(scalar)),
     }
+    Ok(())
 }
 
 // Pushes the closer on its own line, then each item on a line of its own, last first, with a
