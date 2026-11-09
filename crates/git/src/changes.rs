@@ -132,12 +132,8 @@ impl Git {
     /// Prints the count of the commits that HEAD holds and `base` does not.
     #[must_use]
     pub fn commits_since(&self, root: &Path, base: &str) -> GitOutcome {
-        let range = OsString::from(format!("{base}..HEAD"));
-        let rest = [
-            OsStr::new("--count"),
-            OsStr::new("--end-of-options"),
-            &range,
-        ];
+        let range = format!("{base}..HEAD");
+        let rest = ["--count", "--end-of-options", range.as_str()].map(OsStr::new);
         self.run_offline(root, "rev-list", &rest, COMMIT)
     }
 
