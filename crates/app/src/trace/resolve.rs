@@ -112,11 +112,11 @@ pub(super) fn resolved(
             files: graph.files(),
             tree: &tree,
         };
-        let resolved = (targets.iter()).map(|target| match DiffTarget::parse(target) {
+        let each = (targets.iter()).map(|target| match DiffTarget::parse(target) {
             Some(target) => Resolved::Diff(target),
             None => resolver.one(target),
         });
-        Ok(resolved.collect())
+        Ok(each.collect())
     })
 }
 
