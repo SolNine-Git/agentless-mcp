@@ -74,8 +74,42 @@ pub(crate) fn recorded(
     }
     let dir = ledger::briefs_dir(&run.ledger, &context.session);
     let text = json::value_text(&record_value(root.as_deref(), &seeded));
-    written(&dir, kind, wall_ns(run.clock), &text)?;
+    let now = wall_ns(run.clock);
+    if let Err(error) = pruned(&dir, now) {
+        facts.error.get_or_insert_with(|| io::os_error_str(&error));
+    }
+    written(&dir, kind, now, &text)?;
     Ok(Outcome::Recorded(RECORDED))
+}
+
+// A record past the pairing window pairs with no subagent, so each new record removes them.
+fn pruned(dir: &Path, now: u128) -> std::io::Result<()> {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    for entry in entries {
+        let path = entry?.path();
+        let name = path.file_name().and_then(|name| name.to_str());
+        if name
+            .and_then(record_time)
+            .is_some_and(|(_, ns)| !is_pending(ns, now))
+        {
+            io::remove_file(&path)?;
+        }
+    }
+    Ok(())
+}
+
+// The type digest and the time in a record's name, `<type digest>-<ns>`.
+fn record_time(name: &str) -> Option<(&str, u128)> {
+    let (digest, ns) = name.rsplit_once('-')?;
+    Some((digest, ns.parse().ok()?))
+}
+
+fn is_pending(ns: u128, now: u128) -> bool {
+    now.saturating_sub(ns) < PENDING.as_nanos()
 }
 
 fn record_value(root: Option<&Path>, seeded: &Seeded) -> JsonValue {
@@ -188,15 +222,12 @@ fn pending(dir: &Path, kind: &str, now: u128) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
     };
-    let prefix = record_prefix(kind);
-    let young = |name: &str| {
-        let ns = name.strip_prefix(&prefix)?.parse::<u128>().ok()?;
-        (now.saturating_sub(ns) < PENDING.as_nanos()).then_some(())
-    };
+    let digest = sha256_hex(kind.as_bytes());
+    let young =
+        |name: &str| record_time(name).is_some_and(|(of, ns)| of == digest && is_pending(ns, now));
     let records = entries.filter_map(|entry| {
         let path = entry.ok()?.path();
-        young(path.file_name()?.to_str()?)?;
-        Some(path)
+        young(path.file_name()?.to_str()?).then_some(path)
     });
     records.collect()
 }

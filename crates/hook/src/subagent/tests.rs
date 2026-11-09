@@ -56,8 +56,11 @@ fn start(session: &str, agent: &str, kind: &str, cwd: &PathBuf) -> String {
 
 impl Rig {
     fn brief(&self, stdin: &str) {
-        let clock = Steps::fixed();
-        let run = self.run(Hook::BriefRecord, &clock);
+        self.brief_at(&Steps::fixed(), stdin);
+    }
+
+    fn brief_at(&self, clock: &dyn Clock, stdin: &str) {
+        let run = self.run(Hook::BriefRecord, clock);
         let stdout = Rig::answer(&run, |facts| {
             recorded(&run, &self.services, &mut stdin.as_bytes(), facts)
         });
@@ -256,4 +259,21 @@ fn a_late_or_failed_map_is_silent_and_uses_the_record() {
     assert_eq!(rig.records("s1"), 0);
     let expected = ["recorded", "deadline", "recorded", "map_failed"];
     assert_eq!(rig.reasons(), expected);
+}
+
+// A record past the pairing window pairs with no subagent, so each new record removes them.
+#[test]
+fn a_new_brief_removes_each_record_past_the_pairing_window() {
+    let rig = Rig::new();
+    let root = rig.sandbox.root();
+    rig.brief(&agent_call("s1", Some("Explore"), BRIEF, &root));
+    rig.brief(&agent_call("s1", Some("Plan"), BRIEF, &root));
+    rig.brief(&agent_call("s2", Some("Plan"), BRIEF, &root));
+    assert_eq!((rig.records("s1"), rig.records("s2")), (2, 1));
+
+    rig.brief_at(&Later(60), &agent_call("s1", Some("Plan"), BRIEF, &root));
+    assert_eq!((rig.records("s1"), rig.records("s2")), (1, 1));
+    rig.brief_at(&Later(90), &agent_call("s1", Some("Explore"), BRIEF, &root));
+    assert_eq!(rig.records("s1"), 2);
+    assert!(!rig.map(&start("s1", "a1", "Plan", &root)).is_empty());
 }

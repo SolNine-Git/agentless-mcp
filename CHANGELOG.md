@@ -800,6 +800,11 @@ Each byte count is of the served bytes.
   The backup now replaces a symlink at the name (it never writes through
   one), and an entry that it cannot replace, such as a folder, stops the
   write with its error.
+- **brief-record removes the session's brief records that are 60 seconds or
+  older when it writes a new one.** Such a record pairs with no subagent,
+  and the records stayed until the OS temp cleaner ran. The ledger entries
+  keep their bound, the cap of 2,000 per context. A removal that fails puts
+  its error in the log line, and the brief is still recorded.
 - **history and churn now pass each path to git as a literal pathspec, so a
   path with a glob character matches only itself.**
 - **Three Python import rules remove false import edges, and some true
