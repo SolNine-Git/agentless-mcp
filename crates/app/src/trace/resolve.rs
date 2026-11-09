@@ -1,6 +1,6 @@
-//! The resolution order of a trace target: a `path:start-end` of a walked file, a stable id, a
-//! `path:line`, a repository-relative path, a qualified name, then a bare name, each name matched
-//! as explain matches it. A target that matches nothing is a miss.
+//! The resolution order of a trace target: a `diff:<rev>` target, a `path:start-end` of a walked
+//! file, a stable id, a `path:line`, a repository-relative path, a qualified name, then a bare
+//! name, each name matched as explain matches it. A target that matches nothing is a miss.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -10,6 +10,7 @@ use git::RepoFile;
 use graph::{FileFacts, Target, enclosing_symbol, joins_name_graph, parse_target};
 use syntax::Language;
 
+use super::diff::DiffTarget;
 use super::{CardKind, MISS_LITERAL_FILES, Miss, RANGE_LINES};
 use crate::endpoints::{BindingStatus, Scope, TARGET_WORDING, bind};
 use crate::map::focus_resolution;
@@ -31,6 +32,7 @@ pub(super) enum Resolved {
     Candidates(Vec<SymbolCard>),
     Missed(Missed),
     Range(LineRange),
+    Diff(DiffTarget),
 }
 
 impl Resolved {
@@ -42,6 +44,7 @@ impl Resolved {
             Resolved::Candidates(_) => CardKind::Candidates,
             Resolved::Missed(_) => CardKind::Miss,
             Resolved::Range(_) => CardKind::Range,
+            Resolved::Diff(_) => CardKind::Diff,
         }
     }
 
@@ -53,7 +56,8 @@ impl Resolved {
             Resolved::Folder(_)
             | Resolved::Candidates(_)
             | Resolved::Missed(_)
-            | Resolved::Range(_) => None,
+            | Resolved::Range(_)
+            | Resolved::Diff(_) => None,
         }
     }
 }
@@ -162,6 +166,9 @@ struct Resolver<'r, 'a> {
 
 impl Resolver<'_, '_> {
     fn one(&self, text: &str) -> Resolved {
+        if let Some(target) = DiffTarget::parse(text) {
+            return Resolved::Diff(target);
+        }
         if text.trim().is_empty() {
             let (name, literal) = (text.to_owned(), text.to_owned());
             return Resolved::Missed(Missed::Name { name, literal });

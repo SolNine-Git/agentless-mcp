@@ -10,6 +10,53 @@ Each byte count is of the served bytes.
 
 ### Added
 
+- **`trace` lists what changed since a revision: `diff:<rev>`.** A target
+  `diff:main` (MCP and CLI) gives a diff card (design DES2 section 4,
+  docs/plans/2026-11-08_rev-and-diff-card.md): the base is `git merge-base
+  <rev> HEAD`, as a pull request takes it, and the new side is the working
+  tree with its untracked files. The card heads with `diff main: base
+  <sha> (merge base with HEAD), <n> commits, against the working tree`,
+  then `files:` with the counts by status (added, removed, changed,
+  renamed) and 12 folders at 2 levels, each with its symbol counts `+a -r
+  ~c`, then the `changed`, `added` and `removed` sections, 5 rows each,
+  rows outside test paths first and the longest span first (`[id] @span
+  (base @span)  kind`; a removed row gives its id and span at the base),
+  and `moved` (`old_id @span -> [new_id] @span`), a body that moved to
+  another file or name. The symbols pair as the pair checks pair their
+  units, through the matcher that D1 made generic (`checks::pair_units`):
+  a symbol's body key is the digest of its span text, each line trimmed,
+  its name masked. `diff:<rev>:<path>` scopes the card to a file, which
+  lists each row in line order, or to a folder, which rolls up below it;
+  every changed file is still read, so a move across the scope's edge
+  pairs. Data files (json, yaml, toml) count under `files`, and their keys
+  are listed only under a scoped target. `more=tree` lists each changed
+  file, `more=declares` each symbol row, both up to 500 rows, then `...
+  n more`; any other `more` gets "more=callers does not apply to a diff
+  card. Diff sections: tree, declares.". A call whose every target is a
+  diff target reads no walk, no scan and no graph: `diff --raw -M`, `ls-files
+  --others`, the base blobs 4 at a time, and a parse of each side through
+  the tag cache. `rev` with a diff target is refused ("rev does not apply
+  to a diff target. diff:main compares main with the working tree."), and
+  so are `diff:` with no revision and a revision with no merge base;
+  `Git::merge_base` and `Git::commits_since` are the new git reads. The
+  trace description gains "diff:<rev> lists the symbols that the working
+  tree added, removed, changed and moved since its merge base with
+  <rev>." and the `target` text "a stable id or diff:<rev>": tools/list
+  grows from 3,033 to 3,163 bytes and from 593 to 623 cl100k tokens
+  (`trace` 332 to 362), as predicted before the build (+130 B / +30; the
+  design measured +128 / +29 for "with rev", and "<rev>" names the target
+  part, not the `rev` parameter). New goldens over a request history (the
+  rev goldens' commit plus a renamed file, then working-tree edits, a moved
+  function, an untracked test and an untracked data file):
+  `trace/repo_py.diff` (text and JSON), `diff_tree`, `diff_declares`,
+  `diff_file`, `diff_folder`, `diff_empty`, `diff_hidden` (13 folders and
+  13 added functions past the caps) and `diff_no_section`, each written
+  from the grammar before the first run and equal to it but for the two
+  commit ids, with their counts in `crates/app/fixtures/read/tokens.json`;
+  the door test replays each through the MCP tool and the CLI. The changed
+  recorded values: the `trace` entry of
+  `crates/app/fixtures/surface/surface.json`.
+
 - **`trace` reads a commit: `rev`.** A call with `rev` (MCP) or `--rev`
   (CLI), such as `rev=main`, answers each card as that commit holds the
   code (design DES2, docs/plans/2026-11-08_rev-and-diff-card.md). A stable

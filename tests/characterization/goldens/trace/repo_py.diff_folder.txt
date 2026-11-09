@@ -1,0 +1,10 @@
+// agentless-mcp receipt   repo: <REPO>   head: 06b750b6   dirty: 4 files   cache: none
+diff base:config: base f5f25218 (merge base with HEAD), 1 commit, against the working tree
+files: 1 source file (1 added, 0 removed, 0 changed, 0 renamed) in 1 folder
+  config/  1 file  +2 -0 ~0
+changed: none
+added: 2 symbols in 1 file, 0 in tests
+  [json:config/settings.json::currency] @2  key
+  [json:config/settings.json::width] @3  key
+removed: none
+moved: none

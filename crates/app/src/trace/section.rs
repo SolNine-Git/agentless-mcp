@@ -90,6 +90,8 @@ pub enum CardKind {
     Miss,
     /// A range of a file's lines.
     Range,
+    /// The symbols that changed since a merge base.
+    Diff,
 }
 
 const SYMBOL_SECTIONS: [Section; 6] = [
@@ -108,13 +110,31 @@ const FILE_SECTIONS: [Section; 5] = [
     Section::Cycles,
 ];
 
-const KIND_NAMES: [&str; 6] = ["symbol", "file", "folder", "candidates", "miss", "range"];
+const KIND_NAMES: [&str; 7] = [
+    "symbol",
+    "file",
+    "folder",
+    "candidates",
+    "miss",
+    "range",
+    "diff",
+];
 
 impl CardKind {
     /// Returns the wire value, such as `file`.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         KIND_NAMES[self as usize]
+    }
+
+    /// Returns true when a `more` that names a section this kind lacks gets the no-section answer
+    /// in place of the card: every kind but a candidates card, a range card and a miss.
+    #[must_use]
+    pub fn refuses_sections(self) -> bool {
+        matches!(
+            self,
+            CardKind::Symbol | CardKind::File | CardKind::Folder | CardKind::Diff
+        )
     }
 
     /// Returns the sections that a card of this kind holds, in card order.
@@ -125,6 +145,7 @@ impl CardKind {
             CardKind::File => &FILE_SECTIONS,
             CardKind::Folder => &[Section::Tree],
             CardKind::Candidates => &[Section::Candidates],
+            CardKind::Diff => &[Section::Tree, Section::Declares],
             CardKind::Miss | CardKind::Range => &[],
         }
     }

@@ -1,0 +1,3 @@
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+diff HEAD: base f5f25218 (merge base with HEAD), 0 commits, against the working tree
+files: none

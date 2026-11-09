@@ -190,19 +190,30 @@ fn written(files: &Value, tree: &Tree) {
     }
 }
 
-// The request's `tag` on the fixture commit, each of its `commits` with its files and message, and
-// then its `working` files, which no commit holds.
+// The request's `tag` on the fixture commit, each of its `commits` with its files, its `deleted`
+// files and its message, then its `working` and `deleted` files, which no commit holds.
 fn history(request: &Value, tree: &Tree, git: impl Fn(&[&str])) {
     if let Some(tag) = request["tag"].as_str() {
         git(&["tag", tag]);
     }
     for commit in request["commits"].as_array().into_iter().flatten() {
         written(&commit["files"], tree);
+        deleted(&commit["deleted"], tree);
         let message = commit["message"].as_str().expect("a commit message");
         git(&["add", "-A"]);
         git(&["commit", "--quiet", "-m", message]);
     }
     written(&request["working"], tree);
+    deleted(&request["deleted"], tree);
+}
+
+fn deleted(paths: &Value, tree: &Tree) {
+    for path in paths.as_array().into_iter().flatten() {
+        let relative = format!("repo/{}", path.as_str().expect("a path"));
+        let removed = io::remove_file(&tree.join(&relative));
+        let removed = removed.unwrap_or_else(|error| panic!("{relative}: {error}"));
+        assert!(removed, "{relative}: no file to delete");
+    }
 }
 
 fn trace_request(arguments: &Value) -> TraceRequest {

@@ -571,6 +571,42 @@
       "one": "1 file spells orderPinnedTopics in code, and no file declares it. Grep finds every spelling.",
       "many": "2 files spell orderPinnedTopics in code, and no file declares it. Grep finds every spelling."
     },
+    "trace_diff_files": {
+      "arguments": {
+        "added": 4,
+        "changed": 2,
+        "removed": 0,
+        "renamed": 1
+      },
+      "one": "files: 1 source file (4 added, 0 removed, 2 changed, 1 renamed) in 1 folder",
+      "many": "files: 2 source files (4 added, 0 removed, 2 changed, 1 renamed) in 2 folders"
+    },
+    "trace_diff_folder": {
+      "arguments": {
+        "added": 3,
+        "changed": 2,
+        "path": "crates/app",
+        "removed": 1
+      },
+      "one": "crates/app/  1 file  +3 -1 ~2",
+      "many": "crates/app/  2 files  +3 -1 ~2"
+    },
+    "trace_diff_header": {
+      "arguments": {
+        "revision": "main",
+        "sha": "2e8f8074"
+      },
+      "one": "diff main: base 2e8f8074 (merge base with HEAD), 1 commit, against the working tree",
+      "many": "diff main: base 2e8f8074 (merge base with HEAD), 2 commits, against the working tree"
+    },
+    "trace_diff_section": {
+      "arguments": {
+        "name": "changed",
+        "tests": 0
+      },
+      "one": "changed: 1 symbol in 1 file, 0 in tests",
+      "many": "changed: 2 symbols in 2 files, 0 in tests"
+    },
     "trace_name_only_files": {
       "arguments": {
         "count": 253

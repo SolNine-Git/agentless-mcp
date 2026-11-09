@@ -7,10 +7,10 @@ use app::{ROW_INDENT, Usage};
 use prompts::messages::{
     TARGET_NO_LINE, TRACE_BODY_OF_FILE, TRACE_CANDIDATES, TRACE_LINE_PAST_END, TRACE_LITERAL,
     TRACE_LITERAL_NONE, TRACE_NO_GRAMMAR, TRACE_NO_GRAMMAR_NAME, TRACE_NO_MATCH,
-    TRACE_NO_SECTION_FILE, TRACE_NO_SECTION_FOLDER, TRACE_NO_SECTION_SYMBOL, TRACE_NOT_PARSED,
-    TRACE_NOT_SCANNED, TRACE_RANGE_BINARY, TRACE_RANGE_PAST_END, TRACE_RANGE_REVERSED,
-    TRACE_REV_NO_FILE, TRACE_REV_NO_MATCH, TRACE_ROWS_UNLISTED, TRACE_UNKNOWN_PATH,
-    TRACE_UNKNOWN_PATH_NONE,
+    TRACE_NO_SECTION_DIFF, TRACE_NO_SECTION_FILE, TRACE_NO_SECTION_FOLDER, TRACE_NO_SECTION_SYMBOL,
+    TRACE_NOT_PARSED, TRACE_NOT_SCANNED, TRACE_RANGE_BINARY, TRACE_RANGE_PAST_END,
+    TRACE_RANGE_REVERSED, TRACE_REV_NO_FILE, TRACE_REV_NO_MATCH, TRACE_ROWS_UNLISTED,
+    TRACE_UNKNOWN_PATH, TRACE_UNKNOWN_PATH_NONE,
 };
 use text::{one_line, posix_name, split_suffix};
 
@@ -154,14 +154,15 @@ fn no_grammar(path: &str) -> String {
     }
 }
 
-// Trace refuses an absent section only on the symbol, file and folder cards; a candidates card,
-// a range card and a miss answer whatever `more` names.
+// Trace refuses an absent section only on the symbol, file, folder and diff cards; a candidates
+// card, a range card and a miss answer whatever `more` names.
 pub(super) fn no_section(section: Section, kind: CardKind) -> String {
     let listed: Vec<&str> = kind.sections().iter().map(|held| held.as_str()).collect();
     let template = match kind {
         CardKind::Symbol => &TRACE_NO_SECTION_SYMBOL,
         CardKind::File => &TRACE_NO_SECTION_FILE,
         CardKind::Folder => &TRACE_NO_SECTION_FOLDER,
+        CardKind::Diff => &TRACE_NO_SECTION_DIFF,
         CardKind::Candidates | CardKind::Miss | CardKind::Range => {
             unreachable!("trace refuses no section on a {} card", kind.as_str())
         }

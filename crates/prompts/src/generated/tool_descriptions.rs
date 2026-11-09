@@ -260,5 +260,7 @@ pub const TRACE: &str = "Show what a code target is and how it connects. target 
         shows how many rows it hides, and more shows one section in \
         full. more=body gives the numbered body. more=similar lists the \
         symbols that share callers with the target. rev reads the code \
-        at a git revision, not the working tree. A list of targets \
-        gives one card per target in one call.";
+        at a git revision, not the working tree. diff:<rev> lists the \
+        symbols that the working tree added, removed, changed and moved \
+        since its merge base with <rev>. A list of targets gives one \
+        card per target in one call.";

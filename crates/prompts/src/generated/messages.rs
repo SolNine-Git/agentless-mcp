@@ -3010,6 +3010,139 @@ pub const TRACE_DECLARES: Template<(Text, Count)> = Template::new(&[
     Piece::Text(")"),
 ]);
 
+/// A text that takes no values.
+pub const TRACE_DIFF_ADDED: &str = "added";
+
+/// A template that takes `span`.
+pub const TRACE_DIFF_BASE_SPAN: Template<Text> =
+    Template::new(&[Piece::Text("(base @"), Piece::Value(0), Piece::Text(")")]);
+
+/// A text that takes no values.
+pub const TRACE_DIFF_CHANGED: &str = "changed";
+
+/// A template that takes (`path`, `status`, `added`, `removed`, `changed`).
+pub const TRACE_DIFF_FILE: Template<(Text, Text, Count, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("  "),
+    Piece::Value(1),
+    Piece::Text("  +"),
+    Piece::Value(2),
+    Piece::Text(" -"),
+    Piece::Value(3),
+    Piece::Text(" ~"),
+    Piece::Value(4),
+]);
+
+/// A template that takes (`count`, `total`, `added`, `removed`, `changed`, `renamed`).
+pub const TRACE_DIFF_FILES: Template<(Count, Count, Count, Count, Count, Count)> =
+    Template::new(&[
+        Piece::Text("files: "),
+        Piece::Value(0),
+        Piece::Text(" source "),
+        Piece::Choice(0, "file", "files"),
+        Piece::Text(" ("),
+        Piece::Value(2),
+        Piece::Text(" added, "),
+        Piece::Value(3),
+        Piece::Text(" removed, "),
+        Piece::Value(4),
+        Piece::Text(" changed, "),
+        Piece::Value(5),
+        Piece::Text(" renamed) in "),
+        Piece::Value(1),
+        Piece::Text(" "),
+        Piece::Choice(1, "folder", "folders"),
+    ]);
+
+/// A template that takes (`path`, `count`, `added`, `removed`, `changed`).
+pub const TRACE_DIFF_FOLDER: Template<(Text, Count, Count, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("/  "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "file", "files"),
+    Piece::Text("  +"),
+    Piece::Value(2),
+    Piece::Text(" -"),
+    Piece::Value(3),
+    Piece::Text(" ~"),
+    Piece::Value(4),
+]);
+
+/// A template that takes (`revision`, `sha`, `count`).
+pub const TRACE_DIFF_HEADER: Template<(Text, Text, Count)> = Template::new(&[
+    Piece::Text("diff "),
+    Piece::Value(0),
+    Piece::Text(": base "),
+    Piece::Value(1),
+    Piece::Text(" (merge base with HEAD), "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "commit", "commits"),
+    Piece::Text(", against the working tree"),
+]);
+
+/// A text that takes no values.
+pub const TRACE_DIFF_MOVED: &str = "moved";
+
+/// A template that takes (`name`, `count`).
+pub const TRACE_DIFF_MOVES: Template<(Text, Count)> =
+    Template::new(&[Piece::Value(0), Piece::Text(": "), Piece::Value(1)]);
+
+/// A template that takes (`revision`, `note`).
+pub const TRACE_DIFF_NO_BASE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("diff:"),
+    Piece::Value(0),
+    Piece::Text(" has no merge base with HEAD: "),
+    Piece::Value(1),
+]);
+
+/// A text that takes no values.
+pub const TRACE_DIFF_NO_FILES: &str = "files: none";
+
+/// A text that takes no values.
+pub const TRACE_DIFF_NO_REV: &str = "a diff target names a revision after diff:, such as \
+        diff:main.";
+
+/// A text that takes no values.
+pub const TRACE_DIFF_REMOVED: &str = "removed";
+
+/// A template that takes `path`.
+pub const TRACE_DIFF_RENAMED: Template<Text> =
+    Template::new(&[Piece::Text("renamed from "), Piece::Value(0)]);
+
+/// A template that takes `revision`.
+pub const TRACE_DIFF_REV: Template<Text> = Template::new(&[
+    Piece::Text("rev does not apply to a diff target. diff:"),
+    Piece::Value(0),
+    Piece::Text(" compares "),
+    Piece::Value(0),
+    Piece::Text(" with the working tree."),
+]);
+
+/// A template that takes (`name`, `count`, `total`, `tests`).
+pub const TRACE_DIFF_SECTION: Template<(Text, Count, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "symbol", "symbols"),
+    Piece::Text(" in "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "file", "files"),
+    Piece::Text(", "),
+    Piece::Value(3),
+    Piece::Text(" in tests"),
+]);
+
+/// A template that takes (`path`, `reason`).
+pub const TRACE_DIFF_UNREAD: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" was not read: "),
+    Piece::Value(1),
+]);
+
 /// A template that takes (`path`, `language`, `pattern`, `count`).
 pub const TRACE_FILE_HEADER: Template<(Text, Text, Text, Count)> = Template::new(&[
     Piece::Value(0),
@@ -3149,6 +3282,15 @@ pub const TRACE_NO_GRAMMAR_NAME: Template<Text> = Template::new(&[
 pub const TRACE_NO_MATCH: Template<Text> = Template::new(&[
     Piece::Text("no symbol, file or folder matches "),
     Piece::Value(0),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`name`, `listed`).
+pub const TRACE_NO_SECTION_DIFF: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("more="),
+    Piece::Value(0),
+    Piece::Text(" does not apply to a diff card. Diff sections: "),
+    Piece::Value(1),
     Piece::Text("."),
 ]);
 

@@ -1030,6 +1030,7 @@ pub fn app::surface::tool_entry(&app::surface::Tool, app::surface::RootCount) ->
 pub mod app::trace
 pub enum app::trace::Card
 pub app::trace::Card::Candidates(app::trace::CandidatesTrace)
+pub app::trace::Card::Diff(alloc::boxed::Box<app::trace::DiffTrace>)
 pub app::trace::Card::File(alloc::boxed::Box<app::trace::FileTrace>)
 pub app::trace::Card::Folder(app::trace::FolderTrace)
 pub app::trace::Card::Miss(app::trace::Miss)
@@ -1053,6 +1054,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Card
 impl core::panic::unwind_safe::UnwindSafe for app::trace::Card
 pub enum app::trace::CardKind
 pub app::trace::CardKind::Candidates
+pub app::trace::CardKind::Diff
 pub app::trace::CardKind::File
 pub app::trace::CardKind::Folder
 pub app::trace::CardKind::Miss
@@ -1060,6 +1062,7 @@ pub app::trace::CardKind::Range
 pub app::trace::CardKind::Symbol
 impl app::trace::CardKind
 pub fn app::trace::CardKind::as_str(self) -> &'static str
+pub fn app::trace::CardKind::refuses_sections(self) -> bool
 pub fn app::trace::CardKind::sections(self) -> &'static [app::trace::Section]
 impl core::clone::Clone for app::trace::CardKind
 pub fn app::trace::CardKind::clone(&self) -> Self
@@ -1101,6 +1104,26 @@ impl core::marker::Unpin for app::trace::Change
 impl core::marker::UnsafeUnpin for app::trace::Change
 impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Change
 impl core::panic::unwind_safe::UnwindSafe for app::trace::Change
+pub enum app::trace::FileStatus
+pub app::trace::FileStatus::Added
+pub app::trace::FileStatus::Changed
+pub app::trace::FileStatus::Removed
+pub app::trace::FileStatus::Renamed(alloc::string::String)
+impl core::clone::Clone for app::trace::FileStatus
+pub fn app::trace::FileStatus::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::FileStatus
+impl core::cmp::PartialEq for app::trace::FileStatus
+pub fn app::trace::FileStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::FileStatus
+pub fn app::trace::FileStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::FileStatus
+impl core::marker::Freeze for app::trace::FileStatus
+impl core::marker::Send for app::trace::FileStatus
+impl core::marker::Sync for app::trace::FileStatus
+impl core::marker::Unpin for app::trace::FileStatus
+impl core::marker::UnsafeUnpin for app::trace::FileStatus
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::FileStatus
+impl core::panic::unwind_safe::UnwindSafe for app::trace::FileStatus
 pub enum app::trace::FolderEntry
 pub app::trace::FolderEntry::File
 pub app::trace::FolderEntry::File::depth: usize
@@ -1388,6 +1411,189 @@ impl core::marker::Unpin for app::trace::Declares
 impl core::marker::UnsafeUnpin for app::trace::Declares
 impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Declares
 impl core::panic::unwind_safe::UnwindSafe for app::trace::Declares
+pub struct app::trace::DiffCounts
+pub app::trace::DiffCounts::added: usize
+pub app::trace::DiffCounts::changed: usize
+pub app::trace::DiffCounts::removed: usize
+impl core::clone::Clone for app::trace::DiffCounts
+pub fn app::trace::DiffCounts::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::DiffCounts
+impl core::cmp::PartialEq for app::trace::DiffCounts
+pub fn app::trace::DiffCounts::eq(&self, &Self) -> bool
+impl core::default::Default for app::trace::DiffCounts
+pub fn app::trace::DiffCounts::default() -> Self
+impl core::fmt::Debug for app::trace::DiffCounts
+pub fn app::trace::DiffCounts::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::trace::DiffCounts
+impl core::marker::StructuralPartialEq for app::trace::DiffCounts
+impl core::marker::Freeze for app::trace::DiffCounts
+impl core::marker::Send for app::trace::DiffCounts
+impl core::marker::Sync for app::trace::DiffCounts
+impl core::marker::Unpin for app::trace::DiffCounts
+impl core::marker::UnsafeUnpin for app::trace::DiffCounts
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::DiffCounts
+impl core::panic::unwind_safe::UnwindSafe for app::trace::DiffCounts
+pub struct app::trace::DiffFile
+pub app::trace::DiffFile::path: alloc::string::String
+pub app::trace::DiffFile::status: app::trace::FileStatus
+pub app::trace::DiffFile::symbols: app::trace::DiffCounts
+impl core::clone::Clone for app::trace::DiffFile
+pub fn app::trace::DiffFile::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::DiffFile
+impl core::cmp::PartialEq for app::trace::DiffFile
+pub fn app::trace::DiffFile::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::DiffFile
+pub fn app::trace::DiffFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::DiffFile
+impl core::marker::Freeze for app::trace::DiffFile
+impl core::marker::Send for app::trace::DiffFile
+impl core::marker::Sync for app::trace::DiffFile
+impl core::marker::Unpin for app::trace::DiffFile
+impl core::marker::UnsafeUnpin for app::trace::DiffFile
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::DiffFile
+impl core::panic::unwind_safe::UnwindSafe for app::trace::DiffFile
+pub struct app::trace::DiffFiles
+pub app::trace::DiffFiles::added: usize
+pub app::trace::DiffFiles::changed: usize
+pub app::trace::DiffFiles::folders: alloc::vec::Vec<app::trace::DiffFolder>
+pub app::trace::DiffFiles::folders_total: usize
+pub app::trace::DiffFiles::removed: usize
+pub app::trace::DiffFiles::renamed: usize
+pub app::trace::DiffFiles::rows: core::option::Option<alloc::vec::Vec<app::trace::DiffFile>>
+pub app::trace::DiffFiles::total: usize
+impl core::clone::Clone for app::trace::DiffFiles
+pub fn app::trace::DiffFiles::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::DiffFiles
+impl core::cmp::PartialEq for app::trace::DiffFiles
+pub fn app::trace::DiffFiles::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::DiffFiles
+pub fn app::trace::DiffFiles::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::DiffFiles
+impl core::marker::Freeze for app::trace::DiffFiles
+impl core::marker::Send for app::trace::DiffFiles
+impl core::marker::Sync for app::trace::DiffFiles
+impl core::marker::Unpin for app::trace::DiffFiles
+impl core::marker::UnsafeUnpin for app::trace::DiffFiles
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::DiffFiles
+impl core::panic::unwind_safe::UnwindSafe for app::trace::DiffFiles
+pub struct app::trace::DiffFolder
+pub app::trace::DiffFolder::files: usize
+pub app::trace::DiffFolder::path: alloc::string::String
+pub app::trace::DiffFolder::symbols: app::trace::DiffCounts
+impl core::clone::Clone for app::trace::DiffFolder
+pub fn app::trace::DiffFolder::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::DiffFolder
+impl core::cmp::PartialEq for app::trace::DiffFolder
+pub fn app::trace::DiffFolder::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::DiffFolder
+pub fn app::trace::DiffFolder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::DiffFolder
+impl core::marker::Freeze for app::trace::DiffFolder
+impl core::marker::Send for app::trace::DiffFolder
+impl core::marker::Sync for app::trace::DiffFolder
+impl core::marker::Unpin for app::trace::DiffFolder
+impl core::marker::UnsafeUnpin for app::trace::DiffFolder
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::DiffFolder
+impl core::panic::unwind_safe::UnwindSafe for app::trace::DiffFolder
+pub struct app::trace::DiffMoved
+pub app::trace::DiffMoved::rows: alloc::vec::Vec<app::trace::MovedRow>
+pub app::trace::DiffMoved::total: usize
+impl core::clone::Clone for app::trace::DiffMoved
+pub fn app::trace::DiffMoved::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::DiffMoved
+impl core::cmp::PartialEq for app::trace::DiffMoved
+pub fn app::trace::DiffMoved::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::DiffMoved
+pub fn app::trace::DiffMoved::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::DiffMoved
+impl core::marker::Freeze for app::trace::DiffMoved
+impl core::marker::Send for app::trace::DiffMoved
+impl core::marker::Sync for app::trace::DiffMoved
+impl core::marker::Unpin for app::trace::DiffMoved
+impl core::marker::UnsafeUnpin for app::trace::DiffMoved
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::DiffMoved
+impl core::panic::unwind_safe::UnwindSafe for app::trace::DiffMoved
+pub struct app::trace::DiffRow
+pub app::trace::DiffRow::base: core::option::Option<(u32, u32)>
+pub app::trace::DiffRow::card: app::SymbolCard
+impl core::clone::Clone for app::trace::DiffRow
+pub fn app::trace::DiffRow::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::DiffRow
+impl core::cmp::PartialEq for app::trace::DiffRow
+pub fn app::trace::DiffRow::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::DiffRow
+pub fn app::trace::DiffRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::DiffRow
+impl core::marker::Freeze for app::trace::DiffRow
+impl core::marker::Send for app::trace::DiffRow
+impl core::marker::Sync for app::trace::DiffRow
+impl core::marker::Unpin for app::trace::DiffRow
+impl core::marker::UnsafeUnpin for app::trace::DiffRow
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::DiffRow
+impl core::panic::unwind_safe::UnwindSafe for app::trace::DiffRow
+pub struct app::trace::DiffSection
+pub app::trace::DiffSection::files: usize
+pub app::trace::DiffSection::rows: alloc::vec::Vec<app::trace::DiffRow>
+pub app::trace::DiffSection::tests: usize
+pub app::trace::DiffSection::total: usize
+impl core::clone::Clone for app::trace::DiffSection
+pub fn app::trace::DiffSection::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::DiffSection
+impl core::cmp::PartialEq for app::trace::DiffSection
+pub fn app::trace::DiffSection::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::DiffSection
+pub fn app::trace::DiffSection::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::DiffSection
+impl core::marker::Freeze for app::trace::DiffSection
+impl core::marker::Send for app::trace::DiffSection
+impl core::marker::Sync for app::trace::DiffSection
+impl core::marker::Unpin for app::trace::DiffSection
+impl core::marker::UnsafeUnpin for app::trace::DiffSection
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::DiffSection
+impl core::panic::unwind_safe::UnwindSafe for app::trace::DiffSection
+pub struct app::trace::DiffSymbols
+pub app::trace::DiffSymbols::added: app::trace::DiffSection
+pub app::trace::DiffSymbols::changed: app::trace::DiffSection
+pub app::trace::DiffSymbols::moved: app::trace::DiffMoved
+pub app::trace::DiffSymbols::removed: app::trace::DiffSection
+impl core::clone::Clone for app::trace::DiffSymbols
+pub fn app::trace::DiffSymbols::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::DiffSymbols
+impl core::cmp::PartialEq for app::trace::DiffSymbols
+pub fn app::trace::DiffSymbols::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::DiffSymbols
+pub fn app::trace::DiffSymbols::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::DiffSymbols
+impl core::marker::Freeze for app::trace::DiffSymbols
+impl core::marker::Send for app::trace::DiffSymbols
+impl core::marker::Sync for app::trace::DiffSymbols
+impl core::marker::Unpin for app::trace::DiffSymbols
+impl core::marker::UnsafeUnpin for app::trace::DiffSymbols
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::DiffSymbols
+impl core::panic::unwind_safe::UnwindSafe for app::trace::DiffSymbols
+pub struct app::trace::DiffTrace
+pub app::trace::DiffTrace::base: alloc::string::String
+pub app::trace::DiffTrace::commits: usize
+pub app::trace::DiffTrace::files: app::trace::DiffFiles
+pub app::trace::DiffTrace::full: bool
+pub app::trace::DiffTrace::rev: alloc::string::String
+pub app::trace::DiffTrace::scope: core::option::Option<alloc::string::String>
+pub app::trace::DiffTrace::symbols: core::option::Option<app::trace::DiffSymbols>
+impl core::clone::Clone for app::trace::DiffTrace
+pub fn app::trace::DiffTrace::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::DiffTrace
+impl core::cmp::PartialEq for app::trace::DiffTrace
+pub fn app::trace::DiffTrace::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::DiffTrace
+pub fn app::trace::DiffTrace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::DiffTrace
+impl core::marker::Freeze for app::trace::DiffTrace
+impl core::marker::Send for app::trace::DiffTrace
+impl core::marker::Sync for app::trace::DiffTrace
+impl core::marker::Unpin for app::trace::DiffTrace
+impl core::marker::UnsafeUnpin for app::trace::DiffTrace
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::DiffTrace
+impl core::panic::unwind_safe::UnwindSafe for app::trace::DiffTrace
 pub struct app::trace::EdgeGroup
 pub app::trace::EdgeGroup::edges: alloc::vec::Vec<app::EdgeRow>
 pub app::trace::EdgeGroup::path: alloc::string::String
@@ -1487,6 +1693,24 @@ impl core::marker::Unpin for app::trace::KeptGraphs
 impl core::marker::UnsafeUnpin for app::trace::KeptGraphs
 impl !core::panic::unwind_safe::RefUnwindSafe for app::trace::KeptGraphs
 impl !core::panic::unwind_safe::UnwindSafe for app::trace::KeptGraphs
+pub struct app::trace::MovedRow
+pub app::trace::MovedRow::from: app::SymbolCard
+pub app::trace::MovedRow::to: app::SymbolCard
+impl core::clone::Clone for app::trace::MovedRow
+pub fn app::trace::MovedRow::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::MovedRow
+impl core::cmp::PartialEq for app::trace::MovedRow
+pub fn app::trace::MovedRow::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::MovedRow
+pub fn app::trace::MovedRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::MovedRow
+impl core::marker::Freeze for app::trace::MovedRow
+impl core::marker::Send for app::trace::MovedRow
+impl core::marker::Sync for app::trace::MovedRow
+impl core::marker::Unpin for app::trace::MovedRow
+impl core::marker::UnsafeUnpin for app::trace::MovedRow
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::MovedRow
+impl core::panic::unwind_safe::UnwindSafe for app::trace::MovedRow
 pub struct app::trace::RangeTrace
 pub app::trace::RangeTrace::end: u32
 pub app::trace::RangeTrace::lines: u32
@@ -1698,6 +1922,9 @@ impl core::marker::UnsafeUnpin for app::trace::Traced
 impl core::panic::unwind_safe::RefUnwindSafe for app::trace::Traced
 impl core::panic::unwind_safe::UnwindSafe for app::trace::Traced
 pub const app::trace::CANDIDATE_ROWS: usize
+pub const app::trace::DIFF_FOLDERS: usize
+pub const app::trace::DIFF_FOLDER_DEPTH: usize
+pub const app::trace::DIFF_ROWS: usize
 pub const app::trace::FILE_CYCLES: usize
 pub const app::trace::FILE_DECLARATIONS: usize
 pub const app::trace::FILE_ROWS: usize

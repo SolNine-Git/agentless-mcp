@@ -1,0 +1,22 @@
+{
+  "tool": "trace",
+  "fixture": "repo_py",
+  "working": {
+    "area01/mod01.py": "def task_01():\n    return 1\n",
+    "area02/mod02.py": "def task_02():\n    return 2\n",
+    "area03/mod03.py": "def task_03():\n    return 3\n",
+    "area04/mod04.py": "def task_04():\n    return 4\n",
+    "area05/mod05.py": "def task_05():\n    return 5\n",
+    "area06/mod06.py": "def task_06():\n    return 6\n",
+    "area07/mod07.py": "def task_07():\n    return 7\n",
+    "area08/mod08.py": "def task_08():\n    return 8\n",
+    "area09/mod09.py": "def task_09():\n    return 9\n",
+    "area10/mod10.py": "def task_10():\n    return 10\n",
+    "area11/mod11.py": "def task_11():\n    return 11\n",
+    "area12/mod12.py": "def task_12():\n    return 12\n",
+    "area13/mod13.py": "def task_13():\n    return 13\n"
+  },
+  "arguments": {
+    "target": "diff:HEAD"
+  }
+}

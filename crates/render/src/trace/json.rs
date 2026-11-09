@@ -3,9 +3,9 @@
 
 use app::search::{FileRow, Measure, Place};
 use app::trace::{
-    Callees, Callers, Card, Change, Cycles, Declares, FileLinks, FileTrace, FolderEntry,
-    FolderTrace, Linked, Miss, Outcome, RangeTrace, Section, Similar, SymbolTrace, Tally, Tests,
-    Trace, TraceRequest,
+    Callees, Callers, Card, Change, Cycles, Declares, DiffCounts, DiffFile, DiffFiles, DiffMoved,
+    DiffSection, DiffTrace, FileLinks, FileStatus, FileTrace, FolderEntry, FolderTrace, Linked,
+    Miss, Outcome, RangeTrace, Section, Similar, SymbolTrace, Tally, Tests, Trace, TraceRequest,
 };
 use app::{EdgeRow, HistoryResult, SymbolCard};
 use serde::Serialize;
@@ -79,6 +79,7 @@ enum OutcomeJson<'a> {
     },
     Miss(MissJson<'a>),
     Range(RangeJson<'a>),
+    Diff(Box<DiffJson<'a>>),
     Same {
         card: usize,
     },
@@ -100,6 +101,7 @@ impl<'a> OutcomeJson<'a> {
             },
             Outcome::Card(Card::Miss(missed)) => Self::Miss(MissJson::of(missed)),
             Outcome::Card(Card::Range(traced)) => Self::Range(RangeJson::of(traced)),
+            Outcome::Card(Card::Diff(traced)) => Self::Diff(Box::new(DiffJson::of(traced))),
             Outcome::Same(first) => Self::Same { card: *first },
             Outcome::NoSection { section, kind } => Self::NoSection {
                 section: section.as_str(),
@@ -726,4 +728,190 @@ impl<'a> MissJson<'a> {
             other => unreachable!("{other:?} is no miss of a file's lines"),
         }
     }
+}
+
+// A diff card: the merge base, the files and folders, and each symbol section's rows.
+#[derive(Clone, Serialize)]
+struct DiffJson<'a> {
+    rev: &'a str,
+    scope: Option<&'a str>,
+    base: &'a str,
+    commits: usize,
+    full: bool,
+    files: DiffFilesJson<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    symbols: Option<DiffSymbolsJson<'a>>,
+}
+
+impl<'a> DiffJson<'a> {
+    fn of(card: &'a DiffTrace) -> Self {
+        let symbols = card.symbols.as_ref().map(|symbols| DiffSymbolsJson {
+            changed: DiffSectionJson::of(&symbols.changed),
+            added: DiffSectionJson::of(&symbols.added),
+            removed: DiffSectionJson::of(&symbols.removed),
+            moved: DiffMovedJson::of(&symbols.moved),
+        });
+        DiffJson {
+            rev: &card.rev,
+            scope: card.scope.as_deref(),
+            base: &card.base,
+            commits: card.commits,
+            full: card.full,
+            files: DiffFilesJson::of(&card.files),
+            symbols,
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct DiffFilesJson<'a> {
+    total: usize,
+    added: usize,
+    removed: usize,
+    changed: usize,
+    renamed: usize,
+    folders_total: usize,
+    folders: Vec<DiffFolderJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rows: Option<Vec<DiffFileJson<'a>>>,
+}
+
+impl<'a> DiffFilesJson<'a> {
+    fn of(files: &'a DiffFiles) -> Self {
+        let folders = files.folders.iter().map(|folder| DiffFolderJson {
+            path: &folder.path,
+            files: folder.files,
+            symbols: CountsJson::of(folder.symbols),
+        });
+        let rows = (files.rows.as_ref()).map(|rows| rows.iter().map(DiffFileJson::of).collect());
+        DiffFilesJson {
+            total: files.total,
+            added: files.added,
+            removed: files.removed,
+            changed: files.changed,
+            renamed: files.renamed,
+            folders_total: files.folders_total,
+            folders: folders.collect(),
+            rows,
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct DiffFolderJson<'a> {
+    path: &'a str,
+    files: usize,
+    #[serde(flatten)]
+    symbols: CountsJson,
+}
+
+#[derive(Clone, Serialize)]
+struct DiffFileJson<'a> {
+    path: &'a str,
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    renamed_from: Option<&'a str>,
+    #[serde(flatten)]
+    symbols: CountsJson,
+}
+
+#[derive(Clone, Copy, Serialize)]
+struct CountsJson {
+    added: usize,
+    removed: usize,
+    changed: usize,
+}
+
+impl CountsJson {
+    fn of(counts: DiffCounts) -> Self {
+        CountsJson {
+            added: counts.added,
+            removed: counts.removed,
+            changed: counts.changed,
+        }
+    }
+}
+
+impl<'a> DiffFileJson<'a> {
+    fn of(file: &'a DiffFile) -> Self {
+        let (status, renamed_from) = match &file.status {
+            FileStatus::Added => ("added", None),
+            FileStatus::Removed => ("removed", None),
+            FileStatus::Changed => ("changed", None),
+            FileStatus::Renamed(from) => ("renamed", Some(from.as_str())),
+        };
+        DiffFileJson {
+            path: &file.path,
+            status,
+            renamed_from,
+            symbols: CountsJson::of(file.symbols),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct DiffSymbolsJson<'a> {
+    changed: DiffSectionJson<'a>,
+    added: DiffSectionJson<'a>,
+    removed: DiffSectionJson<'a>,
+    moved: DiffMovedJson<'a>,
+}
+
+#[derive(Clone, Serialize)]
+struct DiffSectionJson<'a> {
+    total: usize,
+    files: usize,
+    tests: usize,
+    rows: Vec<DiffRowJson<'a>>,
+}
+
+impl<'a> DiffSectionJson<'a> {
+    fn of(section: &'a DiffSection) -> Self {
+        let rows = section.rows.iter().map(|row| DiffRowJson {
+            card: CardJson::of(&row.card),
+            base_start_line: row.base.map(|(start, _)| start),
+            base_end_line: row.base.map(|(_, end)| end),
+        });
+        DiffSectionJson {
+            total: section.total,
+            files: section.files,
+            tests: section.tests,
+            rows: rows.collect(),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct DiffRowJson<'a> {
+    #[serde(flatten)]
+    card: CardJson<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base_start_line: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base_end_line: Option<u32>,
+}
+
+#[derive(Clone, Serialize)]
+struct DiffMovedJson<'a> {
+    total: usize,
+    rows: Vec<MovedJson<'a>>,
+}
+
+impl<'a> DiffMovedJson<'a> {
+    fn of(moved: &'a DiffMoved) -> Self {
+        let rows = moved.rows.iter().map(|row| MovedJson {
+            from: CardJson::of(&row.from),
+            to: CardJson::of(&row.to),
+        });
+        DiffMovedJson {
+            total: moved.total,
+            rows: rows.collect(),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct MovedJson<'a> {
+    from: CardJson<'a>,
+    to: CardJson<'a>,
 }

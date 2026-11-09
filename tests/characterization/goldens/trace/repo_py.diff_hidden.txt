@@ -1,0 +1,24 @@
+// agentless-mcp receipt   repo: <REPO>   head: f5f25218   dirty: 13 files   cache: none
+diff HEAD: base f5f25218 (merge base with HEAD), 0 commits, against the working tree
+files: 13 source files (13 added, 0 removed, 0 changed, 0 renamed) in 13 folders; 1 hidden  (more=tree)
+  area01/  1 file  +1 -0 ~0
+  area02/  1 file  +1 -0 ~0
+  area03/  1 file  +1 -0 ~0
+  area04/  1 file  +1 -0 ~0
+  area05/  1 file  +1 -0 ~0
+  area06/  1 file  +1 -0 ~0
+  area07/  1 file  +1 -0 ~0
+  area08/  1 file  +1 -0 ~0
+  area09/  1 file  +1 -0 ~0
+  area10/  1 file  +1 -0 ~0
+  area11/  1 file  +1 -0 ~0
+  area12/  1 file  +1 -0 ~0
+changed: none
+added: 13 symbols in 13 files, 0 in tests; 8 hidden  (more=declares)
+  [py:area01/mod01.py::task_01] @1-2  function
+  [py:area02/mod02.py::task_02] @1-2  function
+  [py:area03/mod03.py::task_03] @1-2  function
+  [py:area04/mod04.py::task_04] @1-2  function
+  [py:area05/mod05.py::task_05] @1-2  function
+removed: none
+moved: none

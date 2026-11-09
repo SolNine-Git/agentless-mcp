@@ -2220,6 +2220,117 @@
       },
       "text": "42 (14 functions, 2 classes, 1 type alias, 25 constants)"
     },
+    "trace_diff_added": {
+      "arguments": {},
+      "text": "added"
+    },
+    "trace_diff_base_span": {
+      "arguments": {
+        "span": "78-81"
+      },
+      "text": "(base @78-81)"
+    },
+    "trace_diff_changed": {
+      "arguments": {},
+      "text": "changed"
+    },
+    "trace_diff_file": {
+      "arguments": {
+        "added": 1,
+        "changed": 1,
+        "path": "pricing.py",
+        "removed": 0,
+        "status": "changed"
+      },
+      "text": "pricing.py  changed  +1 -0 ~1"
+    },
+    "trace_diff_files": {
+      "arguments": {
+        "added": 4,
+        "changed": 2,
+        "count": 7,
+        "removed": 0,
+        "renamed": 1,
+        "total": 4
+      },
+      "text": "files: 7 source files (4 added, 0 removed, 2 changed, 1 renamed) in 4 folders"
+    },
+    "trace_diff_folder": {
+      "arguments": {
+        "added": 3,
+        "changed": 2,
+        "count": 4,
+        "path": "crates/app",
+        "removed": 1
+      },
+      "text": "crates/app/  4 files  +3 -1 ~2"
+    },
+    "trace_diff_header": {
+      "arguments": {
+        "count": 1,
+        "revision": "main",
+        "sha": "2e8f8074"
+      },
+      "text": "diff main: base 2e8f8074 (merge base with HEAD), 1 commit, against the working tree"
+    },
+    "trace_diff_moved": {
+      "arguments": {},
+      "text": "moved"
+    },
+    "trace_diff_moves": {
+      "arguments": {
+        "count": 2,
+        "name": "moved"
+      },
+      "text": "moved: 2"
+    },
+    "trace_diff_no_base": {
+      "arguments": {
+        "note": "git merge-base exited 1",
+        "revision": "orphan"
+      },
+      "text": "diff:orphan has no merge base with HEAD: git merge-base exited 1"
+    },
+    "trace_diff_no_files": {
+      "arguments": {},
+      "text": "files: none"
+    },
+    "trace_diff_no_rev": {
+      "arguments": {},
+      "text": "a diff target names a revision after diff:, such as diff:main."
+    },
+    "trace_diff_removed": {
+      "arguments": {},
+      "text": "removed"
+    },
+    "trace_diff_renamed": {
+      "arguments": {
+        "path": "inventory.py"
+      },
+      "text": "renamed from inventory.py"
+    },
+    "trace_diff_rev": {
+      "arguments": {
+        "revision": "main"
+      },
+      "text": "rev does not apply to a diff target. diff:main compares main with the working tree."
+    },
+    "trace_diff_section": {
+      "arguments": {
+        "count": 1,
+        "name": "changed",
+        "tests": 0,
+        "total": 1
+      },
+      "text": "changed: 1 symbol in 1 file, 0 in tests"
+    },
+    "trace_diff_unread": {
+      "arguments": {
+        "path": "big.py",
+        "reason": "binary"
+      },
+      "text": "big.py was not read: binary"
+    },
     "trace_file_header": {
       "arguments": {
         "count": 304,
@@ -2343,6 +2454,13 @@
         "target": "zz_no_such"
       },
       "text": "no symbol, file or folder matches zz_no_such."
+    },
+    "trace_no_section_diff": {
+      "arguments": {
+        "listed": "tree, declares",
+        "name": "callers"
+      },
+      "text": "more=callers does not apply to a diff card. Diff sections: tree, declares."
     },
     "trace_no_section_file": {
       "arguments": {

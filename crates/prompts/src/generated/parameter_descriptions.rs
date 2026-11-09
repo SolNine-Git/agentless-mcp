@@ -196,8 +196,8 @@ pub const TRACE_REV: &str = "A git revision, such as main or a commit id. Omit i
         tree.";
 
 /// The parameter description keyed `trace_target`.
-pub const TRACE_TARGET: &str = "A name, a path, path:line, path:start-end or a stable id. A list \
-        traces each one.";
+pub const TRACE_TARGET: &str = "A name, a path, path:line, path:start-end, a stable id or \
+        diff:<rev>. A list traces each one.";
 
 /// The parameter description keyed `tree_depth`.
 pub const TREE_DEPTH: &str = "Directory levels below the tree root.";

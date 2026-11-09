@@ -394,12 +394,22 @@ fn rig(tree: &Tree, request: &Value) -> PathBuf {
     }
     for commit in request["commits"].as_array().into_iter().flatten() {
         written(&commit["files"], tree);
+        deleted(&commit["deleted"], tree);
         let message = commit["message"].as_str().expect("a commit message");
         git(&["add", "-A"]);
         git(&["commit", "--quiet", "-m", message]);
     }
     written(&request["working"], tree);
+    deleted(&request["deleted"], tree);
     root
+}
+
+fn deleted(paths: &Value, tree: &Tree) {
+    for path in paths.as_array().into_iter().flatten() {
+        let relative = format!("repo/{}", path.as_str().expect("a path"));
+        let removed = io::remove_file(&tree.join(&relative)).expect("a remove");
+        assert!(removed, "{relative}: no file to delete");
+    }
 }
 
 fn written(files: &Value, tree: &Tree) {

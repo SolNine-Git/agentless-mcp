@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 400] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 418] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -2033,6 +2033,108 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 400] = [
     ),
     (
         "messages",
+        "trace_diff_added",
+        &[],
+        &[Piece::Text(messages::TRACE_DIFF_ADDED)],
+    ),
+    (
+        "messages",
+        "trace_diff_base_span",
+        &["span"],
+        messages::TRACE_DIFF_BASE_SPAN.pieces(),
+    ),
+    (
+        "messages",
+        "trace_diff_changed",
+        &[],
+        &[Piece::Text(messages::TRACE_DIFF_CHANGED)],
+    ),
+    (
+        "messages",
+        "trace_diff_file",
+        &["path", "status", "added", "removed", "changed"],
+        messages::TRACE_DIFF_FILE.pieces(),
+    ),
+    (
+        "messages",
+        "trace_diff_files",
+        &["count", "total", "added", "removed", "changed", "renamed"],
+        messages::TRACE_DIFF_FILES.pieces(),
+    ),
+    (
+        "messages",
+        "trace_diff_folder",
+        &["path", "count", "added", "removed", "changed"],
+        messages::TRACE_DIFF_FOLDER.pieces(),
+    ),
+    (
+        "messages",
+        "trace_diff_header",
+        &["revision", "sha", "count"],
+        messages::TRACE_DIFF_HEADER.pieces(),
+    ),
+    (
+        "messages",
+        "trace_diff_moved",
+        &[],
+        &[Piece::Text(messages::TRACE_DIFF_MOVED)],
+    ),
+    (
+        "messages",
+        "trace_diff_moves",
+        &["name", "count"],
+        messages::TRACE_DIFF_MOVES.pieces(),
+    ),
+    (
+        "messages",
+        "trace_diff_no_base",
+        &["revision", "note"],
+        messages::TRACE_DIFF_NO_BASE.pieces(),
+    ),
+    (
+        "messages",
+        "trace_diff_no_files",
+        &[],
+        &[Piece::Text(messages::TRACE_DIFF_NO_FILES)],
+    ),
+    (
+        "messages",
+        "trace_diff_no_rev",
+        &[],
+        &[Piece::Text(messages::TRACE_DIFF_NO_REV)],
+    ),
+    (
+        "messages",
+        "trace_diff_removed",
+        &[],
+        &[Piece::Text(messages::TRACE_DIFF_REMOVED)],
+    ),
+    (
+        "messages",
+        "trace_diff_renamed",
+        &["path"],
+        messages::TRACE_DIFF_RENAMED.pieces(),
+    ),
+    (
+        "messages",
+        "trace_diff_rev",
+        &["revision"],
+        messages::TRACE_DIFF_REV.pieces(),
+    ),
+    (
+        "messages",
+        "trace_diff_section",
+        &["name", "count", "total", "tests"],
+        messages::TRACE_DIFF_SECTION.pieces(),
+    ),
+    (
+        "messages",
+        "trace_diff_unread",
+        &["path", "reason"],
+        messages::TRACE_DIFF_UNREAD.pieces(),
+    ),
+    (
+        "messages",
         "trace_file_header",
         &["path", "language", "pattern", "count"],
         messages::TRACE_FILE_HEADER.pieces(),
@@ -2144,6 +2246,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 400] = [
         "trace_no_match",
         &["target"],
         messages::TRACE_NO_MATCH.pieces(),
+    ),
+    (
+        "messages",
+        "trace_no_section_diff",
+        &["name", "listed"],
+        messages::TRACE_NO_SECTION_DIFF.pieces(),
     ),
     (
         "messages",

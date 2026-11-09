@@ -1,6 +1,7 @@
 //! The trace answer's two forms: one card per target in the text, as the trace grammar words it,
 //! and each card's typed values in the JSON, trimmed at the cards.
 
+mod diff;
 mod file;
 mod json;
 mod miss;
@@ -108,6 +109,7 @@ fn card_lines(card: &Card, target: &str, more: More<'_>) -> Vec<String> {
         Card::Candidates(traced) => miss::candidates_lines(traced, target, more),
         Card::Miss(missed) => miss::miss_lines(missed, target, more.revision),
         Card::Range(traced) => range::range_lines(traced),
+        Card::Diff(traced) => diff::diff_lines(traced, more),
     }
 }
 

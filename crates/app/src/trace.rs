@@ -3,6 +3,7 @@
 //! full. The cards are typed values; the renderer words them.
 
 mod change;
+mod diff;
 mod file;
 mod miss;
 mod range;
@@ -58,6 +59,12 @@ pub const MORE_TREE_DEPTH: usize = 4;
 pub const MORE_TREE_ENTRIES: usize = 500;
 /// The most sites, edges or candidates that a symbol card's section lists with `more`.
 pub const LISTING_LIMIT: usize = MAX_LIMIT;
+/// The rows that a diff card shows of each of its symbol sections.
+pub const DIFF_ROWS: usize = 5;
+/// The folders that a diff card shows.
+pub const DIFF_FOLDERS: usize = 12;
+/// The path levels below the target's folder that a diff card rolls its files up to.
+pub const DIFF_FOLDER_DEPTH: usize = 2;
 /// The time that a symbol card or a file card waits for git to read its last change.
 pub const LAST_CHANGE_DEADLINE: Duration = Duration::from_secs(2);
 /// The most lines that a range card shows.
@@ -142,6 +149,8 @@ pub enum Card {
     Miss(Miss),
     /// A range of a file's lines.
     Range(RangeTrace),
+    /// The symbols that changed since a merge base.
+    Diff(Box<DiffTrace>),
 }
 
 impl Card {
@@ -155,6 +164,7 @@ impl Card {
             Card::Candidates(_) => CardKind::Candidates,
             Card::Miss(_) => CardKind::Miss,
             Card::Range(_) => CardKind::Range,
+            Card::Diff(_) => CardKind::Diff,
         }
     }
 }
@@ -460,6 +470,148 @@ impl RangeTrace {
     }
 }
 
+/// A diff card: the symbols that differ between the merge base of a revision with HEAD and the
+/// working tree, and their files rolled up by folder.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiffTrace {
+    /// The revision as the target names it, such as `main`.
+    pub rev: String,
+    /// The file or folder below the root that the target names, or `None` for the repository.
+    pub scope: Option<String>,
+    /// The full object id of the merge base.
+    pub base: String,
+    /// The commits that HEAD holds past the base.
+    pub commits: usize,
+    /// Whether each section lists every row up to [`LISTING_LIMIT`]: with `more`, or for a
+    /// scoped file.
+    pub full: bool,
+    /// The changed source files.
+    pub files: DiffFiles,
+    /// The symbol sections, or `None` when `more=tree` shows the files alone.
+    pub symbols: Option<DiffSymbols>,
+}
+
+/// The changed source files of a diff card: counts by status, the folders, and each file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiffFiles {
+    /// The files that a grammar reads, code or data.
+    pub total: usize,
+    /// The files that the base lacks.
+    pub added: usize,
+    /// The files that the working tree lacks.
+    pub removed: usize,
+    /// The files at one path on both sides.
+    pub changed: usize,
+    /// The files that git pairs across two paths.
+    pub renamed: usize,
+    /// The folders, most files first, cut at [`DIFF_FOLDERS`].
+    pub folders: Vec<DiffFolder>,
+    /// The folders.
+    pub folders_total: usize,
+    /// With `more=tree`: each file in path order, cut at [`LISTING_LIMIT`]; `None` otherwise.
+    pub rows: Option<Vec<DiffFile>>,
+}
+
+/// The symbols that were added, removed or changed in some files.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DiffCounts {
+    /// The symbols that the base lacks.
+    pub added: usize,
+    /// The symbols that the working tree lacks.
+    pub removed: usize,
+    /// The symbols on both sides with other text.
+    pub changed: usize,
+}
+
+/// One folder of a diff card, to [`DIFF_FOLDER_DEPTH`] levels below the target.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiffFolder {
+    /// The path below the repository root, or empty for the root.
+    pub path: String,
+    /// The changed files below it.
+    pub files: usize,
+    /// Their symbols.
+    pub symbols: DiffCounts,
+}
+
+/// One changed file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiffFile {
+    /// The path below the repository root: in the working tree, or in the base for a removed file.
+    pub path: String,
+    /// How the file changed.
+    pub status: FileStatus,
+    /// Its symbols.
+    pub symbols: DiffCounts,
+}
+
+/// How a file changed between the base and the working tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FileStatus {
+    /// The base lacks it.
+    Added,
+    /// The working tree lacks it.
+    Removed,
+    /// It is at one path on both sides.
+    Changed,
+    /// Git pairs it with a file at this path in the base.
+    Renamed(String),
+}
+
+/// The symbol sections of a diff card.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiffSymbols {
+    /// The symbols on both sides with other text.
+    pub changed: DiffSection,
+    /// The symbols that the base lacks.
+    pub added: DiffSection,
+    /// The symbols that the working tree lacks, with their ids and spans at the base.
+    pub removed: DiffSection,
+    /// The symbols whose body moved to another file or name.
+    pub moved: DiffMoved,
+}
+
+/// One symbol section of a diff card.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiffSection {
+    /// The symbols.
+    pub total: usize,
+    /// The files that hold them.
+    pub files: usize,
+    /// The symbols in test paths.
+    pub tests: usize,
+    /// The rows, cut at [`DIFF_ROWS`], or at [`LISTING_LIMIT`] in a full card: rows outside test
+    /// paths first, then the longest span first; in line order for a scoped file.
+    pub rows: Vec<DiffRow>,
+}
+
+/// One symbol row of a diff card.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiffRow {
+    /// The symbol: in the working tree, or in the base for a removed one.
+    pub card: SymbolCard,
+    /// The span at the base of a changed symbol.
+    pub base: Option<(u32, u32)>,
+}
+
+/// The symbols whose body moved: the same body, name left out, under another file or name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiffMoved {
+    /// The moves.
+    pub total: usize,
+    /// The moves, in the order and under the cap of a section's rows.
+    pub rows: Vec<MovedRow>,
+}
+
+/// One move: the symbol at the base and the symbol in the working tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MovedRow {
+    /// The symbol at the base.
+    pub from: SymbolCard,
+    /// The symbol in the working tree.
+    pub to: SymbolCard,
+}
+
 /// A name with several definitions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CandidatesTrace {
@@ -601,6 +753,15 @@ fn traced(
     if let Err(error) = target_count(&request.targets) {
         return Noted::new(Err(error));
     }
+    if let Some(refused) = rev.and_then(|_| diff::refused_with_rev(&request.targets)) {
+        return Noted::new(Err(refused));
+    }
+    if let Some(cards) = diff::alone(services, reading, request) {
+        return cards.map_ok(|cards| Trace {
+            cards,
+            revision: None,
+        });
+    }
     let root = reading.repo.root.as_path();
     let named = match rev.map(|rev| rev::named(services, root, rev)).transpose() {
         Ok(named) => named,
@@ -708,19 +869,31 @@ struct Call<'c, 'r, 'g, 's> {
     graph: &'c CallGraph<'g, 's>,
 }
 
-// Each target's outcome in request order: a repeat shares the card of its first copy.
 fn carded(
     call: &Call<'_, '_, '_, '_>,
     request: &TraceRequest,
     resolved: Vec<Resolved>,
 ) -> Noted<Result<Vec<Traced>, Error>> {
-    let mut noted = Noted::new(Vec::new());
     let mut misses = Misses::of(&request.targets, &resolved);
-    for (at, (target, resolved)) in request.targets.iter().zip(resolved).enumerate() {
-        let first = request.targets[..at].iter().position(|seen| seen == target);
+    let mut resolved: Vec<Option<Resolved>> = resolved.into_iter().map(Some).collect();
+    answered(&request.targets, |at| {
+        let resolved = resolved[at].take().expect("each target resolves once");
+        outcome(call, resolved, request.more, &mut misses)
+    })
+}
+
+// Each target's outcome in request order: a repeat shares the card of its first copy, and only a
+// first copy calls `outcome`, with its position.
+fn answered(
+    targets: &[String],
+    mut outcome: impl FnMut(usize) -> Noted<Result<Outcome, Error>>,
+) -> Noted<Result<Vec<Traced>, Error>> {
+    let mut noted = Noted::new(Vec::new());
+    for (at, target) in targets.iter().enumerate() {
+        let first = targets[..at].iter().position(|seen| seen == target);
         let outcome = match first {
             Some(first) => Noted::new(Ok(Outcome::Same(first))),
-            None => outcome(call, resolved, request.more, &mut misses),
+            None => outcome(at),
         };
         noted.diagnostics.extend(outcome.diagnostics);
         match outcome.value {
@@ -734,8 +907,8 @@ fn carded(
     noted.map(Ok)
 }
 
-// A candidates card, a range card and a miss show themselves whatever `more` names; a symbol,
-// file or folder card that does not hold the section says so.
+// A candidates card, a range card and a miss show themselves whatever `more` names; a card of
+// another kind that does not hold the section says so.
 fn outcome(
     call: &Call<'_, '_, '_, '_>,
     resolved: Resolved,
@@ -751,7 +924,7 @@ fn outcome(
     let kind = resolved.kind();
     let absent = more.filter(|section| !kind.sections().contains(section));
     if let Some(section) = absent
-        && matches!(kind, CardKind::Symbol | CardKind::File | CardKind::Folder)
+        && kind.refuses_sections()
     {
         return Noted::new(Ok(Outcome::NoSection { section, kind }));
     }
@@ -768,6 +941,7 @@ fn outcome(
             let at = (reading.repo.root.as_path(), tree);
             Noted::new(Ok(range::range_card(at, range)))
         }
+        Resolved::Diff(target) => diff::diff_card(call.services, reading, &target, more),
     };
     card.map_ok(Outcome::Card)
 }

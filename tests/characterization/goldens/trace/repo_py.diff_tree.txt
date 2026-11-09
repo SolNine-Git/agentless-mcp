@@ -1,0 +1,10 @@
+// agentless-mcp receipt   repo: <REPO>   head: 06b750b6   dirty: 4 files   cache: none
+diff base: base f5f25218 (merge base with HEAD), 1 commit, against the working tree
+files: 7 source files (4 added, 0 removed, 2 changed, 1 renamed) in 4 folders
+  config/settings.json  added  +0 -0 ~0
+  pricing.py  changed  +1 -0 ~1
+  reports.py  changed  +0 -1 ~1
+  rows.py  added  +0 -0 ~0
+  stock/inventory.py  renamed from inventory.py  +0 -0 ~0
+  taxes.py  added  +2 -0 ~0
+  tests/test_pricing.py  added  +1 -0 ~0
