@@ -196,19 +196,32 @@ fn only_a_command_of_the_agentless_binary_with_a_known_hook_is_an_agentless_entr
     assert!(read.rows.iter().all(|row| row.state == EntryState::Missing));
 }
 
+// The binary path is quoted as store::shell_quote quotes every shell word that the tools print.
 #[test]
 fn a_path_with_a_space_is_quoted_and_reads_back_as_the_same_path() {
-    let spaced = "/home/a user/bin/agentless-mcp";
-    let line = command(spaced, Hook::PromptMap);
-    assert_eq!(line, "'/home/a user/bin/agentless-mcp' hook prompt-map");
-    let settings = format!(
-        "{{\"UserPromptSubmit\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": {}, \"timeout\": 15}}]}}]}}",
-        serde_json::to_string(&line).unwrap_or_else(|error| panic!("{error}"))
-    );
-    let value = json::parse(&settings).unwrap_or_else(|error| panic!("{error}"));
-    let read = handlers(&value).unwrap_or_else(|shape| panic!("{shape:?}"));
-    let read = compare(&read, spaced, ServerName::Exact("agentless"));
-    assert_eq!(state_of(&read, Hook::PromptMap), &EntryState::Current);
+    for (path, quoted) in [
+        (
+            "/home/a user/bin/agentless-mcp",
+            "'/home/a user/bin/agentless-mcp'",
+        ),
+        ("/opt/a=b/agentless-mcp", "/opt/a=b/agentless-mcp"),
+        ("/opt/it's/agentless-mcp", "'/opt/it'\"'\"'s/agentless-mcp'"),
+    ] {
+        let line = command(path, Hook::PromptMap);
+        assert_eq!(line, format!("{quoted} hook prompt-map"));
+        let settings = format!(
+            "{{\"UserPromptSubmit\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": {}, \"timeout\": 15}}]}}]}}",
+            serde_json::to_string(&line).unwrap_or_else(|error| panic!("{error}"))
+        );
+        let value = json::parse(&settings).unwrap_or_else(|error| panic!("{error}"));
+        let read = handlers(&value).unwrap_or_else(|shape| panic!("{shape:?}"));
+        let read = compare(&read, path, ServerName::Exact("agentless"));
+        assert_eq!(
+            state_of(&read, Hook::PromptMap),
+            &EntryState::Current,
+            "{path}"
+        );
+    }
 }
 
 #[test]

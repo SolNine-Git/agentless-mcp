@@ -207,17 +207,7 @@ fn timeout(deadline: Duration) -> u32 {
 /// Returns the command of `hook` for the binary at `binary`, quoted for the shell that runs it.
 #[must_use]
 pub fn command(binary: &str, hook: Hook) -> String {
-    format!("{} {HOOK_WORD} {}", shell_quoted(binary), hook.name())
-}
-
-fn shell_quoted(word: &str) -> String {
-    let plain = !word.is_empty()
-        && (word.bytes()).all(|byte| byte.is_ascii_alphanumeric() || b"_-./+@%,:".contains(&byte));
-    if plain {
-        word.to_owned()
-    } else {
-        format!("'{}'", word.replace('\'', "'\\''"))
-    }
+    format!("{} {HOOK_WORD} {}", store::shell_quote(binary), hook.name())
 }
 
 /// How the agentless handlers of a settings file stand against the entry table.

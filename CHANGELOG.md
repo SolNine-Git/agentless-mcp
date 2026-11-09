@@ -790,6 +790,10 @@ Each byte count is of the served bytes.
   read-before-edit view of one file. Every other compound stays
   `not_a_read`. Agents often prefix a read with a `cd`, and such a read got
   no card.
+- **hook install quotes its binary path with `store::shell_quote`, as the
+  other printed shell words are quoted.** A path with `=` is now written
+  unquoted, and a single quote as `'"'"'`, not `'\''`. hook status reads
+  either form as the same path, so an entry written before stays current.
 - **history and churn now pass each path to git as a literal pathspec, so a
   path with a glob character matches only itself.**
 - **Three Python import rules remove false import edges, and some true
