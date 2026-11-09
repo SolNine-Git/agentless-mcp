@@ -2334,6 +2334,16 @@ pub const REFS_SHARED_CANDIDATE: Template<(Text, Count, Count, Text)> = Template
     Piece::Text(")"),
 ]);
 
+/// A template that takes `target`.
+pub const REFS_SHARED_UNBOUND: Template<Text> = Template::new(&[
+    Piece::Text("no caller of "),
+    Piece::Value(0),
+    Piece::Text(
+        " at a binding tier shares a symbol: each row ranks through \
+        name-only callers.",
+    ),
+]);
+
 /// A template that takes (`count`, `total`).
 pub const REFS_SPLIT: Template<(Count, Count)> = Template::new(&[
     Piece::Value(0),

@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 385] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 386] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1561,6 +1561,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 385] = [
         "refs_shared_candidate",
         &["target", "count", "total", "score"],
         messages::REFS_SHARED_CANDIDATE.pieces(),
+    ),
+    (
+        "messages",
+        "refs_shared_unbound",
+        &["target"],
+        messages::REFS_SHARED_UNBOUND.pieces(),
     ),
     (
         "messages",

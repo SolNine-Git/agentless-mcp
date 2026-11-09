@@ -90,6 +90,7 @@
   "refs_unlisted_files": "... {count} more {count:reference|references} not listed (limit {limit}), including every reference in {total} more {total:file|files}",
   "refs_shared_candidate": "{target}  ({count} shared {count:caller|callers} in {total} {total:file|files}, score {score})",
   "refs_callers_unlisted": "... {count} more {count:caller|callers} not listed (limit {limit})",
+  "refs_shared_unbound": "no caller of {target} at a binding tier shares a symbol: each row ranks through name-only callers.",
   "refs_candidates_unlisted": "... {count} more {count:candidate|candidates} not listed (limit {limit})",
   "explain_definitions_unlisted": "... {count} more {count:definition|definitions} not listed (limit {limit})",
   "explain_edges_unlisted": "... {count} more {count:edge|edges} at this tier not listed",

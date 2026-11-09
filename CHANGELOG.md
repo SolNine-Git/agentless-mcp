@@ -218,6 +218,19 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **`refs --shared-callers` counts no parameter or local as a caller, and says
+  when no bound caller shares a row.** A site that scope analysis binds to a
+  parameter or a local of the target's name spells another binding, so it no
+  longer makes its function a caller. On this repository,
+  `refs --shared-callers rs:crates/mcp/src/hooks.rs::parsed` ranked three
+  `Parsed` types first through 75 functions with a `parsed` parameter; it now
+  ranks the other `parsed` functions, `crates/hook/src/install.rs::parsed`
+  second (a tie of three at score 1.440). When no caller at a binding tier
+  references a ranked symbol, the text adds "no caller of T at a binding tier
+  shares a symbol: each row ranks through name-only callers." The changed
+  recorded value is that line in the `refs_shared_tests_repo` scenario of
+  `crates/cli/fixtures/read_symbols/scenarios.json`.
+
 - **A Rust import of names that its target only re-exports is a cycle edge to
   the files that define them.** A child module's `use crate::X` against a
   crate root's `pub use child::X` made an import edge to `lib.rs`, so nearly

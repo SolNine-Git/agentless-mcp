@@ -3918,6 +3918,7 @@ pub app::RefsResult::definitions: usize
 pub app::RefsResult::groups: app::RefListing
 pub app::RefsResult::scanned: core::option::Option<usize>
 pub app::RefsResult::shared: kernel::bounded::Bounded<app::SharedCaller>
+pub app::RefsResult::shared_bound: usize
 pub app::RefsResult::shared_callers: bool
 pub app::RefsResult::skipped: alloc::vec::Vec<app::Skipped>
 pub app::RefsResult::target: alloc::string::String

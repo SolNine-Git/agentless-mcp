@@ -9,8 +9,8 @@ use json::{fixed, round_half_even};
 use prompts::messages::{
     DATA_KEY_NO_FAN_IN, REFS_ABSENT, REFS_ABSENT_COMPLETE, REFS_ABSENT_PARTIAL,
     REFS_CALLERS_UNLISTED, REFS_CANDIDATES_UNLISTED, REFS_GROUP_HEADER, REFS_HEADER,
-    REFS_HEADER_SHARED, REFS_SHARED_CANDIDATE, REFS_SPLIT, REFS_SPLIT_NONE, REFS_UNLISTED,
-    REFS_UNLISTED_FILES,
+    REFS_HEADER_SHARED, REFS_SHARED_CANDIDATE, REFS_SHARED_UNBOUND, REFS_SPLIT, REFS_SPLIT_NONE,
+    REFS_UNLISTED, REFS_UNLISTED_FILES,
 };
 use serde::Serialize;
 use text::one_line;
@@ -156,6 +156,9 @@ fn shared_text(result: &RefsResult) -> String {
     let (from_tests, production): (Vec<&SharedCaller>, Vec<&SharedCaller>) =
         listing.rows().iter().partition(|row| row.in_tests);
     let mut lines = vec![format!("symbols sharing callers with {target}")];
+    if result.shared_bound == 0 {
+        lines.push(REFS_SHARED_UNBOUND.render(&target));
+    }
     lines.extend(production.into_iter().flat_map(candidate_rows));
     if !from_tests.is_empty() {
         lines.push("  defined in tests (ranked below all production candidates):".to_owned());

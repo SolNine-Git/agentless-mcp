@@ -34,6 +34,20 @@ pub(super) fn site_tiers<'a>(
     tiers
 }
 
+// The path and first line of each symbol that holds a site of `sites` at a binding tier.
+pub(super) fn bound_callers<'a>(
+    sites: &[Site<'a>],
+    tiers: &LineTiers<'a>,
+) -> BTreeSet<(&'a str, u32)> {
+    (sites.iter())
+        .filter(|site| tier_of(tiers, site).binds())
+        .filter_map(|site| {
+            let symbol = enclosing_symbol(&site.file.facts.symbols, site.reference.line)?;
+            Some((site.path(), symbol.line))
+        })
+        .collect()
+}
+
 // How many of `sites` sit at a binding tier.
 pub(super) fn bound_count(sites: &[Site<'_>], tiers: &LineTiers<'_>) -> usize {
     sites

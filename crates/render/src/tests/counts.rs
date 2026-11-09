@@ -275,6 +275,7 @@ fn refs(groups: Vec<RefGroup>, total: usize, files: usize) -> RefsResult {
             files,
         },
         shared: Bounded::cut(Vec::new(), 20),
+        shared_bound: 0,
         shared_callers: false,
         target_resolved: true,
         definition: Some("py:lib.py::target".to_owned()),
@@ -339,6 +340,7 @@ fn a_count_of_one_takes_the_singular_in_the_fan_in() {
     let shared = RefsResult {
         shared_callers: true,
         shared: Bounded::cut(vec![candidate("other", 6), candidate("more", 2)], 1),
+        shared_bound: 2,
         ..refs(Vec::new(), 0, 0)
     };
     assert_eq!(

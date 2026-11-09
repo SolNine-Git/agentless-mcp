@@ -44,6 +44,8 @@ pub struct RefsResult {
     pub groups: RefListing,
     /// The ranked symbols that the target's callers also reference.
     pub shared: Bounded<SharedCaller>,
+    /// The ranked symbols that a caller at a binding tier also references.
+    pub shared_bound: usize,
     /// Whether the request asked for the shared callers.
     pub shared_callers: bool,
     /// Whether the target named what it found.
@@ -297,8 +299,15 @@ fn fan_in(fan: &FanIn<'_, '_>, request: &RefsRequest, limit: usize) -> Result<Re
     } else {
         Vec::new()
     };
+    let bound_callers = sites::bound_callers(&sites, &tiers);
+    let through_bound = |row: &&SharedCaller| {
+        let held =
+            |caller: &CallerRef| bound_callers.contains(&(caller.path.as_str(), caller.line));
+        row.callers.iter().any(held)
+    };
     Ok(RefsResult {
         groups,
+        shared_bound: ranked.iter().filter(through_bound).count(),
         shared: Bounded::cut(ranked, limit),
         definition: single_definition(&bound),
         definitions: bound.definitions.len(),
@@ -336,6 +345,7 @@ fn nothing_listed(request: &RefsRequest, limit: usize, binding: TargetBinding) -
             files: 0,
         },
         shared: Bounded::cut(Vec::new(), limit),
+        shared_bound: 0,
         shared_callers: request.shared_callers,
         target_resolved: binding.status != BindingStatus::NotFound,
         definition: None,

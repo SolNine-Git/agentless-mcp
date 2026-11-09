@@ -1717,6 +1717,12 @@
       },
       "text": "[py:pkg/lib.py::other1] @5  (6 shared callers in 1 file, score 0.281)"
     },
+    "refs_shared_unbound": {
+      "arguments": {
+        "target": "rs:crates/mcp/src/hooks.rs::parsed"
+      },
+      "text": "no caller of rs:crates/mcp/src/hooks.rs::parsed at a binding tier shares a symbol: each row ranks through name-only callers."
+    },
     "refs_split": {
       "arguments": {
         "count": 3,
