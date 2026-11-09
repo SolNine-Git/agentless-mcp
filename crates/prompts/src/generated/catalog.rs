@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 376] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 379] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1078,6 +1078,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 376] = [
     ),
     (
         "messages",
+        "hook_install_help",
+        &[],
+        &[Piece::Text(messages::HOOK_INSTALL_HELP)],
+    ),
+    (
+        "messages",
         "hook_install_not_finite",
         &["path", "command"],
         messages::HOOK_INSTALL_NOT_FINITE.pieces(),
@@ -1108,6 +1114,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 376] = [
     ),
     (
         "messages",
+        "hook_status_help",
+        &[],
+        &[Piece::Text(messages::HOOK_STATUS_HELP)],
+    ),
+    (
+        "messages",
         "hook_status_missing",
         &["name"],
         messages::HOOK_STATUS_MISSING.pieces(),
@@ -1129,6 +1141,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 376] = [
         "hook_status_stale",
         &["name"],
         messages::HOOK_STATUS_STALE.pieces(),
+    ),
+    (
+        "messages",
+        "hook_uninstall_help",
+        &[],
+        &[Piece::Text(messages::HOOK_UNINSTALL_HELP)],
     ),
     (
         "messages",

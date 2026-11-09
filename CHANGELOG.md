@@ -805,6 +805,10 @@ Each byte count is of the served bytes.
   and the records stayed until the OS temp cleaner ran. The ledger entries
   keep their bound, the cap of 2,000 per context. A removal that fails puts
   its error in the log line, and the brief is still recorded.
+- **`hook install`, `hook status` and `hook uninstall` take `-h` and
+  `--help`**, which print the command's usage on stdout and exit 0 (the new
+  rows `hook_install_help`, `hook_status_help` and `hook_uninstall_help`).
+  Before, each refused the flag as an unknown parameter with exit 2.
 - **history and churn now pass each path to git as a literal pathspec, so a
   path with a glob character matches only itself.**
 - **Three Python import rules remove false import edges, and some true

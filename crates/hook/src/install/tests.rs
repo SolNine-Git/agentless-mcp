@@ -646,6 +646,35 @@ fn an_option_that_a_command_does_not_take_is_a_usage_error() {
     assert!(!rig.settings().exists());
 }
 
+#[test]
+fn help_prints_the_usage_of_each_command_and_exits_0() {
+    let rig = Rig::new();
+    let install = "usage: agentless-mcp hook install [--scope user|project|local] [--repo PATH] \
+                   [--server-name NAME] [--dry-run]\n\nWrites the agentless hook entries of this \
+                   binary into one Claude Code settings file, and removes the retired ones. Every \
+                   other handler and key stays. --scope names the file: user (the default), \
+                   project or local. --repo names the repository of a project or local file (the \
+                   default is the start-up directory). --server-name names the MCP server whose \
+                   trace calls ledger-mark follows (the default is agentless). --dry-run prints \
+                   the new file and writes nothing.\n";
+    let status = "usage: agentless-mcp hook status [--repo PATH] [--server-name NAME]\n\nCompares \
+                  the agentless hook entries of the user, project and local settings files with \
+                  the entry table of this binary, one line per entry. The exit code is 0 when \
+                  every entry is current, else 1.\n";
+    let uninstall = "usage: agentless-mcp hook uninstall [--scope user|project|local] [--repo \
+                     PATH]\n\nRemoves every agentless hook entry from one Claude Code settings \
+                     file. Every other handler and key stays.\n";
+    for (output, help) in [
+        (rig.install(&["--help"]), install),
+        (rig.install(&["--scope", "project", "-h"]), install),
+        (rig.status(&["--help"]), status),
+        (rig.uninstall(&["-h"]), uninstall),
+    ] {
+        assert_eq!(rig.shown(&output), (0, help.to_owned(), String::new()));
+    }
+    assert!(!rig.settings().exists());
+}
+
 // Claude Code reads the ledger-mark matcher as a regular expression: `a|b` would match `b__trace`.
 #[test]
 fn a_server_name_with_a_character_outside_the_name_set_is_a_usage_error() {

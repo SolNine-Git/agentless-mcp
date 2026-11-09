@@ -1183,6 +1183,10 @@
       },
       "text": "added 7, replaced 0, removed 0 retired, kept 0 other handlers; --dry-run wrote nothing to /home/u/.claude/settings.json"
     },
+    "hook_install_help": {
+      "arguments": {},
+      "text": "usage: agentless-mcp hook install [--scope user|project|local] [--repo PATH] [--server-name NAME] [--dry-run]\n\nWrites the agentless hook entries of this binary into one Claude Code settings file, and removes the retired ones. Every other handler and key stays. --scope names the file: user (the default), project or local. --repo names the repository of a project or local file (the default is the start-up directory). --server-name names the MCP server whose trace calls ledger-mark follows (the default is agentless). --dry-run prints the new file and writes nothing."
+    },
     "hook_install_not_finite": {
       "arguments": {
         "command": "uninstall",
@@ -1216,6 +1220,10 @@
       },
       "text": "read-card: current"
     },
+    "hook_status_help": {
+      "arguments": {},
+      "text": "usage: agentless-mcp hook status [--repo PATH] [--server-name NAME]\n\nCompares the agentless hook entries of the user, project and local settings files with the entry table of this binary, one line per entry. The exit code is 0 when every entry is current, else 1."
+    },
     "hook_status_missing": {
       "arguments": {
         "name": "ledger-reset"
@@ -1240,6 +1248,10 @@
         "name": "erosion"
       },
       "text": "erosion: stale: the entry differs from the table of this binary"
+    },
+    "hook_uninstall_help": {
+      "arguments": {},
+      "text": "usage: agentless-mcp hook uninstall [--scope user|project|local] [--repo PATH]\n\nRemoves every agentless hook entry from one Claude Code settings file. Every other handler and key stays."
     },
     "hook_uninstall_none": {
       "arguments": {

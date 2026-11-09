@@ -1620,6 +1620,18 @@ pub const HOOK_INSTALL_DRY_RUN: Template<(Text, Text)> = Template::new(&[
     Piece::Value(0),
 ]);
 
+/// A text that takes no values.
+pub const HOOK_INSTALL_HELP: &str = "usage: agentless-mcp hook install [--scope \
+        user|project|local] [--repo PATH] [--server-name NAME] \
+        [--dry-run]\n\nWrites the agentless hook entries of this binary \
+        into one Claude Code settings file, and removes the retired \
+        ones. Every other handler and key stays. --scope names the \
+        file: user (the default), project or local. --repo names the \
+        repository of a project or local file (the default is the \
+        start-up directory). --server-name names the MCP server whose \
+        trace calls ledger-mark follows (the default is agentless). \
+        --dry-run prints the new file and writes nothing.";
+
 /// A template that takes (`path`, `command`).
 pub const HOOK_INSTALL_NOT_FINITE: Template<(Text, Text)> = Template::new(&[
     Piece::Value(0),
@@ -1656,6 +1668,13 @@ pub const HOOK_INSTALL_WROTE: Template<(Text, Text)> =
 pub const HOOK_STATUS_CURRENT: Template<Text> =
     Template::new(&[Piece::Value(0), Piece::Text(": current")]);
 
+/// A text that takes no values.
+pub const HOOK_STATUS_HELP: &str = "usage: agentless-mcp hook status [--repo PATH] [--server-name \
+        NAME]\n\nCompares the agentless hook entries of the user, \
+        project and local settings files with the entry table of this \
+        binary, one line per entry. The exit code is 0 when every entry \
+        is current, else 1.";
+
 /// A template that takes `name`.
 pub const HOOK_STATUS_MISSING: Template<Text> =
     Template::new(&[Piece::Value(0), Piece::Text(": missing")]);
@@ -1679,6 +1698,12 @@ pub const HOOK_STATUS_STALE: Template<Text> = Template::new(&[
     Piece::Value(0),
     Piece::Text(": stale: the entry differs from the table of this binary"),
 ]);
+
+/// A text that takes no values.
+pub const HOOK_UNINSTALL_HELP: &str = "usage: agentless-mcp hook uninstall [--scope \
+        user|project|local] [--repo PATH]\n\nRemoves every agentless \
+        hook entry from one Claude Code settings file. Every other \
+        handler and key stays.";
 
 /// A template that takes `path`.
 pub const HOOK_UNINSTALL_NONE: Template<Text> = Template::new(&[

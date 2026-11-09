@@ -20,32 +20,35 @@ use app::hooks::{
 use json::JsonValue;
 use prompts::messages::{
     ACCEPTS_TEXT, ARGUMENT_MISSING, HOOK_INSTALL_BAD_JSON, HOOK_INSTALL_COUNTS,
-    HOOK_INSTALL_DRY_RUN, HOOK_INSTALL_NOT_FINITE, HOOK_INSTALL_RACED, HOOK_INSTALL_UNCHANGED,
-    HOOK_INSTALL_WROTE, HOOK_STATUS_CURRENT, HOOK_STATUS_MISSING, HOOK_STATUS_OTHER_PATH,
-    HOOK_STATUS_RETIRED, HOOK_STATUS_STALE, HOOK_UNINSTALL_NONE, HOOK_UNINSTALL_REPORT,
-    HOOKS_UNREADABLE,
+    HOOK_INSTALL_DRY_RUN, HOOK_INSTALL_HELP, HOOK_INSTALL_NOT_FINITE, HOOK_INSTALL_RACED,
+    HOOK_INSTALL_UNCHANGED, HOOK_INSTALL_WROTE, HOOK_STATUS_CURRENT, HOOK_STATUS_HELP,
+    HOOK_STATUS_MISSING, HOOK_STATUS_OTHER_PATH, HOOK_STATUS_RETIRED, HOOK_STATUS_STALE,
+    HOOK_UNINSTALL_HELP, HOOK_UNINSTALL_NONE, HOOK_UNINSTALL_REPORT, HOOKS_UNREADABLE,
 };
 
 use crate::Output;
 use crate::text::shown;
-use args::{Options, Scope, Takes};
+use args::{Options, Scope, Stop, Takes};
 use disk::{Stopped, Written};
 use edit::Removed;
 
 const INSTALL: Takes = Takes {
     command: "install",
+    help: HOOK_INSTALL_HELP,
     scope: true,
     server_name: true,
     dry_run: true,
 };
 const STATUS: Takes = Takes {
     command: "status",
+    help: HOOK_STATUS_HELP,
     scope: false,
     server_name: true,
     dry_run: false,
 };
 const UNINSTALL: Takes = Takes {
     command: "uninstall",
+    help: HOOK_UNINSTALL_HELP,
     scope: true,
     server_name: false,
     dry_run: false,
@@ -101,7 +104,7 @@ pub(crate) enum NoEdit {
 pub(crate) fn installed(args: &[OsString], env: &EnvConfig, binary: &str) -> Output {
     let options = match args::parsed(args, INSTALL) {
         Ok(options) => options,
-        Err(message) => return usage(&message),
+        Err(stop) => return stopped_parse(stop, INSTALL),
     };
     let target = match target(env, &options) {
         Ok(target) => target,
@@ -146,7 +149,7 @@ fn dry_run(target: &Path, edit: &disk::Edit<'_, String, NoEdit>) -> Output {
 pub(crate) fn uninstalled(args: &[OsString], env: &EnvConfig) -> Output {
     let options = match args::parsed(args, UNINSTALL) {
         Ok(options) => options,
-        Err(message) => return usage(&message),
+        Err(stop) => return stopped_parse(stop, UNINSTALL),
     };
     let target = match target(env, &options) {
         Ok(target) => target,
@@ -188,7 +191,7 @@ fn laid_out(document: &JsonValue) -> Result<String, NoEdit> {
 pub(crate) fn statused(args: &[OsString], env: &EnvConfig, binary: &str) -> Output {
     let options = match args::parsed(args, STATUS) {
         Ok(options) => options,
-        Err(message) => return usage(&message),
+        Err(stop) => return stopped_parse(stop, STATUS),
     };
     let files = match status_files(env, &options) {
         Ok(files) => files,
@@ -299,6 +302,13 @@ fn repo_dir(env: &EnvConfig, repo: Option<&str>) -> Result<PathBuf, Output> {
             &dir,
         ))),
         Err(error) => Err(failed(&io::os_error_text(&error, &dir))),
+    }
+}
+
+fn stopped_parse(stop: Stop, takes: Takes) -> Output {
+    match stop {
+        Stop::Refused(message) => usage(&message),
+        Stop::Help => done(takes.help),
     }
 }
 

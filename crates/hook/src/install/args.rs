@@ -12,6 +12,7 @@ const SCOPE: &str = "--scope";
 const REPO: &str = "--repo";
 const SERVER_NAME: &str = "--server-name";
 const DRY_RUN: &str = "--dry-run";
+const HELP: [&str; 2] = ["-h", "--help"];
 
 // The settings file that a command writes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,13 +28,21 @@ const SCOPES: [(&str, Scope); 3] = [
     ("local", Scope::Local),
 ];
 
-// The options that each command takes.
+// The options that each command takes, and its help text.
 #[derive(Clone, Copy)]
 pub(crate) struct Takes {
     pub(crate) command: &'static str,
+    pub(crate) help: &'static str,
     pub(crate) scope: bool,
     pub(crate) server_name: bool,
     pub(crate) dry_run: bool,
+}
+
+// Why the words give no options to run with: the refusal of a word, or a request for the help.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Stop {
+    Refused(String),
+    Help,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,8 +53,8 @@ pub(crate) struct Options {
     pub(crate) dry_run: bool,
 }
 
-// The options, or the refusal of the first word that is not one.
-pub(crate) fn parsed(args: &[OsString], takes: Takes) -> Result<Options, String> {
+// The options, or the stop at the first word that is a help flag or not an option.
+pub(crate) fn parsed(args: &[OsString], takes: Takes) -> Result<Options, Stop> {
     let mut options = Options {
         scope: Scope::User,
         repo: None,
@@ -55,6 +64,9 @@ pub(crate) fn parsed(args: &[OsString], takes: Takes) -> Result<Options, String>
     let mut words = args.iter();
     while let Some(word) = words.next() {
         let word = word.to_string_lossy();
+        if HELP.contains(&&*word) {
+            return Err(Stop::Help);
+        }
         let (name, attached) = word
             .split_once('=')
             .map_or((&*word, None), |(name, value)| {
@@ -65,14 +77,15 @@ pub(crate) fn parsed(args: &[OsString], takes: Takes) -> Result<Options, String>
             continue;
         }
         if !takes_value(name, takes) {
-            return Err(ARGUMENT_UNKNOWN.render((&format!("hook {}", takes.command), &word)));
+            let command = format!("hook {}", takes.command);
+            return Err(Stop::Refused(ARGUMENT_UNKNOWN.render((&command, &word))));
         }
         let value =
             attached.or_else(|| words.next().map(|next| next.to_string_lossy().into_owned()));
         let value = value
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| ARGUMENT_MISSING.render((ACCEPTS_TEXT, name)))?;
-        set(&mut options, name, value)?;
+            .ok_or_else(|| ARGUMENT_MISSING.render((ACCEPTS_TEXT, name)));
+        set(&mut options, name, value.map_err(Stop::Refused)?).map_err(Stop::Refused)?;
     }
     Ok(options)
 }
