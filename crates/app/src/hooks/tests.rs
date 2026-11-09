@@ -1,10 +1,10 @@
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::{
     DEFAULT_SERVER_NAME, EntryState, Event, Expected, Found, Handler, Hook, HookStatus, HooksShape,
-    Named, Retired, ServerName, command, compare, entries, handlers, named, settings_handlers,
-    user_settings,
+    Named, NotJson, Retired, ServerName, command, compare, entries, file_handlers, handlers,
+    json_document, named, settings_files, settings_handlers, user_settings,
 };
 use crate::EnvConfig;
 
@@ -246,6 +246,36 @@ fn a_hooks_value_of_another_shape_names_the_first_place_that_differs() {
 
 // The variables of one environment, by name.
 type Vars<'a> = &'a [(&'a str, &'a str)];
+
+#[test]
+fn the_settings_files_are_the_user_file_then_the_project_and_local_files() {
+    let files = |user: Option<&str>| settings_files(user.map(PathBuf::from), Path::new("/r"));
+    let repository = ["/r/.claude/settings.json", "/r/.claude/settings.local.json"];
+    assert_eq!(files(None), repository.map(PathBuf::from));
+    let all = ["/u/settings.json", repository[0], repository[1]];
+    assert_eq!(files(Some("/u/settings.json")), all.map(PathBuf::from));
+}
+
+// A settings file and a payload are read alike: strict UTF-8, then JSON.
+#[test]
+fn a_file_is_read_as_strict_utf8_json_then_as_its_hooks_value() {
+    let not_utf8 = json_document(b"{\"a\": \xff}");
+    assert!(
+        matches!(&not_utf8, Err(NotJson::NotUtf8(_))),
+        "{not_utf8:?}"
+    );
+    let not_json = json_document(b"{\r\n\"hooks\": ").map_err(|error| error.to_string());
+    let error = "Expecting value: line 2 column 10 (char 12)";
+    assert_eq!(not_json, Err(error.to_owned()));
+    assert_eq!(
+        file_handlers(b"{\"hooks\": "),
+        Err("Expecting value: line 1 column 11 (char 10)".to_owned())
+    );
+    assert_eq!(file_handlers(b"[]"), Err("$ is not an object".to_owned()));
+    let one = br#"{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "x"}]}]}}"#;
+    let read = file_handlers(one).map(|found| found.len());
+    assert_eq!(read, Ok(1));
+}
 
 #[test]
 fn the_user_settings_file_is_under_claude_config_dir_when_it_is_set_and_not_empty() {

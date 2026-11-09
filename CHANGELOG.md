@@ -762,6 +762,13 @@ Each byte count is of the served bytes.
   `accepts_server_name`). Claude Code reads the ledger-mark matcher
   `mcp__<name>__trace` as a regular expression, so `a|b` matched every tool
   whose name holds `b__trace`.
+- **The server's hook note and hook status read a settings file through one
+  function, `app::hooks::file_handlers`, with one decode.** The server read
+  each carriage return as a line break and hook status did not, so a parse
+  error in a file with CRLF line ends named another character position in
+  the note than in hook status. The file list (the user file, then
+  `.claude/settings.json` and `.claude/settings.local.json` below the root)
+  also has one home, `app::hooks::settings_files`.
 - **history and churn now pass each path to git as a literal pathspec, so a
   path with a glob character matches only itself.**
 - **Three Python import rules remove false import edges, and some true

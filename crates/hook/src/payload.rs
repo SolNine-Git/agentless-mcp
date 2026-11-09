@@ -3,12 +3,13 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use app::hooks::{self, NotJson};
 use json::{JsonErrorKind, JsonValue, get};
 use text::CodePointString;
 
 use crate::halt::Halt;
 use crate::record::Identity;
-use crate::text::{codec_text, lossy};
+use crate::text::lossy;
 
 const MAX_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
 const WRITE: &str = "Write";
@@ -50,13 +51,16 @@ pub(crate) fn read(stdin: &mut dyn Read) -> Result<Vec<u8>, Halt> {
 }
 
 pub(crate) fn document(raw: &[u8]) -> Result<JsonValue, Halt> {
-    let text =
-        io::decode_strict(raw.to_vec()).map_err(|error| Halt::malformed(codec_text(raw, error)))?;
-    json::parse(&text).map_err(|error| match error.kind {
-        JsonErrorKind::ObjectTooDeep | JsonErrorKind::ArrayTooDeep => {
+    hooks::json_document(raw).map_err(|error| match error {
+        NotJson::Json(error)
+            if matches!(
+                error.kind,
+                JsonErrorKind::ObjectTooDeep | JsonErrorKind::ArrayTooDeep
+            ) =>
+        {
             Halt::internal(format!("RecursionError: {}", error.kind))
         }
-        _ => Halt::malformed(error),
+        not_json => Halt::malformed(not_json),
     })
 }
 

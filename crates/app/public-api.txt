@@ -157,6 +157,26 @@ impl core::marker::Unpin for app::hooks::Named
 impl core::marker::UnsafeUnpin for app::hooks::Named
 impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::Named
 impl core::panic::unwind_safe::UnwindSafe for app::hooks::Named
+pub enum app::hooks::NotJson
+pub app::hooks::NotJson::Json(json::parse::JsonError)
+pub app::hooks::NotJson::NotUtf8(alloc::string::String)
+impl core::clone::Clone for app::hooks::NotJson
+pub fn app::hooks::NotJson::clone(&self) -> Self
+impl core::cmp::Eq for app::hooks::NotJson
+impl core::cmp::PartialEq for app::hooks::NotJson
+pub fn app::hooks::NotJson::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::hooks::NotJson
+pub fn app::hooks::NotJson::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::hooks::NotJson
+pub fn app::hooks::NotJson::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::hooks::NotJson
+impl core::marker::Freeze for app::hooks::NotJson
+impl core::marker::Send for app::hooks::NotJson
+impl core::marker::Sync for app::hooks::NotJson
+impl core::marker::Unpin for app::hooks::NotJson
+impl core::marker::UnsafeUnpin for app::hooks::NotJson
+impl core::panic::unwind_safe::RefUnwindSafe for app::hooks::NotJson
+impl core::panic::unwind_safe::UnwindSafe for app::hooks::NotJson
 pub enum app::hooks::Retired
 pub app::hooks::Retired::GateCheck
 pub app::hooks::Retired::GateMark
@@ -332,13 +352,17 @@ pub const app::hooks::BINARY_NAME: &str
 pub const app::hooks::CONFIG_DIR_VARIABLE: &str
 pub const app::hooks::DEFAULT_SERVER_NAME: &str
 pub const app::hooks::READ_CARD_DEADLINE: core::time::Duration
-pub const app::hooks::SETTINGS_FILE: &str
 pub const app::hooks::TIMEOUT_FACTOR: u32
 pub fn app::hooks::command(&str, app::hooks::Hook) -> alloc::string::String
 pub fn app::hooks::compare(&[app::hooks::Handler], &str, app::hooks::ServerName<'_>) -> app::hooks::HookStatus
 pub fn app::hooks::entries(&str) -> alloc::vec::Vec<app::hooks::Entry>
+pub fn app::hooks::file_handlers(&[u8]) -> core::result::Result<alloc::vec::Vec<app::hooks::Handler>, alloc::string::String>
 pub fn app::hooks::handlers(&json::parse::JsonValue) -> core::result::Result<alloc::vec::Vec<app::hooks::Handler>, app::hooks::HooksShape>
+pub fn app::hooks::json_document(&[u8]) -> core::result::Result<json::parse::JsonValue, app::hooks::NotJson>
+pub fn app::hooks::local_settings(&std::path::Path) -> std::path::PathBuf
 pub fn app::hooks::named(&app::hooks::Handler) -> core::option::Option<app::hooks::Named>
+pub fn app::hooks::project_settings(&std::path::Path) -> std::path::PathBuf
+pub fn app::hooks::settings_files(core::option::Option<std::path::PathBuf>, &std::path::Path) -> alloc::vec::Vec<std::path::PathBuf>
 pub fn app::hooks::settings_handlers(&json::parse::JsonValue) -> core::result::Result<alloc::vec::Vec<app::hooks::Handler>, app::hooks::Misshaped>
 pub fn app::hooks::user_settings(&app::EnvConfig) -> core::option::Option<std::path::PathBuf>
 pub mod app::ops

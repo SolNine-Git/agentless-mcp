@@ -1,6 +1,7 @@
 //! The hook entry table that `hook install` writes and that `hook status` and the server compare a
-//! settings file with, and the comparison itself: a parse of the settings `hooks` value into
-//! handlers, then a pure check of those handlers against the table. Neither reads a file.
+//! settings file with, the settings files that hold hooks, and the comparison itself: a parse of
+//! a settings file's bytes into handlers, then a pure check of those handlers against the table.
+//! Neither reads a file.
 
 mod parse;
 
@@ -11,7 +12,10 @@ use text::{posix_name, split_shell_words};
 
 use crate::EnvConfig;
 
-pub use parse::{Expected, Handler, HooksShape, Misshaped, handlers, settings_handlers};
+pub use parse::{
+    Expected, Handler, HooksShape, Misshaped, NotJson, file_handlers, handlers, json_document,
+    settings_handlers,
+};
 
 /// The file name of the binary whose hook commands are agentless entries.
 pub const BINARY_NAME: &str = "agentless-mcp";
@@ -23,11 +27,12 @@ pub const TIMEOUT_FACTOR: u32 = 3;
 pub const READ_CARD_DEADLINE: Duration = Duration::from_secs(3);
 /// The variable that names the user's Claude Code configuration folder.
 pub const CONFIG_DIR_VARIABLE: &str = "CLAUDE_CONFIG_DIR";
-/// The file name of a user or project settings file.
-pub const SETTINGS_FILE: &str = "settings.json";
 
-// The configuration folder under the home folder, when the variable names none.
-const HOME_CONFIG_DIR: &str = ".claude";
+// The configuration folder under the home folder when the variable names none, and under a
+// repository root.
+const CONFIG_DIR: &str = ".claude";
+const SETTINGS_FILE: &str = "settings.json";
+const LOCAL_SETTINGS_FILE: &str = "settings.local.json";
 
 // The word between the binary and the hook name in every agentless command.
 const HOOK_WORD: &str = "hook";
@@ -282,8 +287,30 @@ pub struct RetiredEntry {
 pub fn user_settings(env: &EnvConfig) -> Option<PathBuf> {
     let named = |name: &str| env.var(name).filter(|value| !value.is_empty());
     let config_dir = (named(CONFIG_DIR_VARIABLE).map(PathBuf::from))
-        .or_else(|| named("HOME").map(|home| Path::new(home).join(HOME_CONFIG_DIR)));
+        .or_else(|| named("HOME").map(|home| Path::new(home).join(CONFIG_DIR)));
     config_dir.map(|dir| dir.join(SETTINGS_FILE))
+}
+
+/// Returns `<root>/.claude/settings.json`, the project settings file of the repository at `root`.
+#[must_use]
+pub fn project_settings(root: &Path) -> PathBuf {
+    root.join(CONFIG_DIR).join(SETTINGS_FILE)
+}
+
+/// Returns `<root>/.claude/settings.local.json`, the local settings file of the repository at
+/// `root`.
+#[must_use]
+pub fn local_settings(root: &Path) -> PathBuf {
+    root.join(CONFIG_DIR).join(LOCAL_SETTINGS_FILE)
+}
+
+/// Returns the settings files whose hooks Claude Code runs in the repository at `root`: `user`
+/// when given, then the project file and the local file.
+#[must_use]
+pub fn settings_files(user: Option<PathBuf>, root: &Path) -> Vec<PathBuf> {
+    (user.into_iter())
+        .chain([project_settings(root), local_settings(root)])
+        .collect()
 }
 
 /// The hook that an agentless entry runs.

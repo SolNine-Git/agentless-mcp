@@ -1,7 +1,10 @@
 //! The one parse of a settings `hooks` value: each handler with its event and its group's
-//! matcher, or the place where the value has another shape than Claude Code reads.
+//! matcher, or the place where the value has another shape than Claude Code reads. Also the read
+//! of a hook's JSON input, a settings file or a payload, from its bytes.
 
-use json::{JsonValue, get};
+use std::fmt;
+
+use json::{JsonError, JsonValue, get};
 use prompts::messages::{
     ACCEPTS_ANY_NUMBER, ACCEPTS_ARRAY, ACCEPTS_OBJECT, ACCEPTS_TEXT, HOOKS_SHAPE,
 };
@@ -82,6 +85,47 @@ impl Misshaped {
         };
         HOOKS_SHAPE.render((expected.accepted(), &path))
     }
+}
+
+/// Why the bytes of a JSON input are not a JSON document.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NotJson {
+    /// The bytes are not UTF-8: the text that names the first sequence that is not.
+    NotUtf8(String),
+    /// The text is not JSON.
+    Json(JsonError),
+}
+
+impl fmt::Display for NotJson {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NotJson::NotUtf8(text) => f.write_str(text),
+            NotJson::Json(error) => error.fmt(f),
+        }
+    }
+}
+
+/// Reads `bytes` as strict UTF-8 text, then as one JSON document.
+///
+/// # Errors
+///
+/// Returns why the bytes are not UTF-8 or why the text is not JSON.
+pub fn json_document(bytes: &[u8]) -> Result<JsonValue, NotJson> {
+    let text = io::decode_strict(bytes.to_vec())
+        .map_err(|error| NotJson::NotUtf8(io::codec_text(bytes, error)))?;
+    json::parse(&text).map_err(NotJson::Json)
+}
+
+/// Reads the handlers of a settings file from its bytes in file order; every key but `hooks` is
+/// left unread.
+///
+/// # Errors
+///
+/// Returns the text of why the bytes are not a JSON document, or of the first place whose value
+/// has another shape.
+pub fn file_handlers(bytes: &[u8]) -> Result<Vec<Handler>, String> {
+    let document = json_document(bytes).map_err(|error| error.to_string())?;
+    settings_handlers(&document).map_err(|shape| shape.text())
 }
 
 /// Reads the handlers of a settings document's `hooks` value in file order: none when the

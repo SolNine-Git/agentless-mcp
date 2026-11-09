@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use app::EnvConfig;
 use app::hooks::{
-    EntryState, Handler, HookStatus, SETTINGS_FILE, ServerName, compare, settings_handlers,
+    EntryState, Handler, HookStatus, ServerName, compare, file_handlers, settings_files,
     user_settings,
 };
 use prompts::messages::{
@@ -22,9 +22,6 @@ use prompts::messages::{
 
 use crate::refusal::listed;
 use crate::roots::stat_key;
-
-const CONFIG_DIR: &str = ".claude";
-const LOCAL_SETTINGS: &str = "settings.local.json";
 
 /// What the server compares the settings with: the user settings file and its own binary.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -101,9 +98,7 @@ impl Hooks {
     // The handlers of the user file, then the project and local files of `root`. The first file
     // that cannot be read makes the state unknown.
     fn handlers(&self, check: &HookCheck, root: &Path) -> Result<Vec<Handler>, (String, String)> {
-        let project = root.join(CONFIG_DIR);
-        let files = (check.user_settings.iter().cloned())
-            .chain([project.join(SETTINGS_FILE), project.join(LOCAL_SETTINGS)]);
+        let files = settings_files(check.user_settings.clone(), root);
         let mut read = self.read.lock().unwrap_or_else(PoisonError::into_inner);
         let mut found = Vec::new();
         for path in files {
@@ -135,12 +130,9 @@ fn current(read: &mut HashMap<PathBuf, Read>, path: &Path) -> Result<Vec<Handler
     handlers
 }
 
-// The `hooks` value of one settings file; every other key is left unread.
 fn parsed(path: &Path) -> Result<Vec<Handler>, String> {
     let bytes = fs::read(path).map_err(|error| io::os_error_str(&error))?;
-    let text = io::decode_text(bytes.clone()).map_err(|error| io::codec_text(&bytes, error))?;
-    let document = json::parse(&text).map_err(|error| error.to_string())?;
-    settings_handlers(&document).map_err(|shape| shape.text())
+    file_handlers(&bytes)
 }
 
 // An entry whose path resolves to this binary is current: a link to it runs the same file.

@@ -220,6 +220,11 @@ fn a_file_that_cannot_be_read_makes_the_state_unknown() {
             "{\"hooks\": ",
             "Expecting value: line 1 column 11 (char 10)",
         ),
+        // hook status reads the same bytes: the carriage return counts as a character.
+        (
+            "{\r\n\"hooks\": ",
+            "Expecting value: line 2 column 10 (char 12)",
+        ),
         ("[]", "$ is not an object"),
         ("{\"hooks\": []}", "$.hooks is not an object"),
         (

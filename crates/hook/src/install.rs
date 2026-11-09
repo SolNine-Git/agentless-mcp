@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use app::EnvConfig;
 use app::hooks::{
     self, BINARY_NAME, CONFIG_DIR_VARIABLE, DEFAULT_SERVER_NAME, EntryState, Handler, HookStatus,
-    Misshaped, Retired, SETTINGS_FILE, ServerName,
+    Misshaped, Retired, ServerName,
 };
 use json::JsonValue;
 use prompts::messages::{
@@ -27,7 +27,7 @@ use prompts::messages::{
 };
 
 use crate::Output;
-use crate::text::{codec_text, shown};
+use crate::text::shown;
 use args::{Options, Scope, Takes};
 use disk::{Stopped, Written};
 use edit::Removed;
@@ -50,9 +50,6 @@ const UNINSTALL: Takes = Takes {
     server_name: false,
     dry_run: false,
 };
-
-const PROJECT_DIR: &str = ".claude";
-const LOCAL_SETTINGS: &str = "settings.local.json";
 
 const EXIT_FAILED: u8 = 1;
 const EXIT_USAGE: u8 = 2;
@@ -239,21 +236,11 @@ fn status_lines(status: &HookStatus) -> Vec<String> {
 // The handlers of one file: none when no file is there, or the text of why they cannot be read.
 fn file_handlers(path: &Path) -> Result<Vec<Handler>, String> {
     let read = disk::read(path).map_err(|error| io::os_error_text(&error, path))?;
-    let Some(bytes) = read else {
-        return Ok(Vec::new());
-    };
-    let document = parsed(&bytes)?;
-    hooks::settings_handlers(&document).map_err(|shape| shape.text())
+    read.map_or_else(|| Ok(Vec::new()), |bytes| hooks::file_handlers(&bytes))
 }
 
 fn document(bytes: &[u8]) -> Result<JsonValue, NoEdit> {
-    parsed(bytes).map_err(NoEdit::BadJson)
-}
-
-// The document, or the text of the decode or parse error.
-fn parsed(bytes: &[u8]) -> Result<JsonValue, String> {
-    let text = io::decode_strict(bytes.to_vec()).map_err(|error| codec_text(bytes, error))?;
-    json::parse(&text).map_err(|error| error.to_string())
+    hooks::json_document(bytes).map_err(|error| NoEdit::BadJson(error.to_string()))
 }
 
 fn counts(removed: &Removed, server: &str) -> String {
@@ -280,22 +267,23 @@ fn target(env: &EnvConfig, options: &Options) -> Result<PathBuf, Output> {
     io::resolve(&path).map_err(|error| failed(&io::os_error_text(&error, &path)))
 }
 
-// The user file, then the project and local files of the repository.
 fn status_files(env: &EnvConfig, options: &Options) -> Result<Vec<PathBuf>, Output> {
-    let repo = options.repo.as_deref();
-    [Scope::User, Scope::Project, Scope::Local]
-        .into_iter()
-        .map(|scope| settings_path(env, scope, repo))
-        .collect()
+    let user = user_settings(env)?;
+    let root = repo_dir(env, options.repo.as_deref())?;
+    Ok(hooks::settings_files(Some(user), &root))
 }
 
 fn settings_path(env: &EnvConfig, scope: Scope, repo: Option<&str>) -> Result<PathBuf, Output> {
     match scope {
-        Scope::User => hooks::user_settings(env)
-            .ok_or_else(|| failed(&ARGUMENT_MISSING.render((ACCEPTS_TEXT, CONFIG_DIR_VARIABLE)))),
-        Scope::Project => Ok(repo_dir(env, repo)?.join(PROJECT_DIR).join(SETTINGS_FILE)),
-        Scope::Local => Ok(repo_dir(env, repo)?.join(PROJECT_DIR).join(LOCAL_SETTINGS)),
+        Scope::User => user_settings(env),
+        Scope::Project => Ok(hooks::project_settings(&repo_dir(env, repo)?)),
+        Scope::Local => Ok(hooks::local_settings(&repo_dir(env, repo)?)),
     }
+}
+
+fn user_settings(env: &EnvConfig) -> Result<PathBuf, Output> {
+    hooks::user_settings(env)
+        .ok_or_else(|| failed(&ARGUMENT_MISSING.render((ACCEPTS_TEXT, CONFIG_DIR_VARIABLE))))
 }
 
 // The repository folder: --repo below the start-up directory, else the start-up directory.
