@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use graph::Tier;
 
 use super::change::last_change;
+use super::rev;
 use super::{
     Call, Callees, Callers, EdgeGroup, LAST_CHANGE_DEADLINE, LISTING_LIMIT, SYMBOL_ROWS, Section,
     Similar, SimilarRow, SymbolTrace, Tally, Tests, TierSites, TierTotal, cap,
@@ -107,8 +108,13 @@ impl Sections<'_, '_, '_, '_, '_> {
         match self.more {
             None => {
                 let call = self.call;
-                let change =
-                    last_change(call.services, call.reading, &self.id, LAST_CHANGE_DEADLINE);
+                let at = call.tree.commit();
+                let change = last_change(
+                    call.services,
+                    call.reading,
+                    (&self.id, at),
+                    LAST_CHANGE_DEADLINE,
+                );
                 Noted::new(Ok(SymbolTrace {
                     change: Some(change),
                     ..traced
@@ -136,10 +142,19 @@ impl Sections<'_, '_, '_, '_, '_> {
             limit: IntArg::from_usize(DEFAULT_HISTORY_LIMIT),
             budget: IntArg::from_usize(DEFAULT_HISTORY_BUDGET),
         };
-        history(self.call.services, self.call.reading, &request).map(refusal_text)
+        let (services, reading) = (self.call.services, self.call.reading);
+        if let Some(at) = self.call.tree.commit() {
+            let history = rev::history_of(services, reading, &request, at);
+            return Noted::new(refusal_text(history));
+        }
+        history(services, reading, &request).map(refusal_text)
     }
 
     fn body(&self) -> Noted<Result<Result<SymbolCard, String>, Error>> {
+        let (services, reading) = (self.call.services, self.call.reading);
+        if let Some(at) = self.call.tree.commit() {
+            return Noted::new(Ok(rev::body_of(services, reading, at, &self.id)));
+        }
         let request = ExpandRequest {
             ids: vec![self.id.clone()],
             limit: IntArg::from_usize(1),
@@ -156,7 +171,7 @@ impl Sections<'_, '_, '_, '_, '_> {
 }
 
 // A stopped call stops the trace; any other refusal is the section's text.
-fn refusal_text<T>(outcome: Result<T, Error>) -> Result<Result<T, String>, Error> {
+pub(super) fn refusal_text<T>(outcome: Result<T, Error>) -> Result<Result<T, String>, Error> {
     match outcome {
         Ok(value) => Ok(Ok(value)),
         Err(error @ Error::Kind(kernel::Error::CallStopped(_))) => Err(error),

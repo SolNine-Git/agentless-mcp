@@ -51,6 +51,24 @@ fn each_file_gives_the_newest_commit_that_touched_it() {
 }
 
 #[test]
+fn a_commit_gives_the_newest_commit_in_its_own_history() {
+    let scratch = Scratch::new();
+    let root = scratch.repo("repo", &[("a.py", "a = 1\n")]);
+    let first = scratch.run_git(&root, &["rev-parse", "HEAD"]);
+    let first = String::from_utf8(first).expect("a hex sha");
+    scratch.write("repo/a.py", "a = 2\n");
+    scratch.commit_all(&root, "change a");
+    let git = scratch.git();
+    let expected = commit(&scratch, &root, "HEAD~1", "fixture");
+    assert_eq!(
+        git.last_commit_at(&root, first.trim_end(), "a.py", TIMEOUT),
+        expected
+    );
+    let missing = git.last_commit_at(&root, first.trim_end(), "b.py", TIMEOUT);
+    assert_eq!(missing, LastCommit::NoCommit);
+}
+
+#[test]
 fn a_path_reads_below_a_root_that_is_below_the_repository_top() {
     let scratch = Scratch::new();
     let root = scratch.repo("repo", &[("sub/a.py", "a = 1\n"), ("a.py", "a = 2\n")]);

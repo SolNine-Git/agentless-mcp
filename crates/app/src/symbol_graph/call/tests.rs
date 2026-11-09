@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use kernel::testing::PinnedClock;
 
-use super::{Builds, Gate, KeptGraphs};
+use super::{Builds, Gate, KeptGraphs, State};
 use crate::endpoints::scanned::{LINKED, Scanned};
 use crate::scan::KeptFacts;
 use crate::symbol_graph::retention::{RETAINED, UPDATED, Updates};
@@ -22,24 +22,62 @@ fn roots(names: &[String]) -> Vec<PathBuf> {
     names.iter().map(PathBuf::from).collect()
 }
 
+fn working(root: &Path) -> State<'_> {
+    State { root, commit: None }
+}
+
+// The root of each kept state, in key order.
+fn kept_roots(graphs: &KeptGraphs) -> Vec<PathBuf> {
+    let states = graphs.kept_states().into_iter();
+    states.map(|(root, _)| root).collect()
+}
+
 #[test]
 fn a_server_keeps_the_state_of_the_roots_it_called_last() {
     let (_, graphs) = pinned();
     let names: Vec<String> = (0..=RETAINED.roots).map(|at| format!("r{at}")).collect();
     let facts: Vec<Arc<KeptFacts>> = names.iter().map(|_| Arc::default()).collect();
     for (name, facts) in names.iter().zip(&facts) {
-        graphs.keep(Path::new(name), Arc::clone(facts));
+        graphs.keep(working(Path::new(name)), Arc::clone(facts));
     }
-    assert_eq!(graphs.kept_roots(), roots(&names[1..]));
+    assert_eq!(kept_roots(&graphs), roots(&names[1..]));
     let oldest = &names[1];
-    assert!(Arc::ptr_eq(&graphs.facts(Path::new(oldest)), &facts[1]));
+    assert!(Arc::ptr_eq(
+        &graphs.facts(working(Path::new(oldest))),
+        &facts[1]
+    ));
 
-    graphs.keep(Path::new(&names[0]), Arc::clone(&facts[0]));
+    graphs.keep(working(Path::new(&names[0])), Arc::clone(&facts[0]));
 
     let mut kept = vec![names[0].clone(), oldest.clone()];
     kept.extend(names[3..].iter().cloned());
-    assert_eq!(graphs.kept_roots(), roots(&kept));
-    assert!(Arc::ptr_eq(&graphs.facts(Path::new(oldest)), &facts[1]));
+    assert_eq!(kept_roots(&graphs), roots(&kept));
+    assert!(Arc::ptr_eq(
+        &graphs.facts(working(Path::new(oldest))),
+        &facts[1]
+    ));
+}
+
+#[test]
+fn each_revision_of_a_root_counts_as_one_more_kept_state() {
+    let (clock, graphs) = pinned();
+    let root = Path::new("r");
+    let commits: Vec<String> = (0..RETAINED.roots).map(|at| format!("c{at}")).collect();
+    graphs.keep(working(root), Arc::default());
+    for commit in &commits {
+        let commit = Some(commit.as_str());
+        graphs.keep(State { root, commit }, Arc::default());
+    }
+
+    let at = |commit: &String| (root.to_path_buf(), Some(commit.clone()));
+    assert_eq!(
+        graphs.kept_states(),
+        commits.iter().map(at).collect::<Vec<_>>()
+    );
+
+    clock.advance(RETAINED.idle);
+    graphs.kept.sweep();
+    assert!(graphs.kept_states().is_empty());
 }
 
 #[test]
@@ -47,26 +85,26 @@ fn a_server_drops_the_state_of_a_root_after_the_idle_time_with_no_call() {
     let (clock, graphs) = pinned();
     let (early, late) = (Path::new("early"), Path::new("late"));
     let facts: Arc<KeptFacts> = Arc::default();
-    graphs.keep(early, Arc::clone(&facts));
+    graphs.keep(working(early), Arc::clone(&facts));
     let short = RETAINED.idle.checked_sub(Duration::from_secs(1));
     clock.advance(short.expect("the idle time is over a second"));
-    graphs.keep(late, Arc::default());
+    graphs.keep(working(late), Arc::default());
     graphs.kept.sweep();
-    assert_eq!(graphs.kept_roots(), [early, late]);
-    assert!(Arc::ptr_eq(&graphs.facts(early), &facts));
+    assert_eq!(kept_roots(&graphs), [early, late]);
+    assert!(Arc::ptr_eq(&graphs.facts(working(early)), &facts));
 
     clock.advance(RETAINED.idle);
     graphs.kept.sweep();
-    assert!(graphs.kept_roots().is_empty());
+    assert!(kept_roots(&graphs).is_empty());
 
-    graphs.keep(early, Arc::clone(&facts));
+    graphs.keep(working(early), Arc::clone(&facts));
     clock.advance(RETAINED.idle);
-    let after = graphs.facts(early);
+    let after = graphs.facts(working(early));
     assert!(
         !Arc::ptr_eq(&after, &facts),
         "a call after the idle time reads no kept facts"
     );
-    assert_eq!(graphs.kept_roots(), [early]);
+    assert_eq!(kept_roots(&graphs), [early]);
 }
 
 // A server's state whose prebuilds wait for `open`, and send on `done` when they finish. A scan

@@ -41,15 +41,40 @@ impl Git {
     /// and stops git when `timeout` passes.
     #[must_use]
     pub fn last_commit(&self, root: &Path, path: &str, timeout: Duration) -> LastCommit {
+        self.last_commit_from(root, None, path, timeout)
+    }
+
+    /// Reads the newest commit in `commit`'s history that touched `path`, as
+    /// [`Git::last_commit`] reads HEAD's.
+    #[must_use]
+    pub fn last_commit_at(
+        &self,
+        root: &Path,
+        commit: &str,
+        path: &str,
+        timeout: Duration,
+    ) -> LastCommit {
+        self.last_commit_from(root, Some(commit), path, timeout)
+    }
+
+    fn last_commit_from(
+        &self,
+        root: &Path,
+        commit: Option<&str>,
+        path: &str,
+        timeout: Duration,
+    ) -> LastCommit {
         // ":(literal)" keeps the path as written: no pathspec magic and no glob widens it.
         let target = OsString::from(format!(":(literal){path}"));
-        let rest = [
+        let mut rest = vec![
             OsStr::new("--max-count=1"),
             OsStr::new("-z"),
             OsStr::new(FORMAT),
-            OsStr::new("--"),
-            &target,
         ];
+        if let Some(commit) = commit {
+            rest.extend([OsStr::new("--end-of-options"), OsStr::new(commit)]);
+        }
+        rest.extend([OsStr::new("--"), target.as_os_str()]);
         let mut spec = self.spec(root, "log", &rest, LAST_COMMIT);
         spec.timeout = timeout;
         answer(classify("log", LAST_COMMIT, io::run(&spec)))

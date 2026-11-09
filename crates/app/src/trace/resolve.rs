@@ -14,6 +14,7 @@ use super::{CardKind, MISS_LITERAL_FILES, Miss, RANGE_LINES};
 use crate::endpoints::{BindingStatus, Scope, TARGET_WORDING, bind};
 use crate::map::focus_resolution;
 use crate::ops::limits::MAX_LIMIT;
+use crate::scan::Tree;
 use crate::search::{SearchError, Selected};
 use crate::symbol_graph::{CallGraph, CallScan};
 use crate::{Error, Noted, Reading, SymbolCard, symbol_card};
@@ -88,12 +89,12 @@ pub(super) fn resolved(
     reading: &Reading<'_>,
     scan: &CallScan,
     graph: &CallGraph<'_, '_>,
-    walk: &[RepoFile],
+    (walk, tree): (&[RepoFile], &Tree),
     targets: &[String],
 ) -> Noted<Result<Vec<Resolved>, Error>> {
     let paths: Vec<String> = walk.iter().map(|file| file.path.clone()).collect();
     let (skipped, root) = (scan.skipped.clone(), reading.repo.root.clone());
-    let targets = targets.to_vec();
+    let (targets, tree) = (targets.to_vec(), tree.clone());
     graph.over(move |graph| {
         let walked = Walked::new(&paths);
         let scope = Scope {
@@ -105,6 +106,7 @@ pub(super) fn resolved(
             scope: &scope,
             walked: &walked,
             files: graph.files(),
+            tree: &tree,
         };
         Ok(targets.iter().map(|target| resolver.one(target)).collect())
     })
@@ -155,6 +157,7 @@ struct Resolver<'r, 'a> {
     scope: &'r Scope<'r, 'a>,
     walked: &'r Walked<'r>,
     files: &'a [&'a FileFacts],
+    tree: &'r Tree,
 }
 
 impl Resolver<'_, '_> {
@@ -221,7 +224,7 @@ impl Resolver<'_, '_> {
         if let Some(card) = held {
             return Resolved::Symbol(card);
         }
-        let lines = scanned.and_then(|_| read_lines(self.scope.root, &path));
+        let lines = scanned.and_then(|_| read_lines((self.scope.root, self.tree), &path));
         match lines {
             Some(lines) if line > lines => {
                 Resolved::Missed(Missed::Ready(Miss::LinePastEnd { path, line, lines }))
@@ -271,7 +274,7 @@ impl Resolver<'_, '_> {
             return Some(self.focused(text, rooted));
         }
         let shaped = rooted.contains('/') || !self.walked.endings(&rooted).is_empty();
-        shaped.then_some(Located::Unknown(rooted))
+        (shaped || self.only_on_disk(&rooted)).then_some(Located::Unknown(rooted))
     }
 
     // A URL or a frame names the one file that the map's focus rule finds for it.
@@ -284,8 +287,18 @@ impl Resolver<'_, '_> {
     }
 
     fn unknown(&self, path: String) -> Resolved {
+        if self.only_on_disk(&path) {
+            return Resolved::Missed(Missed::Ready(Miss::AbsentAtRevision { path }));
+        }
         let endings = self.walked.endings(&path);
         Resolved::Missed(Missed::Ready(Miss::UnknownPath { path, endings }))
+    }
+
+    // A file that the working tree holds below the root while the commit that the call reads
+    // lacks it.
+    fn only_on_disk(&self, path: &str) -> bool {
+        let contained = || io::contained_path(self.scope.root, Path::new(path));
+        self.tree.commit().is_some() && contained().is_ok_and(|absolute| absolute.is_file())
     }
 
     // A walked file: its card when the scan read it, else why the scan did not.
@@ -366,8 +379,8 @@ fn below_root(root: &Path, path: &str) -> Option<String> {
     }
 }
 
-fn read_lines(root: &Path, path: &str) -> Option<u32> {
-    let bytes = io::read_bounded(&root.join(path)).ok()?;
+fn read_lines((root, tree): (&Path, &Tree), path: &str) -> Option<u32> {
+    let bytes = tree.read(root, path).ok()?;
     Some(line_count(&String::from_utf8_lossy(&bytes)))
 }
 

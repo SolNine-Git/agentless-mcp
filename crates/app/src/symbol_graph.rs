@@ -13,7 +13,7 @@ use crate::Error;
 
 pub use call::{Builds, KeptGraphs};
 pub(crate) use call::{
-    CallGraph, CallScan, Keeping, over_call_scan, over_walked_scan, with_call_graph,
+    CallGraph, CallScan, Keeping, State, over_call_scan, over_walked_scan, with_call_graph,
 };
 
 // Builds the name index and the resolved symbol graph of one scan, and gives both to `answer`.

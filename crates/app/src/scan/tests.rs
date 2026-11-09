@@ -9,7 +9,7 @@ use kernel::Stopped;
 use store::{FactSource, FileText, Served};
 use syntax::Unparsable;
 
-use super::{KeptFacts, RepoFacts, line_count, reads, rescan_with, scan};
+use super::{KeptFacts, RepoFacts, Tree, Walked, line_count, reads, rescan_with, scan};
 use crate::clock::{assert_spent, spent};
 use crate::endpoints::scanned::Scanned;
 use crate::testing::Sandbox;
@@ -23,6 +23,12 @@ fn listed(paths: &[&str]) -> Vec<RepoFile> {
             size: 0,
         })
         .collect()
+}
+
+// The walked `files` below `root`, read from the working tree.
+fn walked<'w>(root: &'w Path, files: &'w [RepoFile]) -> Walked<'w> {
+    let tree = &Tree::Working;
+    Walked { root, files, tree }
 }
 
 fn parsed(text: &FileText) -> Served<Result<Facts, Unparsable>> {
@@ -55,7 +61,7 @@ fn only_files_in_a_language_are_scanned_and_the_config_is_not() {
         "sub/.agentless-mcp.json",
     ]);
     let files = [files, listed(&["big.py"])].concat();
-    let scanned = scan(sandbox.path(), &files, 4, &parsed, None);
+    let scanned = scan(walked(sandbox.path(), &files), 4, &parsed, None);
     let (files, skipped) = summary(scanned.value.as_ref().expect("no deadline stops it"));
     assert_eq!(
         files,
@@ -96,7 +102,7 @@ fn a_panic_in_one_file_reaches_the_caller_with_its_payload() {
         parsed(text)
     };
     let caught = panic::catch_unwind(AssertUnwindSafe(|| {
-        scan(sandbox.path(), &files, 4, &panicking, None)
+        scan(walked(sandbox.path(), &files), 4, &panicking, None)
     }));
     let payload = caught.expect_err("the panic reaches the caller");
     let message = payload
@@ -112,8 +118,8 @@ fn a_scan_without_helpers_equals_the_scan_with_them() {
     let sandbox = Sandbox::new();
     let files = many(&sandbox, 40);
     let unstopped = |scanned: Result<RepoFacts, Stopped>| scanned.expect("no deadline stops it");
-    let alone = scan(sandbox.path(), &files, 1, &parsed, None).map(unstopped);
-    let helped = scan(sandbox.path(), &files, 8, &parsed, None).map(unstopped);
+    let alone = scan(walked(sandbox.path(), &files), 1, &parsed, None).map(unstopped);
+    let helped = scan(walked(sandbox.path(), &files), 8, &parsed, None).map(unstopped);
     assert_eq!(alone.value.files, helped.value.files);
     assert_eq!(alone.value.skipped, helped.value.skipped);
     assert_eq!(alone.value.files.len(), 40);
@@ -125,7 +131,7 @@ fn rescanned(
     facts_of: &(dyn Fn(&FileText) -> Served<Result<Facts, Unparsable>> + Sync),
     kept: &Arc<KeptFacts>,
 ) -> Arc<KeptFacts> {
-    let scanned = rescan_with(sandbox.path(), files, facts_of, None, kept);
+    let scanned = rescan_with(walked(sandbox.path(), files), facts_of, None, kept);
     scanned.value.expect("no deadline stops it").0
 }
 
@@ -153,7 +159,7 @@ fn a_rescan_asks_the_source_only_for_the_files_whose_text_changed() {
     sandbox.put("m03.py", "def changed():\n    return 2\n");
     let third = rescanned(&sandbox, &files, &counting, &first);
     assert_eq!(asked_paths(), ["m03.py"]);
-    let read = scan(sandbox.path(), &files, 4, &parsed, None).value;
+    let read = scan(walked(sandbox.path(), &files), 4, &parsed, None).value;
     let read = read.expect("no deadline stops it").files;
     let kept: Vec<&FileFacts> = third.files.iter().map(|file| &**file).collect();
     assert_eq!(kept, read.iter().collect::<Vec<_>>());
@@ -268,13 +274,8 @@ fn a_walk_with_no_file_in_a_language_still_stops_under_a_spent_deadline() {
     sandbox.put("notes.txt", "text\n");
     let deadline = spent();
 
-    let scanned = scan(
-        sandbox.path(),
-        &listed(&["notes.txt"]),
-        4,
-        &parsed,
-        Some(&deadline),
-    );
+    let files = listed(&["notes.txt"]);
+    let scanned = scan(walked(sandbox.path(), &files), 4, &parsed, Some(&deadline));
 
     let stopped = scanned.value.map(|facts| facts.files.len());
     assert!(matches!(stopped, Err(Stopped::Spent { .. })), "{stopped:?}");

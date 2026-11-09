@@ -503,7 +503,12 @@ fn the_last_change_is_the_newest_commit_on_the_span() {
     let scanned = Scanned::new(&TESTED);
     let wait = Duration::from_secs(30);
     let change = with_git(&scanned, |reading| {
-        last_change(&scanned.services, reading, "py:core.py::helper", wait)
+        last_change(
+            &scanned.services,
+            reading,
+            ("py:core.py::helper", None),
+            wait,
+        )
     });
     let Change::Commit(entry) = change else {
         panic!("a commit: {change:?}");
@@ -543,7 +548,7 @@ fn a_file_that_no_commit_touched_and_a_root_outside_git_have_their_own_change() 
             facts: &source,
             deadline: None,
         };
-        file_change(&services, &reading, path, Duration::from_secs(30))
+        file_change(&services, &reading, (path, None), Duration::from_secs(30))
     };
     assert_eq!(change_at(&root, "new.py"), Change::NoCommit);
     let outside = change_at(&plain, "c.py");

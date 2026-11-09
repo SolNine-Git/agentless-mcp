@@ -10,20 +10,20 @@ use facts::{StableId, split_ordinal};
 use prompts::messages::{
     LISTING_ROW, LISTING_ROW_SYMBOLS, LISTING_ROW_UNREAD, TARGET_NO_LINE, TRACE_CYCLE_MEMBERS,
     TRACE_CYCLES, TRACE_DECLARES, TRACE_FILE_HEADER, TRACE_FOLDER_HEADER, TRACE_FOLDER_ROW,
-    TRACE_MORE_HINT, TRACE_NO_ANCHOR, TRACE_NO_SYMBOL_AT, TRACE_PART_HIDDEN, TRACE_ROWS_UNLISTED,
+    TRACE_NO_ANCHOR, TRACE_NO_SYMBOL_AT, TRACE_PART_HIDDEN, TRACE_ROWS_UNLISTED,
     TRACE_SECTION_UNREAD, TRACE_TREE_UNLISTED,
 };
 use text::{is_word, one_line};
 
 use super::symbol::change_line;
-use super::{head, is_cut, item_lines, none, tally};
+use super::{More, head, is_cut, item_lines, none, tally};
 use crate::cycles::chain;
 use crate::views::QUALIFIED_NAME;
 
 // The folder that a folder card of the root names.
 const ROOT: &str = ".";
 
-pub(super) fn file_lines(file: &FileTrace, more: Option<Section>) -> Vec<String> {
+pub(super) fn file_lines(file: &FileTrace, more: More<'_>) -> Vec<String> {
     let path = one_line(&file.path);
     let mut lines = Vec::new();
     if let Some(line) = file.no_symbol_at {
@@ -56,7 +56,7 @@ pub(super) fn file_lines(file: &FileTrace, more: Option<Section>) -> Vec<String>
 }
 
 // The count of each kind, the kinds that the cap hid, and the kept declarations in line order.
-fn declares(declares: &Declares, more: Option<Section>) -> Vec<String> {
+fn declares(declares: &Declares, more: More<'_>) -> Vec<String> {
     if declares.total == 0 {
         return vec![none(Section::Declares)];
     }
@@ -131,7 +131,7 @@ fn linked_lines(
     section: Section,
     linked: &Linked<FileLinks>,
     at_line: bool,
-    more: Option<Section>,
+    more: More<'_>,
 ) -> Vec<String> {
     let found = match linked {
         Linked::NoAnchor => {
@@ -158,7 +158,7 @@ fn linked_lines(
 
 // A file is in one strongly connected component at most, whose chain the card prints; `more`
 // adds the members off the chain.
-fn cycles(cycles: &Cycles, more: Option<Section>) -> Vec<String> {
+fn cycles(cycles: &Cycles, more: More<'_>) -> Vec<String> {
     let Some(first) = cycles.rows.first() else {
         return vec![none(Section::Cycles)];
     };
@@ -187,7 +187,7 @@ fn off_chain(cycle: &CycleRow) -> Option<String> {
 }
 
 // The entries in tree order, each indented by its level and named by its last part.
-pub(super) fn folder_lines(folder: &FolderTrace, more: Option<Section>) -> Vec<String> {
+pub(super) fn folder_lines(folder: &FolderTrace, more: More<'_>) -> Vec<String> {
     let path = if folder.path.is_empty() {
         ROOT
     } else {
@@ -199,9 +199,9 @@ pub(super) fn folder_lines(folder: &FolderTrace, more: Option<Section>) -> Vec<S
     lines.extend(folder.entries.iter().map(entry_line));
     let rest = folder.total.saturating_sub(folder.entries.len());
     if rest > 0 {
-        let line = match more {
+        let line = match more.section {
             None => {
-                let hint = TRACE_MORE_HINT.render(Section::Tree.as_str());
+                let hint = more.hint(Section::Tree);
                 format!("{}  {hint}", TRACE_ROWS_UNLISTED.render(rest))
             }
             Some(_) => TRACE_TREE_UNLISTED.render(rest),

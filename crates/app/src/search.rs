@@ -23,8 +23,8 @@ use lines::hits_in;
 use shape::{Gathered, Shaped, owner_blocks, shaped};
 
 pub(crate) use files::Selected;
-pub(crate) use files::file_row;
 pub use files::{FileRow, Measure, is_source_path};
+pub(crate) use files::{file_row, file_row_from};
 pub(crate) use lines::FileHits;
 pub use noise::{
     MINIFIED_KEEP_CHARS, MINIFIED_LONGEST_LINE_BYTES, MINIFIED_MEAN_LINE_BYTES, NoiseClass,

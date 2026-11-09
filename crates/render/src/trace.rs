@@ -7,11 +7,11 @@ mod miss;
 mod range;
 mod symbol;
 
-use app::trace::{Card, Outcome, Section, Tally, Trace, TraceRequest, Traced};
+use app::trace::{Card, Outcome, Revision, Section, Tally, Trace, TraceRequest, Traced};
 use app::{ROW_INDENT, SymbolCard};
 use prompts::messages::{
-    TRACE_AT_LEAST, TRACE_MORE_HINT, TRACE_ROWS_UNLISTED, TRACE_ROWS_UNLISTED_FLOOR,
-    TRACE_SAME_CARD, TRACE_SECTION_NONE, TRACE_TARGET,
+    TRACE_AT_LEAST, TRACE_MORE_HINT, TRACE_MORE_HINT_REV, TRACE_ROWS_UNLISTED,
+    TRACE_ROWS_UNLISTED_FLOOR, TRACE_SAME_CARD, TRACE_SECTION_NONE, TRACE_TARGET,
 };
 use text::one_line;
 
@@ -46,7 +46,10 @@ impl View for TraceAnswer<'_> {
 #[must_use]
 pub fn trace_text(answer: &TraceAnswer<'_>) -> String {
     let cards = &answer.trace.cards;
-    let more = answer.request.more;
+    let more = More {
+        section: answer.request.more,
+        revision: answer.trace.revision.as_ref(),
+    };
     let blocks: Vec<String> = (cards.iter())
         .map(|traced| {
             let lines = outcome_lines(traced, more);
@@ -61,7 +64,35 @@ pub fn trace_text(answer: &TraceAnswer<'_>) -> String {
     blocks.join("\n\n") + "\n"
 }
 
-fn outcome_lines(traced: &Traced, more: Option<Section>) -> Vec<String> {
+// The section that `more` names, and the revision that the answer read, which each hint repeats
+// so that the next call reads the same commit.
+#[derive(Clone, Copy, Debug)]
+struct More<'a> {
+    section: Option<Section>,
+    revision: Option<&'a Revision>,
+}
+
+impl More<'_> {
+    fn is_none(self) -> bool {
+        self.section.is_none()
+    }
+
+    fn is_some(self) -> bool {
+        self.section.is_some()
+    }
+
+    // The hint at the call that shows `section` in full.
+    fn hint(self, section: Section) -> String {
+        match self.revision {
+            None => TRACE_MORE_HINT.render(section.as_str()),
+            Some(revision) => {
+                TRACE_MORE_HINT_REV.render((&one_line(&revision.name), section.as_str()))
+            }
+        }
+    }
+}
+
+fn outcome_lines(traced: &Traced, more: More<'_>) -> Vec<String> {
     match &traced.outcome {
         Outcome::Same(first) => vec![TRACE_SAME_CARD.render(first + 1)],
         Outcome::NoSection { section, kind } => vec![miss::no_section(*section, *kind)],
@@ -69,13 +100,13 @@ fn outcome_lines(traced: &Traced, more: Option<Section>) -> Vec<String> {
     }
 }
 
-fn card_lines(card: &Card, target: &str, more: Option<Section>) -> Vec<String> {
+fn card_lines(card: &Card, target: &str, more: More<'_>) -> Vec<String> {
     match card {
         Card::Symbol(traced) => symbol::symbol_lines(traced, more),
         Card::File(traced) => file::file_lines(traced, more),
         Card::Folder(traced) => file::folder_lines(traced, more),
         Card::Candidates(traced) => miss::candidates_lines(traced, target, more),
-        Card::Miss(missed) => miss::miss_lines(missed, target),
+        Card::Miss(missed) => miss::miss_lines(missed, target, more.revision),
         Card::Range(traced) => range::range_lines(traced),
     }
 }
@@ -87,11 +118,11 @@ fn card_row(card: &SymbolCard) -> String {
 
 // The head of a section: its name, then its parts, then the hint at `more` when the default card
 // hides some of the section's rows.
-fn head(section: Section, parts: &[String], more: Option<Section>, hidden: bool) -> String {
+fn head(section: Section, parts: &[String], more: More<'_>, hidden: bool) -> String {
     let mut line = format!("{}: {}", section.as_str(), parts.join("; "));
     if more.is_none() && hidden {
         line.push_str("  ");
-        line.push_str(&TRACE_MORE_HINT.render(section.as_str()));
+        line.push_str(&more.hint(section));
     }
     line
 }

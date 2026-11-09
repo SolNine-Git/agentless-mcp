@@ -9,20 +9,20 @@ use app::{CoverageStatus, HistoryResult, ROW_INDENT, RefGroup, SymbolCard, locat
 use prompts::messages::{
     EXPLAIN_EDGES_UNLISTED, HISTORY_GIT_FAILED, HISTORY_NO_GIT, HISTORY_PATH_NOT_IN_HEAD,
     REFS_CANDIDATES_UNLISTED, REFS_UNLISTED, TRACE_BOUND, TRACE_HIDDEN, TRACE_LAST_CHANGE,
-    TRACE_LAST_CHANGE_NOT_READ, TRACE_LAST_CHANGE_UNAVAILABLE, TRACE_MORE_HINT, TRACE_NAME_ONLY,
+    TRACE_LAST_CHANGE_NOT_READ, TRACE_LAST_CHANGE_UNAVAILABLE, TRACE_NAME_ONLY,
     TRACE_NAME_ONLY_FILES, TRACE_NAME_ONLY_FILES_FLOOR, TRACE_NOT_RESOLVED, TRACE_PART_HIDDEN,
     TRACE_SECTION_UNREAD, TRACE_SIMILAR, TRACE_SIMILAR_NAME_ONLY, TRACE_SIMILAR_ROW,
     TRACE_TIER_UNCHECKED,
 };
 use text::one_line;
 
-use super::{head, is_cut, none, span, tally, tier_word, unlisted};
+use super::{More, head, is_cut, none, span, tally, tier_word, unlisted};
 use crate::history::history_text;
 
 // The characters of a strict ISO 8601 author date that name the day.
 const DAY: usize = 10;
 
-pub(super) fn symbol_lines(traced: &SymbolTrace, more: Option<Section>) -> Vec<String> {
+pub(super) fn symbol_lines(traced: &SymbolTrace, more: More<'_>) -> Vec<String> {
     let card = &traced.card;
     let mut lines = vec![header(card)];
     match &traced.body {
@@ -51,7 +51,7 @@ pub(super) fn symbol_lines(traced: &SymbolTrace, more: Option<Section>) -> Vec<S
         lines.extend(similar_lines(similar, more));
     }
     lines.extend(traced.callers.as_ref().and_then(not_resolved));
-    let further = more.is_none().then_some(Section::History);
+    let further = more.is_none().then_some((Section::History, more));
     lines.extend((traced.change.as_ref()).map(|change| change_line(change, &card.path, further)));
     lines.extend(
         traced
@@ -79,7 +79,7 @@ fn unread(section: Section, reason: &str) -> String {
 
 // By default the binding sites print as rows and the name-only sites as a count. In full every
 // row prints, so nothing is hidden but what the listing's limit left out.
-fn callers_lines(callers: &Callers, more: Option<Section>) -> Vec<String> {
+fn callers_lines(callers: &Callers, more: More<'_>) -> Vec<String> {
     if callers.bound + callers.name_only == 0 {
         return vec![none(Section::Callers)];
     }
@@ -107,7 +107,7 @@ fn callers_lines(callers: &Callers, more: Option<Section>) -> Vec<String> {
 
 // The default card lists only the binding rows, so it hides the weaker ones that `part` counts;
 // a section in full lists them.
-fn hidden_by_default(part: String, more: Option<Section>) -> String {
+fn hidden_by_default(part: String, more: More<'_>) -> String {
     if more.is_none() {
         TRACE_PART_HIDDEN.render(&part)
     } else {
@@ -135,7 +135,7 @@ fn group_row(group: &RefGroup) -> String {
     format!("{ROW_INDENT}{path}  {tier}  {}", sites.join(", "))
 }
 
-fn callees_lines(callees: &Callees, more: Option<Section>) -> Vec<String> {
+fn callees_lines(callees: &Callees, more: More<'_>) -> Vec<String> {
     if callees.bound + callees.name_only == 0 {
         return vec![none(Section::Callees)];
     }
@@ -174,7 +174,7 @@ fn edge_row(group: &EdgeGroup) -> String {
     format!("{ROW_INDENT}{path}  {tier}  {}", edges.join(", "))
 }
 
-fn tests_lines(tests: &Tests, more: Option<Section>) -> Vec<String> {
+fn tests_lines(tests: &Tests, more: More<'_>) -> Vec<String> {
     if tests.total == Tally::Exact(0) {
         return vec![none(Section::Tests)];
     }
@@ -186,7 +186,7 @@ fn tests_lines(tests: &Tests, more: Option<Section>) -> Vec<String> {
 
 // A candidate that shares no bound caller is not ranked, so with no ranked candidate the section
 // is its count.
-fn similar_lines(similar: &Similar, more: Option<Section>) -> Vec<String> {
+fn similar_lines(similar: &Similar, more: More<'_>) -> Vec<String> {
     if similar.total == 0 {
         return vec![none(Section::Similar)];
     }
@@ -240,9 +240,13 @@ fn not_resolved(callers: &Callers) -> Option<String> {
 
 // The commit of the card at `path`, or why git gave none, with the hint at the section that
 // `more` reads further, if the card has one. A file's reasons are worded as history words them.
-pub(super) fn change_line(change: &Change, path: &str, further: Option<Section>) -> String {
+pub(super) fn change_line(
+    change: &Change,
+    path: &str,
+    further: Option<(Section, More<'_>)>,
+) -> String {
     let hinted = |line: String| match further {
-        Some(section) => format!("{line}  {}", TRACE_MORE_HINT.render(section.as_str())),
+        Some((section, more)) => format!("{line}  {}", more.hint(section)),
         None => line,
     };
     let unread = |reason: &str| TRACE_LAST_CHANGE_UNAVAILABLE.render(&one_line(reason));

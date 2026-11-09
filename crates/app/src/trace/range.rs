@@ -7,22 +7,20 @@ use facts::line_count;
 
 use super::resolve::LineRange;
 use super::{Card, Miss, RANGE_LINES, RANGE_SYMBOLS, RangeTrace};
+use crate::scan::Tree;
 use crate::search::searched_text;
 
 // The lines are read as search reads them: a binary file has none, and a CRLF line keeps no "\r".
-pub(super) fn range_card(root: &Path, range: LineRange) -> Card {
+pub(super) fn range_card((root, tree): (&Path, &Tree), range: LineRange) -> Card {
     let LineRange {
         path,
         start,
         end,
         mut symbols,
     } = range;
-    let bytes = match io::read_bounded(&root.join(&path)) {
+    let bytes = match tree.read(root, &path) {
         Ok(bytes) => bytes,
-        Err(skipped) => {
-            let reason = skipped.to_string();
-            return Card::Miss(Miss::NotParsed { path, reason });
-        }
+        Err(reason) => return Card::Miss(Miss::NotParsed { path, reason }),
     };
     let Some(text) = searched_text(&bytes) else {
         return Card::Miss(Miss::Binary { path });

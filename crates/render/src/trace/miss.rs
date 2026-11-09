@@ -2,18 +2,19 @@
 //! call to make, and a `more` section that the card does not hold.
 
 use app::search::Place;
-use app::trace::{CandidatesTrace, CardKind, Miss, Section};
+use app::trace::{CandidatesTrace, CardKind, Miss, Revision, Section};
 use app::{ROW_INDENT, Usage};
 use prompts::messages::{
     TARGET_NO_LINE, TRACE_BODY_OF_FILE, TRACE_CANDIDATES, TRACE_LINE_PAST_END, TRACE_LITERAL,
-    TRACE_LITERAL_NONE, TRACE_MORE_HINT, TRACE_NO_GRAMMAR, TRACE_NO_GRAMMAR_NAME, TRACE_NO_MATCH,
+    TRACE_LITERAL_NONE, TRACE_NO_GRAMMAR, TRACE_NO_GRAMMAR_NAME, TRACE_NO_MATCH,
     TRACE_NO_SECTION_FILE, TRACE_NO_SECTION_FOLDER, TRACE_NO_SECTION_SYMBOL, TRACE_NOT_PARSED,
     TRACE_NOT_SCANNED, TRACE_RANGE_BINARY, TRACE_RANGE_PAST_END, TRACE_RANGE_REVERSED,
-    TRACE_ROWS_UNLISTED, TRACE_UNKNOWN_PATH, TRACE_UNKNOWN_PATH_NONE,
+    TRACE_REV_NO_FILE, TRACE_REV_NO_MATCH, TRACE_ROWS_UNLISTED, TRACE_UNKNOWN_PATH,
+    TRACE_UNKNOWN_PATH_NONE,
 };
 use text::{one_line, posix_name, split_suffix};
 
-use super::card_row;
+use super::{More, card_row};
 use crate::symbols::usage_text;
 
 // io's reason for a file over the cap starts with the word that the miss sentence already says.
@@ -22,7 +23,7 @@ const SKIPPED_WORD: &str = "skipped: ";
 pub(super) fn candidates_lines(
     candidates: &CandidatesTrace,
     target: &str,
-    more: Option<Section>,
+    more: More<'_>,
 ) -> Vec<String> {
     let mut lines = vec![TRACE_CANDIDATES.render((&one_line(target), candidates.total))];
     lines.extend(candidates.rows.iter().map(card_row));
@@ -31,7 +32,7 @@ pub(super) fn candidates_lines(
         let mut line = format!("{ROW_INDENT}{}", TRACE_ROWS_UNLISTED.render(rest));
         if more.is_none() {
             line.push_str("  ");
-            line.push_str(&TRACE_MORE_HINT.render(Section::Candidates.as_str()));
+            line.push_str(&more.hint(Section::Candidates));
         }
         lines.push(line);
     }
@@ -39,11 +40,17 @@ pub(super) fn candidates_lines(
 }
 
 // Each miss names the next useful call: the files that use the name, where its text occurs, or
-// what to read in place of a card.
-pub(super) fn miss_lines(miss: &Miss, target: &str) -> Vec<String> {
+// what to read in place of a card. A miss at a revision names the commit it read.
+pub(super) fn miss_lines(miss: &Miss, target: &str, revision: Option<&Revision>) -> Vec<String> {
     match miss {
         Miss::Nothing { usage, literal, .. } => {
-            nothing_lines(usage.as_ref(), literal.as_ref(), target)
+            let head = no_match(target, revision);
+            nothing_lines(head, usage.as_ref(), literal.as_ref(), target)
+        }
+        Miss::AbsentAtRevision { path } => {
+            let revision = revision.expect("only a trace at a revision lacks a path");
+            let at = (&*one_line(&revision.name), revision.short());
+            vec![TRACE_REV_NO_FILE.render((&one_line(path), at.0, at.1))]
         }
         Miss::UnknownPath { path, endings } => vec![unknown_path(path, endings)],
         Miss::NotParsed { path, reason } => {
@@ -74,12 +81,23 @@ pub(super) fn miss_lines(miss: &Miss, target: &str) -> Vec<String> {
     }
 }
 
+fn no_match(target: &str, revision: Option<&Revision>) -> String {
+    let target = one_line(target);
+    match revision {
+        None => TRACE_NO_MATCH.render(&target),
+        Some(revision) => {
+            let name = one_line(&revision.name);
+            TRACE_REV_NO_MATCH.render((&name, revision.short(), &target))
+        }
+    }
+}
+
 fn nothing_lines(
+    head: String,
     usage: Option<&Usage>,
     literal: Option<&(Vec<Place>, usize)>,
     target: &str,
 ) -> Vec<String> {
-    let head = TRACE_NO_MATCH.render(&one_line(target));
     match (usage, literal) {
         (Some(usage), _) => {
             let mut lines = vec![head];

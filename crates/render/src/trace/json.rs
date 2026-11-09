@@ -18,7 +18,15 @@ use crate::symbols::{CardJson, UsageJson};
 #[derive(Clone, Serialize)]
 pub(super) struct TraceJson<'a> {
     more: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rev: Option<RevisionJson<'a>>,
     cards: Vec<TracedJson<'a>>,
+}
+
+#[derive(Clone, Serialize)]
+struct RevisionJson<'a> {
+    name: &'a str,
+    commit: &'a str,
 }
 
 impl<'a> TraceJson<'a> {
@@ -27,8 +35,13 @@ impl<'a> TraceJson<'a> {
             target: &traced.target,
             outcome: OutcomeJson::of(&traced.outcome),
         });
+        let rev = (trace.revision.as_ref()).map(|revision| RevisionJson {
+            name: &revision.name,
+            commit: &revision.commit,
+        });
         TraceJson {
             more: request.more.map(Section::as_str),
+            rev,
             cards: cards.collect(),
         }
     }
@@ -614,6 +627,9 @@ enum MissJson<'a> {
         #[serde(skip_serializing_if = "Option::is_none")]
         literal: Option<LiteralJson<'a>>,
     },
+    AbsentAtRevision {
+        path: &'a str,
+    },
     UnknownPath {
         path: &'a str,
         endings: &'a [String],
@@ -670,6 +686,7 @@ impl<'a> MissJson<'a> {
                     files: *files,
                 }),
             },
+            Miss::AbsentAtRevision { path } => MissJson::AbsentAtRevision { path },
             Miss::UnknownPath { path, endings } => MissJson::UnknownPath { path, endings },
             Miss::NotParsed { path, reason } => MissJson::NotParsed { path, reason },
             Miss::NoGrammar { path } => MissJson::NoGrammar { path },

@@ -6,9 +6,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use facts::{Facts, Symbol};
-use git::RepoFile;
+use git::{Change, CommitId, Git, GitOutcome, RepoFile, Side};
 use graph::FileFacts;
 use kernel::{Deadline, Stopped, checkpoint};
+use prompts::messages::TRACE_REV_UNREAD;
 use store::{FactSource, FileText, RowKey, Served};
 use syntax::{Language, Unparsable};
 
@@ -23,6 +24,112 @@ pub struct Skipped {
     pub path: String,
     /// Why the scan passed over it.
     pub reason: String,
+}
+
+// Where a call reads each walked file: the working tree, or a commit.
+#[derive(Clone)]
+pub(crate) enum Tree {
+    Working,
+    At(Arc<AtCommit>),
+}
+
+// The commit that a call reads, and its name as the caller gave it.
+#[derive(Clone, Debug)]
+pub(crate) struct Named {
+    pub(crate) name: String,
+    pub(crate) commit: CommitId,
+}
+
+impl Named {
+    pub(crate) fn short(&self) -> &str {
+        let commit = self.commit.as_str();
+        commit.get(..git::SHORT_SHA_LENGTH).unwrap_or(commit)
+    }
+}
+
+// A commit that a call reads in place of the working tree. A path whose bytes on disk differ from
+// the commit's reads as a blob, with its size at the commit; any other path reads from disk.
+pub(crate) struct AtCommit {
+    named: Named,
+    git: Git,
+    // `None` reads every path as a blob.
+    changed: Option<HashMap<String, Option<u64>>>,
+}
+
+impl AtCommit {
+    // `changes` lists each path that differs from the commit, and `files` the commit's tree.
+    pub(crate) fn new(
+        git: Git,
+        named: Named,
+        changes: Option<&[Change]>,
+        files: &[RepoFile],
+    ) -> AtCommit {
+        let listed: HashMap<&str, u64> = (files.iter())
+            .map(|file| (file.path.as_str(), file.size))
+            .collect();
+        let blobs = changes.map(|differing| {
+            let at_commit = differing.iter().filter(|change| change.old != Side::Absent);
+            let paths = at_commit.map(|change| {
+                let size = listed.get(change.old_path.as_str()).copied();
+                (change.old_path.clone(), size)
+            });
+            paths.collect()
+        });
+        AtCommit {
+            named,
+            git,
+            changed: blobs,
+        }
+    }
+
+    fn source(&self, path: &str) -> Source {
+        let size = match &self.changed {
+            Some(changed) => changed.get(path).copied(),
+            None => Some(None),
+        };
+        size.map_or(Source::Disk, |size| Source::Blob { size })
+    }
+
+    // The bytes of `path` at the commit, or why they were not read.
+    fn blob(&self, root: &Path, path: &str, size: Option<u64>) -> Result<Vec<u8>, String> {
+        let too_large = |size| io::Skipped::TooLarge { size }.to_string();
+        if let Some(size) = size.filter(|size| !io::within_file_cap(*size)) {
+            return Err(too_large(size));
+        }
+        let note = match self.git.blob(root, self.named.commit.as_str(), path) {
+            GitOutcome::Printed(bytes) => return Ok(bytes),
+            GitOutcome::Capped(bytes) => return Err(too_large(size.unwrap_or(bytes.len() as u64))),
+            GitOutcome::Failed(failure) => failure.to_string(),
+            GitOutcome::Unfinished(unfinished) => unfinished.to_string(),
+        };
+        Err(TRACE_REV_UNREAD.render((path, &self.named.name, &note)))
+    }
+}
+
+// Where the bytes of one path at a commit come from: the disk, or a blob of the listed size.
+enum Source {
+    Disk,
+    Blob { size: Option<u64> },
+}
+
+impl Tree {
+    // The bytes of the walked file at `path`, or the scan's reason for passing over it.
+    pub(crate) fn read(&self, root: &Path, path: &str) -> Result<Vec<u8>, String> {
+        if let Tree::At(at) = self
+            && let Source::Blob { size } = at.source(path)
+        {
+            return at.blob(root, path, size);
+        }
+        io::read_bounded(&root.join(path)).map_err(|skipped| skipped.to_string())
+    }
+
+    // The commit that the call reads, or `None` for the working tree.
+    pub(crate) fn commit(&self) -> Option<&Named> {
+        match self {
+            Tree::Working => None,
+            Tree::At(at) => Some(&at.named),
+        }
+    }
 }
 
 // The scan of one repository: the files with facts, and the files passed over, in walk order.
@@ -114,38 +221,48 @@ impl RepoFacts {
         deadline: Option<&Deadline>,
     ) -> Noted<Result<RepoFacts, Error>> {
         walked(services, root, |files| {
-            scan_walked(root, files, source, deadline)
+            scan_walked(root, (files, &Tree::Working), source, deadline)
         })
     }
 }
 
-// The scan of the walked `files` at `root`, as `RepoFacts::load` scans the files of its own walk.
+// The scan of the walked `files` at `root`, read from `tree`, as `RepoFacts::load` scans the files
+// of its own walk.
 pub(crate) fn scan_walked(
     root: &Path,
-    files: &[RepoFile],
+    (files, tree): (&[RepoFile], &Tree),
     source: &FactSource,
     deadline: Option<&Deadline>,
 ) -> Noted<Result<RepoFacts, Stopped>> {
     let facts_of = |text: &FileText| source.facts(text, deadline);
-    scan(root, files, threads(), &facts_of, deadline)
+    let at = Walked { root, files, tree };
+    scan(at, threads(), &facts_of, deadline)
+}
+
+// The walked files of one scan, the root they are below, and the tree that their bytes come from.
+#[derive(Clone, Copy)]
+struct Walked<'w> {
+    root: &'w Path,
+    files: &'w [RepoFile],
+    tree: &'w Tree,
 }
 
 // Scans the walked `files` at `root`, and takes the facts of each file whose text has its kept
 // row key from `kept`. A scan that takes every file from `kept` at its position shares it.
 pub(crate) fn rescan(
     root: &Path,
-    files: &[RepoFile],
+    (files, tree): (&[RepoFile], &Tree),
     source: &FactSource,
     deadline: Option<&Deadline>,
     kept: &Arc<KeptFacts>,
 ) -> Rescanned {
     let facts_of = |text: &FileText| source.facts(text, deadline);
-    rescan_with(root, files, &facts_of, deadline, kept)
+    let at = Walked { root, files, tree };
+    rescan_with(at, &facts_of, deadline, kept)
 }
 
 fn rescan_with(
-    root: &Path,
-    files: &[RepoFile],
+    at: Walked<'_>,
     facts_of: &FactsOf<'_>,
     deadline: Option<&Deadline>,
     kept: &Arc<KeptFacts>,
@@ -164,7 +281,7 @@ fn rescan_with(
         let value = value.map(|facts| Fresh::Read(Arc::new(facts), key));
         Served { value, warning }
     };
-    let scanned = scan_values(root, files, threads(), &fresh, deadline);
+    let scanned = scan_values(at, threads(), &fresh, deadline);
     scanned.map(|scanned| scanned.map(|(fresh, skipped)| (kept_after(kept, fresh), skipped)))
 }
 
@@ -227,7 +344,12 @@ impl SymbolFacts {
             Served { value, warning }
         };
         walked(services, root, |files| {
-            let scanned = scan_values(root, files, threads(), &symbols_of, reading.deadline);
+            let at = Walked {
+                root,
+                files,
+                tree: &Tree::Working,
+            };
+            let scanned = scan_values(at, threads(), &symbols_of, reading.deadline);
             scanned.map(|scanned| scanned.map(|(files, skipped)| SymbolFacts { files, skipped }))
         })
     }
@@ -277,14 +399,13 @@ pub(crate) fn parsed_file(path: &str, language: Language, text: &str) -> Option<
 
 // Reads and parses the files in a language on `threads` threads, and keeps the walk order.
 fn scan(
-    root: &Path,
-    files: &[RepoFile],
+    at: Walked<'_>,
     threads: usize,
     facts_of: &FactsOf<'_>,
     deadline: Option<&Deadline>,
 ) -> Noted<Result<RepoFacts, Stopped>> {
     let file_facts = |text: &FileText| file_facts(text, facts_of);
-    let scanned = scan_values(root, files, threads, &file_facts, deadline);
+    let scanned = scan_values(at, threads, &file_facts, deadline);
     scanned.map(|scanned| scanned.map(|(files, skipped)| RepoFacts { files, skipped }))
 }
 
@@ -307,19 +428,18 @@ type Values<T> = Noted<Result<(Vec<T>, Vec<Skipped>), Stopped>>;
 // Each walked file gets one check of `deadline`: in the serial filter when it is not read, and on
 // a scan thread when it is.
 fn scan_values<T: Send>(
-    root: &Path,
-    files: &[RepoFile],
+    at: Walked<'_>,
     threads: usize,
     value_of: &ValueOf<'_, T>,
     deadline: Option<&Deadline>,
 ) -> Values<T> {
-    let wanted = match in_languages(files, deadline) {
+    let wanted = match in_languages(at.files, deadline) {
         Ok(wanted) => wanted,
         Err(stopped) => return Noted::new(Err(stopped)),
     };
     let scanned: Vec<Scanned<T>> = map_in_order(&wanted, threads, |(file, language)| {
         checkpoint(deadline)?;
-        Ok(scan_one(root, file, *language, value_of))
+        Ok(scan_one(at, file, *language, value_of))
     });
     collected(scanned)
 }
@@ -379,16 +499,16 @@ fn scanned_language(path: &str) -> Option<Language> {
 }
 
 fn scan_one<T>(
-    root: &Path,
+    at: Walked<'_>,
     file: &RepoFile,
     language: Language,
     value_of: &ValueOf<'_, T>,
 ) -> Served<Result<T, Skipped>> {
-    let bytes = match io::read_bounded(&root.join(&file.path)) {
+    let bytes = match at.tree.read(at.root, &file.path) {
         Ok(bytes) => bytes,
-        Err(skipped) => {
+        Err(reason) => {
             return Served {
-                value: Err(skip(&file.path, &skipped)),
+                value: Err(skip(&file.path, &reason)),
                 warning: None,
             };
         }

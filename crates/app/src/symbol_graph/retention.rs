@@ -1,10 +1,9 @@
-//! How many roots a server keeps the facts and graph of, and for how long with no call.
+//! How many states a server keeps the facts and graph of, and for how long with no call.
 
-use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-// The state of at most `roots` roots, each for at most `idle` after its last call. The owner sets
-// both values here.
+// At most `roots` states, each for at most `idle` after its last call: a root's working tree and
+// the tree of each commit that a call read count one state each. The owner sets both values here.
 pub(super) const RETAINED: Retention = Retention {
     roots: 2,
     idle: Duration::from_secs(15 * 60),
@@ -36,28 +35,29 @@ impl Default for Updates {
     }
 }
 
-// One kept root: its path, the time of its last call, and the turn of that call among all calls.
-pub(super) type Called<'p> = (&'p Path, Instant, u64);
+// One kept state: its key, the time of its last call, and the turn of that call among all calls.
+pub(super) type Called<'k, K> = (&'k K, Instant, u64);
 
 impl Retention {
-    // The roots to drop at `now`: each idle for `idle` or longer, then, when a call into `calling`
-    // arrives, the least recently called beyond `roots`, `calling` counted as called now.
-    pub(super) fn dropped(
+    // The states to drop at `now`: each idle for `idle` or longer, then, when a call into
+    // `calling` arrives, the least recently called beyond `roots`, `calling` counted as called now.
+    pub(super) fn dropped<K: PartialEq + Clone>(
         &self,
-        kept: &[Called<'_>],
-        calling: Option<&Path>,
+        kept: &[Called<'_, K>],
+        calling: Option<&K>,
         now: Instant,
-    ) -> Vec<PathBuf> {
-        let idle = |(_, used, _): &&Called<'_>| now.saturating_duration_since(*used) >= self.idle;
-        let mut dropped: Vec<&Path> = kept.iter().filter(idle).map(|(path, ..)| *path).collect();
+    ) -> Vec<K> {
+        let idle =
+            |(_, used, _): &&Called<'_, K>| now.saturating_duration_since(*used) >= self.idle;
+        let mut dropped: Vec<&K> = kept.iter().filter(idle).map(|(key, ..)| *key).collect();
         if let Some(calling) = calling {
-            let mut others: Vec<&Called<'_>> = (kept.iter())
+            let mut others: Vec<&Called<'_, K>> = (kept.iter())
                 .filter(|called| !idle(called) && called.0 != calling)
                 .collect();
             others.sort_by_key(|(.., turn)| *turn);
             let over = (others.len() + 1).saturating_sub(self.roots);
-            dropped.extend(others.into_iter().take(over).map(|(path, ..)| *path));
+            dropped.extend(others.into_iter().take(over).map(|(key, ..)| *key));
         }
-        dropped.into_iter().map(Path::to_path_buf).collect()
+        dropped.into_iter().cloned().collect()
     }
 }

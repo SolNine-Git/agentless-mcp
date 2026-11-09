@@ -7,6 +7,7 @@ mod file;
 mod miss;
 mod range;
 mod resolve;
+mod rev;
 mod section;
 mod symbol;
 
@@ -16,9 +17,9 @@ use git::RepoFile;
 use prompts::messages::TRACE_TARGET_COUNT;
 
 use crate::ops::limits::{FIND_USAGE_FILES, MAX_LIMIT};
-use crate::scan::walked_files;
+use crate::scan::{Named, Tree, walked_files};
 use crate::search::{FileRow, Place};
-use crate::symbol_graph::{CallGraph, CallScan, Keeping, over_walked_scan, with_call_graph};
+use crate::symbol_graph::{CallGraph, CallScan, Keeping, State, over_walked_scan, with_call_graph};
 use crate::{
     CycleRow, EdgeRow, Error, HistoryEntry, HistoryResult, Noted, Reading, RefGroup, Services,
     SharedCaller, SymbolCard, Usage,
@@ -78,6 +79,27 @@ pub struct TraceRequest {
 pub struct Trace {
     /// The answers.
     pub cards: Vec<Traced>,
+    /// The commit that the answers read in place of the working tree, if any.
+    pub revision: Option<Revision>,
+}
+
+/// The commit that a trace reads in place of the working tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Revision {
+    /// The name as the caller gave it, such as `main`.
+    pub name: String,
+    /// The full object id of the commit.
+    pub commit: String,
+}
+
+impl Revision {
+    /// Returns the abbreviated id that the receipt and the misses cite the commit by.
+    #[must_use]
+    pub fn short(&self) -> &str {
+        self.commit
+            .get(..git::SHORT_SHA_LENGTH)
+            .unwrap_or(&self.commit)
+    }
 }
 
 /// The answer for one target.
@@ -459,6 +481,11 @@ pub enum Miss {
         /// With no usage file, where the target's text occurs: the first places and the files.
         literal: Option<(Vec<Place>, usize)>,
     },
+    /// A path that the commit lacks and the working tree holds.
+    AbsentAtRevision {
+        /// The path below the repository root.
+        path: String,
+    },
     /// A path that names no file or folder, and the paths that end the same way.
     UnknownPath {
         /// The path as resolved below the root.
@@ -527,7 +554,7 @@ pub fn trace(
     reading: &Reading<'_>,
     request: &TraceRequest,
 ) -> Noted<Result<Trace, Error>> {
-    traced(services, reading, request, None)
+    traced(services, reading, request, (None, None))
 }
 
 /// Traces as [`trace`] does, over the graph that `kept` holds for the repository.
@@ -538,27 +565,62 @@ pub fn trace_kept(
     request: &TraceRequest,
     kept: &KeptGraphs,
 ) -> Noted<Result<Trace, Error>> {
-    traced(services, reading, request, Some(kept))
+    traced(services, reading, request, (None, Some(kept)))
+}
+
+/// Traces as [`trace`] does, at the commit that `rev` names when it names one: each card reads
+/// the files, lines and history of that commit.
+#[must_use]
+pub fn trace_at(
+    services: &Services,
+    reading: &Reading<'_>,
+    request: &TraceRequest,
+    rev: Option<&str>,
+) -> Noted<Result<Trace, Error>> {
+    traced(services, reading, request, (rev, None))
+}
+
+/// Traces as [`trace_at`] does, over the graph that `kept` holds for the repository at that
+/// commit.
+#[must_use]
+pub fn trace_kept_at(
+    services: &Services,
+    reading: &Reading<'_>,
+    request: &TraceRequest,
+    (rev, kept): (Option<&str>, &KeptGraphs),
+) -> Noted<Result<Trace, Error>> {
+    traced(services, reading, request, (rev, Some(kept)))
 }
 
 fn traced(
     services: &Services,
     reading: &Reading<'_>,
     request: &TraceRequest,
-    kept: Option<&KeptGraphs>,
+    (rev, kept): (Option<&str>, Option<&KeptGraphs>),
 ) -> Noted<Result<Trace, Error>> {
     if let Err(error) = target_count(&request.targets) {
         return Noted::new(Err(error));
     }
-    let keeping = kept.map_or(Keeping::Own, |kept| {
-        Keeping::Server(kept, reading.repo.root.as_path())
-    });
-    let traced = over_call(services, reading, keeping, |call| {
-        let resolved =
-            resolve::resolved(reading, call.scan, call.graph, call.files, &request.targets);
+    let root = reading.repo.root.as_path();
+    let named = match rev.map(|rev| rev::named(services, root, rev)).transpose() {
+        Ok(named) => named,
+        Err(error) => return Noted::new(Err(error)),
+    };
+    let revision = named.as_ref().map(Named::revision);
+    let fast =
+        (named.as_ref()).and_then(|named| rev::fast_cards(services, reading, request, named));
+    if let Some(cards) = fast {
+        return cards.map_ok(|cards| Trace { cards, revision });
+    }
+    let commit = named.as_ref().map(|named| named.commit.as_str());
+    let state = State { root, commit };
+    let keeping = kept.map_or(Keeping::Own, |kept| Keeping::Server(kept, state));
+    let traced = over_call(services, reading, named.as_ref(), keeping, |call| {
+        let walk = (call.files, call.tree);
+        let resolved = resolve::resolved(reading, call.scan, call.graph, walk, &request.targets);
         resolved.then_ok(|resolved| carded(call, request, resolved))
     });
-    traced.map_ok(|cards| Trace { cards })
+    traced.map_ok(|cards| Trace { cards, revision })
 }
 
 /// Resolves `targets` as [`trace`] does, and returns the repository-relative file of each symbol
@@ -572,8 +634,9 @@ pub fn card_files(
     if let Err(error) = target_count(targets) {
         return Noted::new(Err(error));
     }
-    over_call(services, reading, Keeping::Own, |call| {
-        let resolved = resolve::resolved(reading, call.scan, call.graph, call.files, targets);
+    over_call(services, reading, None, Keeping::Own, |call| {
+        let walk = (call.files, call.tree);
+        let resolved = resolve::resolved(reading, call.scan, call.graph, walk, targets);
         resolved.map_ok(|resolved| first_of_each(resolved.iter().filter_map(Resolved::card_file)))
     })
 }
@@ -597,24 +660,30 @@ fn target_count(targets: &[String]) -> Result<(), Error> {
     Err(kernel::Error::OperationFailed(message).into())
 }
 
-// The walk, the call's one scan and the scan's graph, then `work` over them. The walk's warnings
-// come with either outcome.
+// The walk of the working tree or of `named`'s commit, the call's one scan and the scan's graph,
+// then `work` over them. The walk's warnings come with either outcome.
 fn over_call<T>(
     services: &Services,
     reading: &Reading<'_>,
+    named: Option<&Named>,
     keeping: Keeping<'_>,
     work: impl FnOnce(&Call<'_, '_, '_, '_>) -> Noted<Result<T, Error>>,
 ) -> Noted<Result<T, Error>> {
-    let walked = walked_files(services, &reading.repo.root);
+    let root = &reading.repo.root;
+    let walked = match named {
+        None => walked_files(services, root).map_ok(|files| (files, Tree::Working)),
+        Some(named) => rev::walked_at(services, root, named),
+    };
     let warnings = walked.diagnostics;
     let mut diagnostics = warnings.clone();
-    let value = walked.value.and_then(|files| {
-        let worked = over_walked_scan(reading, &files, &warnings, keeping, |scan| {
+    let value = walked.value.and_then(|(files, tree)| {
+        let worked = over_walked_scan(reading, (&files, &tree), &warnings, keeping, |scan| {
             with_call_graph(&scan.files, reading.deadline, keeping, |graph| {
                 work(&Call {
                     services,
                     reading,
                     files: &files,
+                    tree: &tree,
                     walk_warnings: &warnings,
                     scan,
                     graph,
@@ -627,12 +696,13 @@ fn over_call<T>(
     Noted { value, diagnostics }
 }
 
-// What every card of one call reads: the walk and its warnings, the scan, and the scan's one name
-// index and graph.
+// What every card of one call reads: the walk, the tree that its files come from, the walk's
+// warnings, the scan, and the scan's one name index and graph.
 struct Call<'c, 'r, 'g, 's> {
     services: &'c Services,
     reading: &'c Reading<'r>,
     files: &'c [RepoFile],
+    tree: &'c Tree,
     walk_warnings: &'c [String],
     scan: &'c CallScan,
     graph: &'c CallGraph<'g, 's>,
@@ -672,7 +742,12 @@ fn outcome(
     more: Option<Section>,
     misses: &mut Misses,
 ) -> Noted<Result<Outcome, Error>> {
-    let Call { reading, files, .. } = *call;
+    let Call {
+        reading,
+        files,
+        tree,
+        ..
+    } = *call;
     let kind = resolved.kind();
     let absent = more.filter(|section| !kind.sections().contains(section));
     if let Some(section) = absent
@@ -685,12 +760,14 @@ fn outcome(
             .map(|traced| traced.map(|traced| Card::Symbol(Box::new(traced)))),
         Resolved::File(found) => file::file_trace(call, &found, more)
             .map(|traced| traced.map(|traced| Card::File(Box::new(traced)))),
-        Resolved::Folder(path) => {
-            file::folder_trace(reading, files, &path, more).map(|traced| Ok(Card::Folder(traced)))
-        }
+        Resolved::Folder(path) => file::folder_trace((reading, tree), files, &path, more)
+            .map(|traced| Ok(Card::Folder(traced))),
         Resolved::Candidates(rows) => Noted::new(Ok(Card::Candidates(candidates(rows, more)))),
         Resolved::Missed(target) => misses.card(call, target).map_ok(Card::Miss),
-        Resolved::Range(range) => Noted::new(Ok(range::range_card(&reading.repo.root, range))),
+        Resolved::Range(range) => {
+            let at = (reading.repo.root.as_path(), tree);
+            Noted::new(Ok(range::range_card(at, range)))
+        }
     };
     card.map_ok(Outcome::Card)
 }

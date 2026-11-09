@@ -17,7 +17,8 @@ use super::{
 use crate::cycles::cycles_in;
 use crate::explain::file_imports_in;
 use crate::ops::limits::MAX_LIMIT;
-use crate::search::{Place, file_row};
+use crate::scan::Tree;
+use crate::search::{Place, file_row_from};
 use crate::{
     CyclesRequest, Error, ExplainRequest, ImportRow, IntArg, Noted, Reading, SymbolCard,
     is_test_path,
@@ -33,7 +34,8 @@ pub(super) fn file_trace(
     more: Option<Section>,
 ) -> Noted<Result<FileTrace, Error>> {
     let (services, reading) = (call.services, call.reading);
-    let bare = read_lines(&reading.repo.root, &found.path).map(|lines| bare(found, lines, more));
+    let at = (reading.repo.root.as_path(), call.tree);
+    let bare = read_lines(at, &found.path).map(|lines| bare(found, lines, more));
     let linked = [Section::Imports, Section::Importers, Section::Tests];
     let traced = Noted::new(bare).then_ok(|traced| {
         if linked.into_iter().any(|section| wanted(more, section)) {
@@ -44,8 +46,10 @@ pub(super) fn file_trace(
     });
     let traced = traced.then_ok(|traced| with_cycles(call, traced, more));
     traced.map_ok(|traced| {
-        let change = (more.is_none())
-            .then(|| file_change(services, reading, &traced.path, LAST_CHANGE_DEADLINE));
+        let change = (more.is_none()).then(|| {
+            let at = call.tree.commit().map(|named| named.commit.as_str());
+            file_change(services, reading, (&traced.path, at), LAST_CHANGE_DEADLINE)
+        });
         FileTrace { change, ..traced }
     })
 }
@@ -90,10 +94,10 @@ fn with_cycles(
     })
 }
 
-fn read_lines(root: &Path, path: &str) -> Result<u32, Error> {
-    match io::read_bounded(&root.join(path)) {
+fn read_lines((root, tree): (&Path, &Tree), path: &str) -> Result<u32, Error> {
+    match tree.read(root, path) {
         Ok(bytes) => Ok(line_count(&String::from_utf8_lossy(&bytes))),
-        Err(skipped) => Err(kernel::Error::OperationFailed(format!("{path}: {skipped}")).into()),
+        Err(reason) => Err(kernel::Error::OperationFailed(format!("{path}: {reason}")).into()),
     }
 }
 
@@ -211,11 +215,12 @@ fn holding(all: &Bounded<crate::CycleRow>, path: &str, more: Option<Section>) ->
 
 // The folder's entries in tree order: each name at a level before the names below it.
 pub(super) fn folder_trace(
-    reading: &Reading<'_>,
+    (reading, source): (&Reading<'_>, &Tree),
     files: &[RepoFile],
     path: &str,
     more: Option<Section>,
 ) -> Noted<FolderTrace> {
+    let at = (reading.repo.root.as_path(), source);
     let (depth, entries) = if more == Some(Section::Tree) {
         (MORE_TREE_DEPTH, MORE_TREE_ENTRIES)
     } else {
@@ -225,13 +230,13 @@ pub(super) fn folder_trace(
         .filter_map(|file| below_folder(path, &file.path))
         .collect();
     let lines = (below.iter())
-        .filter_map(|rest| read_lines(&reading.repo.root, &joined(path, rest)).ok())
+        .filter_map(|rest| read_lines(at, &joined(path, rest)).ok())
         .map(u64::from)
         .sum();
     let tree = tree_entries(&below, depth);
     let mut noted = Noted::new(Vec::new());
     for (parts, node) in tree.iter().take(entries) {
-        let entry = folder_entry(reading, path, parts, *node);
+        let entry = folder_entry((reading, source), path, parts, *node);
         noted.diagnostics.extend(entry.diagnostics);
         noted.value.push(entry.value);
     }
@@ -290,7 +295,7 @@ fn tree_entries(below: &[&str], depth: usize) -> BTreeMap<Vec<String>, Node> {
 }
 
 fn folder_entry(
-    reading: &Reading<'_>,
+    (reading, tree): (&Reading<'_>, &Tree),
     folder: &str,
     parts: &[String],
     node: Node,
@@ -299,6 +304,9 @@ fn folder_entry(
     let depth = parts.len();
     match node {
         Node::Folder(files) => Noted::new(FolderEntry::Folder { depth, path, files }),
-        Node::File => file_row(reading, &path).map(|row| FolderEntry::File { depth, row }),
+        Node::File => {
+            let bytes = tree.read(&reading.repo.root, &path);
+            file_row_from(reading, &path, bytes).map(|row| FolderEntry::File { depth, row })
+        }
     }
 }

@@ -1,7 +1,8 @@
 use app::search::{FileRow, Measure};
 use app::trace::{
-    Callers, CandidatesTrace, Card, Change, FileTrace, FolderEntry, FolderTrace, Linked, Outcome,
-    RangeTrace, Section, Similar, SymbolTrace, Tally, Trace, TraceRequest, Traced,
+    Callers, CandidatesTrace, Card, Change, FileTrace, FolderEntry, FolderTrace, Linked, Miss,
+    Outcome, RangeTrace, Revision, Section, Similar, SymbolTrace, Tally, Trace, TraceRequest,
+    Traced,
 };
 use app::{Coverage, CoverageStatus, RefGroup, RefSite, SymbolCard};
 
@@ -25,6 +26,11 @@ fn card(stable_id: &str) -> SymbolCard {
 
 // The text of one card for `more`, with the card's own target.
 fn text_of(card: Card, more: Option<Section>) -> String {
+    text_at(card, more, None)
+}
+
+// The text of one card for `more` in an answer that read `revision`.
+fn text_at(card: Card, more: Option<Section>, revision: Option<Revision>) -> String {
     let request = TraceRequest {
         targets: vec!["run".to_owned()],
         more,
@@ -34,6 +40,7 @@ fn text_of(card: Card, more: Option<Section>) -> String {
             target: "run".to_owned(),
             outcome: Outcome::Card(card),
         }],
+        revision,
     };
     trace_text(&TraceAnswer {
         request: &request,
@@ -300,5 +307,46 @@ fn a_cut_folder_card_points_at_more_and_a_cut_tree_at_a_subfolder() {
     assert!(
         text.ends_with("  ... 5 more: trace a subfolder for the rest\n"),
         "{text}"
+    );
+}
+
+fn main_at() -> Revision {
+    let commit = "2e8f8074a1b2c3d4e5f60718293a4b5c6d7e8f90".to_owned();
+    let name = "main".to_owned();
+    Revision { name, commit }
+}
+
+#[test]
+fn each_hint_of_an_answer_at_a_revision_names_the_revision() {
+    let complete = CoverageStatus::Complete;
+    let exact = callers(Tally::Exact(4), Tally::Exact(5), complete);
+    let card = symbol(|traced| traced.callers = Some(exact));
+
+    let text = text_at(card, None, Some(main_at()));
+
+    let head = "callers: 5 bound; 12 name-only in 4 files hidden  (more=callers, rev=main)\n";
+    assert!(text.contains(head), "{text}");
+}
+
+#[test]
+fn each_miss_of_an_answer_at_a_revision_names_the_commit() {
+    let path = "src/app/svc.py".to_owned();
+    let absent = Card::Miss(Miss::AbsentAtRevision { path });
+    let text = text_at(absent, None, Some(main_at()));
+    let want = "no file src/app/svc.py at main (2e8f8074). It is in the working tree: trace it \
+                with no rev.\n";
+    assert_eq!(text, want);
+
+    let name = "run".to_owned();
+    let (usage, literal) = (None, None);
+    let nothing = Card::Miss(Miss::Nothing {
+        name,
+        usage,
+        literal,
+    });
+    let text = text_at(nothing, None, Some(main_at()));
+    assert_eq!(
+        text,
+        "no symbol, file or folder matches run at main (2e8f8074).\n"
     );
 }

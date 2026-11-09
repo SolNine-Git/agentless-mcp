@@ -15,7 +15,7 @@ use super::resolve::{Missed, Resolved};
 use super::{Call, MISS_LITERAL_FILES, Miss};
 use crate::find::{Spelled, Usage, UsageQuery, spellings, usage, words};
 use crate::parallel::{map_in_order, threads};
-use crate::scan::Spelling;
+use crate::scan::{Spelling, Tree};
 use crate::search::{FileHits, Literal, Place, literal_places, searched_text};
 use crate::{Error, Noted};
 
@@ -153,9 +153,10 @@ fn read_code_files(
     hits: &mut [Vec<FileHits>],
 ) -> Result<Vec<Option<Vec<Option<Spelling>>>>, Stopped> {
     let (root, deadline) = (&call.reading.repo.root, call.reading.deadline);
+    let at = (root.as_path(), call.tree);
     let read: Vec<Result<CodeRead, Stopped>> = map_in_order(code, threads(), |file| {
         checkpoint(deadline)?;
-        Ok(read_code(root, file, words, literals))
+        Ok(read_code(at, file, words, literals))
     });
     let mut spelled = Vec::with_capacity(read.len());
     for file in read {
@@ -178,6 +179,7 @@ fn read_other_files(
     hits: &mut [Vec<FileHits>],
 ) -> Result<(), Stopped> {
     let (root, deadline) = (&call.reading.repo.root, call.reading.deadline);
+    let at = (root.as_path(), call.tree);
     let read: HashSet<&str> = code.iter().map(|file| file.path.as_str()).collect();
     let others: Vec<&RepoFile> = (call.files.iter())
         .filter(|file| !read.contains(file.path.as_str()))
@@ -185,7 +187,7 @@ fn read_other_files(
     let other_hits: Vec<Result<Vec<Option<FileHits>>, Stopped>> =
         map_in_order(&others, threads(), |file| {
             checkpoint(deadline)?;
-            Ok(read_other(root, file, literals, wanted))
+            Ok(read_other(at, file, literals, wanted))
         });
     for file_hits in other_hits {
         held(hits, file_hits?);
@@ -223,12 +225,12 @@ fn views<'f>(
 }
 
 fn read_code(
-    root: &Path,
+    (root, tree): (&Path, &Tree),
     file: &FileFacts,
     words: &[&str],
     literals: &[Result<Literal, Error>],
 ) -> CodeRead {
-    let bytes = io::read_bounded(&root.join(&file.path)).ok()?;
+    let bytes = tree.read(root, &file.path).ok()?;
     let text = FileText::decode(file.path.clone(), file.language, &bytes);
     let searched = searched_text(&bytes);
     let hits = (literals.iter())
@@ -243,12 +245,12 @@ fn read_code(
 }
 
 fn read_other(
-    root: &Path,
+    (root, tree): (&Path, &Tree),
     file: &RepoFile,
     literals: &[Result<Literal, Error>],
     wanted: &[bool],
 ) -> Vec<Option<FileHits>> {
-    let bytes = io::read_bounded(&root.join(&file.path)).ok();
+    let bytes = tree.read(root, &file.path).ok();
     let text = bytes.as_deref().and_then(searched_text);
     (literals.iter().zip(wanted))
         .map(|(literal, wanted)| {

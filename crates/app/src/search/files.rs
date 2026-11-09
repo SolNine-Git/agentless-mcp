@@ -110,13 +110,23 @@ pub(super) fn in_scope<'f>(
 
 // The row of the file at `path`: its lines, and its symbols from the cache or a parse.
 pub(crate) fn file_row(reading: &Reading<'_>, path: &str) -> Noted<FileRow> {
+    let bytes = io::read_bounded(&reading.repo.root.join(path));
+    file_row_from(reading, path, bytes.map_err(|skipped| skipped.to_string()))
+}
+
+// The row of the file at `path` from its bytes, or from why they were not read.
+pub(crate) fn file_row_from(
+    reading: &Reading<'_>,
+    path: &str,
+    bytes: Result<Vec<u8>, String>,
+) -> Noted<FileRow> {
     let row = |measure| FileRow {
         path: path.to_owned(),
         measure,
     };
-    let bytes = match io::read_bounded(&reading.repo.root.join(path)) {
+    let bytes = match bytes {
         Ok(bytes) => bytes,
-        Err(skipped) => return Noted::new(row(Measure::Unread(skipped.to_string()))),
+        Err(reason) => return Noted::new(row(Measure::Unread(reason))),
     };
     let symbols = parsed_text(path, &bytes)
         .map_or_else(|| Noted::new(None), |text| symbols_of(reading, &text));

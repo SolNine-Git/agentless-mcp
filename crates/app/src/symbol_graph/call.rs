@@ -24,7 +24,7 @@ use super::retention::{Called, RETAINED, Updates};
 use super::store::Scan;
 use crate::detached::{answered_over, drop_detached};
 use crate::parallel::{map_in_order, threads};
-use crate::scan::{KeptFacts, RepoFacts, Skipped, rescan, scan_walked};
+use crate::scan::{KeptFacts, RepoFacts, Skipped, Tree, rescan, scan_walked};
 use crate::{Error, Noted, Reading, Services};
 
 // How long a call waits for its root's graph thread between two checks of its deadline.
@@ -58,31 +58,31 @@ pub(crate) fn over_call_scan<T>(
     scanned.then_ok(|scan| answered_over(scan, answer))
 }
 
-// Scans the walked `files` once and gives the scan to `answer`. The walk's `warnings` come first,
-// as the scan's own walk gives them.
+// Scans the walked `files` of `tree` once and gives the scan to `answer`. The walk's `warnings`
+// come first, as the scan's own walk gives them.
 pub(crate) fn over_walked_scan<T>(
     reading: &Reading<'_>,
-    files: &[RepoFile],
+    (files, tree): (&[RepoFile], &Tree),
     warnings: &[String],
     keeping: Keeping<'_>,
     answer: impl FnOnce(&CallScan) -> Noted<Result<T, Error>>,
 ) -> Noted<Result<T, Error>> {
     let (root, source, deadline) = (&reading.repo.root, reading.facts, reading.deadline);
     let scanned = match keeping {
-        Keeping::Server(graphs, kept_root) => {
-            let kept = graphs.facts(kept_root);
-            let scanned = rescan(root, files, source, deadline, &kept);
+        Keeping::Server(graphs, state) => {
+            let kept = graphs.facts(state);
+            let scanned = rescan(root, (files, tree), source, deadline, &kept);
             scanned.map(|scanned| {
                 scanned.map(|(kept, skipped)| {
                     let files = Arc::clone(&kept.files);
-                    graphs.keep(kept_root, kept);
-                    graphs.prebuild(kept_root, &files);
+                    graphs.keep(state, kept);
+                    graphs.prebuild(state, &files);
                     (files, skipped)
                 })
             })
         }
         Keeping::Own | Keeping::Thread(_) => {
-            let scanned = scan_walked(root, files, source, deadline);
+            let scanned = scan_walked(root, (files, tree), source, deadline);
             let shared = |facts: RepoFacts| (Arc::new(shared(facts.files)), facts.skipped);
             scanned.map(|scanned| scanned.map(shared))
         }
@@ -110,11 +110,27 @@ fn shared(files: Vec<FileFacts>) -> Vec<Arc<FileFacts>> {
 pub(crate) enum Keeping<'a> {
     // The call builds its own.
     Own,
-    // The server keeps the graph of the root on the root's graph thread.
-    Server(&'a KeptGraphs, &'a Path),
+    // The server keeps the graph of the state on the state's graph thread.
+    Server(&'a KeptGraphs, State<'a>),
     // The graph thread builds it, and counts each build.
     Thread(&'a Counts),
 }
+
+// One state that a server keeps: a root's working tree, or the tree of one of its commits.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct State<'a> {
+    pub(crate) root: &'a Path,
+    pub(crate) commit: Option<&'a str>,
+}
+
+impl State<'_> {
+    fn key(self) -> StateKey {
+        (self.root.to_path_buf(), self.commit.map(str::to_owned))
+    }
+}
+
+// The key of a kept state: the root, and the commit of a revision's state.
+type StateKey = (PathBuf, Option<String>);
 
 // The name index, import scopes, resolver and resolved graph of one scan, whose facts live for
 // `'s`. The first answer that needs one builds it, and every later answer reads the same one.
@@ -235,12 +251,12 @@ impl<'f, 's> CallGraph<'f, 's> {
         &self,
         work: impl FnOnce(&CallGraph<'_, '_>) -> Result<R, Error> + Send + 'static,
     ) -> Noted<Result<R, Error>> {
-        let Keeping::Server(graphs, root) = self.keeping else {
+        let Keeping::Server(graphs, state) = self.keeping else {
             return Noted::new(work(self));
         };
         let (job, replied) = Job::new(Arc::clone(self.files), work);
         let mut noted = Noted::new(());
-        if let Err((job, refused)) = graphs.ask(root, job) {
+        if let Err((job, refused)) = graphs.ask(state, job) {
             noted.diagnostics.push(refused);
             job.run(&CallGraph {
                 keeping: Keeping::Own,
@@ -429,8 +445,8 @@ pub(crate) struct Gate {
     pub(crate) waiting: Mutex<Sender<()>>,
 }
 
-/// The facts, name index and resolved graph of the roots that a server called last, kept between
-/// its trace calls.
+/// The facts, name index and resolved graph of the states that a server called last, kept between
+/// its trace calls: a root's working tree, and the tree of each commit that a call read.
 pub struct KeptGraphs {
     kept: Arc<Kept>,
     builds: Arc<Counts>,
@@ -439,14 +455,14 @@ pub struct KeptGraphs {
 impl std::fmt::Debug for KeptGraphs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KeptGraphs")
-            .field("roots", &self.kept_roots())
+            .field("states", &self.kept_states())
             .field("builds", &self.builds())
             .finish()
     }
 }
 
-// The kept roots, and the clock that their last calls are read on. A graph thread holds a weak
-// handle, so that the state of an idle root can be dropped when no call arrives.
+// The kept states, and the clock that their last calls are read on. A graph thread holds a weak
+// handle, so that an idle state can be dropped when no call arrives.
 struct Kept {
     roots: Mutex<Roots>,
     clock: Arc<dyn Clock>,
@@ -454,11 +470,11 @@ struct Kept {
 
 #[derive(Default)]
 struct Roots {
-    by_path: HashMap<PathBuf, KeptRoot>,
+    by_state: HashMap<StateKey, KeptRoot>,
     turns: u64,
 }
 
-// What a server keeps of one root: the facts of its last scan, its graph thread once a call asked
+// What a server keeps of one state: the facts of its last scan, its graph thread once a call asked
 // for the graph, and its last call.
 struct KeptRoot {
     facts: Arc<KeptFacts>,
@@ -468,18 +484,18 @@ struct KeptRoot {
 }
 
 impl Kept {
-    // The state of `root` for a call at `now`, after the retention rules dropped what they drop.
+    // The state for a call at `now`, after the retention rules dropped what they drop.
     fn called<'r>(
         &self,
         roots: &'r mut Roots,
-        root: &Path,
+        state: &StateKey,
         dropped: &mut Vec<KeptRoot>,
     ) -> &'r mut KeptRoot {
         let now = self.clock.now();
-        dropped.extend(retired(roots, Some(root), now));
+        dropped.extend(retired(roots, Some(state), now));
         roots.turns += 1;
         let turn = roots.turns;
-        let kept = roots.by_path.entry(root.to_owned()).or_insert(KeptRoot {
+        let kept = roots.by_state.entry(state.clone()).or_insert(KeptRoot {
             facts: Arc::default(),
             thread: None,
             used: now,
@@ -489,7 +505,7 @@ impl Kept {
         kept
     }
 
-    // Drops the state of each root idle for the retention's time; the frees run off the lock.
+    // Drops each state idle for the retention's time; the frees run off the lock.
     fn sweep(&self) {
         let dropped = retired(&mut self.roots(), None, self.clock.now());
         if !dropped.is_empty() {
@@ -503,15 +519,15 @@ impl Kept {
     }
 }
 
-// Removes the roots that the retention drops at `now`. A dropped root's thread ends after the
+// Removes the states that the retention drops at `now`. A dropped state's thread ends after the
 // jobs it holds, as its channel has no sender left.
-fn retired(roots: &mut Roots, calling: Option<&Path>, now: Instant) -> Vec<KeptRoot> {
-    let called: Vec<Called<'_>> = (roots.by_path.iter())
-        .map(|(path, kept)| (path.as_path(), kept.used, kept.turn))
+fn retired(roots: &mut Roots, calling: Option<&StateKey>, now: Instant) -> Vec<KeptRoot> {
+    let called: Vec<Called<'_, StateKey>> = (roots.by_state.iter())
+        .map(|(key, kept)| (key, kept.used, kept.turn))
         .collect();
     let dropped = RETAINED.dropped(&called, calling, now);
     (dropped.iter())
-        .filter_map(|path| roots.by_path.remove(path))
+        .filter_map(|key| roots.by_state.remove(key))
         .collect()
 }
 
@@ -574,10 +590,10 @@ impl KeptGraphs {
         }
     }
 
-    // Sends `job` to the graph thread of `root`, started at the first job of the root or after
+    // Sends `job` to the graph thread of `state`, started at the first job of the state or after
     // its thread ended. A thread that the system refuses hands the job back with the reason.
-    fn ask(&self, root: &Path, job: Job) -> Result<(), (Job, String)> {
-        self.with_root(root, |kept| self.sent(kept, root, job))
+    fn ask(&self, state: State<'_>, job: Job) -> Result<(), (Job, String)> {
+        self.with_state(state, |kept| self.sent(kept, state.root, job))
     }
 
     fn sent(&self, kept: &mut KeptRoot, root: &Path, job: Job) -> Result<(), (Job, String)> {
@@ -607,41 +623,51 @@ impl KeptGraphs {
         })
     }
 
-    // Starts the build of the graph of `files` on the graph thread of `root`, unless the thread
+    // Starts the build of the graph of `files` on the graph thread of `state`, unless the thread
     // has started it. A refused thread refuses the call's next job too, which reports it.
-    fn prebuild(&self, root: &Path, files: &Arc<Vec<Arc<FileFacts>>>) {
+    fn prebuild(&self, state: State<'_>, files: &Arc<Vec<Arc<FileFacts>>>) {
         let job = Job {
             files: Arc::clone(files),
             asked: Asked::Build,
         };
-        let _refused = self.ask(root, job);
+        let _refused = self.ask(state, job);
     }
 
-    // The facts of the last scan of `root`, or none before its first scan.
-    fn facts(&self, root: &Path) -> Arc<KeptFacts> {
-        self.with_root(root, |kept| Arc::clone(&kept.facts))
+    // The facts of the last scan of `state`, or none before its first scan. A revision's first
+    // scan takes the root's working-tree facts, so that each unchanged file shares them.
+    fn facts(&self, state: State<'_>) -> Arc<KeptFacts> {
+        let working = state.commit.and_then(|_| {
+            let roots = self.kept.roots();
+            let key = (state.root.to_path_buf(), None);
+            roots.by_state.get(&key).map(|kept| Arc::clone(&kept.facts))
+        });
+        self.with_state(state, |kept| match working {
+            Some(working) if kept.facts.files.is_empty() => working,
+            _ => Arc::clone(&kept.facts),
+        })
     }
 
-    fn keep(&self, root: &Path, facts: Arc<KeptFacts>) {
-        self.with_root(root, |kept| kept.facts = facts);
+    fn keep(&self, state: State<'_>, facts: Arc<KeptFacts>) {
+        self.with_state(state, |kept| kept.facts = facts);
     }
 
-    // `work` over the state of `root` at a call. The state that the call drops is freed off the
-    // lock, on a thread of its own.
-    fn with_root<T>(&self, root: &Path, work: impl FnOnce(&mut KeptRoot) -> T) -> T {
+    // `work` over `state` at a call. The state that the call drops is freed off the lock, on a
+    // thread of its own.
+    fn with_state<T>(&self, state: State<'_>, work: impl FnOnce(&mut KeptRoot) -> T) -> T {
         let mut dropped = Vec::new();
-        let worked = work(self.kept.called(&mut self.kept.roots(), root, &mut dropped));
+        let key = state.key();
+        let worked = work(self.kept.called(&mut self.kept.roots(), &key, &mut dropped));
         if !dropped.is_empty() {
             drop_detached(dropped);
         }
         worked
     }
 
-    // The kept roots, in path order.
-    fn kept_roots(&self) -> Vec<PathBuf> {
-        let mut roots: Vec<PathBuf> = self.kept.roots().by_path.keys().cloned().collect();
-        roots.sort();
-        roots
+    // The kept states, in key order.
+    fn kept_states(&self) -> Vec<StateKey> {
+        let mut states: Vec<StateKey> = self.kept.roots().by_state.keys().cloned().collect();
+        states.sort();
+        states
     }
 }
 

@@ -11,7 +11,9 @@ use git::LastCommit;
 use store::FactSource;
 
 use super::Change;
+use super::rev::history_of;
 use crate::ops::limits::MIN_BUDGET;
+use crate::scan::Named;
 use crate::{HistoryRequest, IntArg, Reading, Repo, Services, history};
 
 // What the history thread owns: a reading borrows, and the thread can outlive the call.
@@ -20,6 +22,7 @@ struct Job {
     repo: Repo,
     snapshot: git::Snapshot,
     target: String,
+    commit: Option<Named>,
 }
 
 impl Job {
@@ -37,7 +40,11 @@ impl Job {
             limit: IntArg::from_usize(1),
             budget: IntArg::from_usize(MIN_BUDGET),
         };
-        match history(&self.services, &reading, &request).value {
+        let found = match &self.commit {
+            None => history(&self.services, &reading, &request).value,
+            Some(commit) => history_of(&self.services, &reading, &request, commit),
+        };
+        match found {
             Ok(found) => {
                 let first = found.entries.into_iter().next();
                 Change::Commit(first.expect("history refuses a span with no commit"))
@@ -47,10 +54,11 @@ impl Job {
     }
 }
 
+// The newest commit on the lines of `target` in HEAD's history, or in `commit`'s.
 pub(super) fn last_change(
     services: &Services,
     reading: &Reading<'_>,
-    target: &str,
+    (target, commit): (&str, Option<&Named>),
     wait: Duration,
 ) -> Change {
     let job = Job {
@@ -58,6 +66,7 @@ pub(super) fn last_change(
         repo: reading.repo.clone(),
         snapshot: reading.snapshot.clone(),
         target: target.to_owned(),
+        commit: commit.cloned(),
     };
     let (sender, receiver) = mpsc::channel();
     let spawned = thread::Builder::new().spawn(move || {
@@ -85,13 +94,19 @@ fn awaited(receiver: &Receiver<Change>, handle: JoinHandle<()>, wait: Duration) 
     }
 }
 
+// The newest commit on `path` in HEAD's history, or in `commit`'s.
 pub(super) fn file_change(
     services: &Services,
     reading: &Reading<'_>,
-    path: &str,
+    (path, commit): (&str, Option<&str>),
     wait: Duration,
 ) -> Change {
-    match services.git.last_commit(&reading.repo.root, path, wait) {
+    let root = &reading.repo.root;
+    let found = match commit {
+        None => services.git.last_commit(root, path, wait),
+        Some(commit) => services.git.last_commit_at(root, commit, path, wait),
+    };
+    match found {
         LastCommit::Found(commit) => Change::Commit(crate::history::entry(commit)),
         LastCommit::NoCommit => Change::NoCommit,
         LastCommit::NotRepository => Change::NotRepository {
