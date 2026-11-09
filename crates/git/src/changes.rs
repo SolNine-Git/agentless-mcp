@@ -113,6 +113,21 @@ impl Git {
         self.run(root, "ls-files", &rest, LISTING)
     }
 
+    /// Prints the best common ancestor of `commit` and HEAD with `merge-base`, as a pull request
+    /// takes its base.
+    #[must_use]
+    pub fn merge_base(&self, root: &Path, commit: &str) -> GitOutcome {
+        let rest = ["--end-of-options", commit, "HEAD"].map(OsStr::new);
+        self.run_offline(root, "merge-base", &rest, COMMIT)
+    }
+
+    /// Prints the count of the commits that HEAD holds and `base` does not.
+    #[must_use]
+    pub fn commits_since(&self, root: &Path, base: &str) -> GitOutcome {
+        let range = OsString::from(format!("{base}..HEAD"));
+        self.run_offline(root, "rev-list", &[OsStr::new("--count"), &range], COMMIT)
+    }
+
     /// Prints `path` as `commit` has it, up to the per-file cap.
     #[must_use]
     pub fn blob(&self, root: &Path, commit: &str, path: &str) -> GitOutcome {

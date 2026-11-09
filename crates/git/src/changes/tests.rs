@@ -13,6 +13,7 @@ use crate::{Git, GitOutcome};
 
 const SHA: &str = "08ec32abb9b149de9d10310c24bd12bd1fe8d874";
 const BLOB_OBJECT: &str = "08ec32abb9b149de9d10310c24bd12bd1fe8d874:./pkg/a.py";
+const RANGE: &str = "08ec32abb9b149de9d10310c24bd12bd1fe8d874..HEAD";
 
 type Row = (String, String, String, String, String);
 type Call = fn(&Git, &Path) -> GitOutcome;
@@ -47,7 +48,7 @@ fn row(change: &Change) -> Row {
     (status, path, old_path, side(change.old), side(change.new))
 }
 
-fn calls() -> [(Call, Vec<&'static str>, usize); 4] {
+fn calls() -> [(Call, Vec<&'static str>, usize); 6] {
     [
         (
             |git, root| git.verify(root, "--output=x"),
@@ -73,6 +74,16 @@ fn calls() -> [(Call, Vec<&'static str>, usize); 4] {
             |git, root| git.blob(root, SHA, "pkg/a.py"),
             vec!["cat-file", "blob", BLOB_OBJECT],
             1_000_000,
+        ),
+        (
+            |git, root| git.merge_base(root, SHA),
+            vec!["merge-base", "--end-of-options", SHA, "HEAD"],
+            4_096,
+        ),
+        (
+            |git, root| git.commits_since(root, SHA),
+            vec!["rev-list", "--count", RANGE],
+            4_096,
         ),
     ]
 }
@@ -152,6 +163,8 @@ fn each_change_call_names_its_deadline_in_the_timeout_note() {
         ("diff", LISTING, "git diff timed out after 30.0s"),
         ("ls-files", LISTING, "git ls-files timed out after 30.0s"),
         ("cat-file", BLOB, "git cat-file timed out after 5.0s"),
+        ("merge-base", COMMIT, "git merge-base timed out after 5.0s"),
+        ("rev-list", COMMIT, "git rev-list timed out after 5.0s"),
     ];
     for (subcommand, limits, expected) in calls {
         let outcome = classify(subcommand, limits, io::Outcome::TimedOut);
@@ -245,4 +258,31 @@ fn a_real_listing_parses_into_changes() {
     assert_eq!(added, [new]);
     let blob = git.blob(&root, &commit, "a.py");
     assert_eq!(blob, GitOutcome::Printed(b"x = 1\n".to_vec()));
+}
+
+#[test]
+fn merge_base_is_the_fork_point_and_commits_since_counts_head_past_it() {
+    let scratch = Scratch::new();
+    let root = scratch.repo("repo", &[("a.py", "x = 1\n")]);
+    let git = scratch.git();
+    let commit_of = |outcome: GitOutcome| match outcome {
+        GitOutcome::Printed(stdout) => parse_commit(&stdout).expect("one full object name"),
+        other => panic!("git printed no commit: {other:?}"),
+    };
+    let fork = commit_of(git.verify(&root, "HEAD"));
+    scratch.run_git(&root, &["branch", "side"]);
+    for text in ["x = 2\n", "x = 3\n"] {
+        scratch.write("repo/a.py", text);
+        scratch.run_git(&root, &["commit", "--quiet", "-am", "edit"]);
+    }
+    scratch.run_git(&root, &["checkout", "--quiet", "side"]);
+    scratch.write("repo/b.py", "y = 1\n");
+    scratch.run_git(&root, &["add", "b.py"]);
+    scratch.run_git(&root, &["commit", "--quiet", "-m", "side"]);
+    scratch.run_git(&root, &["checkout", "--quiet", "-"]);
+
+    let side = commit_of(git.verify(&root, "side"));
+    assert_eq!(commit_of(git.merge_base(&root, &side)), fork);
+    let count = git.commits_since(&root, &fork);
+    assert_eq!(count, GitOutcome::Printed(b"2\n".to_vec()));
 }

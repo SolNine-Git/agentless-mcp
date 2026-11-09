@@ -443,6 +443,8 @@ pub struct git::Git
 impl git::Git
 pub fn git::Git::blob(&self, &std::path::Path, &str, &str) -> git::GitOutcome
 pub fn git::Git::changes(&self, &std::path::Path, &str) -> git::GitOutcome
+pub fn git::Git::commits_since(&self, &std::path::Path, &str) -> git::GitOutcome
+pub fn git::Git::merge_base(&self, &std::path::Path, &str) -> git::GitOutcome
 pub fn git::Git::untracked(&self, &std::path::Path) -> git::GitOutcome
 pub fn git::Git::verify(&self, &std::path::Path, &str) -> git::GitOutcome
 impl git::Git
