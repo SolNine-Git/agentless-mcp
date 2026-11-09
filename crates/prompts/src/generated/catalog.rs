@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 386] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 387] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1411,6 +1411,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 386] = [
         "map_walk_capped",
         &[],
         &[Piece::Text(messages::MAP_WALK_CAPPED)],
+    ),
+    (
+        "messages",
+        "near_duplicates_found",
+        &["name", "count"],
+        messages::NEAR_DUPLICATES_FOUND.pieces(),
     ),
     (
         "messages",

@@ -2083,6 +2083,18 @@ pub const MAP_UNRESOLVED_SEEDS: Template<Text> = Template::new(&[
 pub const MAP_WALK_CAPPED: &str = "// note: the walk out to these tests hit its node bound before \
         it finished, so this section is a floor rather than every test";
 
+/// A template that takes (`name`, `count`).
+pub const NEAR_DUPLICATES_FOUND: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("the body the patch gives "),
+    Piece::Value(0),
+    Piece::Text(" is the same as the body of "),
+    Piece::Value(1),
+    Piece::Text(
+        " existing definition(s) token for token, with comments and \
+        indentation left out; you may already have this",
+    ),
+]);
+
 /// A template that takes (`count`, `cap`).
 pub const OVERVIEW_DATA_UNLISTED: Template<(Count, Count)> = Template::new(&[
     Piece::Value(0),

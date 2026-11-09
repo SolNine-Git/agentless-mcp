@@ -1540,6 +1540,13 @@
       "arguments": {},
       "text": "// note: the walk out to these tests hit its node bound before it finished, so this section is a floor rather than every test"
     },
+    "near_duplicates_found": {
+      "arguments": {
+        "count": 2,
+        "name": "'total'"
+      },
+      "text": "the body the patch gives 'total' is the same as the body of 2 existing definition(s) token for token, with comments and indentation left out; you may already have this"
+    },
     "overview_data_unlisted": {
       "arguments": {
         "cap": 500,

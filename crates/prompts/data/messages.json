@@ -245,6 +245,7 @@
   "callee_overlap_new_not_measured": "not checked: callee_overlap did not compare {path}, because its text after the change cannot be measured. {reason}",
   "callee_overlap_does_not_parse": "{path} does not parse: the first syntax error is at line {line}. Functions are compared only in a file that parses. Fix the syntax error, then run the check again.",
   "callee_overlap_tokenizer_rejects": "{path}: Python's tokenizer rejects this file ({detail}). Functions are compared only in a file the tokenizer accepts. Fix the line the error names, then run the check again.",
+  "near_duplicates_found": "the body the patch gives {name} is the same as the body of {count} existing definition(s) token for token, with comments and indentation left out; you may already have this",
   "reuse_candidates_found": "`{target}` at {path}:{line} calls and reads {count} of the same {count:name|names} as `{name}`: {listed}. Read `{target}` before you keep a second copy.",
   "reuse_candidates_found_evidence": "score {score}",
   "reuse_candidates_reads": "the action names of every function",

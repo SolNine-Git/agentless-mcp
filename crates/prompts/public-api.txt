@@ -234,6 +234,7 @@ pub const prompts::messages::MAP_SYMBOLS_UNLISTED: prompts::Template<prompts::Co
 pub const prompts::messages::MAP_TESTS_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::MAP_UNRESOLVED_SEEDS: prompts::Template<prompts::Text>
 pub const prompts::messages::MAP_WALK_CAPPED: &str
+pub const prompts::messages::NEAR_DUPLICATES_FOUND: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::OVERVIEW_DATA_UNLISTED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::OVERVIEW_STABLE_IDS: prompts::Template<prompts::Text>
 pub const prompts::messages::OVERVIEW_STABLE_IDS_DATA: prompts::Template<prompts::Text>
