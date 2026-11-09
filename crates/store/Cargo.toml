@@ -19,7 +19,7 @@ kernel = { path = "../kernel" }
 libc.workspace = true
 metrics = { path = "../metrics" }
 prompts = { path = "../prompts" }
-rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled", "cache"] }
+rusqlite = { version = "=0.41.1", default-features = false, features = ["bundled", "cache"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
