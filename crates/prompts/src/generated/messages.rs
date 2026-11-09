@@ -2903,6 +2903,11 @@ pub const TOOL_TAKES: Template<(Text, Text)> = Template::new(&[
 pub const TRACE_AT_LEAST: Template<Count> =
     Template::new(&[Piece::Text("at least "), Piece::Value(0)]);
 
+/// A text that takes no values.
+pub const TRACE_BODY_OF_FILE: &str = "Read reads a file, trace path:start-end gives its numbered \
+        lines, and a symbol id with more=body gives the body of one \
+        symbol.";
+
 /// A template that takes `count`.
 pub const TRACE_BOUND: Template<Count> = Template::new(&[Piece::Value(0), Piece::Text(" bound")]);
 

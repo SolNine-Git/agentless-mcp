@@ -317,6 +317,7 @@
   "trace_no_section_symbol": "more={name} does not apply to a symbol card. Symbol sections: {listed}.",
   "trace_no_section_file": "more={name} does not apply to a file card. File sections: {listed}.",
   "trace_no_section_folder": "more={name} does not apply to a folder card. Folder sections: {listed}.",
+  "trace_body_of_file": "Read reads a file, trace path:start-end gives its numbered lines, and a symbol id with more=body gives the body of one symbol.",
   "trace_range_header": "{path}  {start}-{end} of {count} {count:line|lines}",
   "trace_range_cut": "... {shown} of {total} lines shown: trace {target} for the next {count} {count:line|lines}.",
   "trace_range_symbols": "symbols: {count}",

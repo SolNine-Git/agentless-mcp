@@ -218,6 +218,14 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **`more=body` asked of a file card names the calls that give lines.** The
+  answer "more=body does not apply to a file card. File sections: ..." now
+  goes on: "Read reads a file, trace path:start-end gives its numbered lines,
+  and a symbol id with more=body gives the body of one symbol." Another
+  section asked of a file card keeps its answer. New golden
+  `trace/repo_py.no_body_file`, with its count in
+  `crates/app/fixtures/read/tokens.json`.
+
 - **`search` says when its glob selects no file, reads CRLF lines, and shows
   no context of a match that it leaves out.** A `files` glob that selects no
   file (inside `path`, when the request gives one) now answers "search /P/

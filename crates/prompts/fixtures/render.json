@@ -2134,6 +2134,10 @@
       },
       "text": "at least 3"
     },
+    "trace_body_of_file": {
+      "arguments": {},
+      "text": "Read reads a file, trace path:start-end gives its numbered lines, and a symbol id with more=body gives the body of one symbol."
+    },
     "trace_bound": {
       "arguments": {
         "count": 3

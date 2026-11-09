@@ -5,8 +5,8 @@ use app::search::Place;
 use app::trace::{CandidatesTrace, CardKind, Miss, Section};
 use app::{ROW_INDENT, Usage};
 use prompts::messages::{
-    TARGET_NO_LINE, TRACE_CANDIDATES, TRACE_LINE_PAST_END, TRACE_LITERAL, TRACE_LITERAL_NONE,
-    TRACE_MORE_HINT, TRACE_NO_GRAMMAR, TRACE_NO_GRAMMAR_NAME, TRACE_NO_MATCH,
+    TARGET_NO_LINE, TRACE_BODY_OF_FILE, TRACE_CANDIDATES, TRACE_LINE_PAST_END, TRACE_LITERAL,
+    TRACE_LITERAL_NONE, TRACE_MORE_HINT, TRACE_NO_GRAMMAR, TRACE_NO_GRAMMAR_NAME, TRACE_NO_MATCH,
     TRACE_NO_SECTION_FILE, TRACE_NO_SECTION_FOLDER, TRACE_NO_SECTION_SYMBOL, TRACE_NOT_PARSED,
     TRACE_NOT_SCANNED, TRACE_RANGE_BINARY, TRACE_RANGE_PAST_END, TRACE_RANGE_REVERSED,
     TRACE_ROWS_UNLISTED, TRACE_UNKNOWN_PATH, TRACE_UNKNOWN_PATH_NONE,
@@ -124,8 +124,8 @@ fn no_grammar(path: &str) -> String {
     }
 }
 
-// Trace refuses an absent section only on the symbol, file and folder cards; a candidates card
-// and a miss answer whatever `more` names.
+// Trace refuses an absent section only on the symbol, file and folder cards; a candidates card,
+// a range card and a miss answer whatever `more` names.
 pub(super) fn no_section(section: Section, kind: CardKind) -> String {
     let listed: Vec<&str> = kind.sections().iter().map(|held| held.as_str()).collect();
     let template = match kind {
@@ -136,5 +136,10 @@ pub(super) fn no_section(section: Section, kind: CardKind) -> String {
             unreachable!("trace refuses no section on a {} card", kind.as_str())
         }
     };
-    template.render((section.as_str(), &listed.join(", ")))
+    let refused = template.render((section.as_str(), &listed.join(", ")));
+    if (section, kind) == (Section::Body, CardKind::File) {
+        format!("{refused} {TRACE_BODY_OF_FILE}")
+    } else {
+        refused
+    }
 }

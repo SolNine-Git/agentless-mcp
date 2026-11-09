@@ -322,6 +322,7 @@ pub const prompts::messages::TARGET_NO_MATCH: prompts::Template<prompts::Text>
 pub const prompts::messages::TARGET_SPELLED: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::TOOL_TAKES: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::TRACE_AT_LEAST: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_BODY_OF_FILE: &str
 pub const prompts::messages::TRACE_BOUND: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_CANDIDATES: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::TRACE_CYCLES: prompts::Template<(prompts::Count, prompts::Count)>
