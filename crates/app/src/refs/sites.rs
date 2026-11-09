@@ -16,6 +16,9 @@ type Grouped<'a> = BTreeMap<(&'a str, Tier), (&'a FileFacts, Vec<RefSite>)>;
 // The tier of each line that spells the target, by file.
 pub(super) type LineTiers<'a> = HashMap<&'a str, BTreeMap<u32, Tier>>;
 
+// The strongest tier at which each symbol references the target, by its path and first line.
+pub(super) type CallerTiers<'a> = HashMap<(&'a str, u32), Tier>;
+
 // Every file of `sites` is tiered once, before the limit cuts the sites.
 pub(super) fn site_tiers<'a>(
     sites: &[Site<'a>],
@@ -34,18 +37,18 @@ pub(super) fn site_tiers<'a>(
     tiers
 }
 
-// The path and first line of each symbol that holds a site of `sites` at a binding tier.
-pub(super) fn bound_callers<'a>(
-    sites: &[Site<'a>],
-    tiers: &LineTiers<'a>,
-) -> BTreeSet<(&'a str, u32)> {
-    (sites.iter())
-        .filter(|site| tier_of(tiers, site).binds())
-        .filter_map(|site| {
-            let symbol = enclosing_symbol(&site.file.facts.symbols, site.reference.line)?;
-            Some((site.path(), symbol.line))
-        })
-        .collect()
+// The strongest tier of the sites that each symbol holds, by the symbol's path and first line.
+pub(super) fn caller_tiers<'a>(sites: &[Site<'a>], tiers: &LineTiers<'a>) -> CallerTiers<'a> {
+    let mut strongest: CallerTiers<'a> = HashMap::new();
+    for site in sites {
+        let Some(symbol) = enclosing_symbol(&site.file.facts.symbols, site.reference.line) else {
+            continue;
+        };
+        let tier = tier_of(tiers, site);
+        let held = strongest.entry((site.path(), symbol.line)).or_insert(tier);
+        *held = (*held).min(tier);
+    }
+    strongest
 }
 
 // How many of `sites` sit at a binding tier.

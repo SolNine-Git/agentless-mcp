@@ -9,7 +9,8 @@ use std::path::Path;
 
 use facts::{Declared, Role};
 use graph::{
-    Aliases, Definition, FileFacts, NameIndex, Resolver, Scopes, Site, TargetForm, references_to,
+    Aliases, Definition, FileFacts, NameIndex, Resolver, Scopes, Site, TargetForm, Tier,
+    references_to,
 };
 use kernel::{Bounded, Deadline};
 
@@ -148,6 +149,9 @@ pub struct SharedCaller {
     pub callers: Vec<CallerRef>,
     /// Whether a test path defines the candidate.
     pub in_tests: bool,
+    /// The wire value of the strongest tier at which one of the shared callers references the
+    /// target, over every site before the limit cuts them.
+    pub tier: &'static str,
 }
 
 /// One caller shared between the target and a candidate.
@@ -286,16 +290,13 @@ fn fan_in(fan: &FanIn<'_, '_>, request: &RefsRequest, limit: usize) -> Result<Re
         files: sites.iter().map(Site::path).collect::<BTreeSet<_>>().len(),
     };
     let ranked = if request.shared_callers {
-        shared::shared_callers(&sites, &target_ids, index, fan.stoplist, fan.deadline)?
+        let callers = sites::caller_tiers(&sites, &tiers);
+        let shared = (index, fan.stoplist, &callers);
+        shared::shared_callers(&sites, &target_ids, shared, fan.deadline)?
     } else {
         Vec::new()
     };
-    let bound_callers = sites::bound_callers(&sites, &tiers);
-    let through_bound = |row: &&SharedCaller| {
-        let held =
-            |caller: &CallerRef| bound_callers.contains(&(caller.path.as_str(), caller.line));
-        row.callers.iter().any(held)
-    };
+    let through_bound = |row: &&SharedCaller| binds(row.tier);
     Ok(RefsResult {
         groups,
         shared_bound: ranked.iter().filter(through_bound).count(),
@@ -348,6 +349,11 @@ fn nothing_listed(request: &RefsRequest, limit: usize, binding: TargetBinding) -
         skipped: Vec::new(),
         scanned: None,
     }
+}
+
+// Whether the tier whose wire value is `tier` binds: same-file or resolved-via-import.
+pub(crate) fn binds(tier: &str) -> bool {
+    (Tier::ORDER.iter()).any(|known| known.as_str() == tier && known.binds())
 }
 
 // The one definition that a target other than a stable id bound to.

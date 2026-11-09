@@ -2,7 +2,7 @@
 //! history, or one section in full, such as the similar functions from refs. Each count is a total
 //! that the operation took before its cut, or a [`Tally::Floor`] when the list it counts was cut.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use graph::Tier;
 
@@ -14,7 +14,7 @@ use super::{
 };
 use crate::explain::explain_in;
 use crate::ops::limits::{DEFAULT_HISTORY_BUDGET, DEFAULT_HISTORY_LIMIT};
-use crate::refs::refs_in;
+use crate::refs::{binds, refs_in};
 use crate::{
     Error, ExpandRequest, ExplainRequest, Explanation, HistoryRequest, HistoryResult, IntArg,
     Noted, RefGroup, RefsRequest, RefsResult, SharedCaller, SymbolCard, TierGroup, expand, history,
@@ -179,10 +179,6 @@ pub(super) fn refusal_text<T>(outcome: Result<T, Error>) -> Result<Result<T, Str
     }
 }
 
-fn binds(tier: &str) -> bool {
-    (Tier::ORDER.iter()).any(|known| known.as_str() == tier && known.binds())
-}
-
 // The position of a tier in the precedence rule, strongest first.
 fn tier_at(tier: &str) -> usize {
     (Tier::ORDER.iter())
@@ -255,43 +251,20 @@ fn tests(found: &RefsResult, cap: usize) -> Tests {
     }
 }
 
-// A candidate's tier is the strongest tier at which one of its shared callers references the
-// target. A candidate ranks through a bound caller when that tier binds.
+// Each candidate carries the strongest tier of its shared callers over the whole fan-in, so the
+// rows and the counts agree when the listing of sites was cut.
 fn similar(found: &RefsResult) -> Similar {
-    let listing = &found.groups;
-    let mut strongest: BTreeMap<(&str, &str), usize> = BTreeMap::new();
-    for group in &listing.rows {
-        let at = tier_at(group.tier);
-        for site in &group.sites {
-            let key = (group.path.as_str(), site.enclosing.as_str());
-            let held = strongest.entry(key).or_insert(at);
-            *held = (*held).min(at);
-        }
-    }
     let shared = &found.shared;
-    let tiered: Vec<(&SharedCaller, &'static str)> = (shared.rows().iter())
-        .filter_map(|row| {
-            let callers = row.callers.iter();
-            let at = callers
-                .filter_map(|caller| {
-                    strongest.get(&(caller.path.as_str(), caller.qualname.as_str()))
-                })
-                .min()?;
-            Some((row, Tier::ORDER[*at].as_str()))
-        })
-        .collect();
-    let bound = tiered.iter().filter(|(_, tier)| binds(tier)).count();
-    let whole = listing.omitted() == 0 && shared.rows().len() == shared.total();
-    let mut listed = tiered;
-    listed.sort_by_key(|(_, tier)| listing_rank(tier));
-    let rows = listed.into_iter().map(|(candidate, tier)| SimilarRow {
+    let mut listed: Vec<&SharedCaller> = shared.rows().iter().collect();
+    listed.sort_by_key(|candidate| listing_rank(candidate.tier));
+    let rows = listed.into_iter().map(|candidate| SimilarRow {
         candidate: candidate.clone(),
-        tier,
+        tier: candidate.tier,
     });
     Similar {
         total: shared.total(),
         rows: rows.collect(),
-        bound_total: Tally::of(bound, whole),
+        bound_total: Tally::Exact(found.shared_bound),
     }
 }
 

@@ -429,6 +429,27 @@ fn a_count_comes_from_the_complete_list_when_a_tier_passes_the_largest_listing()
     assert_eq!(callers.name_only_files, Tally::Floor(1));
 }
 
+// The listing keeps the first 500 sites, all in `caller`; the two callers that share `other`
+// sit past the cut.
+#[test]
+fn a_similar_row_takes_its_tier_from_every_site_when_the_listing_of_sites_is_cut() {
+    let calls = "    helper()\n".repeat(600);
+    let tail =
+        "def late():\n    helper()\n    other()\n\n\ndef later():\n    helper()\n    other()\n";
+    let many = format!("from core import helper, other\n\n\ndef caller():\n{calls}\n\n{tail}");
+    let core = "def helper():\n    return 1\n\n\ndef other():\n    return 2\n";
+    let files = [("core.py", core), ("many.py", many.as_str())];
+    let traced = symbol(card(&files, "py:core.py::helper", Some(Section::Similar)));
+    let similar = traced.similar.unwrap_or_else(|| panic!("similar"));
+    let rows: Vec<(&str, &str)> = (similar.rows.iter())
+        .map(|row| (row.candidate.stable_id.as_str(), row.tier))
+        .collect();
+    assert_eq!(
+        (similar.total, rows, similar.bound_total),
+        (1, vec![("py:core.py::other", "imported")], Tally::Exact(1))
+    );
+}
+
 // The bare `run` binds to neither definition, so explain lists an edge to each.
 #[test]
 fn a_symbol_card_counts_its_bound_and_its_name_only_callees() {

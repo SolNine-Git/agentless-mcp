@@ -4101,6 +4101,7 @@ pub app::SharedCaller::path: alloc::string::String
 pub app::SharedCaller::score: f64
 pub app::SharedCaller::shared_files: usize
 pub app::SharedCaller::stable_id: alloc::string::String
+pub app::SharedCaller::tier: &'static str
 impl core::clone::Clone for app::SharedCaller
 pub fn app::SharedCaller::clone(&self) -> Self
 impl core::cmp::PartialEq for app::SharedCaller

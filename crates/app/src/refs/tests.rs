@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use facts::{Facts, Ref, Role};
 use graph::{FileFacts, NameIndex, Site, definitions_for, references_to};
@@ -390,8 +390,7 @@ fn the_shared_caller_ranking_stops_under_a_spent_deadline() {
     let ranked = shared_callers(
         &sites,
         &target_ids,
-        &index,
-        &BTreeSet::new(),
+        (&index, &BTreeSet::new(), &HashMap::new()),
         Some(&spent()),
     );
 

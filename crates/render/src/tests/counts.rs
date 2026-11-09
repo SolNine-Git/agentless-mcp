@@ -315,6 +315,7 @@ fn candidate(name: &str, callers: usize) -> SharedCaller {
         score: 0.5,
         callers: (1..=callers).map(caller).collect(),
         in_tests: false,
+        tier: "imported",
     }
 }
 

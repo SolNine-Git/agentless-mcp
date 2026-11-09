@@ -897,6 +897,16 @@ Each byte count is of the served bytes.
   each hook name (erosion and the retired gate hooks included) print the
   usage that the refusal holds on stdout and exit 0. `hook install`,
   `hook status` and `hook uninstall` keep their own `--help`.
+- **The `similar` section of `trace` takes each candidate's tier from the
+  whole fan-in.** A candidate's tier was the strongest tier of its shared
+  callers among the sites that the listing kept (500), so past the cut a
+  candidate whose callers all sat in the cut part left the rows, while the
+  head still counted it and named it unlisted past the limit; its
+  `bound_total` was then a floor. Now refs gives each shared candidate the
+  strongest tier over every site before the cut, the rows list every
+  ranked candidate, and `bound_total` is the exact count. A test cuts a
+  600-site listing and finds the candidate that two cut callers share. No
+  golden changes: no fixture listing reaches the cut.
 - **A panic in the server's update of a kept graph reaches the call as a
   build's panic does.** The update ran on the graph thread outside
   `catch_unwind`, so a panic there ended the thread, and the waiting call
