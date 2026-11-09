@@ -218,6 +218,13 @@ Each byte count is of the served bytes.
 
 ### Changed
 
+- **`lint --help` says what `reuse_candidates` reads.** The `--only` text
+  named the check but described the reads of the other pair checks only. It
+  now adds: "reuse_candidates reads the action names of every function from
+  the tag cache, and only --only runs it, in --since and --path." The changed
+  recorded values are the 14 `lint --help` cases of
+  `crates/cli/fixtures/parser.json`, each rewrapped in its `--only` text.
+
 - **CLI JSON contract: a whole payload over the token ceiling carries
   `over_ceiling`, not `truncated`.** A `--json` answer over the ceiling whose
   items were all kept (one oversized item, an empty list, or a payload with no
