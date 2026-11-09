@@ -112,7 +112,11 @@ pub(super) fn resolved(
             files: graph.files(),
             tree: &tree,
         };
-        Ok(targets.iter().map(|target| resolver.one(target)).collect())
+        let resolved = (targets.iter()).map(|target| match DiffTarget::parse(target) {
+            Some(target) => Resolved::Diff(target),
+            None => resolver.one(target),
+        });
+        Ok(resolved.collect())
     })
 }
 
@@ -166,9 +170,6 @@ struct Resolver<'r, 'a> {
 
 impl Resolver<'_, '_> {
     fn one(&self, text: &str) -> Resolved {
-        if let Some(target) = DiffTarget::parse(text) {
-            return Resolved::Diff(target);
-        }
         if text.trim().is_empty() {
             let (name, literal) = (text.to_owned(), text.to_owned());
             return Resolved::Missed(Missed::Name { name, literal });
