@@ -3,7 +3,7 @@ use std::process::ExitStatus;
 use std::time::{Duration, Instant};
 
 use super::classify;
-use crate::testing::{Scratch, path_before};
+use crate::testing::Scratch;
 use crate::{Git, Toplevel};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
@@ -14,11 +14,6 @@ fn exited(raw: i32, stderr: &[u8]) -> io::Outcome {
         stdout: Vec::new(),
         stderr: stderr.to_vec(),
     }
-}
-
-fn with_fake_git(scratch: &Scratch, body: &str, mode: u32) -> Git {
-    let bin = scratch.fake_git(body, mode);
-    Git::new(scratch.env_with(&[("PATH", path_before(bin).as_os_str())]))
 }
 
 #[test]
@@ -44,7 +39,7 @@ fn a_directory_outside_every_repository_is_not_a_repository() {
 fn another_failure_keeps_the_code_and_the_whole_stderr() {
     let scratch = Scratch::new();
     let body = "#!/bin/sh\necho 'first line' >&2\necho 'fatal: last line' >&2\nexit 3\n";
-    let git = with_fake_git(&scratch, body, 0o755);
+    let git = scratch.faked_git(body, 0o755);
     let expected = Toplevel::Failed {
         code: 3,
         stderr: b"first line\nfatal: last line\n".to_vec(),
@@ -77,14 +72,14 @@ fn the_repository_text_counts_only_on_a_failure() {
 fn stdout_over_the_cap_is_capped() {
     let scratch = Scratch::new();
     let body = "#!/bin/sh\nhead -c 70000 /dev/zero\n";
-    let git = with_fake_git(&scratch, body, 0o755);
+    let git = scratch.faked_git(body, 0o755);
     assert_eq!(git.toplevel(&scratch.root, TIMEOUT), Toplevel::Capped);
 }
 
 #[test]
 fn a_git_that_outlives_the_timeout_is_stopped() {
     let scratch = Scratch::new();
-    let git = with_fake_git(&scratch, "#!/bin/sh\nexec sleep 5\n", 0o755);
+    let git = scratch.faked_git("#!/bin/sh\nexec sleep 5\n", 0o755);
     let started = Instant::now();
     let outcome = git.toplevel(&scratch.root, Duration::from_millis(100));
     assert_eq!(outcome, Toplevel::TimedOut);

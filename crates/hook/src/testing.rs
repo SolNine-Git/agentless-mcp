@@ -240,7 +240,12 @@ impl Rig {
 
     pub(crate) fn lines(&self) -> Vec<serde_json::Value> {
         let path = self.sandbox.path().join(Self::LOG);
-        let text = std::fs::read_to_string(path).unwrap_or_default();
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            // A hook that logged nothing leaves no log file.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) => panic!("{}: {error}", path.display()),
+        };
         text.lines()
             .map(|line| serde_json::from_str(line).expect("a JSON line"))
             .collect()

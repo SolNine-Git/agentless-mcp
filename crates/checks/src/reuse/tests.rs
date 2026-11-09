@@ -78,10 +78,6 @@ fn rows(outcome: &Outcome) -> Vec<(String, String, String, Vec<String>)> {
         .collect()
 }
 
-fn names(names: &[&str]) -> Vec<String> {
-    names.iter().map(|name| (*name).to_owned()).collect()
-}
-
 #[test]
 fn an_added_function_that_shares_most_of_its_rare_names_is_a_row_with_its_words() {
     let tree = tree(vec![
@@ -93,7 +89,7 @@ fn an_added_function_that_shares_most_of_its_rare_names_is_a_row_with_its_words(
         "src/new.py:1".to_owned(),
         "g".to_owned(),
         "0.785".to_owned(),
-        names(&["a", "b", "c", "d"]),
+        ["a", "b", "c", "d"].map(String::from).to_vec(),
     );
     assert_eq!(rows(&outcome), [expected]);
     let finding = &outcome.findings[0].finding;

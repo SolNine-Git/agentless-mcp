@@ -1,11 +1,11 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::{LAST_COMMIT, LastCommit, answer};
 use crate::history::{FORMAT, MAX_HISTORY_OUTPUT_BYTES};
 use crate::run::classify;
-use crate::testing::{Scratch, path_before};
+use crate::testing::Scratch;
 use crate::{Commit, Failure, Git, GitOutcome, Unfinished};
 
 // A bound that a git in a small temporary repository never reaches.
@@ -30,11 +30,6 @@ fn exited(detail: &str) -> GitOutcome {
         code: 128,
         detail: detail.to_owned(),
     })
-}
-
-fn with_fake_git(scratch: &Scratch, body: &str) -> Git {
-    let bin = scratch.fake_git(body, 0o755);
-    Git::new(scratch.env_with(&[("PATH", path_before(bin).as_os_str())]))
 }
 
 #[test]
@@ -101,21 +96,23 @@ fn a_path_that_no_commit_touched_has_no_commit() {
     }
 }
 
+// The last commit of a new a.py in the folder that `make` creates in a new scratch.
+fn last_commit_of_a_new_file(make: fn(&Scratch, &str) -> PathBuf, folder: &str) -> LastCommit {
+    let scratch = Scratch::new();
+    let root = make(&scratch, folder);
+    scratch.write(&format!("{folder}/a.py"), "a = 1\n");
+    scratch.git().last_commit(&root, "a.py", TIMEOUT)
+}
+
 #[test]
 fn a_branch_with_no_commit_has_no_commit_for_any_path() {
-    let scratch = Scratch::new();
-    let root = scratch.init("repo");
-    scratch.write("repo/a.py", "a = 1\n");
-    let found = scratch.git().last_commit(&root, "a.py", TIMEOUT);
+    let found = last_commit_of_a_new_file(Scratch::init, "repo");
     assert_eq!(found, LastCommit::NoCommit);
 }
 
 #[test]
 fn a_folder_outside_every_repository_is_not_a_repository() {
-    let scratch = Scratch::new();
-    let outside = scratch.create_dir("plain");
-    scratch.write("plain/a.py", "a = 1\n");
-    let found = scratch.git().last_commit(&outside, "a.py", TIMEOUT);
+    let found = last_commit_of_a_new_file(Scratch::create_dir, "plain");
     assert_eq!(found, LastCommit::NotRepository);
 }
 
@@ -123,7 +120,7 @@ fn a_folder_outside_every_repository_is_not_a_repository() {
 #[test]
 fn a_git_that_outlives_the_timeout_is_timed_out() {
     let scratch = Scratch::new();
-    let git = with_fake_git(&scratch, "#!/bin/sh\nexec sleep 60\n");
+    let git = scratch.faked_git("#!/bin/sh\nexec sleep 60\n", 0o755);
     let found = git.last_commit(&scratch.root, "a.py", Duration::ZERO);
     assert_eq!(found, LastCommit::TimedOut);
 }
