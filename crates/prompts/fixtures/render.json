@@ -50,6 +50,16 @@
       },
       "text": "   head: 1a2b3c4d   dirty: 3 files   cache: none"
     },
+    "receipt_fields_rev": {
+      "arguments": {
+        "cache": "none",
+        "dirty": "3",
+        "head": "1a2b3c4d",
+        "revision": "main",
+        "sha": "2e8f8074"
+      },
+      "text": "   head: 1a2b3c4d   rev: main 2e8f8074   dirty: 3 files   cache: none"
+    },
     "receipt_header": {
       "arguments": {},
       "text": "// agentless-mcp receipt (repository data below)"
@@ -2281,6 +2291,13 @@
       },
       "text": "(more=callers)"
     },
+    "trace_more_hint_rev": {
+      "arguments": {
+        "name": "callers",
+        "revision": "main"
+      },
+      "text": "(more=callers, rev=main)"
+    },
     "trace_name_only": {
       "arguments": {
         "count": 3
@@ -2423,6 +2440,47 @@
     "trace_range_symbols_none": {
       "arguments": {},
       "text": "symbols: none"
+    },
+    "trace_rev_no_file": {
+      "arguments": {
+        "path": "src/app/svc.py",
+        "revision": "main",
+        "sha": "2e8f8074"
+      },
+      "text": "no file src/app/svc.py at main (2e8f8074). It is in the working tree: trace it with no rev."
+    },
+    "trace_rev_no_match": {
+      "arguments": {
+        "revision": "main",
+        "sha": "2e8f8074",
+        "target": "py:src/app/svc.py::Service.load"
+      },
+      "text": "no symbol, file or folder matches py:src/app/svc.py::Service.load at main (2e8f8074)."
+    },
+    "trace_rev_not_a_name": {
+      "arguments": {
+        "revision": "main:src"
+      },
+      "text": "rev main:src is not a revision name: it holds \":\" or starts with \"-\"."
+    },
+    "trace_rev_shallow": {
+      "arguments": {},
+      "text": "The clone is shallow: the commit can be older than its depth (git fetch --unshallow)."
+    },
+    "trace_rev_unknown": {
+      "arguments": {
+        "note": "git rev-parse exited 128: fatal: Needed a single revision",
+        "revision": "main2"
+      },
+      "text": "rev main2 names no commit: git rev-parse exited 128: fatal: Needed a single revision. Give a branch, a tag or a commit id, such as rev=main."
+    },
+    "trace_rev_unread": {
+      "arguments": {
+        "note": "git cat-file timed out after 5.0s",
+        "path": "src/app/svc.py",
+        "revision": "main"
+      },
+      "text": "src/app/svc.py at main was not read: git cat-file timed out after 5.0s"
     },
     "trace_rows_unlisted": {
       "arguments": {

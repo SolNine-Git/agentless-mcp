@@ -26,6 +26,10 @@ const HARDENING_PREFIX: [&str; 11] = [
 // These two move where git reads config from, never which repository it reads.
 const CONFIG_KEPT: [&str; 2] = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"];
 
+// Git 2.44 and later read this name: a partial clone answers from the objects it holds, and a
+// read of a revision never fetches.
+pub(crate) const NO_LAZY_FETCH: (&str, &str) = ("GIT_NO_LAZY_FETCH", "1");
+
 // A note quotes only the first stderr line, so the rest is read past.
 const MAX_STDERR_BYTES: usize = 65_536;
 
@@ -145,6 +149,31 @@ impl Git {
             rest,
         };
         self.call_spec(dir, &call, limits)
+    }
+
+    // A read of an object at a revision, which a partial clone answers with no fetch.
+    pub(crate) fn run_offline(
+        &self,
+        dir: &Path,
+        subcommand: &'static str,
+        rest: &[&OsStr],
+        limits: Limits,
+    ) -> GitOutcome {
+        let spec = self.offline_spec(dir, subcommand, rest, limits);
+        classify(subcommand, limits, io::run(&spec))
+    }
+
+    pub(crate) fn offline_spec(
+        &self,
+        dir: &Path,
+        subcommand: &'static str,
+        rest: &[&OsStr],
+        limits: Limits,
+    ) -> io::Spec {
+        let mut spec = self.spec(dir, subcommand, rest, limits);
+        let (name, value) = NO_LAZY_FETCH;
+        spec.env.push((OsString::from(name), OsString::from(value)));
+        spec
     }
 
     pub(crate) fn call_spec(&self, dir: &Path, call: &Call<'_>, limits: Limits) -> io::Spec {

@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 392] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 400] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -47,6 +47,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 392] = [
         "receipt_fields",
         &["head", "dirty", "cache"],
         envelope::RECEIPT_FIELDS.pieces(),
+    ),
+    (
+        "envelope",
+        "receipt_fields_rev",
+        &["head", "dirty", "cache", "revision", "sha"],
+        envelope::RECEIPT_FIELDS_REV.pieces(),
     ),
     (
         "envelope",
@@ -2088,6 +2094,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 392] = [
     ),
     (
         "messages",
+        "trace_more_hint_rev",
+        &["revision", "name"],
+        messages::TRACE_MORE_HINT_REV.pieces(),
+    ),
+    (
+        "messages",
         "trace_name_only",
         &["count"],
         messages::TRACE_NAME_ONLY.pieces(),
@@ -2217,6 +2229,42 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 392] = [
         "trace_range_symbols_none",
         &[],
         &[Piece::Text(messages::TRACE_RANGE_SYMBOLS_NONE)],
+    ),
+    (
+        "messages",
+        "trace_rev_no_file",
+        &["path", "revision", "sha"],
+        messages::TRACE_REV_NO_FILE.pieces(),
+    ),
+    (
+        "messages",
+        "trace_rev_no_match",
+        &["revision", "sha", "target"],
+        messages::TRACE_REV_NO_MATCH.pieces(),
+    ),
+    (
+        "messages",
+        "trace_rev_not_a_name",
+        &["revision"],
+        messages::TRACE_REV_NOT_A_NAME.pieces(),
+    ),
+    (
+        "messages",
+        "trace_rev_shallow",
+        &[],
+        &[Piece::Text(messages::TRACE_REV_SHALLOW)],
+    ),
+    (
+        "messages",
+        "trace_rev_unknown",
+        &["revision", "note"],
+        messages::TRACE_REV_UNKNOWN.pieces(),
+    ),
+    (
+        "messages",
+        "trace_rev_unread",
+        &["path", "revision", "note"],
+        messages::TRACE_REV_UNREAD.pieces(),
     ),
     (
         "messages",

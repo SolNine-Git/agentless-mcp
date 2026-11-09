@@ -3092,6 +3092,15 @@ pub const TRACE_LITERAL_NONE: &str = "No file holds it as text.";
 pub const TRACE_MORE_HINT: Template<Text> =
     Template::new(&[Piece::Text("(more="), Piece::Value(0), Piece::Text(")")]);
 
+/// A template that takes (`revision`, `name`).
+pub const TRACE_MORE_HINT_REV: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("(more="),
+    Piece::Value(1),
+    Piece::Text(", rev="),
+    Piece::Value(0),
+    Piece::Text(")"),
+]);
+
 /// A template that takes `count`.
 pub const TRACE_NAME_ONLY: Template<Count> =
     Template::new(&[Piece::Value(0), Piece::Text(" name-only")]);
@@ -3257,6 +3266,57 @@ pub const TRACE_RANGE_SYMBOLS: Template<Count> =
 
 /// A text that takes no values.
 pub const TRACE_RANGE_SYMBOLS_NONE: &str = "symbols: none";
+
+/// A template that takes (`path`, `revision`, `sha`).
+pub const TRACE_REV_NO_FILE: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Text("no file "),
+    Piece::Value(0),
+    Piece::Text(" at "),
+    Piece::Value(1),
+    Piece::Text(" ("),
+    Piece::Value(2),
+    Piece::Text("). It is in the working tree: trace it with no rev."),
+]);
+
+/// A template that takes (`revision`, `sha`, `target`).
+pub const TRACE_REV_NO_MATCH: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Text("no symbol, file or folder matches "),
+    Piece::Value(2),
+    Piece::Text(" at "),
+    Piece::Value(0),
+    Piece::Text(" ("),
+    Piece::Value(1),
+    Piece::Text(")."),
+]);
+
+/// A template that takes `revision`.
+pub const TRACE_REV_NOT_A_NAME: Template<Text> = Template::new(&[
+    Piece::Text("rev "),
+    Piece::Value(0),
+    Piece::Text(" is not a revision name: it holds \":\" or starts with \"-\"."),
+]);
+
+/// A text that takes no values.
+pub const TRACE_REV_SHALLOW: &str = "The clone is shallow: the commit can be older than its depth \
+        (git fetch --unshallow).";
+
+/// A template that takes (`revision`, `note`).
+pub const TRACE_REV_UNKNOWN: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("rev "),
+    Piece::Value(0),
+    Piece::Text(" names no commit: "),
+    Piece::Value(1),
+    Piece::Text(". Give a branch, a tag or a commit id, such as rev=main."),
+]);
+
+/// A template that takes (`path`, `revision`, `note`).
+pub const TRACE_REV_UNREAD: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" at "),
+    Piece::Value(1),
+    Piece::Text(" was not read: "),
+    Piece::Value(2),
+]);
 
 /// A template that takes `count`.
 pub const TRACE_ROWS_UNLISTED: Template<Count> =

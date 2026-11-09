@@ -62,6 +62,20 @@ pub const RECEIPT_FIELDS: Template<(Text, Text, Text)> = Template::new(&[
     Piece::Value(2),
 ]);
 
+/// A template that takes (`head`, `dirty`, `cache`, `revision`, `sha`).
+pub const RECEIPT_FIELDS_REV: Template<(Text, Text, Text, Text, Text)> = Template::new(&[
+    Piece::Text("   head: "),
+    Piece::Value(0),
+    Piece::Text("   rev: "),
+    Piece::Value(3),
+    Piece::Text(" "),
+    Piece::Value(4),
+    Piece::Text("   dirty: "),
+    Piece::Value(1),
+    Piece::Text(" files   cache: "),
+    Piece::Value(2),
+]);
+
 /// A text that takes no values.
 pub const RECEIPT_HEADER: &str = "// agentless-mcp receipt (repository data below)";
 

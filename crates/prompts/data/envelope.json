@@ -2,6 +2,7 @@
   "receipt_header": "// agentless-mcp receipt (repository data below)",
   "receipt_repo": "   repo: {root}",
   "receipt_fields": "   head: {head}   dirty: {dirty} files   cache: {cache}",
+  "receipt_fields_rev": "   head: {head}   rev: {revision} {sha}   dirty: {dirty} files   cache: {cache}",
   "receipt_note": "// note: {note}",
   "receipt_config": "// config: {path}",
   "receipt_config_warning": "// config warning: {warning}",

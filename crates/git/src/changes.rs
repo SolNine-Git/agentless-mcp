@@ -118,7 +118,7 @@ impl Git {
     pub fn blob(&self, root: &Path, commit: &str, path: &str) -> GitOutcome {
         // Plumbing, so no textconv driver runs. "./" reads the path from -C, not from the top.
         let object = OsString::from(format!("{commit}:./{path}"));
-        self.run(root, "cat-file", &[OsStr::new("blob"), &object], BLOB)
+        self.run_offline(root, "cat-file", &[OsStr::new("blob"), &object], BLOB)
     }
 }
 

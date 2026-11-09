@@ -24,7 +24,7 @@ pub(crate) const IGNORE: Limits = Limits {
     cap: 65_536,
 };
 
-const BOUNDS: Bounds = Bounds {
+pub(crate) const BOUNDS: Bounds = Bounds {
     depth: io::MAX_WALK_DEPTH,
     files: io::MAX_WALK_FILES,
     bytes: io::MAX_WALK_BYTES,
@@ -108,10 +108,10 @@ pub enum WalkError {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Bounds {
-    depth: usize,
-    files: usize,
-    bytes: u64,
+pub(crate) struct Bounds {
+    pub(crate) depth: usize,
+    pub(crate) files: usize,
+    pub(crate) bytes: u64,
 }
 
 // The names one listing found below the root, and the warnings it raised.
@@ -285,23 +285,27 @@ fn ignore_verdict(top: &Path, root: &Path, outcome: GitOutcome) -> (bool, Option
 }
 
 fn listed_names(root: &Path, outcome: GitOutcome, max_files: usize) -> Result<Listed, WalkError> {
-    let unlisted = |note: String| WalkError::Unlisted {
-        root: root.to_path_buf(),
-        note,
-    };
-    let stdout = match outcome {
-        GitOutcome::Printed(stdout) => stdout,
-        GitOutcome::Capped(_) => {
-            let root = root.to_path_buf();
-            return Err(WalkError::ListingCapped { root });
-        }
-        GitOutcome::Failed(failure) => return Err(unlisted(failure.to_string())),
-        GitOutcome::Unfinished(reason) => return Err(unlisted(reason.to_string())),
-    };
+    let stdout = listing(root, outcome)?;
     let (names, count) = decoded_names(&stdout, root, max_files)?;
     let root = root.to_path_buf();
     let warning = (count > 0).then_some(WalkWarning::NotUtf8 { count, root });
     Ok((names, warning.into_iter().collect()))
+}
+
+// The whole stdout of a listing of the root, or why git gave none.
+pub(crate) fn listing(root: &Path, outcome: GitOutcome) -> Result<Vec<u8>, WalkError> {
+    let unlisted = |note: String| WalkError::Unlisted {
+        root: root.to_path_buf(),
+        note,
+    };
+    match outcome {
+        GitOutcome::Printed(stdout) => Ok(stdout),
+        GitOutcome::Capped(_) => Err(WalkError::ListingCapped {
+            root: root.to_path_buf(),
+        }),
+        GitOutcome::Failed(failure) => Err(unlisted(failure.to_string())),
+        GitOutcome::Unfinished(reason) => Err(unlisted(reason.to_string())),
+    }
 }
 
 // Each name is decoded strictly and on its own, so a name that is not UTF-8 is counted rather than
@@ -367,7 +371,7 @@ fn refused_names(error: WalkError, warnings: Vec<WalkWarning>) -> Found {
 
 // Keeps each name whose file stays inside the root and can be measured, in path order, and refuses
 // the walk at the first bound it passes.
-fn admit(
+pub(crate) fn admit(
     root: &Path,
     mut names: Vec<String>,
     bounds: Bounds,
@@ -419,7 +423,7 @@ fn admit(
     }
 }
 
-fn refused(error: WalkError, warnings: Vec<WalkWarning>) -> Walk {
+pub(crate) fn refused(error: WalkError, warnings: Vec<WalkWarning>) -> Walk {
     Walk {
         files: Err(error),
         warnings,

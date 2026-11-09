@@ -8,6 +8,7 @@ mod last_commit;
 mod run;
 mod snapshot;
 mod toplevel;
+mod tree;
 mod walk;
 mod worktree;
 
