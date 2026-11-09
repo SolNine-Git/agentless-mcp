@@ -15,7 +15,7 @@ use text::CodePointString;
 use crate::ledger::{self, Claimed};
 use crate::repository;
 use crate::run::{self, Facts, Fields, LEDGER_STORAGE_UNAVAILABLE, Outcome, Run};
-use crate::search::{object_field, shell, text_field};
+use crate::search::{shell, text_field};
 
 // The card of the file at a repository-relative path, or None when the trace gives no file card.
 pub(crate) type CardFn = fn(&Services, &Path, &str) -> Result<Option<String>, app::Error>;
@@ -103,8 +103,7 @@ fn read_file(run: &Run<'_>, fields: &Fields) -> Result<PathBuf, &'static str> {
 }
 
 fn bash_read(fields: &Fields) -> Option<PathBuf> {
-    let command = text_field(object_field(fields, "tool_input")?, "command")?;
-    let file = shell::single_file_read(command)?;
+    let file = shell::single_file_read(run::input_field(fields, "command")?)?;
     file.as_str().map(PathBuf::from)
 }
 

@@ -197,8 +197,12 @@ pub(crate) fn rootless(no_root: &NoRoot, outside: &'static str, facts: &mut Fact
 
 // The text of `key` in the payload's `tool_input`.
 pub(crate) fn input_text<'a>(fields: &'a Fields, key: &str) -> Option<&'a str> {
-    let input = object_field(fields, "tool_input")?;
-    text_field(input, key).and_then(CodePointString::as_str)
+    input_field(fields, key).and_then(CodePointString::as_str)
+}
+
+// The string of `key` in the payload's `tool_input`, which can hold a lone surrogate.
+pub(crate) fn input_field<'a>(fields: &'a Fields, key: &str) -> Option<&'a CodePointString> {
+    text_field(object_field(fields, "tool_input")?, key)
 }
 
 fn entry(
