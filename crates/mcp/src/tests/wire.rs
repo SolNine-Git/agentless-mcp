@@ -4,7 +4,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use app::Session;
+use app::{Cl100k, Session, TokenCounter};
 use rmcp::ServiceExt;
 use serde_json::{Value as Json, json};
 use tokio::io::{
@@ -18,6 +18,10 @@ use crate::{Arming, Ports, Server, ServerConfig};
 
 const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 const READ_LIMIT: Duration = Duration::from_secs(20);
+// The CHANGELOG's figures for tools/list: the served bytes of its tools, and the cl100k count of
+// the compact array of its entries, each cut to name, description and inputSchema.
+const SURFACE_BYTES: usize = 2_858;
+const SURFACE_TOKENS: usize = 551;
 // How long a test waits to see that a call does not start while the gate is full.
 const QUIET: Duration = Duration::from_millis(200);
 
@@ -108,6 +112,26 @@ async fn tools_list_is_the_reference_surface() {
             .expect("a JSON fixture");
     let want = json!({"jsonrpc": "2.0", "id": 2, "result": {"tools": surface["tools"]}});
     assert_eq!(line, want.to_string());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn tools_list_has_the_bytes_and_the_cl100k_count_that_the_changelog_states() {
+    let sandbox = probe();
+    let mut wire = Wire::start(server_of(&sandbox, 8, quiet_ports()));
+    wire.initialized("2025-06-18").await;
+    let answer = parsed(&wire.request(2, "tools/list", json!({})).await);
+    let tools = &answer["result"]["tools"];
+    let served = json!({"tools": tools}).to_string();
+    let entries = tools.as_array().expect("a list of tools").iter();
+    let cut: Vec<Json> = entries
+        .map(|tool| {
+            let (name, description) = (&tool["name"], &tool["description"]);
+            json!({"name": name, "description": description, "inputSchema": tool["inputSchema"]})
+        })
+        .collect();
+    let counter = Cl100k::new().expect("the cl100k table");
+    let tokens = counter.count(&Json::from(cut).to_string());
+    assert_eq!((served.len(), tokens), (SURFACE_BYTES, SURFACE_TOKENS));
 }
 
 // The reference's capabilities less logging (D2) and server name; this build's version; each

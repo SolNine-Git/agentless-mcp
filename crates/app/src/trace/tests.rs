@@ -5,8 +5,8 @@ use store::FactSource;
 
 use super::change::{file_change, last_change};
 use super::{
-    CANDIDATE_ROWS, Card, CardKind, Change, FileTrace, FolderEntry, Linked, Miss, Outcome, Section,
-    SymbolTrace, Tally, Trace, TraceRequest, card_files, trace,
+    CANDIDATE_ROWS, Card, CardKind, Change, FileTrace, FolderEntry, Linked, Miss, Outcome,
+    RangeTrace, Section, SymbolTrace, Tally, Trace, TraceRequest, card_files, trace,
 };
 use crate::endpoints::scanned::{LINKED, Scanned, TESTED};
 use crate::search::{Measure, Place};
@@ -117,6 +117,76 @@ fn a_line_that_no_symbol_spans_gives_the_file_card_and_a_line_past_the_end_says_
         lines: 9,
     };
     assert_eq!(past, expected);
+}
+
+fn range(card: Card) -> RangeTrace {
+    match card {
+        Card::Range(traced) => traced,
+        other => panic!("a range card, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_range_gives_its_numbered_lines_and_the_symbols_that_they_touch() {
+    let scanned = Scanned::new(&MIXED);
+    let traced = range(card_in(&scanned, "pkg/jobs.py:4-6", Some(Section::Callers)));
+    assert_eq!((traced.start, traced.end, traced.lines), (4, 6, 9));
+    assert_eq!(
+        traced.text,
+        ["class Job:", "    def run(self):", "        return LIMIT"]
+    );
+    let ids: Vec<&str> = (traced.symbols.iter())
+        .map(|card| card.stable_id.as_str())
+        .collect();
+    assert_eq!(ids, ["py:pkg/jobs.py::Job", "py:pkg/jobs.py::Job.run"]);
+    assert_eq!((traced.symbols_total, traced.next()), (2, None));
+    let clamped = range(card_in(&scanned, "./pkg/jobs.py:8-20", None));
+    assert_eq!((clamped.end, clamped.text.len()), (9, 2));
+    let unparsed = range(card_in(&scanned, "README.md:2-2", None));
+    assert_eq!(unparsed.text, ["zz_text_only appears here"]);
+    assert!(unparsed.symbols.is_empty());
+}
+
+#[test]
+fn a_long_range_shows_two_hundred_lines_and_names_the_next_range() {
+    let lines: Vec<String> = (1..=450).map(|at| format!("X{at} = {at}\r\n")).collect();
+    let text = lines.concat();
+    let scanned = Scanned::new(&[("big.py", text.as_str())]);
+    let first = range(card_in(&scanned, "big.py:1-450", None));
+    assert_eq!((first.text.len(), first.next()), (200, Some((201, 400))));
+    assert_eq!(
+        (first.text[0].as_str(), first.symbols_total),
+        ("X1 = 1", 200)
+    );
+    assert_eq!(first.symbols.len(), super::RANGE_SYMBOLS);
+    let last = range(card_in(&scanned, "big.py:401-450", None));
+    assert_eq!((last.text.len(), last.next()), (50, None));
+    let middle = range(card_in(&scanned, "big.py:201-450", None));
+    assert_eq!(middle.next(), Some((401, 450)));
+}
+
+#[test]
+fn a_range_past_the_end_reversed_or_of_a_binary_file_is_a_miss_and_another_path_is_no_range() {
+    let files = [("a.py", "x = 1\ny = 2\n"), ("blob.bin", "a\0b\n")];
+    let scanned = Scanned::new(&files);
+    let past = miss(card_in(&scanned, "a.py:3-5", None));
+    let expected = Miss::RangePastEnd {
+        path: "a.py".to_owned(),
+        start: 3,
+        end: 5,
+        lines: 2,
+    };
+    assert_eq!(past, expected);
+    for (target, start, end) in [("a.py:0-1", 0, 1), ("a.py:2-1", 2, 1)] {
+        let bad = miss(card_in(&scanned, target, None));
+        let path = "a.py".to_owned();
+        assert_eq!(bad, Miss::BadRange { path, start, end }, "{target}");
+    }
+    let binary = miss(card_in(&scanned, "blob.bin:1-1", None));
+    let path = "blob.bin".to_owned();
+    assert_eq!(binary, Miss::Binary { path });
+    let elsewhere = miss(card_in(&scanned, "b.py:1-2", None));
+    assert!(matches!(elsewhere, Miss::Nothing { .. }), "{elsewhere:?}");
 }
 
 #[test]

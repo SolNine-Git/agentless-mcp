@@ -3,16 +3,17 @@
 
 use app::search::Place;
 use app::trace::{CandidatesTrace, CardKind, Miss, Section};
-use app::{ROW_INDENT, Usage, locator};
+use app::{ROW_INDENT, Usage};
 use prompts::messages::{
-    TARGET_NO_LINE, TRACE_CANDIDATES, TRACE_LINE_PAST_END, TRACE_LITERAL, TRACE_LITERAL_NONE,
-    TRACE_MORE_HINT, TRACE_NO_GRAMMAR, TRACE_NO_GRAMMAR_NAME, TRACE_NO_MATCH,
+    TARGET_NO_LINE, TRACE_BODY_OF_FILE, TRACE_CANDIDATES, TRACE_LINE_PAST_END, TRACE_LITERAL,
+    TRACE_LITERAL_NONE, TRACE_MORE_HINT, TRACE_NO_GRAMMAR, TRACE_NO_GRAMMAR_NAME, TRACE_NO_MATCH,
     TRACE_NO_SECTION_FILE, TRACE_NO_SECTION_FOLDER, TRACE_NO_SECTION_SYMBOL, TRACE_NOT_PARSED,
-    TRACE_NOT_SCANNED, TRACE_ROWS_UNLISTED, TRACE_UNKNOWN_PATH, TRACE_UNKNOWN_PATH_NONE,
+    TRACE_NOT_SCANNED, TRACE_RANGE_BINARY, TRACE_RANGE_PAST_END, TRACE_RANGE_REVERSED,
+    TRACE_ROWS_UNLISTED, TRACE_UNKNOWN_PATH, TRACE_UNKNOWN_PATH_NONE,
 };
 use text::{one_line, posix_name, split_suffix};
 
-use super::span;
+use super::card_row;
 use crate::symbols::usage_text;
 
 // io's reason for a file over the cap starts with the word that the miss sentence already says.
@@ -24,11 +25,7 @@ pub(super) fn candidates_lines(
     more: Option<Section>,
 ) -> Vec<String> {
     let mut lines = vec![TRACE_CANDIDATES.render((&one_line(target), candidates.total))];
-    lines.extend(candidates.rows.iter().map(|card| {
-        let at = span(card.start_line, card.end_line);
-        let id = locator(&card.stable_id, "", Some(&at));
-        format!("{ROW_INDENT}{id}  {}", one_line(card.kind))
-    }));
+    lines.extend(candidates.rows.iter().map(card_row));
     let rest = candidates.total.saturating_sub(candidates.rows.len());
     if rest > 0 {
         let mut line = format!("{ROW_INDENT}{}", TRACE_ROWS_UNLISTED.render(rest));
@@ -59,6 +56,21 @@ pub(super) fn miss_lines(miss: &Miss, target: &str) -> Vec<String> {
             let note = TARGET_NO_LINE.render((&one_line(path), *line as usize));
             vec![note + &TRACE_LINE_PAST_END.render(*lines as usize)]
         }
+        Miss::RangePastEnd {
+            path,
+            start,
+            end,
+            lines,
+        } => {
+            let note =
+                TRACE_RANGE_PAST_END.render((&one_line(path), *start as usize, *end as usize));
+            vec![note + &TRACE_LINE_PAST_END.render(*lines as usize)]
+        }
+        Miss::BadRange { path, start, end } => {
+            let range = (&*one_line(path), *start as usize, *end as usize);
+            vec![TRACE_RANGE_REVERSED.render(range)]
+        }
+        Miss::Binary { path } => vec![TRACE_RANGE_BINARY.render(&one_line(path))],
     }
 }
 
@@ -112,17 +124,22 @@ fn no_grammar(path: &str) -> String {
     }
 }
 
-// Trace refuses an absent section only on the symbol, file and folder cards; a candidates card
-// and a miss answer whatever `more` names.
+// Trace refuses an absent section only on the symbol, file and folder cards; a candidates card,
+// a range card and a miss answer whatever `more` names.
 pub(super) fn no_section(section: Section, kind: CardKind) -> String {
     let listed: Vec<&str> = kind.sections().iter().map(|held| held.as_str()).collect();
     let template = match kind {
         CardKind::Symbol => &TRACE_NO_SECTION_SYMBOL,
         CardKind::File => &TRACE_NO_SECTION_FILE,
         CardKind::Folder => &TRACE_NO_SECTION_FOLDER,
-        CardKind::Candidates | CardKind::Miss => {
+        CardKind::Candidates | CardKind::Miss | CardKind::Range => {
             unreachable!("trace refuses no section on a {} card", kind.as_str())
         }
     };
-    template.render((section.as_str(), &listed.join(", ")))
+    let refused = template.render((section.as_str(), &listed.join(", ")));
+    if (section, kind) == (Section::Body, CardKind::File) {
+        format!("{refused} {TRACE_BODY_OF_FILE}")
+    } else {
+        refused
+    }
 }

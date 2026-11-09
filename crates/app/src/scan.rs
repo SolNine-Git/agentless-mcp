@@ -240,24 +240,39 @@ fn walked<T>(
     root: &Path,
     scan: impl FnOnce(&[RepoFile]) -> Noted<Result<T, Stopped>>,
 ) -> Noted<Result<T, Error>> {
+    walked_files(services, root).then_ok(|files| {
+        let scanned = scan(&files);
+        scanned.map(|value| value.map_err(Error::from))
+    })
+}
+
+// The walk that tree, index and every scan list, with its warnings.
+pub(crate) fn walked_files(
+    services: &Services,
+    root: &Path,
+) -> Noted<Result<Vec<RepoFile>, Error>> {
     let walk = services.git.walk(root, reads);
-    let mut diagnostics: Vec<String> = walk.warnings.iter().map(ToString::to_string).collect();
-    let files = match walk.files {
-        Ok(files) => files,
-        Err(refusal) => {
-            let error = kernel::Error::from(refusal).into();
-            return Noted {
-                value: Err(error),
-                diagnostics,
-            };
-        }
+    let diagnostics = walk.warnings.iter().map(ToString::to_string).collect();
+    let value = walk
+        .files
+        .map_err(|refusal| kernel::Error::from(refusal).into());
+    Noted { value, diagnostics }
+}
+
+// The facts of `text` parsed as `language`, or `None` when the grammar refuses it.
+pub(crate) fn parsed_file(path: &str, language: Language, text: &str) -> Option<FileFacts> {
+    let file = FileText {
+        path: path.to_owned(),
+        language,
+        text: Arc::from(text),
     };
-    let scanned = scan(&files);
-    diagnostics.extend(scanned.diagnostics);
-    Noted {
-        value: scanned.value.map_err(Error::from),
-        diagnostics,
-    }
+    let analysis = store::analyze(&file, false).ok()?;
+    Some(FileFacts {
+        path: file.path,
+        language,
+        line_count: line_count(text),
+        facts: analysis.facts,
+    })
 }
 
 // Reads and parses the files in a language on `threads` threads, and keeps the walk order.

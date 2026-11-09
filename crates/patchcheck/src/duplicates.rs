@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use checks::{Finding, Severity};
 use facts::{Symbol, SymbolKind};
+use prompts::messages::NEAR_DUPLICATES_FOUND;
 use sha2::{Digest, Sha256};
 use syntax::{Language, Unparsable};
 
@@ -99,13 +100,7 @@ fn duplicate_finding(fragment: &Fragment<'_>, symbol: &Symbol, sites: &[&Site<'_
     Finding {
         check: CHECK_NEAR_DUPLICATES,
         severity: Severity::Advisory,
-        message: format!(
-            "the body the patch gives {} is the same as the body of {} existing \
-             definition(s) token for token, with comments and indentation left out; you may \
-             already have this",
-            quoted(&symbol.name),
-            sites.len()
-        ),
+        message: NEAR_DUPLICATES_FOUND.render((&quoted(&symbol.name), sites.len())),
         path: fragment.path().to_owned(),
         line: fragment.file_line(symbol.line),
         evidence: format!(

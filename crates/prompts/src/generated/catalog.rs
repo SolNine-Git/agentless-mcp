@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 379] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 392] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1444,6 +1444,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 379] = [
     ),
     (
         "messages",
+        "near_duplicates_found",
+        &["name", "count"],
+        messages::NEAR_DUPLICATES_FOUND.pieces(),
+    ),
+    (
+        "messages",
         "overview_data_unlisted",
         &["count", "cap"],
         messages::OVERVIEW_DATA_UNLISTED.pieces(),
@@ -1594,6 +1600,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 379] = [
     ),
     (
         "messages",
+        "refs_shared_unbound",
+        &["target"],
+        messages::REFS_SHARED_UNBOUND.pieces(),
+    ),
+    (
+        "messages",
         "refs_split",
         &["count", "total"],
         messages::REFS_SPLIT.pieces(),
@@ -1728,9 +1740,21 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 379] = [
     ),
     (
         "messages",
+        "search_glob_root",
+        &[],
+        &[Piece::Text(messages::SEARCH_GLOB_ROOT)],
+    ),
+    (
+        "messages",
         "search_listing",
         &["query", "count", "glob"],
         messages::SEARCH_LISTING.pieces(),
+    ),
+    (
+        "messages",
+        "search_listing_no_file",
+        &["query", "glob"],
+        messages::SEARCH_LISTING_NO_FILE.pieces(),
     ),
     (
         "messages",
@@ -1743,6 +1767,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 379] = [
         "search_more_files",
         &["count"],
         messages::SEARCH_MORE_FILES.pieces(),
+    ),
+    (
+        "messages",
+        "search_no_file",
+        &["query", "pattern"],
+        messages::SEARCH_NO_FILE.pieces(),
     ),
     (
         "messages",
@@ -1956,6 +1986,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 379] = [
     ),
     (
         "messages",
+        "trace_body_of_file",
+        &[],
+        &[Piece::Text(messages::TRACE_BODY_OF_FILE)],
+    ),
+    (
+        "messages",
         "trace_bound",
         &["count"],
         messages::TRACE_BOUND.pieces(),
@@ -2139,6 +2175,48 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 379] = [
         "trace_part_hidden",
         &["text"],
         messages::TRACE_PART_HIDDEN.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_binary",
+        &["path"],
+        messages::TRACE_RANGE_BINARY.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_cut",
+        &["target", "shown", "count", "total"],
+        messages::TRACE_RANGE_CUT.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_header",
+        &["path", "start", "end", "count"],
+        messages::TRACE_RANGE_HEADER.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_past_end",
+        &["path", "start", "end"],
+        messages::TRACE_RANGE_PAST_END.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_reversed",
+        &["path", "start", "end"],
+        messages::TRACE_RANGE_REVERSED.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_symbols",
+        &["count"],
+        messages::TRACE_RANGE_SYMBOLS.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_symbols_none",
+        &[],
+        &[Piece::Text(messages::TRACE_RANGE_SYMBOLS_NONE)],
     ),
     (
         "messages",

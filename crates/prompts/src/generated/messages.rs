@@ -2122,6 +2122,18 @@ pub const MAP_UNRESOLVED_SEEDS: Template<Text> = Template::new(&[
 pub const MAP_WALK_CAPPED: &str = "// note: the walk out to these tests hit its node bound before \
         it finished, so this section is a floor rather than every test";
 
+/// A template that takes (`name`, `count`).
+pub const NEAR_DUPLICATES_FOUND: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("the body the patch gives "),
+    Piece::Value(0),
+    Piece::Text(" is the same as the body of "),
+    Piece::Value(1),
+    Piece::Text(
+        " existing definition(s) token for token, with comments and \
+        indentation left out; you may already have this",
+    ),
+]);
+
 /// A template that takes (`count`, `cap`).
 pub const OVERVIEW_DATA_UNLISTED: Template<(Count, Count)> = Template::new(&[
     Piece::Value(0),
@@ -2373,6 +2385,16 @@ pub const REFS_SHARED_CANDIDATE: Template<(Text, Count, Count, Text)> = Template
     Piece::Text(")"),
 ]);
 
+/// A template that takes `target`.
+pub const REFS_SHARED_UNBOUND: Template<Text> = Template::new(&[
+    Piece::Text("no caller of "),
+    Piece::Value(0),
+    Piece::Text(
+        " at a binding tier shares a symbol: each row ranks through \
+        name-only callers.",
+    ),
+]);
+
 /// A template that takes (`count`, `total`).
 pub const REFS_SPLIT: Template<(Count, Count)> = Template::new(&[
     Piece::Value(0),
@@ -2581,6 +2603,10 @@ pub const SEARCH_CUT: Template<(Count, Text)> = Template::new(&[
     Piece::Text("]"),
 ]);
 
+/// A text that takes no values.
+pub const SEARCH_GLOB_ROOT: &str = "A glob matches the path from the root. Start it with **/ to \
+        match at any depth.";
+
 /// A template that takes (`query`, `count`, `glob`).
 pub const SEARCH_LISTING: Template<(Text, Count, Text)> = Template::new(&[
     Piece::Text("search files="),
@@ -2590,6 +2616,14 @@ pub const SEARCH_LISTING: Template<(Text, Count, Text)> = Template::new(&[
     Piece::Value(1),
     Piece::Text(" "),
     Piece::Choice(1, "file", "files"),
+]);
+
+/// A template that takes (`query`, `glob`).
+pub const SEARCH_LISTING_NO_FILE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("search files="),
+    Piece::Value(1),
+    Piece::Value(0),
+    Piece::Text(": no file matches the glob."),
 ]);
 
 /// A template that takes (`shown`, `total`).
@@ -2606,6 +2640,15 @@ pub const SEARCH_MORE_FILES: Template<Count> = Template::new(&[
     Piece::Value(0),
     Piece::Text(" more "),
     Piece::Choice(0, "file", "files"),
+]);
+
+/// A template that takes (`query`, `pattern`).
+pub const SEARCH_NO_FILE: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("search /"),
+    Piece::Value(1),
+    Piece::Text("/"),
+    Piece::Value(0),
+    Piece::Text(": no file matches the glob."),
 ]);
 
 /// A template that takes (`kind`, `count`, `total`, `listed`).
@@ -2921,6 +2964,11 @@ pub const TOOL_TAKES: Template<(Text, Text)> = Template::new(&[
 pub const TRACE_AT_LEAST: Template<Count> =
     Template::new(&[Piece::Text("at least "), Piece::Value(0)]);
 
+/// A text that takes no values.
+pub const TRACE_BODY_OF_FILE: &str = "Read reads a file, trace path:start-end gives its numbered \
+        lines, and a symbol id with more=body gives the body of one \
+        symbol.";
+
 /// A template that takes `count`.
 pub const TRACE_BOUND: Template<Count> = Template::new(&[Piece::Value(0), Piece::Text(" bound")]);
 
@@ -3145,6 +3193,70 @@ pub const TRACE_NOT_SCANNED: Template<Text> = Template::new(&[
 /// A template that takes `text`.
 pub const TRACE_PART_HIDDEN: Template<Text> =
     Template::new(&[Piece::Value(0), Piece::Text(" hidden")]);
+
+/// A template that takes `path`.
+pub const TRACE_RANGE_BINARY: Template<Text> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" is a binary file: trace shows the lines of a text file only."),
+]);
+
+/// A template that takes (`target`, `shown`, `count`, `total`).
+pub const TRACE_RANGE_CUT: Template<(Text, Count, Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(1),
+    Piece::Text(" of "),
+    Piece::Value(3),
+    Piece::Text(" lines shown: trace "),
+    Piece::Value(0),
+    Piece::Text(" for the next "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "line", "lines"),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`path`, `start`, `end`, `count`).
+pub const TRACE_RANGE_HEADER: Template<(Text, Count, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("  "),
+    Piece::Value(1),
+    Piece::Text("-"),
+    Piece::Value(2),
+    Piece::Text(" of "),
+    Piece::Value(3),
+    Piece::Text(" "),
+    Piece::Choice(3, "line", "lines"),
+]);
+
+/// A template that takes (`path`, `start`, `end`).
+pub const TRACE_RANGE_PAST_END: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Text("no lines "),
+    Piece::Value(1),
+    Piece::Text("-"),
+    Piece::Value(2),
+    Piece::Text(" in "),
+    Piece::Value(0),
+]);
+
+/// A template that takes (`path`, `start`, `end`).
+pub const TRACE_RANGE_REVERSED: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(":"),
+    Piece::Value(1),
+    Piece::Text("-"),
+    Piece::Value(2),
+    Piece::Text(
+        " is not a line range: start is 1 or more, and end is at or \
+        after start.",
+    ),
+]);
+
+/// A template that takes `count`.
+pub const TRACE_RANGE_SYMBOLS: Template<Count> =
+    Template::new(&[Piece::Text("symbols: "), Piece::Value(0)]);
+
+/// A text that takes no values.
+pub const TRACE_RANGE_SYMBOLS_NONE: &str = "symbols: none";
 
 /// A template that takes `count`.
 pub const TRACE_ROWS_UNLISTED: Template<Count> =

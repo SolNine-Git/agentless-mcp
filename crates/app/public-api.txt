@@ -627,6 +627,7 @@ impl core::panic::unwind_safe::UnwindSafe for app::search::SearchError
 pub enum app::search::Searched
 pub app::search::Searched::Listing(app::search::Listing)
 pub app::search::Searched::Matches(app::search::Matches)
+pub app::search::Searched::NoFile
 impl core::clone::Clone for app::search::Searched
 pub fn app::search::Searched::clone(&self) -> Self
 impl core::cmp::Eq for app::search::Searched
@@ -1032,6 +1033,7 @@ pub app::trace::Card::Candidates(app::trace::CandidatesTrace)
 pub app::trace::Card::File(alloc::boxed::Box<app::trace::FileTrace>)
 pub app::trace::Card::Folder(app::trace::FolderTrace)
 pub app::trace::Card::Miss(app::trace::Miss)
+pub app::trace::Card::Range(app::trace::RangeTrace)
 pub app::trace::Card::Symbol(alloc::boxed::Box<app::trace::SymbolTrace>)
 impl app::trace::Card
 pub fn app::trace::Card::kind(&self) -> app::trace::CardKind
@@ -1054,6 +1056,7 @@ pub app::trace::CardKind::Candidates
 pub app::trace::CardKind::File
 pub app::trace::CardKind::Folder
 pub app::trace::CardKind::Miss
+pub app::trace::CardKind::Range
 pub app::trace::CardKind::Symbol
 impl app::trace::CardKind
 pub fn app::trace::CardKind::as_str(self) -> &'static str
@@ -1140,6 +1143,12 @@ impl<T> core::marker::UnsafeUnpin for app::trace::Linked<T> where T: core::marke
 impl<T> core::panic::unwind_safe::RefUnwindSafe for app::trace::Linked<T> where T: core::panic::unwind_safe::RefUnwindSafe
 impl<T> core::panic::unwind_safe::UnwindSafe for app::trace::Linked<T> where T: core::panic::unwind_safe::UnwindSafe
 pub enum app::trace::Miss
+pub app::trace::Miss::BadRange
+pub app::trace::Miss::BadRange::end: u32
+pub app::trace::Miss::BadRange::path: alloc::string::String
+pub app::trace::Miss::BadRange::start: u32
+pub app::trace::Miss::Binary
+pub app::trace::Miss::Binary::path: alloc::string::String
 pub app::trace::Miss::LinePastEnd
 pub app::trace::Miss::LinePastEnd::line: u32
 pub app::trace::Miss::LinePastEnd::lines: u32
@@ -1155,6 +1164,11 @@ pub app::trace::Miss::Nothing
 pub app::trace::Miss::Nothing::literal: core::option::Option<(alloc::vec::Vec<app::search::Place>, usize)>
 pub app::trace::Miss::Nothing::name: alloc::string::String
 pub app::trace::Miss::Nothing::usage: core::option::Option<app::Usage>
+pub app::trace::Miss::RangePastEnd
+pub app::trace::Miss::RangePastEnd::end: u32
+pub app::trace::Miss::RangePastEnd::lines: u32
+pub app::trace::Miss::RangePastEnd::path: alloc::string::String
+pub app::trace::Miss::RangePastEnd::start: u32
 pub app::trace::Miss::UnknownPath
 pub app::trace::Miss::UnknownPath::endings: alloc::vec::Vec<alloc::string::String>
 pub app::trace::Miss::UnknownPath::path: alloc::string::String
@@ -1471,6 +1485,31 @@ impl core::marker::Unpin for app::trace::KeptGraphs
 impl core::marker::UnsafeUnpin for app::trace::KeptGraphs
 impl !core::panic::unwind_safe::RefUnwindSafe for app::trace::KeptGraphs
 impl !core::panic::unwind_safe::UnwindSafe for app::trace::KeptGraphs
+pub struct app::trace::RangeTrace
+pub app::trace::RangeTrace::end: u32
+pub app::trace::RangeTrace::lines: u32
+pub app::trace::RangeTrace::path: alloc::string::String
+pub app::trace::RangeTrace::start: u32
+pub app::trace::RangeTrace::symbols: alloc::vec::Vec<app::SymbolCard>
+pub app::trace::RangeTrace::symbols_total: usize
+pub app::trace::RangeTrace::text: alloc::vec::Vec<alloc::string::String>
+impl app::trace::RangeTrace
+pub fn app::trace::RangeTrace::next(&self) -> core::option::Option<(u32, u32)>
+impl core::clone::Clone for app::trace::RangeTrace
+pub fn app::trace::RangeTrace::clone(&self) -> Self
+impl core::cmp::Eq for app::trace::RangeTrace
+impl core::cmp::PartialEq for app::trace::RangeTrace
+pub fn app::trace::RangeTrace::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::trace::RangeTrace
+pub fn app::trace::RangeTrace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::trace::RangeTrace
+impl core::marker::Freeze for app::trace::RangeTrace
+impl core::marker::Send for app::trace::RangeTrace
+impl core::marker::Sync for app::trace::RangeTrace
+impl core::marker::Unpin for app::trace::RangeTrace
+impl core::marker::UnsafeUnpin for app::trace::RangeTrace
+impl core::panic::unwind_safe::RefUnwindSafe for app::trace::RangeTrace
+impl core::panic::unwind_safe::UnwindSafe for app::trace::RangeTrace
 pub struct app::trace::Similar
 pub app::trace::Similar::bound_total: app::trace::Tally
 pub app::trace::Similar::rows: alloc::vec::Vec<app::trace::SimilarRow>
@@ -1649,6 +1688,8 @@ pub const app::trace::MISS_LITERAL_FILES: usize
 pub const app::trace::MISS_USAGE_FILES: usize
 pub const app::trace::MORE_TREE_DEPTH: usize
 pub const app::trace::MORE_TREE_ENTRIES: usize
+pub const app::trace::RANGE_LINES: u32
+pub const app::trace::RANGE_SYMBOLS: usize
 pub const app::trace::SYMBOL_ROWS: usize
 pub fn app::trace::card_files(&app::Services, &app::Reading<'_>, &[alloc::string::String]) -> app::Noted<core::result::Result<alloc::vec::Vec<alloc::string::String>, app::Error>>
 pub fn app::trace::trace(&app::Services, &app::Reading<'_>, &app::trace::TraceRequest) -> app::Noted<core::result::Result<app::trace::Trace, app::Error>>
@@ -3900,6 +3941,7 @@ pub app::RefsResult::definitions: usize
 pub app::RefsResult::groups: app::RefListing
 pub app::RefsResult::scanned: core::option::Option<usize>
 pub app::RefsResult::shared: kernel::bounded::Bounded<app::SharedCaller>
+pub app::RefsResult::shared_bound: usize
 pub app::RefsResult::shared_callers: bool
 pub app::RefsResult::skipped: alloc::vec::Vec<app::Skipped>
 pub app::RefsResult::target: alloc::string::String

@@ -78,7 +78,7 @@ fn report(facts: &RepoFacts, limit: usize) -> CycleReport {
     let scopes = Scopes::build(&files);
     let imports = SymbolGraph::imports(&scopes);
     CycleReport {
-        cycles: Bounded::cut(rows(&import_cycles(&imports)), limit),
+        cycles: Bounded::cut(rows(&import_cycles(&imports, &scopes)), limit),
         unresolved_imports: imports.unresolved_imports(),
         unresolved_internal_imports: imports.unresolved_internal_imports(),
         skipped: facts.skipped.clone(),

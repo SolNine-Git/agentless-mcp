@@ -9,17 +9,18 @@ use app::search::{
 use app::{ROW_INDENT, Skipped, locator};
 use facts::line_prefix;
 use prompts::messages::{
-    LISTED_AND, SEARCH_BAD_PATTERN, SEARCH_BAD_PATTERN_NO_COLUMN, SEARCH_CUT, SEARCH_LISTING,
-    SEARCH_LISTING_REST, SEARCH_MORE_FILES, SEARCH_NOISE, SEARCH_NOTHING_ASKED,
-    SEARCH_PATTERN_TOO_BIG, SEARCH_REPEAT, SEARCH_REST, SEARCH_SCOPE_FILES, SEARCH_SCOPE_PATH,
-    SEARCH_SKIPPED, SEARCH_SUMMARY, SEARCH_SUMMARY_NONE, SEARCH_WIDE_GLOB, TRACE_UNKNOWN_PATH_NONE,
+    LISTED_AND, SEARCH_BAD_PATTERN, SEARCH_BAD_PATTERN_NO_COLUMN, SEARCH_CUT, SEARCH_GLOB_ROOT,
+    SEARCH_LISTING, SEARCH_LISTING_NO_FILE, SEARCH_LISTING_REST, SEARCH_MORE_FILES, SEARCH_NO_FILE,
+    SEARCH_NOISE, SEARCH_NOTHING_ASKED, SEARCH_PATTERN_TOO_BIG, SEARCH_REPEAT, SEARCH_REST,
+    SEARCH_SCOPE_FILES, SEARCH_SCOPE_PATH, SEARCH_SKIPPED, SEARCH_SUMMARY, SEARCH_SUMMARY_NONE,
+    SEARCH_WIDE_GLOB, TRACE_UNKNOWN_PATH_NONE,
 };
 use serde::Serialize;
 use text::{MAX_BRACE_GLOBS, one_line};
 
 use crate::envelope::{Listing, wrap_json};
 use crate::skipped::{SkippedJson, skipped_json};
-use crate::trace::{PlaceJson, RowJson, listing_row, places};
+use crate::trace::{PlaceJson, RowJson, listing_row, places, span};
 use crate::{Rendered, View};
 
 // The flag that a case-insensitive pattern carries after its closing slash.
@@ -52,6 +53,7 @@ pub fn search_text(answer: &SearchAnswer<'_>) -> String {
     let lines = match answer.searched {
         Searched::Matches(matches) => matches_lines(answer.request, matches),
         Searched::Listing(listing) => listing_lines(answer.request, listing),
+        Searched::NoFile => vec![no_file_line(answer.request)],
     };
     lines.join("\n") + "\n"
 }
@@ -129,11 +131,7 @@ fn group_lines(group: &FileMatches) -> Vec<String> {
 }
 
 fn owner_line(owner: &Owner) -> String {
-    let span = if owner.start_line == owner.end_line {
-        owner.start_line.to_string()
-    } else {
-        format!("{}-{}", owner.start_line, owner.end_line)
-    };
+    let span = span(owner.start_line, owner.end_line);
     let id = locator(&owner.stable_id, "", Some(&span));
     format!("{ROW_INDENT}{}  {id}", one_line(&owner.qualname))
 }
@@ -213,6 +211,17 @@ fn skipped_line(skipped: &[Skipped]) -> Option<String> {
     Some(SEARCH_SKIPPED.render((skipped.len(), &listed)))
 }
 
+// The request's summary, then the rule that the glob missed.
+fn no_file_line(request: &SearchRequest) -> String {
+    let head = if let Some(pattern) = &request.pattern {
+        SEARCH_NO_FILE.render((&scope(request, true), &one_line(pattern)))
+    } else {
+        let glob = one_line(request.files.as_deref().unwrap_or_default());
+        SEARCH_LISTING_NO_FILE.render((&scope(request, false), &glob))
+    };
+    format!("{head} {SEARCH_GLOB_ROOT}")
+}
+
 fn listing_lines(request: &SearchRequest, listing: &FileListing) -> Vec<String> {
     let glob = one_line(request.files.as_deref().unwrap_or_default());
     let head = SEARCH_LISTING.render((&scope(request, false), listing.files, &glob));
@@ -248,6 +257,7 @@ enum AnswerJson<'a> {
         files: usize,
         rows: Vec<RowJson<'a>>,
     },
+    NoFile,
 }
 
 impl<'a> SearchJson<'a> {
@@ -258,6 +268,7 @@ impl<'a> SearchJson<'a> {
                 files: listing.files,
                 rows: listing.rows.iter().map(RowJson::of).collect(),
             },
+            Searched::NoFile => AnswerJson::NoFile,
         };
         SearchJson {
             request: RequestJson {
@@ -277,6 +288,7 @@ impl Listing for SearchJson<'_> {
         match &self.answer {
             AnswerJson::Matches(matches) => matches.groups.len(),
             AnswerJson::Listing { rows, .. } => rows.len(),
+            AnswerJson::NoFile => 0,
         }
     }
 
@@ -285,6 +297,7 @@ impl Listing for SearchJson<'_> {
         match &mut prefix.answer {
             AnswerJson::Matches(matches) => matches.groups.truncate(kept),
             AnswerJson::Listing { rows, .. } => rows.truncate(kept),
+            AnswerJson::NoFile => {}
         }
         prefix
     }

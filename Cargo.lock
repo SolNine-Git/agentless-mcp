@@ -808,6 +808,7 @@ dependencies = [
  "graph",
  "json",
  "patch",
+ "prompts",
  "serde",
  "serde_json",
  "sha2",

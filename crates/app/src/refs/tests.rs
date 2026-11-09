@@ -397,3 +397,61 @@ fn the_shared_caller_ranking_stops_under_a_spent_deadline() {
 
     assert!(matches!(ranked, Err(Stopped::Spent { .. })), "{ranked:?}");
 }
+
+fn shared_of(files: &[(&str, &str)], target: &str) -> RefsResult {
+    let scanned = Scanned::new(files);
+    let request = RefsRequest {
+        target: target.to_owned(),
+        limit: IntArg::from_usize(50),
+        shared_callers: true,
+    };
+    let outcome = refs(&scanned.services, &scanned.reading(), &request);
+    outcome.value.unwrap_or_else(|error| panic!("{error}"))
+}
+
+fn shared_ids(result: &RefsResult) -> Vec<&str> {
+    (result.shared.rows().iter())
+        .map(|row| row.stable_id.as_str())
+        .collect()
+}
+
+#[test]
+fn a_parameter_or_a_local_of_the_target_name_is_not_a_caller_of_the_target() {
+    let files = [
+        ("a.py", "def parsed(x):\n    return x\n"),
+        (
+            "b.py",
+            "class Parsed:\n    pass\n\n\ndef spelled_in(parsed):\n    return Parsed(parsed)\n\n\ndef hits():\n    parsed = 1\n    return Parsed(parsed)\n",
+        ),
+    ];
+    let result = shared_of(&files, "py:a.py::parsed");
+    assert_eq!(shared_ids(&result), Vec::<&str>::new());
+}
+
+#[test]
+fn the_rows_that_rank_through_a_bound_caller_are_counted() {
+    let files = [
+        (
+            "a.py",
+            "def run():\n    return 1\n\n\ndef log():\n    return 2\n",
+        ),
+        (
+            "b.py",
+            "from a import run, log\n\n\ndef one():\n    return run() + log()\n",
+        ),
+        ("c.py", "def two():\n    return run() + log()\n"),
+    ];
+    let bound = shared_of(&files, "py:a.py::run");
+    assert_eq!(shared_ids(&bound), ["py:a.py::log"]);
+    assert_eq!(bound.shared_bound, 1);
+    let unbound = [
+        files[0],
+        ("b.py", "def one():\n    return run() + log()\n"),
+        files[2],
+    ];
+    let name_only = shared_of(&unbound, "py:a.py::run");
+    assert_eq!(
+        (shared_ids(&name_only), name_only.shared_bound),
+        (vec!["py:a.py::log"], 0)
+    );
+}

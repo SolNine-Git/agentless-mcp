@@ -109,7 +109,7 @@ pub(crate) fn wrap_json<P: Listing>(
     ceiling: &Ceiling<'_>,
 ) -> Result<String, Error> {
     let fields = receipt.fields(ceiling);
-    let whole = document(&fields, payload, None::<Trimmed>)?;
+    let whole = document(&fields, payload, None::<Note<Trimmed>>)?;
     if ceiling.count(&whole) <= ceiling.tokens {
         return Ok(whole);
     }
@@ -117,8 +117,13 @@ pub(crate) fn wrap_json<P: Listing>(
     let fitted = fit_items(&fields, payload, ceiling)?;
     let oversized = fitted == 0 && total > 0;
     let kept = if oversized { 1 } else { fitted };
-    let truncated = Trimmed::new(ceiling.tokens, kept, total, oversized);
-    document(&fields, &payload.prefix(kept), Some(truncated))
+    let trimmed = Trimmed::new(ceiling.tokens, kept, total, oversized);
+    let note = if kept < total {
+        Note::Truncated(trimmed)
+    } else {
+        Note::OverCeiling(trimmed)
+    };
+    document(&fields, &payload.prefix(kept), Some(note))
 }
 
 fn fit_items<P: Listing>(
@@ -130,7 +135,7 @@ fn fit_items<P: Listing>(
     let (mut low, mut high) = (0, total);
     while low < high {
         let middle = (low + high).div_ceil(2);
-        let truncated = Trimmed::new(ceiling.tokens, middle, total, false);
+        let truncated = Note::Truncated(Trimmed::new(ceiling.tokens, middle, total, false));
         let probe = document(fields, &payload.prefix(middle), Some(truncated))?;
         if ceiling.count(&probe) <= ceiling.tokens {
             low = middle;
@@ -148,7 +153,7 @@ pub(crate) fn wrap_json_whole<P: Serialize>(
     ceiling: &Ceiling<'_>,
 ) -> Result<String, Error> {
     let fields = receipt.fields(ceiling);
-    let whole = document(&fields, payload, None::<Trimmed>)?;
+    let whole = document(&fields, payload, None::<Note<Untrimmable>>)?;
     let tokens = ceiling.count(&whole);
     if tokens <= ceiling.tokens {
         return Ok(whole);
@@ -158,7 +163,7 @@ pub(crate) fn wrap_json_whole<P: Serialize>(
         token_ceiling: ceiling.tokens,
         tokens,
     };
-    document(&fields, payload, Some(untrimmable))
+    document(&fields, payload, Some(Note::OverCeiling(untrimmable)))
 }
 
 #[derive(Serialize)]
@@ -167,8 +172,16 @@ struct Document<'a, P, T> {
     notice: &'static str,
     #[serde(flatten)]
     payload: &'a P,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    truncated: Option<T>,
+    #[serde(flatten)]
+    note: Option<T>,
+}
+
+// `truncated` when the ceiling cut items; `over_ceiling` when the payload is whole and over it.
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Note<T> {
+    Truncated(T),
+    OverCeiling(T),
 }
 
 #[derive(Serialize)]
@@ -205,13 +218,13 @@ impl Trimmed {
 fn document<P: Serialize, T: Serialize>(
     receipt: &Fields<'_>,
     payload: &P,
-    truncated: Option<T>,
+    note: Option<Note<T>>,
 ) -> Result<String, Error> {
     let document = Document {
         receipt,
         notice: NOTICE,
         payload,
-        truncated,
+        note,
     };
     let mut text = to_text(&document, JsonForm::Indented)?;
     text.push('\n');

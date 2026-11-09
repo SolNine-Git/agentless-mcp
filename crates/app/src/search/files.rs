@@ -9,7 +9,8 @@ use store::{FileText, Served};
 use syntax::Language;
 
 use super::SearchError;
-use crate::{Error, Noted, Reading, Services, scan};
+use crate::views::contained;
+use crate::{Noted, Reading};
 
 // The grammars that read data or queries, not code: their files print after the source files.
 const NOT_SOURCE: [Language; 5] = [
@@ -50,19 +51,6 @@ pub fn is_source_path(path: &str) -> bool {
     Language::from_path(path).is_some_and(|language| !NOT_SOURCE.contains(&language))
 }
 
-// The walk that tree and index list, with its warnings.
-pub(crate) fn walked_files(
-    services: &Services,
-    root: &Path,
-) -> Noted<Result<Vec<RepoFile>, Error>> {
-    let walk = services.git.walk(root, scan::reads);
-    let diagnostics = walk.warnings.iter().map(ToString::to_string).collect();
-    let value = walk
-        .files
-        .map_err(|refusal| kernel::Error::from(refusal).into());
-    Noted { value, diagnostics }
-}
-
 // The part of the repository that a search reads: the root, one file, or one folder.
 pub(crate) enum Selected {
     Root,
@@ -76,11 +64,8 @@ impl Selected {
         let Some(path) = path else {
             return Ok(Selected::Root);
         };
-        let absolute = io::contained_path(root, Path::new(path)).map_err(|refusal| {
-            SearchError::Refused(kernel::Error::SecurityRefusal(refusal.to_string()).into())
-        })?;
-        let below = absolute.strip_prefix(root).unwrap_or(&absolute);
-        let below = below.to_string_lossy().into_owned();
+        let (absolute, below) =
+            contained(root, path).map_err(|error| SearchError::Refused(error.into()))?;
         if below.is_empty() {
             Ok(Selected::Root)
         } else if absolute.is_dir() {
@@ -133,7 +118,8 @@ pub(crate) fn file_row(reading: &Reading<'_>, path: &str) -> Noted<FileRow> {
         Ok(bytes) => bytes,
         Err(skipped) => return Noted::new(row(Measure::Unread(skipped.to_string()))),
     };
-    let symbols = symbols_in(reading, path, &bytes);
+    let symbols = parsed_text(path, &bytes)
+        .map_or_else(|| Noted::new(None), |text| symbols_of(reading, &text));
     let lines = line_count(&String::from_utf8_lossy(&bytes));
     symbols.map(|symbols| {
         row(Measure::Counted {
@@ -143,20 +129,14 @@ pub(crate) fn file_row(reading: &Reading<'_>, path: &str) -> Noted<FileRow> {
     })
 }
 
-// The symbols of the file at `path`, or `None` when it cannot be read or no grammar reads it.
-pub(super) fn symbols_of(reading: &Reading<'_>, path: &str) -> Noted<Option<Vec<Symbol>>> {
-    match io::read_bounded(&reading.repo.root.join(path)) {
-        Ok(bytes) => symbols_in(reading, path, &bytes),
-        Err(_) => Noted::new(None),
-    }
+// The text of the file at `path` that the symbol reader takes, or `None` when no grammar reads it.
+pub(super) fn parsed_text(path: &str, bytes: &[u8]) -> Option<FileText> {
+    Language::from_path(path).map(|language| FileText::decode(path.to_owned(), language, bytes))
 }
 
-fn symbols_in(reading: &Reading<'_>, path: &str, bytes: &[u8]) -> Noted<Option<Vec<Symbol>>> {
-    let Some(language) = Language::from_path(path) else {
-        return Noted::new(None);
-    };
-    let text = FileText::decode(path.to_owned(), language, bytes);
-    let Served { value, warning } = reading.facts.symbols(&text, reading.deadline);
+// The symbols of `text`, or `None` when its grammar refused it.
+pub(super) fn symbols_of(reading: &Reading<'_>, text: &FileText) -> Noted<Option<Vec<Symbol>>> {
+    let Served { value, warning } = reading.facts.symbols(text, reading.deadline);
     Noted {
         value: value.ok(),
         diagnostics: warning.iter().map(ToString::to_string).collect(),

@@ -250,12 +250,14 @@ pub const SYMBOLS: &str = "Look up a symbol and read it by symbol. find (require
 
 /// The description of the `trace` tool.
 pub const TRACE: &str = "Show what a code target is and how it connects. target is a name, a \
-        repository-relative path, path:line or a stable id. A name with \
-        more than one definition gives the candidates. A function, \
-        method or class gives its signature, callers by evidence tier, \
-        callees, tests and last change. A file gives its declarations, \
-        imports, importers, tests and import cycles. A folder gives its \
-        tree. Each section shows how many rows it hides, and more shows \
-        one section in full. more=body gives the numbered body. \
-        more=similar lists the symbols that share callers with the \
-        target. A list of targets gives one card per target in one call.";
+        repository-relative path, path:line, path:start-end or a stable \
+        id. A name with more than one definition gives the candidates. \
+        A function, method or class gives its signature, callers by \
+        evidence tier, callees, tests and last change. A file gives its \
+        declarations, imports, importers, tests and import cycles. \
+        path:start-end gives up to 200 numbered lines and the ids of \
+        the symbols in them. A folder gives its tree. Each section \
+        shows how many rows it hides, and more shows one section in \
+        full. more=body gives the numbered body. more=similar lists the \
+        symbols that share callers with the target. A list of targets \
+        gives one card per target in one call.";

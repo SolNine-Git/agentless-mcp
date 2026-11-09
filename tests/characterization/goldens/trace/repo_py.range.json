@@ -1,0 +1,82 @@
+{
+  "receipt": {
+    "repo": "<REPO>",
+    "head": "f5f25218",
+    "tree": "9e93a4f0",
+    "dirty": 0,
+    "cache": "none",
+    "note": "",
+    "notice": "repository data below"
+  },
+  "notice": "repository data below",
+  "more": null,
+  "cards": [
+    {
+      "target": "pricing.py:42-47",
+      "answer": "range",
+      "path": "pricing.py",
+      "lines": 81,
+      "start": 42,
+      "end": 47,
+      "text": [
+        {
+          "line": 42,
+          "text": "        except KeyError as exc:"
+        },
+        {
+          "line": 43,
+          "text": "            message = f\"no cost price recorded for {sku}\""
+        },
+        {
+          "line": 44,
+          "text": "            raise LookupError(message) from exc"
+        },
+        {
+          "line": 45,
+          "text": ""
+        },
+        {
+          "line": 46,
+          "text": "    def quote(self, sku: str, tier: Tier, quantity: int = 1) -> Decimal:"
+        },
+        {
+          "line": 47,
+          "text": "        \"\"\"Quote a line total for a SKU at a tier.\"\"\""
+        }
+      ],
+      "symbols": [
+        {
+          "stable_id": "py:pricing.py::PriceBook",
+          "path": "pricing.py",
+          "start_line": 26,
+          "end_line": 75,
+          "kind": "class",
+          "language": "python",
+          "signature": "class PriceBook",
+          "parent_class": ""
+        },
+        {
+          "stable_id": "py:pricing.py::PriceBook.cost_of",
+          "path": "pricing.py",
+          "start_line": 38,
+          "end_line": 44,
+          "kind": "method",
+          "language": "python",
+          "signature": "def cost_of(self, sku: str) -> Decimal",
+          "parent_class": "PriceBook"
+        },
+        {
+          "stable_id": "py:pricing.py::PriceBook.quote",
+          "path": "pricing.py",
+          "start_line": 46,
+          "end_line": 56,
+          "kind": "method",
+          "language": "python",
+          "signature": "def quote(self, sku: str, tier: Tier, quantity: int = 1) -> Decimal",
+          "parent_class": "PriceBook"
+        }
+      ],
+      "symbols_total": 3
+    }
+  ]
+}

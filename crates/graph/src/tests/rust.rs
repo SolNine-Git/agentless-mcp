@@ -9,7 +9,7 @@ use syntax::Language;
 
 use crate::paths::PathIndex;
 use crate::rust_paths::RustTree;
-use crate::{FileFacts, NameIndex, Resolver, Scopes, Tier};
+use crate::{FileFacts, NameIndex, Resolver, Scopes, SymbolGraph, Tier, import_cycles};
 
 pub(crate) fn scanned(files: &[(&str, &str)]) -> Vec<FileFacts> {
     let each = files.iter().map(|(path, text)| {
@@ -477,4 +477,40 @@ fn a_name_only_match_keeps_the_definitions_of_the_spelling_language_family() {
     assert_eq!(resolved(&files, "shared", "d.js"), unique("c.ts"));
     assert_eq!(resolved(&files, "shared", "f.py"), unique("a.py"));
     assert_eq!(resolved(&files, "shared", "e.lua"), None);
+}
+
+// The member files of each import cycle of `files`.
+fn cycle_members(files: &[FileFacts]) -> Vec<Vec<String>> {
+    let files: Vec<&FileFacts> = files.iter().collect();
+    let scopes = Scopes::build(&files);
+    let cycles = import_cycles(&SymbolGraph::imports(&scopes), &scopes);
+    let members = cycles
+        .iter()
+        .map(|cycle| cycle.members.iter().map(|path| (*path).to_owned()));
+    members.map(Iterator::collect).collect()
+}
+
+#[test]
+fn a_crate_root_re_export_leads_the_cycle_edge_to_the_defining_file_and_a_root_item_keeps_it() {
+    let crate_files = |child: &'static str| {
+        scanned(&[
+            ("Cargo.toml", "[package]\nname = \"p\"\n"),
+            (
+                "src/lib.rs",
+                "mod child;\nmod other;\npub use child::Item;\npub use other::Thing;\npub struct Root;\n",
+            ),
+            ("src/child.rs", child),
+            ("src/other.rs", "pub struct Thing;\n"),
+        ])
+    };
+    let through = crate_files("use crate::Thing;\npub struct Item(Thing);\n");
+    assert!(
+        cycle_members(&through).is_empty(),
+        "{:?}",
+        cycle_members(&through)
+    );
+    let rooted = crate_files("use crate::{Root, Thing};\npub struct Item(Root, Thing);\n");
+    assert_eq!(cycle_members(&rooted), [["src/child.rs", "src/lib.rs"]]);
+    let unbound = crate_files("use crate::{Thing, Root as _};\npub struct Item(Thing);\n");
+    assert_eq!(cycle_members(&unbound), [["src/child.rs", "src/lib.rs"]]);
 }

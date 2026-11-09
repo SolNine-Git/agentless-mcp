@@ -4,7 +4,7 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use facts::{StableId, Symbol};
+use facts::{Role, StableId, Symbol};
 use graph::{
     Definition, FileFacts, NameIndex, Site, common_name_damping, enclosing_symbol, name_multiplier,
 };
@@ -44,10 +44,14 @@ pub(super) fn shared_callers(
     Ok(rows)
 }
 
-// The symbols that hold the target's sites, by stable id.
+// The symbols that hold the target's sites, by stable id. A site that scope analysis binds to a
+// parameter or a local spells another binding, so it makes no caller.
 fn callers<'a>(sites: &[Site<'a>]) -> BTreeMap<String, Caller<'a>> {
     let mut callers = BTreeMap::new();
-    for site in sites {
+    let calling = sites
+        .iter()
+        .filter(|site| !matches!(site.reference.role, Role::Local | Role::Binding));
+    for site in calling {
         if let Some(symbol) = enclosing_symbol(&site.file.facts.symbols, site.reference.line) {
             let id = StableId::of(site.file.language, site.path(), symbol).to_string();
             callers.insert(

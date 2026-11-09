@@ -88,6 +88,8 @@ pub enum CardKind {
     Candidates,
     /// A target that matched nothing.
     Miss,
+    /// A range of a file's lines.
+    Range,
 }
 
 const SYMBOL_SECTIONS: [Section; 6] = [
@@ -106,7 +108,7 @@ const FILE_SECTIONS: [Section; 5] = [
     Section::Cycles,
 ];
 
-const KIND_NAMES: [&str; 5] = ["symbol", "file", "folder", "candidates", "miss"];
+const KIND_NAMES: [&str; 6] = ["symbol", "file", "folder", "candidates", "miss", "range"];
 
 impl CardKind {
     /// Returns the wire value, such as `file`.
@@ -123,7 +125,7 @@ impl CardKind {
             CardKind::File => &FILE_SECTIONS,
             CardKind::Folder => &[Section::Tree],
             CardKind::Candidates => &[Section::Candidates],
-            CardKind::Miss => &[],
+            CardKind::Miss | CardKind::Range => &[],
         }
     }
 }

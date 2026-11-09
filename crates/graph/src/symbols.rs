@@ -4,6 +4,7 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Range;
 use std::sync::{Arc, OnceLock};
 
 use facts::Ref;
@@ -291,10 +292,17 @@ impl<'a> SymbolGraph<'a> {
 
     /// Return the edges arriving at `node`, in sort-key order.
     pub fn incoming(&self, node: &str) -> impl Iterator<Item = &SymbolEdge<'a>> + '_ {
+        self.by_target[self.arriving(node)]
+            .iter()
+            .map(|&at| &self.edges[at])
+    }
+
+    // The span of `by_target` that holds the edges arriving at `node`.
+    pub(crate) fn arriving(&self, node: &str) -> Range<usize> {
         let target = |at: &usize| self.edges[*at].target.node();
         let start = self.by_target.partition_point(|at| target(at) < node);
         let end = self.by_target.partition_point(|at| target(at) <= node);
-        self.by_target[start..end].iter().map(|&at| &self.edges[at])
+        start..end
     }
 
     /// Return the module-level import edges, in sort-key order.

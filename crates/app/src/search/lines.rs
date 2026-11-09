@@ -42,13 +42,9 @@ pub(super) fn hits_in(path: &str, text: &str, regex: &Regex, context: usize) -> 
     })
 }
 
-// The parts that "\n" ends: a final line break opens no line, as a reader counts lines.
+// The parts that "\n" or "\r\n" ends: a final line break opens no line, as a reader counts lines.
 fn text_lines(text: &str) -> Vec<&str> {
-    let mut lines: Vec<&str> = text.split('\n').collect();
-    if text.is_empty() || text.ends_with('\n') {
-        lines.pop();
-    }
-    lines
+    text.lines().collect()
 }
 
 // Each match widened by `context` on both sides, with touching or overlapping windows merged.

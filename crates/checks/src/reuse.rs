@@ -29,7 +29,7 @@ pub(crate) struct ReuseRules {
     rows_per_function: usize,
 }
 
-// The rules in force. The floor is provisional until the held-out labels set it.
+// The rules in force. No held-out label set calibrates the floor, so the check stays opt-in.
 pub(crate) const REUSE_RULES: ReuseRules = ReuseRules {
     min_names: 3,
     common_share: 0.05,

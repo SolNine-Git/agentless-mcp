@@ -161,7 +161,7 @@ fn the_symbol_graph_matches_the_reference() {
             "{}",
             corpus.name
         );
-        let cycles: Vec<Value> = import_cycles(&imports)
+        let cycles: Vec<Value> = import_cycles(&imports, resolver.scopes())
             .iter()
             .map(|cycle| json!([cycle.files, cycle.members]))
             .collect();

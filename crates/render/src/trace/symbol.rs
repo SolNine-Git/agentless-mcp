@@ -63,7 +63,7 @@ pub(super) fn symbol_lines(traced: &SymbolTrace, more: Option<Section>) -> Vec<S
     lines
 }
 
-fn header(card: &SymbolCard) -> String {
+pub(super) fn header(card: &SymbolCard) -> String {
     let at = span(card.start_line, card.end_line);
     let id = locator(&card.stable_id, "", Some(&at));
     format!("{id}  {}", one_line(card.kind))

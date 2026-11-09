@@ -1,6 +1,6 @@
-//! The resolution order of a trace target: a stable id, a `path:line`, a repository-relative
-//! path, a qualified name, then a bare name, each name matched as explain matches it. A target
-//! that matches nothing is a miss.
+//! The resolution order of a trace target: a `path:start-end` of a walked file, a stable id, a
+//! `path:line`, a repository-relative path, a qualified name, then a bare name, each name matched
+//! as explain matches it. A target that matches nothing is a miss.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -10,7 +10,7 @@ use git::RepoFile;
 use graph::{FileFacts, Target, enclosing_symbol, joins_name_graph, parse_target};
 use syntax::Language;
 
-use super::{CardKind, MISS_LITERAL_FILES, Miss};
+use super::{CardKind, MISS_LITERAL_FILES, Miss, RANGE_LINES};
 use crate::endpoints::{BindingStatus, Scope, TARGET_WORDING, bind};
 use crate::map::focus_resolution;
 use crate::ops::limits::MAX_LIMIT;
@@ -29,6 +29,7 @@ pub(super) enum Resolved {
     Folder(String),
     Candidates(Vec<SymbolCard>),
     Missed(Missed),
+    Range(LineRange),
 }
 
 impl Resolved {
@@ -39,6 +40,7 @@ impl Resolved {
             Resolved::Folder(_) => CardKind::Folder,
             Resolved::Candidates(_) => CardKind::Candidates,
             Resolved::Missed(_) => CardKind::Miss,
+            Resolved::Range(_) => CardKind::Range,
         }
     }
 
@@ -47,7 +49,10 @@ impl Resolved {
         match self {
             Resolved::Symbol(card) => Some(&card.path),
             Resolved::File(found) => Some(&found.path),
-            Resolved::Folder(_) | Resolved::Candidates(_) | Resolved::Missed(_) => None,
+            Resolved::Folder(_)
+            | Resolved::Candidates(_)
+            | Resolved::Missed(_)
+            | Resolved::Range(_) => None,
         }
     }
 }
@@ -60,6 +65,15 @@ pub(super) struct FoundFile {
     pub(super) symbols: Vec<SymbolCard>,
     pub(super) anchor: Option<String>,
     pub(super) no_symbol_at: Option<u32>,
+}
+
+// A range of a walked file, 1-based and inclusive, and the symbols of the scan whose spans hold a
+// line that the card can show.
+pub(super) struct LineRange {
+    pub(super) path: String,
+    pub(super) start: u32,
+    pub(super) end: u32,
+    pub(super) symbols: Vec<SymbolCard>,
 }
 
 // A miss whose answer is known, or a name whose usage files and text are still to be read.
@@ -149,6 +163,9 @@ impl Resolver<'_, '_> {
             let (name, literal) = (text.to_owned(), text.to_owned());
             return Resolved::Missed(Missed::Name { name, literal });
         }
+        if let Some(range) = self.range(text) {
+            return range;
+        }
         match parse_target(text) {
             Target::Id(..) => self.named(text),
             Target::Line(path, line) => self.at_line(path, line),
@@ -211,6 +228,26 @@ impl Resolver<'_, '_> {
             }
             _ => self.file(path, Some(line)),
         }
+    }
+
+    // A `path:start-end` of a walked file; `None` for any other target, which resolves as before.
+    fn range(&self, text: &str) -> Option<Resolved> {
+        let (path, start, end) = line_range(text)?;
+        let path = below_root(self.scope.root, path).filter(|path| self.walked.is_file(path))?;
+        if start == 0 || start > end {
+            let miss = Miss::BadRange { path, start, end };
+            return Some(Resolved::Missed(Missed::Ready(miss)));
+        }
+        let shown = (start, end.min(start.saturating_add(RANGE_LINES - 1)));
+        let symbols = (self.scanned(&path))
+            .map(|file| touched(file, shown))
+            .unwrap_or_default();
+        Some(Resolved::Range(LineRange {
+            path,
+            start,
+            end,
+            symbols,
+        }))
     }
 
     // A path below the root, an absolute path, a URL or a traceback frame; `None` for a target
@@ -287,6 +324,25 @@ fn found(file: &FileFacts, no_symbol_at: Option<u32>) -> FoundFile {
         anchor,
         no_symbol_at,
     }
+}
+
+// The path and the two line numbers of a `path:start-end` text, or `None` for any other text.
+fn line_range(text: &str) -> Option<(&str, u32, u32)> {
+    let (path, range) = text.rsplit_once(':')?;
+    let (start, end) = range.split_once('-')?;
+    let number = |digits: &str| {
+        let decimal = !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit());
+        decimal.then(|| digits.parse().ok()).flatten()
+    };
+    Some((path, number(start)?, number(end)?))
+}
+
+// The symbols of `file` whose spans hold a line of `shown`, in file order.
+fn touched(file: &FileFacts, (first, last): (u32, u32)) -> Vec<SymbolCard> {
+    (file.facts.symbols.iter())
+        .filter(|symbol| symbol.line <= last && symbol.end_line >= first)
+        .map(|symbol| symbol_card(file.language, &file.path, symbol, String::new()))
+        .collect()
 }
 
 // The path as the caller wrote it, with no leading `./` and no trailing `/`; `.` is the root.

@@ -73,7 +73,7 @@ impl Canonical {
             graph: Some(&graph),
             degrees: Some(&graph.ambiguous_degrees()),
             imports: Some(&imports),
-            cycles: Some(&import_cycles(&imports)),
+            cycles: Some(&import_cycles(&imports, &scopes)),
         })
     }
 

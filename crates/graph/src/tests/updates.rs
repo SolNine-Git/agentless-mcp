@@ -124,7 +124,7 @@ fn run(case: &Case) {
     drop(resolver);
     let mut degrees = graph.ambiguous_degrees();
     let mut imports = SymbolGraph::imports(&scopes);
-    let mut cycles = import_cycles(&imports);
+    let mut cycles = import_cycles(&imports, &scopes);
     for (step, pair) in lists.windows(2).enumerate() {
         let parts = KeptParts {
             index: Some(&mut index),

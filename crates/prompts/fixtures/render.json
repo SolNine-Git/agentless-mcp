@@ -1563,6 +1563,13 @@
       "arguments": {},
       "text": "// note: the walk out to these tests hit its node bound before it finished, so this section is a floor rather than every test"
     },
+    "near_duplicates_found": {
+      "arguments": {
+        "count": 2,
+        "name": "'total'"
+      },
+      "text": "the body the patch gives 'total' is the same as the body of 2 existing definition(s) token for token, with comments and indentation left out; you may already have this"
+    },
     "overview_data_unlisted": {
       "arguments": {
         "cap": 500,
@@ -1740,6 +1747,12 @@
       },
       "text": "[py:pkg/lib.py::other1] @5  (6 shared callers in 1 file, score 0.281)"
     },
+    "refs_shared_unbound": {
+      "arguments": {
+        "target": "rs:crates/mcp/src/hooks.rs::parsed"
+      },
+      "text": "no caller of rs:crates/mcp/src/hooks.rs::parsed at a binding tier shares a symbol: each row ranks through name-only callers."
+    },
     "refs_split": {
       "arguments": {
         "count": 3,
@@ -1882,6 +1895,10 @@
       },
       "text": "!function(e){...[+1834 chars]"
     },
+    "search_glob_root": {
+      "arguments": {},
+      "text": "A glob matches the path from the root. Start it with **/ to match at any depth."
+    },
     "search_listing": {
       "arguments": {
         "count": 7,
@@ -1889,6 +1906,13 @@
         "query": ""
       },
       "text": "search files=crates/hook/src/search/*.rs: 7 files"
+    },
+    "search_listing_no_file": {
+      "arguments": {
+        "glob": "*.rs",
+        "query": " in crates/app"
+      },
+      "text": "search files=*.rs in crates/app: no file matches the glob."
     },
     "search_listing_rest": {
       "arguments": {
@@ -1902,6 +1926,13 @@
         "count": 4
       },
       "text": "4 more files"
+    },
+    "search_no_file": {
+      "arguments": {
+        "pattern": "RegexBuilder",
+        "query": " files=search*/**"
+      },
+      "text": "search /RegexBuilder/ files=search*/**: no file matches the glob."
     },
     "search_noise": {
       "arguments": {
@@ -2139,6 +2170,10 @@
       },
       "text": "at least 3"
     },
+    "trace_body_of_file": {
+      "arguments": {},
+      "text": "Read reads a file, trace path:start-end gives its numbered lines, and a symbol id with more=body gives the body of one symbol."
+    },
     "trace_bound": {
       "arguments": {
         "count": 3
@@ -2338,6 +2373,56 @@
         "text": "25 constants"
       },
       "text": "25 constants hidden"
+    },
+    "trace_range_binary": {
+      "arguments": {
+        "path": "logo.png"
+      },
+      "text": "logo.png is a binary file: trace shows the lines of a text file only."
+    },
+    "trace_range_cut": {
+      "arguments": {
+        "count": 200,
+        "shown": 200,
+        "target": "big.py:201-400",
+        "total": 450
+      },
+      "text": "... 200 of 450 lines shown: trace big.py:201-400 for the next 200 lines."
+    },
+    "trace_range_header": {
+      "arguments": {
+        "count": 81,
+        "end": 47,
+        "path": "pricing.py",
+        "start": 42
+      },
+      "text": "pricing.py  42-47 of 81 lines"
+    },
+    "trace_range_past_end": {
+      "arguments": {
+        "end": 120,
+        "path": "pricing.py",
+        "start": 100
+      },
+      "text": "no lines 100-120 in pricing.py"
+    },
+    "trace_range_reversed": {
+      "arguments": {
+        "end": 3,
+        "path": "pricing.py",
+        "start": 9
+      },
+      "text": "pricing.py:9-3 is not a line range: start is 1 or more, and end is at or after start."
+    },
+    "trace_range_symbols": {
+      "arguments": {
+        "count": 3
+      },
+      "text": "symbols: 3"
+    },
+    "trace_range_symbols_none": {
+      "arguments": {},
+      "text": "symbols: none"
     },
     "trace_rows_unlisted": {
       "arguments": {

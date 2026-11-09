@@ -10,6 +10,27 @@ Each byte count is of the served bytes.
 
 ### Added
 
+- **`trace` reads a range of lines: `path:start-end`.** A target `path:A-B`
+  (1-based and inclusive) of a file in the walk gives a range card: the
+  header `path  A-B of N lines`, the numbered lines in the gutter of
+  `more=body`, and `symbols: n` with the id, span and kind of each symbol
+  whose span holds a shown line (16 at most, then `... n more`). The card
+  shows at most 200 lines; a longer range ends with "... 200 of T lines
+  shown: trace path:A2-B2 for the next n lines.", which names the next range.
+  An end past the last line stops at the last line. A start past it answers
+  "no lines A-B in path: the file has N lines.", a start of 0 or after the
+  end answers "path:A-B is not a line range: ...", and a binary file answers
+  "path is a binary file: ...", each as an ordinary answer. In the JSON the
+  card is `"answer": "range"`, with `text` as `{line, text}` rows, `next`,
+  `symbols` and `symbols_total`. The `trace` description and its `target`
+  description name the form: tools/list grows from 2,744 to 2,858 bytes and
+  from 524 to 551 cl100k tokens (`trace` 263 to 290), which the test
+  `tools_list_has_the_bytes_and_the_cl100k_count_that_the_changelog_states`
+  pins. New goldens: `trace/repo_py.range` (text and JSON),
+  `trace/repo_py.range_past_end` and `trace/repo_py.range_reversed`, with
+  their counts in `crates/app/fixtures/read/tokens.json`. The changed recorded
+  value is the `trace` entry of `crates/app/fixtures/surface/surface.json`.
+
 - **`lint` gains `reuse_candidates`, an opt-in advisory check for a function
   that the change adds whose action names are mostly those of an existing
   function.** The action names of a function are the names it calls and the
@@ -19,8 +40,11 @@ Each byte count is of the served bytes.
   an IDF-weighted Jaccard score of 0.3 or more over the names that at most 5%
   of functions use, 3 or more names on each side, the same language, no
   protocol method or test code on either side, and no call between the two
-  functions at a binding tier; each added function gives at most 2 rows. The
-  floor of 0.3 is provisional until held-out labels set it (R3). Only `--only
+  functions at a binding tier; each added function gives at most 2 rows. On
+  held-out labels of tokio and sympy (R3,
+  docs/analysis/2026-11-08_reuse-measurement.md), 14 of 113 card rows were
+  duplicates (12.4%, Wilson 7.5-19.7%): both bars failed, so the check stays
+  opt-in at review and no card or hook shows its rows. Only `--only
   reuse_candidates` runs it, in `--since` and in `--path`. `--since` resolves
   the calls on the whole symbol graph of its scan; `--path` reads the tag
   cache only and resolves them on a graph of the edited file, the rows' files
@@ -193,6 +217,82 @@ Each byte count is of the served bytes.
   calls the `agentless-mcp hook` commands.
 
 ### Changed
+
+- **`lint --help` says what `reuse_candidates` reads.** The `--only` text
+  named the check but described the reads of the other pair checks only. It
+  now adds: "reuse_candidates reads the action names of every function from
+  the tag cache, and only --only runs it, in --since and --path." The changed
+  recorded values are the 14 `lint --help` cases of
+  `crates/cli/fixtures/parser.json`, each rewrapped in its `--only` text.
+
+- **CLI JSON contract: a whole payload over the token ceiling carries
+  `over_ceiling`, not `truncated`.** A `--json` answer over the ceiling whose
+  items were all kept (one oversized item, an empty list, or a payload with no
+  list to trim) said `"truncated": {...}`, so a consumer that checks
+  `truncated` for completeness read a complete report as cut: `lint --since
+  2e8f807 --json` on this repository gave `"truncated"` with `"shown": 1,
+  "total": 1` (review D1). That object is now `"over_ceiling"`, with the same
+  fields; `truncated` stays for an answer whose ceiling dropped items. The
+  changed recorded values are the key of 16 expected documents: 2 in
+  `crates/render/fixtures/envelope.json` and 14 in
+  `crates/render/fixtures/read/envelope.json`.
+
+- **`refs --shared-callers` counts no parameter or local as a caller, and says
+  when no bound caller shares a row.** A site that scope analysis binds to a
+  parameter or a local of the target's name spells another binding, so it no
+  longer makes its function a caller. On this repository,
+  `refs --shared-callers rs:crates/mcp/src/hooks.rs::parsed` ranked three
+  `Parsed` types first through 75 functions with a `parsed` parameter; it now
+  ranks the other `parsed` functions, `crates/hook/src/install.rs::parsed`
+  second (a tie of three at score 1.440). When no caller at a binding tier
+  references a ranked symbol, the text adds "no caller of T at a binding tier
+  shares a symbol: each row ranks through name-only callers." The changed
+  recorded value is that line in the `refs_shared_tests_repo` scenario of
+  `crates/cli/fixtures/read_symbols/scenarios.json`.
+
+- **A Rust import of names that its target only re-exports is a cycle edge to
+  the files that define them.** A child module's `use crate::X` against a
+  crate root's `pub use child::X` made an import edge to `lib.rs`, so nearly
+  every module of a crate sat in one import cycle through its root. For the
+  import cycles only, a Rust import that takes from a module file only names
+  that the file itself imports now counts as an import of the files that
+  define those names (up to 4 re-export hops); an import of the module, a
+  glob, a name that the file defines, or a leaf that binds no name keeps its
+  target. The import edges, the imports and importers sections and every
+  other language are unchanged. `trace` file cards, `more=cycles`, the
+  `cycles` view and the lint cycle checks read the same cycles (a kept graph
+  already builds again when a Rust `use` or `mod` item changes). Measured on
+  this repository with the debug build of this change (`cycles --json`): 22
+  Rust cycles holding 225 files before, 24 holding 144 after; 81 Rust file
+  cards lose their cycle line and none gains one. The 64-file cycle of
+  `crates/app` through `lib.rs` splits into the parent-child cycles that
+  remain, such as `crates/app/src/search.rs -> crates/app/src/search/files.rs`.
+  No golden or recorded fixture holds a Rust cycle, so none changes.
+
+- **`more=body` asked of a file card names the calls that give lines.** The
+  answer "more=body does not apply to a file card. File sections: ..." now
+  goes on: "Read reads a file, trace path:start-end gives its numbered lines,
+  and a symbol id with more=body gives the body of one symbol." Another
+  section asked of a file card keeps its answer. New golden
+  `trace/repo_py.no_body_file`, with its count in
+  `crates/app/fixtures/read/tokens.json`.
+
+- **`search` says when its glob selects no file, reads CRLF lines, and shows
+  no context of a match that it leaves out.** A `files` glob that selects no
+  file (inside `path`, when the request gives one) now answers "search /P/
+  files=G: no file matches the glob. A glob matches the path from the root.
+  Start it with **/ to match at any depth." (or "search files=G: ..."
+  without a pattern), where it said "0 matches in 0 files searched." or "0
+  files"; the CLI JSON gives `"answer": "no_file"`. A line of a CRLF file is
+  matched and shown without its "\r", so `2$` matches `hit = 2\r\n`. When
+  the limit cuts a file and `context` is above 0, the file shows its lines
+  through the last shown match and the context after it, and no longer the
+  leading context of a match that it left out. The read keeps the lines and
+  the text of a file only while the limit can still show one of its match
+  lines, and the enclosing symbols come from that text, so each shown file is
+  read once. New goldens: `search/repo_nested.no_file` (text and JSON) and
+  `search/repo_nested.listing_no_file`, with their counts in
+  `crates/app/fixtures/read/tokens.json`.
 
 - **The `near_duplicates` message says what the check matches.** It said
   that the body "normalises to the same token stream" as an existing one, but

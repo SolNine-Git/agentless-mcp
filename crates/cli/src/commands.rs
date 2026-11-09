@@ -267,8 +267,10 @@ fn only_help() -> String {
         "run only these checks: {}. The pair checks ({}) compare whole file texts. {} read only \
          the edited files. clone_delta also reads every tier-1 source file outside test and \
          fixture paths. callee_overlap and cycle_dodge read the calls of every function and the \
-         imports of every file in the working tree, and only --since runs them. A run with only \
-         pair checks skips the symbol scan that the patch checks need",
+         imports of every file in the working tree, and only --since runs them. reuse_candidates \
+         reads the action names of every function from the tag cache, and only --only runs it, in \
+         --since and --path. A run with only pair checks skips the symbol scan that the patch \
+         checks need",
         all.join(", "),
         pairs.join(", "),
         edited_checks()

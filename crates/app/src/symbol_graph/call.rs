@@ -315,7 +315,7 @@ impl<'f, 's> CallGraph<'f, 's> {
     pub(crate) fn cycles(&self) -> &'f [Cycle<'s>] {
         (self.built.cycles).get_or_init(|| {
             self.counted(|counts| &counts.cycles);
-            import_cycles(self.imports())
+            import_cycles(self.imports(), self.scopes())
         })
     }
 

@@ -13,14 +13,12 @@ use graph::{
 };
 use kernel::{Bounded, Deadline};
 
-use crate::bounds::within;
 use crate::detached::answered_over;
 use crate::endpoints::{
     BindingStatus, Bound, Coverage, Scope, TARGET_WORDING, TargetBinding, bind, data_key_binding,
 };
-use crate::ops::limits::MAX_LIMIT;
 use crate::scan::RepoFacts;
-use crate::span::{Missed, SymbolSpan, data_key_span};
+use crate::span::{Missed, SymbolSpan, limited};
 use crate::symbol_graph::{CallGraph, CallScan};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
 
@@ -44,6 +42,8 @@ pub struct RefsResult {
     pub groups: RefListing,
     /// The ranked symbols that the target's callers also reference.
     pub shared: Bounded<SharedCaller>,
+    /// The ranked symbols that a caller at a binding tier also references.
+    pub shared_bound: usize,
     /// Whether the request asked for the shared callers.
     pub shared_callers: bool,
     /// Whether the target named what it found.
@@ -233,20 +233,13 @@ pub(crate) fn refs_in(
     })
 }
 
-// A refused limit and a data key need no scan; any other request gets its limit to `fanned`.
 fn with_limit(
     reading: &Reading<'_>,
     request: &RefsRequest,
     fanned: impl FnOnce(usize) -> Noted<Result<RefsResult, Error>>,
 ) -> Noted<Result<RefsResult, Error>> {
-    let limit = match within(&request.limit, 1, MAX_LIMIT, "limit") {
-        Ok(limit) => limit,
-        Err(error) => return Noted::new(Err(error)),
-    };
-    if let Some(found) = data_key_span(reading, &request.target) {
-        return found.map(|span| Ok(keyed(request, limit, span)));
-    }
-    fanned(limit)
+    let keyed = |span, limit| keyed(request, limit, span);
+    limited(reading, &request.target, &request.limit, keyed, fanned)
 }
 
 // What one fan-in reads: the resolver and the aliases of the scan, the files it passed over, the
@@ -297,8 +290,15 @@ fn fan_in(fan: &FanIn<'_, '_>, request: &RefsRequest, limit: usize) -> Result<Re
     } else {
         Vec::new()
     };
+    let bound_callers = sites::bound_callers(&sites, &tiers);
+    let through_bound = |row: &&SharedCaller| {
+        let held =
+            |caller: &CallerRef| bound_callers.contains(&(caller.path.as_str(), caller.line));
+        row.callers.iter().any(held)
+    };
     Ok(RefsResult {
         groups,
+        shared_bound: ranked.iter().filter(through_bound).count(),
         shared: Bounded::cut(ranked, limit),
         definition: single_definition(&bound),
         definitions: bound.definitions.len(),
@@ -336,6 +336,7 @@ fn nothing_listed(request: &RefsRequest, limit: usize, binding: TargetBinding) -
             files: 0,
         },
         shared: Bounded::cut(Vec::new(), limit),
+        shared_bound: 0,
         shared_callers: request.shared_callers,
         target_resolved: binding.status != BindingStatus::NotFound,
         definition: None,

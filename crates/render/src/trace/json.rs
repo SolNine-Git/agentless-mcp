@@ -4,8 +4,8 @@
 use app::search::{FileRow, Measure, Place};
 use app::trace::{
     Callees, Callers, Card, Change, Cycles, Declares, FileLinks, FileTrace, FolderEntry,
-    FolderTrace, Linked, Miss, Outcome, Section, Similar, SymbolTrace, Tally, Tests, Trace,
-    TraceRequest,
+    FolderTrace, Linked, Miss, Outcome, RangeTrace, Section, Similar, SymbolTrace, Tally, Tests,
+    Trace, TraceRequest,
 };
 use app::{EdgeRow, HistoryResult, SymbolCard};
 use serde::Serialize;
@@ -65,6 +65,7 @@ enum OutcomeJson<'a> {
         rows: Vec<CardJson<'a>>,
     },
     Miss(MissJson<'a>),
+    Range(RangeJson<'a>),
     Same {
         card: usize,
     },
@@ -85,6 +86,7 @@ impl<'a> OutcomeJson<'a> {
                 rows: traced.rows.iter().map(CardJson::of).collect(),
             },
             Outcome::Card(Card::Miss(missed)) => Self::Miss(MissJson::of(missed)),
+            Outcome::Card(Card::Range(traced)) => Self::Range(RangeJson::of(traced)),
             Outcome::Same(first) => Self::Same { card: *first },
             Outcome::NoSection { section, kind } => Self::NoSection {
                 section: section.as_str(),
@@ -561,6 +563,48 @@ impl<'a> RowJson<'a> {
 }
 
 #[derive(Clone, Serialize)]
+struct RangeJson<'a> {
+    path: &'a str,
+    lines: u32,
+    start: u32,
+    end: u32,
+    text: Vec<NumberedJson<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next: Option<SpanJson>,
+    symbols: Vec<CardJson<'a>>,
+    symbols_total: usize,
+}
+
+#[derive(Clone, Serialize)]
+struct NumberedJson<'a> {
+    line: u32,
+    text: &'a str,
+}
+
+#[derive(Clone, Copy, Serialize)]
+struct SpanJson {
+    start: u32,
+    end: u32,
+}
+
+impl<'a> RangeJson<'a> {
+    fn of(range: &'a RangeTrace) -> Self {
+        let text =
+            (range.text.iter().zip(range.start..)).map(|(text, line)| NumberedJson { line, text });
+        RangeJson {
+            path: &range.path,
+            lines: range.lines,
+            start: range.start,
+            end: range.end,
+            text: text.collect(),
+            next: range.next().map(|(start, end)| SpanJson { start, end }),
+            symbols: range.symbols.iter().map(CardJson::of).collect(),
+            symbols_total: range.symbols_total,
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
 #[serde(tag = "miss", rename_all = "snake_case")]
 enum MissJson<'a> {
     Nothing {
@@ -588,6 +632,20 @@ enum MissJson<'a> {
         path: &'a str,
         line: u32,
         lines: u32,
+    },
+    RangePastEnd {
+        path: &'a str,
+        start: u32,
+        end: u32,
+        lines: u32,
+    },
+    BadRange {
+        path: &'a str,
+        start: u32,
+        end: u32,
+    },
+    Binary {
+        path: &'a str,
     },
 }
 
@@ -621,6 +679,23 @@ impl<'a> MissJson<'a> {
                 line: *line,
                 lines: *lines,
             },
+            Miss::RangePastEnd {
+                path,
+                start,
+                end,
+                lines,
+            } => MissJson::RangePastEnd {
+                path,
+                start: *start,
+                end: *end,
+                lines: *lines,
+            },
+            Miss::BadRange { path, start, end } => MissJson::BadRange {
+                path,
+                start: *start,
+                end: *end,
+            },
+            Miss::Binary { path } => MissJson::Binary { path },
         }
     }
 }

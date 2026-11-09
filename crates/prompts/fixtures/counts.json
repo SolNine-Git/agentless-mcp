@@ -655,6 +655,24 @@
       "one": ": the file has 1 line.",
       "many": ": the file has 2 lines."
     },
+    "trace_range_header": {
+      "arguments": {
+        "end": 47,
+        "path": "pricing.py",
+        "start": 42
+      },
+      "one": "pricing.py  42-47 of 1 line",
+      "many": "pricing.py  42-47 of 2 lines"
+    },
+    "trace_range_cut": {
+      "arguments": {
+        "shown": 200,
+        "target": "big.py:201-400",
+        "total": 450
+      },
+      "one": "... 200 of 450 lines shown: trace big.py:201-400 for the next 1 line.",
+      "many": "... 200 of 450 lines shown: trace big.py:201-400 for the next 2 lines."
+    },
     "search_summary": {
       "arguments": {
         "pattern": "agentless_prompt_map",

@@ -5,6 +5,7 @@
 mod change;
 mod file;
 mod miss;
+mod range;
 mod resolve;
 mod section;
 mod symbol;
@@ -15,7 +16,8 @@ use git::RepoFile;
 use prompts::messages::TRACE_TARGET_COUNT;
 
 use crate::ops::limits::{FIND_USAGE_FILES, MAX_LIMIT};
-use crate::search::{FileRow, Place, walked_files};
+use crate::scan::walked_files;
+use crate::search::{FileRow, Place};
 use crate::symbol_graph::{CallGraph, CallScan, Keeping, over_walked_scan, with_call_graph};
 use crate::{
     CycleRow, EdgeRow, Error, HistoryEntry, HistoryResult, Noted, Reading, RefGroup, Services,
@@ -57,6 +59,10 @@ pub const MORE_TREE_ENTRIES: usize = 500;
 pub const LISTING_LIMIT: usize = MAX_LIMIT;
 /// The time that a symbol card or a file card waits for git to read its last change.
 pub const LAST_CHANGE_DEADLINE: Duration = Duration::from_secs(2);
+/// The most lines that a range card shows.
+pub const RANGE_LINES: u32 = 200;
+/// The symbols that a range card shows.
+pub const RANGE_SYMBOLS: usize = 16;
 
 /// A trace request: the targets, in the caller's order, and the one section to show in full.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -112,6 +118,8 @@ pub enum Card {
     Candidates(CandidatesTrace),
     /// A target that matched nothing, and where the next call can look.
     Miss(Miss),
+    /// A range of a file's lines.
+    Range(RangeTrace),
 }
 
 impl Card {
@@ -124,6 +132,7 @@ impl Card {
             Card::Folder(_) => CardKind::Folder,
             Card::Candidates(_) => CardKind::Candidates,
             Card::Miss(_) => CardKind::Miss,
+            Card::Range(_) => CardKind::Range,
         }
     }
 }
@@ -399,6 +408,36 @@ pub enum FolderEntry {
     },
 }
 
+/// A range of a file's lines: the numbered lines up to [`RANGE_LINES`], and the symbols that
+/// they touch.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RangeTrace {
+    /// The path below the repository root.
+    pub path: String,
+    /// The file's lines.
+    pub lines: u32,
+    /// The first line of the range.
+    pub start: u32,
+    /// The last line of the range, at most the file's last line.
+    pub end: u32,
+    /// The text of each shown line from `start`, with no line break.
+    pub text: Vec<String>,
+    /// The symbols whose spans hold a shown line, in file order, cut at [`RANGE_SYMBOLS`].
+    pub symbols: Vec<SymbolCard>,
+    /// The symbols whose spans hold a shown line.
+    pub symbols_total: usize,
+}
+
+impl RangeTrace {
+    /// Returns the next range of at most [`RANGE_LINES`] lines when the cap cut this one.
+    #[must_use]
+    pub fn next(&self) -> Option<(u32, u32)> {
+        let shown = u32::try_from(self.text.len()).unwrap_or(u32::MAX);
+        let start = self.start.saturating_add(shown);
+        (start <= self.end).then(|| (start, self.end.min(start.saturating_add(RANGE_LINES - 1))))
+    }
+}
+
 /// A name with several definitions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CandidatesTrace {
@@ -452,6 +491,31 @@ pub enum Miss {
         line: u32,
         /// The file's lines.
         lines: u32,
+    },
+    /// A `path:start-end` whose start is past the file's last line.
+    RangePastEnd {
+        /// The path below the repository root.
+        path: String,
+        /// The first line asked for.
+        start: u32,
+        /// The last line asked for.
+        end: u32,
+        /// The file's lines.
+        lines: u32,
+    },
+    /// A `path:start-end` whose start is 0 or after its end.
+    BadRange {
+        /// The path below the repository root.
+        path: String,
+        /// The first line asked for.
+        start: u32,
+        /// The last line asked for.
+        end: u32,
+    },
+    /// A `path:start-end` of a binary file, which has no lines to show.
+    Binary {
+        /// The path below the repository root.
+        path: String,
     },
 }
 
@@ -600,8 +664,8 @@ fn carded(
     noted.map(Ok)
 }
 
-// A candidates card and a miss show themselves whatever `more` names; a symbol, file or folder
-// card that does not hold the section says so.
+// A candidates card, a range card and a miss show themselves whatever `more` names; a symbol,
+// file or folder card that does not hold the section says so.
 fn outcome(
     call: &Call<'_, '_, '_, '_>,
     resolved: Resolved,
@@ -626,6 +690,7 @@ fn outcome(
         }
         Resolved::Candidates(rows) => Noted::new(Ok(Card::Candidates(candidates(rows, more)))),
         Resolved::Missed(target) => misses.card(call, target).map_ok(Card::Miss),
+        Resolved::Range(range) => Noted::new(Ok(range::range_card(&reading.repo.root, range))),
     };
     card.map_ok(Outcome::Card)
 }
