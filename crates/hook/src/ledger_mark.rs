@@ -46,7 +46,7 @@ pub(crate) fn decide(
     let fields = run::fields(stdin)?;
     let context = run::context(&fields, facts)?;
     let targets = targets(&fields)?;
-    let root = repo_root(run, services, &fields).ok_or(NO_REPOSITORY)?;
+    let root = repo_root(run, services, &fields, facts)?;
     if !state::private_dir(&run.ledger) {
         return Err(LEDGER_STORAGE_UNAVAILABLE);
     }
@@ -81,11 +81,18 @@ fn targets(fields: &Fields) -> Result<Vec<String>, &'static str> {
 }
 
 // The call's repo_root, else the repository of the call's directory.
-fn repo_root(run: &Run<'_>, services: &Services, fields: &Fields) -> Option<PathBuf> {
+fn repo_root(
+    run: &Run<'_>,
+    services: &Services,
+    fields: &Fields,
+    facts: &mut Facts,
+) -> Result<PathBuf, &'static str> {
     if let Some(root) = run::input_text(fields, "repo_root") {
-        return io::resolve(Path::new(root)).ok();
+        return io::resolve(Path::new(root)).map_err(|_| NO_REPOSITORY);
     }
-    repository::root_of(services, &run.cwd(fields)?)
+    let cwd = run.cwd(fields).ok_or(NO_REPOSITORY)?;
+    repository::root_of(services, &cwd)
+        .map_err(|no_root| run::rootless(&no_root, NO_REPOSITORY, facts))
 }
 
 // Marked when any claim is new; else the first reason that kept a claim out.

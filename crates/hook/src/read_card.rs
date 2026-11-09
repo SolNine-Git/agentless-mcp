@@ -74,7 +74,7 @@ pub(crate) fn decide(
     let fields = run::fields(stdin)?;
     let context = run::context(&fields, facts)?;
     let read = read_file(run, &fields)?;
-    let found = found(services, &read)?;
+    let found = found(services, &read, facts)?;
     match ledger::claim(&run.ledger, &context, &found.canonical, &found.content) {
         Claimed::New => {}
         Claimed::Held => return Err(HELD),
@@ -117,7 +117,7 @@ struct Found {
 }
 
 // The repository is the git top level of the file, not of the call's directory.
-fn found(services: &Services, read: &Path) -> Result<Found, &'static str> {
+fn found(services: &Services, read: &Path, facts: &mut Facts) -> Result<Found, &'static str> {
     let canonical = io::resolve(read).map_err(|_| NO_FILE)?;
     if !canonical.is_file() {
         return Err(NO_FILE);
@@ -126,7 +126,8 @@ fn found(services: &Services, read: &Path) -> Result<Found, &'static str> {
         return Err(NOT_SOURCE);
     }
     let dir = canonical.parent().ok_or(NO_FILE)?;
-    let root = repository::root_of(services, dir).ok_or(OUTSIDE_GIT)?;
+    let root = repository::root_of(services, dir)
+        .map_err(|no_root| run::rootless(&no_root, OUTSIDE_GIT, facts))?;
     let rel = canonical.strip_prefix(&root).ok().and_then(Path::to_str);
     let rel = rel.ok_or(OUTSIDE_GIT)?.to_owned();
     let content = io::read_bounded(&canonical).map_err(|skipped| match skipped {

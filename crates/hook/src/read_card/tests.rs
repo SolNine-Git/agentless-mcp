@@ -177,6 +177,21 @@ fn a_read_that_is_not_of_a_source_file_in_a_repository_is_silent() {
     assert_eq!(rig.reasons(), expected);
 }
 
+// A git that fails is not a file outside git: the log line names git's error.
+#[test]
+fn a_git_that_fails_logs_its_error_and_not_outside_git() {
+    let rig = Rig::new();
+    drop(rig.sandbox.put("repo/.git/config", "[[[\n"));
+    let stdin = read_payload("s1", None, &rig.file(Rig::INVOICE));
+    assert_eq!(rig.read(&stdin), "");
+    let line = &rig.lines()[0];
+    let error = "git rev-parse exited 128: fatal: bad config line 1 in file .git/config";
+    assert_eq!(
+        (&line["reason"], &line["error"]),
+        (&json!("git_failed"), &json!(error))
+    );
+}
+
 #[test]
 fn a_payload_that_is_not_a_read_is_silent() {
     let rig = Rig::new();

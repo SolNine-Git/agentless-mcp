@@ -60,9 +60,11 @@ pub(crate) fn recorded(
         return Err(FORKED);
     }
     let prompt = run::input_text(&fields, "prompt").ok_or(NO_PROMPT)?;
-    let root = run
-        .cwd(&fields)
-        .and_then(|cwd| repository::root_of(services, &cwd));
+    // A brief outside every repository is still recorded, with git's error when git failed.
+    let root = run.cwd(&fields).and_then(|cwd| {
+        let root = repository::root_of(services, &cwd);
+        root.map_err(|no_root| facts.error = no_root.cause()).ok()
+    });
     let seeded = match &root {
         Some(root) => seeds::seeded(prompt, &|rel| root.join(rel).is_file()),
         None => seeds::seeded(prompt, &|_| false),
@@ -143,14 +145,19 @@ pub(crate) fn mapped(
     if brief.seeds.is_empty() {
         return Err(NO_SEED);
     }
-    let root = (brief.root.clone()).or_else(|| repository::root_of(services, &run.cwd(&fields)?));
+    let found = |facts: &mut Facts| {
+        let cwd = run.cwd(&fields).ok_or(NO_REPOSITORY)?;
+        repository::root_of(services, &cwd)
+            .map_err(|no_root| run::rootless(&no_root, NO_REPOSITORY, facts))
+    };
+    let root = brief.root.clone().map_or_else(|| found(facts), Ok)?;
     let request = MapRequest {
         focus: brief.seeds.clone(),
         budget: None,
         max_files: Some(IntArg::from_usize(RANKED_FILES)),
         granularity: Some(Granularity::File),
     };
-    let (services, root) = (services.clone(), root.ok_or(NO_REPOSITORY)?);
+    let services = services.clone();
     let finished = run.timed(move || map(&services, &root, &request), facts);
     let result = run::finished(finished, MAP_FAILED)?;
     sentence(&result, &brief).map(Outcome::Context)

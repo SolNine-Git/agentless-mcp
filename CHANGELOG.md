@@ -776,6 +776,14 @@ Each byte count is of the served bytes.
   `session_id` second, no `agent_id`, and `seeds` and `files` as null before
   the seed step. An `agent_id` that is not a string is now
   `malformed_payload`, as in the other hooks.
+- **A hook whose git fails logs `git_failed` with git's error, not
+  `outside_git` or `no_repository`.** The repository lookup of read-card,
+  ledger-mark, prompt-map and subagent-map read a git timeout or failure as
+  a directory outside every repository. The gate log line now has an `error`
+  key when a step failed: git's error (the erosion record's text, such as
+  `git rev-parse timed out after 2.0 s`), and the removal error of a
+  ledger-reset that cannot remove the main context's entries. brief-record
+  still records a brief whose git failed, without a root, and logs the error.
 - **history and churn now pass each path to git as a literal pathspec, so a
   path with a glob character matches only itself.**
 - **Three Python import rules remove false import edges, and some true

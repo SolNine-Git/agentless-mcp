@@ -86,7 +86,8 @@ fn decide(
     let prompt = text_field(&fields, "prompt").and_then(CodePointString::as_str);
     let prompt = prompt.ok_or(NO_PROMPT)?;
     let cwd = run.cwd(&fields).ok_or(NO_REPOSITORY)?;
-    let root = repository::root_of(services, &cwd).ok_or(NO_REPOSITORY)?;
+    let root = repository::root_of(services, &cwd)
+        .map_err(|no_root| run::rootless(&no_root, NO_REPOSITORY, facts))?;
     let found = seeds::seeds(prompt, &|rel| root.join(rel).is_file());
     facts.seeds = Some(found.clone());
     if found.is_empty() {

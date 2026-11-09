@@ -84,15 +84,22 @@ fn held_or_full(dir: &Path, entry: &Path) -> Option<Claimed> {
     }
 }
 
+// Why a reset removed nothing: storage that is not private, or the removal's error.
+#[derive(Debug)]
+pub(crate) enum ResetFailed {
+    Untrusted,
+    Removal(std::io::Error),
+}
+
 // Removes the main context's entries: Ok(true) when there were any.
-pub(crate) fn reset(base: &Path, session: &str) -> Result<bool, ()> {
+pub(crate) fn reset(base: &Path, session: &str) -> Result<bool, ResetFailed> {
     if !state::private_dir(base) {
-        return Err(());
+        return Err(ResetFailed::Untrusted);
     }
     let main = session_dir(base, session).join(MAIN);
     match io::remove_tree(&main) {
         Ok(()) => Ok(true),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
-        Err(_) => Err(()),
+        Err(error) => Err(ResetFailed::Removal(error)),
     }
 }

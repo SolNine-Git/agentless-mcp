@@ -4,6 +4,7 @@ use app::hooks::Hook;
 
 use super::decide;
 use crate::testing::{Rig, Steps};
+use crate::text::sha256_hex;
 
 impl Rig {
     fn reset(&self, stdin: &str) {
@@ -59,5 +60,27 @@ fn a_reset_with_nothing_to_remove_or_no_session_is_silent() {
     assert_eq!(
         (&line["hook"], &line["event"]),
         (&json!("ledger-reset"), &json!("silent"))
+    );
+}
+
+// A removal that fails names its error in the log line.
+#[test]
+fn a_reset_that_cannot_remove_the_entries_logs_the_error() {
+    let rig = Rig::new();
+    if !rig.sandbox.modes_bind() {
+        return;
+    }
+    assert!(!rig.read_reply("s1", None, Rig::INVOICE).is_empty());
+    let main = format!("ledger/{}/main", sha256_hex(b"s1"));
+    rig.sandbox.set_mode(&main, 0o500);
+    rig.reset(&compact("s1"));
+    rig.sandbox.set_mode(&main, 0o700);
+    let line = &rig.lines()[1];
+    assert_eq!(
+        (&line["reason"], &line["error"]),
+        (
+            &json!("ledger_storage_unavailable"),
+            &json!("[Errno 13] Permission denied")
+        )
     );
 }

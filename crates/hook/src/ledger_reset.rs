@@ -3,7 +3,7 @@
 
 use std::io::Read;
 
-use crate::ledger;
+use crate::ledger::{self, ResetFailed};
 use crate::run::{self, Facts, LEDGER_STORAGE_UNAVAILABLE, Outcome, Run};
 
 const RESET: &str = "reset";
@@ -19,7 +19,11 @@ pub(crate) fn decide(
     match ledger::reset(&run.ledger, &context.session) {
         Ok(true) => Ok(Outcome::Recorded(RESET)),
         Ok(false) => Err(NOTHING_TO_RESET),
-        Err(()) => Err(LEDGER_STORAGE_UNAVAILABLE),
+        Err(ResetFailed::Untrusted) => Err(LEDGER_STORAGE_UNAVAILABLE),
+        Err(ResetFailed::Removal(error)) => {
+            facts.error = Some(io::os_error_str(&error));
+            Err(LEDGER_STORAGE_UNAVAILABLE)
+        }
     }
 }
 

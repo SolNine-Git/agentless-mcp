@@ -17,6 +17,7 @@ use text::CodePointString;
 
 use crate::ledger;
 use crate::reply::{self, EMITTED, INTERNAL};
+use crate::repository::NoRoot;
 use crate::search::log::{self, Entry, key};
 use crate::search::{Parsed, object_field, parsed, text_field};
 use crate::worker::{self, Finished};
@@ -26,6 +27,7 @@ pub(crate) const NO_SESSION_ID: &str = "no_session_id";
 pub(crate) const NO_REPOSITORY: &str = "no_repository";
 pub(crate) const LEDGER_STORAGE_UNAVAILABLE: &str = "ledger_storage_unavailable";
 pub(crate) const DEADLINE_PASSED: &str = "deadline";
+pub(crate) const GIT_FAILED: &str = "git_failed";
 
 const SILENT: &str = "silent";
 const RECORDED: &str = "recorded";
@@ -34,6 +36,7 @@ const HOOK_KEY: &str = "hook";
 const AGENT_ID_KEY: &str = "agent_id";
 const SEEDS_KEY: &str = "seeds";
 const FILES_KEY: &str = "files";
+const ERROR_KEY: &str = "error";
 const MS_KEY: &str = "ms";
 
 pub(crate) type Fields = Vec<(CodePointString, JsonValue)>;
@@ -103,13 +106,14 @@ pub(crate) enum Outcome {
 }
 
 // What the log line records besides the decision. Only a hook that maps seeds records them and
-// the files it named.
+// the files it named, and only a failed step records its error.
 #[derive(Default)]
 pub(crate) struct Facts {
     pub(crate) session: Option<String>,
     pub(crate) agent: Option<String>,
     pub(crate) seeds: Option<Vec<String>>,
     pub(crate) files: Option<Vec<String>>,
+    pub(crate) error: Option<String>,
     pub(crate) ms: Option<u128>,
 }
 
@@ -180,6 +184,17 @@ pub(crate) fn context(fields: &Fields, facts: &mut Facts) -> Result<Context, &'s
     Ok(Context { session, agent })
 }
 
+// The reason of a directory with no repository root: `outside` when no repository holds it, else
+// git_failed, with git's error in the facts.
+pub(crate) fn rootless(no_root: &NoRoot, outside: &'static str, facts: &mut Facts) -> &'static str {
+    facts.error = no_root.cause();
+    if facts.error.is_some() {
+        GIT_FAILED
+    } else {
+        outside
+    }
+}
+
 // The text of `key` in the payload's `tool_input`.
 pub(crate) fn input_text<'a>(fields: &'a Fields, key: &str) -> Option<&'a str> {
     let input = object_field(fields, "tool_input")?;
@@ -211,6 +226,9 @@ fn entry(
         if let Some(items) = items {
             entry.push((name, texts(items)));
         }
+    }
+    if let Some(error) = &facts.error {
+        entry.push((ERROR_KEY, log::text(error)));
     }
     entry.push((MS_KEY, Cow::Owned(ms)));
     entry

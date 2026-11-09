@@ -6,8 +6,10 @@ use std::time::Duration;
 use git::Toplevel;
 use io::testing::cases;
 
-use super::{anchor, found, halt_for, old_text, relative, require_tier1};
+use super::{anchor, halt, old_text, relative, require_tier1};
+use crate::halt::Halt;
 use crate::record::Outcome;
+use crate::repository::{printed, resolved};
 use crate::testing::{MANIFEST_DIR, Sandbox};
 
 #[test]
@@ -51,6 +53,15 @@ fn the_path_below_the_root_matches_the_reference_cases() {
             assert_eq!(halt.reason, "the resolved target is outside the repository");
         }
     }
+}
+
+// The halt of each answer of `git rev-parse`, and of each printed top level.
+fn halt_for(toplevel: Toplevel, budget: Duration) -> Result<Vec<u8>, Halt> {
+    printed(toplevel, budget).map_err(halt)
+}
+
+fn found(stdout: &[u8]) -> Result<PathBuf, Halt> {
+    resolved(stdout).map_err(halt)
 }
 
 #[test]
