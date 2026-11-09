@@ -19,8 +19,11 @@ Each byte count is of the served bytes.
   an IDF-weighted Jaccard score of 0.3 or more over the names that at most 5%
   of functions use, 3 or more names on each side, the same language, no
   protocol method or test code on either side, and no call between the two
-  functions at a binding tier; each added function gives at most 2 rows. The
-  floor of 0.3 is provisional until held-out labels set it (R3). Only `--only
+  functions at a binding tier; each added function gives at most 2 rows. On
+  held-out labels of tokio and sympy (R3,
+  docs/analysis/2026-11-08_reuse-measurement.md), 14 of 113 card rows were
+  duplicates (12.4%, Wilson 7.5-19.7%): both bars failed, so the check stays
+  opt-in at review and no card or hook shows its rows. Only `--only
   reuse_candidates` runs it, in `--since` and in `--path`. `--since` resolves
   the calls on the whole symbol graph of its scan; `--path` reads the tag
   cache only and resolves them on a graph of the edited file, the rows' files

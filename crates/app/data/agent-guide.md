@@ -1659,8 +1659,9 @@ of the same language. Both have 3 or more action names, and neither is a Rust
 method of `impl Trait for T`, a Python dunder, or Rust test code. A name counts
 toward the match only when at most 5% of all functions use it. The score is
 the IDF weight of the shared counted names over the weight of the union of
-the two name sets, and a row needs 0.3 or more (a provisional floor, until
-held-out labels set it). Each f gets at most two rows, the best score first.
+the two name sets, and a row needs 0.3 or more. On held-out labels, 12% of
+the rows were duplicates, so read both bodies of each row before you act on
+it. Each f gets at most two rows, the best score first.
 A g that f calls, or that calls f, at the same-file or resolved-via-import
 tier is left out, because the one uses the other. `--since` resolves those
 calls on the whole symbol graph of its scan. The `--path` form reads the tag

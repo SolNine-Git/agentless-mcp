@@ -1570,59 +1570,59 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         the match only when at most 5% of all functions use it. The \
         score is\nthe IDF weight of the shared counted names over the \
         weight of the union of\nthe two name sets, and a row needs 0.3 \
-        or more (a provisional floor, until\nheld-out labels set it). \
-        Each f gets at most two rows, the best score first.\nA g that f \
-        calls, or that calls f, at the same-file or \
-        resolved-via-import\ntier is left out, because the one uses the \
-        other. `--since` resolves those\ncalls on the whole symbol \
-        graph of its scan. The `--path` form reads the tag\ncache only, \
-        so it resolves them on a graph of the edited file, the files \
-        of\nthe rows, and the `Cargo.toml` files. That graph misses a \
-        call through a\nre-export in another file (a Python package's \
-        `__init__.py`, a Rust `pub\nuse`), and then the row \
-        stays.\n\nOn planted pairs in Rust and in Python it finds 10 of \
-        10 (3 renamed copies, 3\nedited copies, 4 re-implementations) \
-        and gives no row on 9 negatives \
-        each\n(`tests/characterization/fixtures/reuse_rust` and \
-        `_py`).\n\nTwo things the table cannot say.\n\n**`not_checked` \
-        is a finding.** Every check reports coverage gaps as \
-        findings\nat severity `not_checked` and names the reason:\n\n- \
-        a file in a language this build has no grammar for\n- a \
-        repository with no dependency manifest\n- a file the caller \
-        supplied no text for\n- a patch block that did not parse\n- \
-        edits that did not apply\n- a file whose text before or after \
-        the change was not read, or does not parse\n- a repository with \
-        no `boundary_globs`, for `contract_drift`\n- for `clone_delta`, \
-        repository files that could not be read or parsed, or\n  that \
-        the index did not reach before its time budget (one row counts \
-        them and\n  names the first ten), a repository whose files \
-        could not be listed, and in\n  the `--path` form a run with no \
-        tag cache\n- for `callee_overlap`, a run whose scan or graph \
-        build reached its time\n  budget (one row, and no finding)\n- \
-        for `reuse_candidates`, repository files that could not be read \
-        or parsed\n  (one row counts them), a read of the functions or \
-        a graph build that reached\n  its time budget (one row, and no \
-        finding), and in the `--path` form a run\n  with no tag \
-        cache\n- a boundary file in a language with no contract rules \
-        (c, bash)\n- in review mode: a binary file, a submodule, an \
-        unmerged path, a git call\n  that failed or timed out, and a \
-        run in which no file changed\n\nSilence would be the one \
-        dishonest outcome, because you cannot tell \"checked\nand \
-        clean\" from \"never ran\". `dangling_references` and `arity` \
-        need Python's\nbuiltin and signature vocabulary. They report \
-        `not_checked` for every other\nlanguage rather than judge it by \
-        Python's rules.\n\n**`undeclared_imports` needs Python 3.11 or \
-        newer.** To read `pyproject.toml`\nmeans `tomllib`, which the \
-        standard library gained in 3.11. This package\ntakes no \
-        dependency to fill that in. On 3.10 the check reports \
-        `not_checked`\nwith the reason: \"reading a dependency manifest \
-        needs Python 3.11 or newer\".\nEvery other check runs as usual. \
-        Everything else in this package works the\nsame on \
-        3.10.\n\n**Both advisories are deliberately timid.** `arity` \
-        passes in silence on any\ndoubt at all (varargs, keyword \
-        arguments, decorators, methods, a call inside\nan f-string, a \
-        callee that resolves only by name), because a wrong \
-        arity\nclaim reads exactly like a real one. \
+        or more. On held-out labels, 12% of\nthe rows were duplicates, \
+        so read both bodies of each row before you act on\nit. Each f \
+        gets at most two rows, the best score first.\nA g that f calls, \
+        or that calls f, at the same-file or resolved-via-import\ntier \
+        is left out, because the one uses the other. `--since` resolves \
+        those\ncalls on the whole symbol graph of its scan. The \
+        `--path` form reads the tag\ncache only, so it resolves them on \
+        a graph of the edited file, the files of\nthe rows, and the \
+        `Cargo.toml` files. That graph misses a call through \
+        a\nre-export in another file (a Python package's `__init__.py`, \
+        a Rust `pub\nuse`), and then the row stays.\n\nOn planted pairs \
+        in Rust and in Python it finds 10 of 10 (3 renamed copies, \
+        3\nedited copies, 4 re-implementations) and gives no row on 9 \
+        negatives each\n(`tests/characterization/fixtures/reuse_rust` \
+        and `_py`).\n\nTwo things the table cannot \
+        say.\n\n**`not_checked` is a finding.** Every check reports \
+        coverage gaps as findings\nat severity `not_checked` and names \
+        the reason:\n\n- a file in a language this build has no grammar \
+        for\n- a repository with no dependency manifest\n- a file the \
+        caller supplied no text for\n- a patch block that did not \
+        parse\n- edits that did not apply\n- a file whose text before \
+        or after the change was not read, or does not parse\n- a \
+        repository with no `boundary_globs`, for `contract_drift`\n- \
+        for `clone_delta`, repository files that could not be read or \
+        parsed, or\n  that the index did not reach before its time \
+        budget (one row counts them and\n  names the first ten), a \
+        repository whose files could not be listed, and in\n  the \
+        `--path` form a run with no tag cache\n- for `callee_overlap`, \
+        a run whose scan or graph build reached its time\n  budget (one \
+        row, and no finding)\n- for `reuse_candidates`, repository \
+        files that could not be read or parsed\n  (one row counts \
+        them), a read of the functions or a graph build that reached\n  \
+        its time budget (one row, and no finding), and in the `--path` \
+        form a run\n  with no tag cache\n- a boundary file in a \
+        language with no contract rules (c, bash)\n- in review mode: a \
+        binary file, a submodule, an unmerged path, a git call\n  that \
+        failed or timed out, and a run in which no file \
+        changed\n\nSilence would be the one dishonest outcome, because \
+        you cannot tell \"checked\nand clean\" from \"never ran\". \
+        `dangling_references` and `arity` need Python's\nbuiltin and \
+        signature vocabulary. They report `not_checked` for every \
+        other\nlanguage rather than judge it by Python's \
+        rules.\n\n**`undeclared_imports` needs Python 3.11 or newer.** \
+        To read `pyproject.toml`\nmeans `tomllib`, which the standard \
+        library gained in 3.11. This package\ntakes no dependency to \
+        fill that in. On 3.10 the check reports `not_checked`\nwith the \
+        reason: \"reading a dependency manifest needs Python 3.11 or \
+        newer\".\nEvery other check runs as usual. Everything else in \
+        this package works the\nsame on 3.10.\n\n**Both advisories are \
+        deliberately timid.** `arity` passes in silence on any\ndoubt \
+        at all (varargs, keyword arguments, decorators, methods, a call \
+        inside\nan f-string, a callee that resolves only by name), \
+        because a wrong arity\nclaim reads exactly like a real one. \
         `dangling_references` looks at names in\ncall and base-class \
         position only. A bare identifier read is almost always \
         a\nlocal, and a check that reported every local as undefined is \
@@ -1911,7 +1911,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3_599, 4_432),
     ("stable-ids", 4_434, 5_923),
     ("the-two-surfaces", 5_925, 11_608),
-    ("per-tool-usage", 11_610, 105_613),
+    ("per-tool-usage", 11_610, 105_668),
     ("claude-code-specifics", 13_226, 15_765),
     ("map", 15_767, 25_796),
     ("tree", 25_798, 26_119),
@@ -1931,10 +1931,10 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("resolve-locs", 62_823, 63_638),
     ("capabilities", 63_640, 65_354),
     ("index", 65_356, 68_097),
-    ("lint", 68_099, 94_413),
-    ("validate-vote", 94_415, 104_012),
-    ("warmup", 104_014, 105_613),
-    ("project-defaults-agentless-mcp-json", 105_615, 109_568),
-    ("token-counting", 109_570, 109_984),
-    ("exit-codes", 109_986, 110_444),
+    ("lint", 68_099, 94_468),
+    ("validate-vote", 94_470, 104_067),
+    ("warmup", 104_069, 105_668),
+    ("project-defaults-agentless-mcp-json", 105_670, 109_623),
+    ("token-counting", 109_625, 110_039),
+    ("exit-codes", 110_041, 110_499),
 ];
