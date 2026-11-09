@@ -794,6 +794,12 @@ Each byte count is of the served bytes.
   other printed shell words are quoted.** A path with `=` is now written
   unquoted, and a single quote as `'"'"'`, not `'\''`. hook status reads
   either form as the same path, so an entry written before stays current.
+- **The first backup of hook install and hook uninstall is skipped only when
+  a regular file holds `settings.json.agentless-backup`.** Before, any entry
+  at the name, even a dangling symlink, kept the write from making a backup.
+  The backup now replaces a symlink at the name (it never writes through
+  one), and an entry that it cannot replace, such as a folder, stops the
+  write with its error.
 - **history and churn now pass each path to git as a literal pathspec, so a
   path with a glob character matches only itself.**
 - **Three Python import rules remove false import edges, and some true

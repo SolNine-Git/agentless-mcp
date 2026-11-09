@@ -261,6 +261,30 @@ fn a_number_that_json_cannot_write_is_refused_and_kept() {
     assert!(!backup.exists());
 }
 
+// Only a regular file at the backup's name is the first backup; a dangling link is not.
+#[test]
+fn a_dangling_link_at_the_backup_name_gets_the_first_backup() {
+    let rig = Rig::new();
+    rig.put_settings("{\"model\": \"opus\"}");
+    rig.sandbox.symlink(
+        "config/settings.json.agentless-backup",
+        "<SANDBOX>/nowhere/backup.json",
+    );
+
+    let output = rig.install(&[]);
+
+    assert_eq!(output.code, 0, "{}", output.stderr);
+    let backup = rig
+        .sandbox
+        .path()
+        .join("config/settings.json.agentless-backup");
+    let kind = std::fs::symlink_metadata(&backup)
+        .expect("the backup")
+        .file_type();
+    assert!(kind.is_file(), "{kind:?}");
+    assert_eq!(text(&backup), "{\"model\": \"opus\"}");
+}
+
 #[test]
 fn a_symlinked_settings_file_is_written_at_its_target() {
     let rig = Rig::new();

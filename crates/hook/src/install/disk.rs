@@ -5,6 +5,8 @@ use std::fs;
 use std::io::{Error, ErrorKind, Result as IoResult};
 use std::path::{Path, PathBuf};
 
+use crate::state;
+
 const BACKUP_SUFFIX: &str = ".agentless-backup";
 const TRIES: usize = 2;
 
@@ -64,7 +66,8 @@ pub(crate) fn written<T, R>(
     }
 }
 
-// The first write keeps the file as it was beside it; a later write keeps that first backup.
+// The first write keeps the file as it was beside it; a later write keeps that first backup, a
+// regular file. The replace writes over a symlink at the name, not through it.
 fn backed_up<R>(target: &Path, before: Option<&[u8]>) -> Result<(), Stopped<R>> {
     let Some(before) = before else {
         return Ok(());
@@ -72,7 +75,7 @@ fn backed_up<R>(target: &Path, before: Option<&[u8]>) -> Result<(), Stopped<R>> 
     let mut name = target.as_os_str().to_owned();
     name.push(BACKUP_SUFFIX);
     let backup = PathBuf::from(name);
-    if fs::symlink_metadata(&backup).is_ok() {
+    if state::is_plain_file(&backup) {
         return Ok(());
     }
     io::replace_file(&backup, before).map_err(|error| Stopped::Failed(error, backup))
