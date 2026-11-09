@@ -23,8 +23,6 @@ pub const BINARY_NAME: &str = "agentless-mcp";
 pub const DEFAULT_SERVER_NAME: &str = "agentless";
 /// A settings `timeout` is this many times its hook's deadline.
 pub const TIMEOUT_FACTOR: u32 = 3;
-/// The time that `read-card` may spend on a card.
-pub const READ_CARD_DEADLINE: Duration = Duration::from_secs(3);
 /// The variable that names the user's Claude Code configuration folder.
 pub const CONFIG_DIR_VARIABLE: &str = "CLAUDE_CONFIG_DIR";
 
@@ -128,7 +126,8 @@ impl Hook {
     #[must_use]
     pub fn deadline(self) -> Duration {
         match self {
-            Hook::ReadCard => READ_CARD_DEADLINE,
+            // The design leaves this one open, 1 to 5 s; 3 s is provisional.
+            Hook::ReadCard => Duration::from_secs(3),
             Hook::LedgerMark => Duration::from_secs(2),
             Hook::BriefRecord | Hook::LedgerReset => Duration::from_secs(1),
             Hook::SubagentMap | Hook::PromptMap | Hook::Erosion => Duration::from_secs(5),

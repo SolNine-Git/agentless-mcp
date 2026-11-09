@@ -351,7 +351,6 @@ impl core::panic::unwind_safe::UnwindSafe for app::hooks::RowStatus
 pub const app::hooks::BINARY_NAME: &str
 pub const app::hooks::CONFIG_DIR_VARIABLE: &str
 pub const app::hooks::DEFAULT_SERVER_NAME: &str
-pub const app::hooks::READ_CARD_DEADLINE: core::time::Duration
 pub const app::hooks::TIMEOUT_FACTOR: u32
 pub fn app::hooks::command(&str, app::hooks::Hook) -> alloc::string::String
 pub fn app::hooks::compare(&[app::hooks::Handler], &str, app::hooks::ServerName<'_>) -> app::hooks::HookStatus
