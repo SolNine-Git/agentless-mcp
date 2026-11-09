@@ -261,6 +261,38 @@ fn a_number_that_json_cannot_write_is_refused_and_kept() {
     assert!(!backup.exists());
 }
 
+// JSON.parse keeps the last value of a repeated key at the key's first place, and so do hook
+// status and hook install.
+#[test]
+fn a_repeated_hooks_key_is_read_and_written_as_its_last_value() {
+    let rig = Rig::new();
+    let first = format!(
+        r#""hooks": {{"PreToolUse": [{{"matcher": "Write|Edit", "hooks": [{{"type": "command", "command": "{BINARY} hook erosion", "timeout": 15}}]}}]}}"#
+    );
+    let last =
+        r#""hooks": {"Stop": [{"hooks": [{"type": "command", "command": "notify-send done"}]}]}"#;
+    rig.put_settings(&format!("{{{first}, \"model\": \"opus\", {last}}}"));
+
+    let status = rig.status(&[]);
+    let output = rig.install(&[]);
+
+    assert!(
+        status.stdout.contains("erosion: missing\n"),
+        "{}",
+        status.stdout
+    );
+    let report = "added 7, replaced 0, removed 0 retired, kept 1 other handler; wrote \
+                  <SANDBOX>/config/settings.json\n";
+    assert_eq!(rig.shown(&output), (0, report.to_owned(), String::new()));
+    let text = text(&rig.settings());
+    assert!(text.starts_with("{\n  \"hooks\": {\n"), "{text}");
+    assert_eq!(text.matches("\n  \"hooks\": ").count(), 1, "{text}");
+    assert!(
+        text.contains("notify-send done") && text.contains("\"model\""),
+        "{text}"
+    );
+}
+
 // Only a regular file at the backup's name is the first backup; a dangling link is not.
 #[test]
 fn a_dangling_link_at_the_backup_name_gets_the_first_backup() {
