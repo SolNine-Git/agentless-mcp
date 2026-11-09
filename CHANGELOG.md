@@ -10,6 +10,27 @@ Each byte count is of the served bytes.
 
 ### Added
 
+- **`trace` reads a range of lines: `path:start-end`.** A target `path:A-B`
+  (1-based and inclusive) of a file in the walk gives a range card: the
+  header `path  A-B of N lines`, the numbered lines in the gutter of
+  `more=body`, and `symbols: n` with the id, span and kind of each symbol
+  whose span holds a shown line (16 at most, then `... n more`). The card
+  shows at most 200 lines; a longer range ends with "... 200 of T lines
+  shown: trace path:A2-B2 for the next n lines.", which names the next range.
+  An end past the last line stops at the last line. A start past it answers
+  "no lines A-B in path: the file has N lines.", a start of 0 or after the
+  end answers "path:A-B is not a line range: ...", and a binary file answers
+  "path is a binary file: ...", each as an ordinary answer. In the JSON the
+  card is `"answer": "range"`, with `text` as `{line, text}` rows, `next`,
+  `symbols` and `symbols_total`. The `trace` description and its `target`
+  description name the form: tools/list grows from 2,744 to 2,858 bytes and
+  from 524 to 551 cl100k tokens (`trace` 263 to 290), which the test
+  `tools_list_has_the_bytes_and_the_cl100k_count_that_the_changelog_states`
+  pins. New goldens: `trace/repo_py.range` (text and JSON),
+  `trace/repo_py.range_past_end` and `trace/repo_py.range_reversed`, with
+  their counts in `crates/app/fixtures/read/tokens.json`. The changed recorded
+  value is the `trace` entry of `crates/app/fixtures/surface/surface.json`.
+
 - **`lint` gains `reuse_candidates`, an opt-in advisory check for a function
   that the change adds whose action names are mostly those of an existing
   function.** The action names of a function are the names it calls and the

@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 377] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 384] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -2127,6 +2127,48 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 377] = [
         "trace_part_hidden",
         &["text"],
         messages::TRACE_PART_HIDDEN.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_binary",
+        &["path"],
+        messages::TRACE_RANGE_BINARY.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_cut",
+        &["target", "shown", "count", "total"],
+        messages::TRACE_RANGE_CUT.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_header",
+        &["path", "start", "end", "count"],
+        messages::TRACE_RANGE_HEADER.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_past_end",
+        &["path", "start", "end"],
+        messages::TRACE_RANGE_PAST_END.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_reversed",
+        &["path", "start", "end"],
+        messages::TRACE_RANGE_REVERSED.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_symbols",
+        &["count"],
+        messages::TRACE_RANGE_SYMBOLS.pieces(),
+    ),
+    (
+        "messages",
+        "trace_range_symbols_none",
+        &[],
+        &[Piece::Text(messages::TRACE_RANGE_SYMBOLS_NONE)],
     ),
     (
         "messages",

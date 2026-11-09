@@ -3128,6 +3128,70 @@ pub const TRACE_NOT_SCANNED: Template<Text> = Template::new(&[
 pub const TRACE_PART_HIDDEN: Template<Text> =
     Template::new(&[Piece::Value(0), Piece::Text(" hidden")]);
 
+/// A template that takes `path`.
+pub const TRACE_RANGE_BINARY: Template<Text> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" is a binary file: trace shows the lines of a text file only."),
+]);
+
+/// A template that takes (`target`, `shown`, `count`, `total`).
+pub const TRACE_RANGE_CUT: Template<(Text, Count, Count, Count)> = Template::new(&[
+    Piece::Text("... "),
+    Piece::Value(1),
+    Piece::Text(" of "),
+    Piece::Value(3),
+    Piece::Text(" lines shown: trace "),
+    Piece::Value(0),
+    Piece::Text(" for the next "),
+    Piece::Value(2),
+    Piece::Text(" "),
+    Piece::Choice(2, "line", "lines"),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`path`, `start`, `end`, `count`).
+pub const TRACE_RANGE_HEADER: Template<(Text, Count, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("  "),
+    Piece::Value(1),
+    Piece::Text("-"),
+    Piece::Value(2),
+    Piece::Text(" of "),
+    Piece::Value(3),
+    Piece::Text(" "),
+    Piece::Choice(3, "line", "lines"),
+]);
+
+/// A template that takes (`path`, `start`, `end`).
+pub const TRACE_RANGE_PAST_END: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Text("no lines "),
+    Piece::Value(1),
+    Piece::Text("-"),
+    Piece::Value(2),
+    Piece::Text(" in "),
+    Piece::Value(0),
+]);
+
+/// A template that takes (`path`, `start`, `end`).
+pub const TRACE_RANGE_REVERSED: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(":"),
+    Piece::Value(1),
+    Piece::Text("-"),
+    Piece::Value(2),
+    Piece::Text(
+        " is not a line range: start is 1 or more, and end is at or \
+        after start.",
+    ),
+]);
+
+/// A template that takes `count`.
+pub const TRACE_RANGE_SYMBOLS: Template<Count> =
+    Template::new(&[Piece::Text("symbols: "), Piece::Value(0)]);
+
+/// A text that takes no values.
+pub const TRACE_RANGE_SYMBOLS_NONE: &str = "symbols: none";
+
 /// A template that takes `count`.
 pub const TRACE_ROWS_UNLISTED: Template<Count> =
     Template::new(&[Piece::Text("... "), Piece::Value(0), Piece::Text(" more")]);

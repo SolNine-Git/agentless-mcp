@@ -1,7 +1,7 @@
 use app::search::{FileRow, Measure};
 use app::trace::{
     Callers, CandidatesTrace, Card, Change, FileTrace, FolderEntry, FolderTrace, Linked, Outcome,
-    Section, Similar, SymbolTrace, Tally, Trace, TraceRequest, Traced,
+    RangeTrace, Section, Similar, SymbolTrace, Tally, Trace, TraceRequest, Traced,
 };
 use app::{Coverage, CoverageStatus, RefGroup, RefSite, SymbolCard};
 
@@ -183,6 +183,38 @@ fn a_cut_candidates_card_counts_the_rest_and_points_at_more() {
     let expected = "run: 14 definitions. Trace one by its id.\n  [py:a.py::run] @3-9  function\n  \
                     [py:b.py::run#2] @3-9  function\n  ... 12 more  (more=candidates)\n";
     assert_eq!(text, expected);
+}
+
+#[test]
+fn a_cut_range_names_the_next_range_and_counts_the_symbols_that_it_does_not_list() {
+    let range = RangeTrace {
+        path: "big.py".to_owned(),
+        lines: 450,
+        start: 201,
+        end: 450,
+        text: (201..=400)
+            .map(|line| format!("X{line} = {line}"))
+            .collect(),
+        symbols: vec![card("py:big.py::X201"), card("py:big.py::X202")],
+        symbols_total: 200,
+    };
+    let text = text_of(Card::Range(range), None);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 1 + 200 + 1 + 1 + 2 + 1);
+    assert_eq!(
+        lines[..2],
+        ["big.py  201-450 of 450 lines", "  201| X201 = 201"]
+    );
+    assert_eq!(
+        lines[201..],
+        [
+            "... 200 of 250 lines shown: trace big.py:401-450 for the next 50 lines.",
+            "symbols: 200",
+            "  [py:big.py::X201] @3-9  function",
+            "  [py:big.py::X202] @3-9  function",
+            "  ... 198 more",
+        ]
+    );
 }
 
 fn file(edit: impl FnOnce(&mut FileTrace)) -> Card {

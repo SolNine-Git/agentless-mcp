@@ -192,7 +192,8 @@ pub const SYMBOLS_OPERATION: &str = "The tool description says what each one req
 pub const TRACE_MORE: &str = "One section to show in full.";
 
 /// The parameter description keyed `trace_target`.
-pub const TRACE_TARGET: &str = "A name, a path, path:line or a stable id. A list traces each one.";
+pub const TRACE_TARGET: &str = "A name, a path, path:line, path:start-end or a stable id. A list \
+        traces each one.";
 
 /// The parameter description keyed `tree_depth`.
 pub const TREE_DEPTH: &str = "Directory levels below the tree root.";

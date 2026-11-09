@@ -1,0 +1,12 @@
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: f5f25218   dirty: 0 files   cache: none
+pricing.py  42-47 of 81 lines
+  42|         except KeyError as exc:
+  43|             message = f"no cost price recorded for {sku}"
+  44|             raise LookupError(message) from exc
+  45| 
+  46|     def quote(self, sku: str, tier: Tier, quantity: int = 1) -> Decimal:
+  47|         """Quote a line total for a SKU at a tier."""
+symbols: 3
+  [py:pricing.py::PriceBook] @26-75  class
+  [py:pricing.py::PriceBook.cost_of] @38-44  method
+  [py:pricing.py::PriceBook.quote] @46-56  method

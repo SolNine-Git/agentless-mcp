@@ -4,10 +4,11 @@
 mod file;
 mod json;
 mod miss;
+mod range;
 mod symbol;
 
-use app::ROW_INDENT;
 use app::trace::{Card, Outcome, Section, Tally, Trace, TraceRequest, Traced};
+use app::{ROW_INDENT, SymbolCard, locator};
 use prompts::messages::{
     TRACE_AT_LEAST, TRACE_MORE_HINT, TRACE_ROWS_UNLISTED, TRACE_ROWS_UNLISTED_FLOOR,
     TRACE_SAME_CARD, TRACE_SECTION_NONE, TRACE_TARGET,
@@ -75,7 +76,15 @@ fn card_lines(card: &Card, target: &str, more: Option<Section>) -> Vec<String> {
         Card::Folder(traced) => file::folder_lines(traced, more),
         Card::Candidates(traced) => miss::candidates_lines(traced, target, more),
         Card::Miss(missed) => miss::miss_lines(missed, target),
+        Card::Range(traced) => range::range_lines(traced),
     }
+}
+
+// One definition as a candidates card or a range card lists it: its id, span and kind.
+fn card_row(card: &SymbolCard) -> String {
+    let at = span(card.start_line, card.end_line);
+    let id = locator(&card.stable_id, "", Some(&at));
+    format!("{ROW_INDENT}{id}  {}", one_line(card.kind))
 }
 
 // The head of a section: its name, then its parts, then the hint at `more` when the default card

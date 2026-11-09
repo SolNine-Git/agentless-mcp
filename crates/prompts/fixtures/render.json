@@ -2334,6 +2334,56 @@
       },
       "text": "25 constants hidden"
     },
+    "trace_range_binary": {
+      "arguments": {
+        "path": "logo.png"
+      },
+      "text": "logo.png is a binary file: trace shows the lines of a text file only."
+    },
+    "trace_range_cut": {
+      "arguments": {
+        "count": 200,
+        "shown": 200,
+        "target": "big.py:201-400",
+        "total": 450
+      },
+      "text": "... 200 of 450 lines shown: trace big.py:201-400 for the next 200 lines."
+    },
+    "trace_range_header": {
+      "arguments": {
+        "count": 81,
+        "end": 47,
+        "path": "pricing.py",
+        "start": 42
+      },
+      "text": "pricing.py  42-47 of 81 lines"
+    },
+    "trace_range_past_end": {
+      "arguments": {
+        "end": 120,
+        "path": "pricing.py",
+        "start": 100
+      },
+      "text": "no lines 100-120 in pricing.py"
+    },
+    "trace_range_reversed": {
+      "arguments": {
+        "end": 3,
+        "path": "pricing.py",
+        "start": 9
+      },
+      "text": "pricing.py:9-3 is not a line range: start is 1 or more, and end is at or after start."
+    },
+    "trace_range_symbols": {
+      "arguments": {
+        "count": 3
+      },
+      "text": "symbols: 3"
+    },
+    "trace_range_symbols_none": {
+      "arguments": {},
+      "text": "symbols: none"
+    },
     "trace_rows_unlisted": {
       "arguments": {
         "count": 11

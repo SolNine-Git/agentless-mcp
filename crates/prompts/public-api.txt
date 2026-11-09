@@ -353,6 +353,13 @@ pub const prompts::messages::TRACE_NO_SECTION_FOLDER: prompts::Template<(prompts
 pub const prompts::messages::TRACE_NO_SECTION_SYMBOL: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::TRACE_NO_SYMBOL_AT: &str
 pub const prompts::messages::TRACE_PART_HIDDEN: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_RANGE_BINARY: prompts::Template<prompts::Text>
+pub const prompts::messages::TRACE_RANGE_CUT: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::TRACE_RANGE_HEADER: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::TRACE_RANGE_PAST_END: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::TRACE_RANGE_REVERSED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::TRACE_RANGE_SYMBOLS: prompts::Template<prompts::Count>
+pub const prompts::messages::TRACE_RANGE_SYMBOLS_NONE: &str
 pub const prompts::messages::TRACE_ROWS_UNLISTED: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_ROWS_UNLISTED_FLOOR: prompts::Template<prompts::Count>
 pub const prompts::messages::TRACE_SAME_CARD: prompts::Template<prompts::Count>
