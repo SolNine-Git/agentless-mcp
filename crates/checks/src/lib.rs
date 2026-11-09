@@ -33,6 +33,7 @@ pub use finding::{
     ImportDodge, Match, NameShare, PairFinding, Severity, SharedCallee, TieredCallee, UnitDelta,
 };
 pub use index::{CloneIndex, IndexedFiles, clone_index};
+pub use matching::{Matchable, Pairing, pair_units};
 pub use observed::{CloneState, HitState, Observed, Outcome, UnitChange, UnitState};
 pub use pair::{FUNCTION_REASONS, Pair, Side, SideText, TextPair, measure_blocks, pair_language};
 pub use reuse::{Link, NamedFunction, NamedTree, Proposed, reuse_candidates};

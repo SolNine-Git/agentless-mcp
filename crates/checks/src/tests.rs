@@ -373,3 +373,43 @@ fn a_map_that_returns_fewer_sides_than_texts_panics() {
     let fewer = |texts: &[SideText<'_>]| texts.iter().skip(1).map(SideText::measure).collect();
     let _pairs = Pair::measure_all(vec![pair], fewer);
 }
+
+// A unit that the matcher reads by its body text, its name and its line.
+struct Named(&'static str, &'static str, u32);
+
+impl crate::Matchable for Named {
+    type Body = &'static str;
+    type Rank = u32;
+
+    fn body_key(&self) -> &'static str {
+        self.1
+    }
+
+    fn qualname(&self) -> &str {
+        self.0
+    }
+
+    fn rank(&self) -> u32 {
+        self.2
+    }
+}
+
+#[test]
+fn pair_units_pairs_a_body_in_its_file_then_across_files_then_a_name() {
+    use crate::{Match, Pairing, pair_units};
+    let old_a = [Named("same", "s", 1), Named("edited", "e1", 5), Named("gone", "g", 9)];
+    let new_a = [Named("same", "s", 1), Named("edited", "e2", 5), Named("fresh", "f", 9)];
+    let (old_b, new_b) = ([], [Named("gone", "g", 3)]);
+    let files: [(&[Named], &[Named]); 2] = [(&old_a, &new_a), (&old_b, &new_b)];
+    let pairings = pair_units(&files);
+    let pairing = |old, new, via| Pairing { old, new, via };
+    assert_eq!(
+        pairings,
+        [
+            pairing(Some((0, 0)), (0, 0), Match::Body),
+            pairing(Some((0, 2)), (1, 0), Match::Body),
+            pairing(Some((0, 1)), (0, 1), Match::Name),
+            pairing(None, (0, 2), Match::New),
+        ]
+    );
+}

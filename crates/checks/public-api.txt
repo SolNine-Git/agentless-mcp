@@ -785,6 +785,26 @@ impl core::marker::Unpin for checks::PairFinding
 impl core::marker::UnsafeUnpin for checks::PairFinding
 impl core::panic::unwind_safe::RefUnwindSafe for checks::PairFinding
 impl core::panic::unwind_safe::UnwindSafe for checks::PairFinding
+pub struct checks::Pairing
+pub checks::Pairing::new: (usize, usize)
+pub checks::Pairing::old: core::option::Option<(usize, usize)>
+pub checks::Pairing::via: checks::Match
+impl core::clone::Clone for checks::Pairing
+pub fn checks::Pairing::clone(&self) -> Self
+impl core::cmp::Eq for checks::Pairing
+impl core::cmp::PartialEq for checks::Pairing
+pub fn checks::Pairing::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::Pairing
+pub fn checks::Pairing::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for checks::Pairing
+impl core::marker::StructuralPartialEq for checks::Pairing
+impl core::marker::Freeze for checks::Pairing
+impl core::marker::Send for checks::Pairing
+impl core::marker::Sync for checks::Pairing
+impl core::marker::Unpin for checks::Pairing
+impl core::marker::UnsafeUnpin for checks::Pairing
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Pairing
+impl core::panic::unwind_safe::UnwindSafe for checks::Pairing
 pub struct checks::Proposed<'t>
 impl checks::Proposed<'_>
 pub fn checks::Proposed<'_>::functions(&self) -> &[checks::NamedFunction]
@@ -1007,6 +1027,18 @@ pub const checks::FUNCTION_REASONS: metrics::Reasons
 pub const checks::REUSE_CANDIDATES: &str
 pub trait checks::LoadChains
 pub fn checks::LoadChains::chain(&mut self, checks::Tree, &str, &str) -> core::result::Result<core::option::Option<alloc::vec::Vec<checks::ChainHop>>, checks::BudgetSpent>
+pub trait checks::Matchable
+pub type checks::Matchable::Body: core::hash::Hash + core::cmp::Eq + core::marker::Copy
+pub type checks::Matchable::Rank: core::cmp::Ord
+pub fn checks::Matchable::body_key(&self) -> Self::Body
+pub fn checks::Matchable::qualname(&self) -> &str
+pub fn checks::Matchable::rank(&self) -> Self::Rank
+impl checks::Matchable for metrics::Unit
+pub type metrics::Unit::Body = kernel::key::Key
+pub type metrics::Unit::Rank = (core::cmp::Reverse<u32>, u32)
+pub fn metrics::Unit::body_key(&self) -> kernel::key::Key
+pub fn metrics::Unit::qualname(&self) -> &str
+pub fn metrics::Unit::rank(&self) -> (core::cmp::Reverse<u32>, u32)
 pub fn checks::callee_overlap(&[&checks::Pair], &checks::CalleeTree) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::clone_delta(&[&checks::Pair], &checks::CloneIndex, &alloc::collections::btree::set::BTreeSet<(alloc::string::String, u32)>) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::clone_index<B, T>(&alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, &alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, B, T) -> core::result::Result<checks::IndexedFiles, checks::Error> where B: core::ops::function::FnMut(&str, &str, syntax::language::Language) -> core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>, T: core::ops::function::FnMut() -> bool
@@ -1015,5 +1047,6 @@ pub fn checks::contract_drift(&[&checks::Pair], &[alloc::string::String]) -> cor
 pub fn checks::cycle_dodge(&[&checks::Pair], checks::DodgeTree<'_>) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::measure_blocks(syntax::language::Language, &str) -> core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>
 pub fn checks::pair_language(&str) -> core::option::Option<syntax::language::Language>
+pub fn checks::pair_units<U: checks::Matchable>(&[(&[U], &[U])]) -> alloc::vec::Vec<checks::Pairing>
 pub fn checks::reuse_candidates<'t>(&[&checks::Pair], &'t checks::NamedTree) -> core::result::Result<checks::Proposed<'t>, checks::Error>
 pub type checks::Link = (usize, usize)

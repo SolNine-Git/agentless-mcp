@@ -1,39 +1,120 @@
-//! The unit matching that `complexity_delta` and `contract_drift` share: body, name, then rank.
+//! The unit matching that the pair checks and the diff card share: body, name, then rank.
 
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
+use kernel::Key;
 use metrics::Unit;
 
 use crate::finding::Match;
 use crate::pair::{Sides, units};
 
+/// What the matcher reads of a unit: the key of its body, its qualified name, and its rank among
+/// the units of one name.
+pub trait Matchable {
+    /// The key of a body with the unit's own name left out.
+    type Body: Hash + Eq + Copy;
+    /// The order among units of one name: the lower ranks first.
+    type Rank: Ord;
+    /// Returns the key of the unit's body.
+    fn body_key(&self) -> Self::Body;
+    /// Returns the unit's qualified name.
+    fn qualname(&self) -> &str;
+    /// Returns the unit's rank among the units of its name.
+    fn rank(&self) -> Self::Rank;
+}
+
+impl Matchable for Unit {
+    type Body = Key;
+    type Rank = (Reverse<u32>, u32);
+
+    fn body_key(&self) -> Key {
+        self.body_key
+    }
+
+    fn qualname(&self) -> &str {
+        &self.qualname
+    }
+
+    fn rank(&self) -> (Reverse<u32>, u32) {
+        (Reverse(self.cc), self.start_byte)
+    }
+}
+
+/// One pairing of [`pair_units`]: the file and index of the old unit, if one pairs, and of the new
+/// unit, and how they paired.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Pairing {
+    /// The file and the index in its old side of the old unit, or `None` for a new one.
+    pub old: Option<(usize, usize)>,
+    /// The file and the index in its new side of the new unit.
+    pub new: (usize, usize),
+    /// How the two paired.
+    pub via: Match,
+}
+
+/// Pairs the old and the new units of each file, as the pair checks do: same body in the file,
+/// then same body in another file, then one name, then rank. An old unit that no pairing names
+/// was removed.
+#[must_use]
+pub fn pair_units<U: Matchable>(files: &[(&[U], &[U])]) -> Vec<Pairing> {
+    let files: Vec<FileUnits<'_, U>> = (files.iter().enumerate())
+        .map(|(file, (old, new))| FileUnits {
+            old: unit_refs(file, "", old),
+            new: unit_refs(file, "", new),
+        })
+        .collect();
+    let paired = match_run(&files);
+    (paired.iter())
+        .map(|paired| Pairing {
+            old: paired.old.map(|old| old.id()),
+            new: paired.new.id(),
+            via: paired.via,
+        })
+        .collect()
+}
+
 // `file` and `index` are the unit's identity within its side of the run.
-#[derive(Clone, Copy)]
-pub(crate) struct UnitRef<'a> {
+pub(crate) struct UnitRef<'a, U = Unit> {
     pub(crate) file: usize,
     pub(crate) index: usize,
     pub(crate) path: &'a str,
-    pub(crate) unit: &'a Unit,
+    pub(crate) unit: &'a U,
 }
 
-impl UnitRef<'_> {
+// A derive would ask `U: Copy`; the reference is Copy for any unit.
+impl<U> Clone for UnitRef<'_, U> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<U> Copy for UnitRef<'_, U> {}
+
+impl<U> UnitRef<'_, U> {
     fn id(&self) -> (usize, usize) {
         (self.file, self.index)
     }
 }
 
-#[derive(Clone, Copy)]
-pub(crate) struct Paired<'a> {
-    pub(crate) old: Option<UnitRef<'a>>,
-    pub(crate) new: UnitRef<'a>,
+pub(crate) struct Paired<'a, U = Unit> {
+    pub(crate) old: Option<UnitRef<'a, U>>,
+    pub(crate) new: UnitRef<'a, U>,
     pub(crate) via: Match,
 }
 
-pub(crate) struct FileUnits<'a> {
-    pub(crate) old: Vec<UnitRef<'a>>,
-    pub(crate) new: Vec<UnitRef<'a>>,
+impl<U> Clone for Paired<'_, U> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<U> Copy for Paired<'_, U> {}
+
+pub(crate) struct FileUnits<'a, U = Unit> {
+    pub(crate) old: Vec<UnitRef<'a, U>>,
+    pub(crate) new: Vec<UnitRef<'a, U>>,
 }
 
 pub(crate) fn file_units<'a>(measured: &[Sides<'a>]) -> Vec<FileUnits<'a>> {
@@ -47,7 +128,7 @@ pub(crate) fn file_units<'a>(measured: &[Sides<'a>]) -> Vec<FileUnits<'a>> {
         .collect()
 }
 
-fn unit_refs<'a>(file: usize, path: &'a str, units: &'a [Unit]) -> Vec<UnitRef<'a>> {
+fn unit_refs<'a, U>(file: usize, path: &'a str, units: &'a [U]) -> Vec<UnitRef<'a, U>> {
     units
         .iter()
         .enumerate()
@@ -62,7 +143,7 @@ fn unit_refs<'a>(file: usize, path: &'a str, units: &'a [Unit]) -> Vec<UnitRef<'
 
 // Each file pairs its own units first, so a copy beside its unchanged original is new in
 // the other file, and a unit moved between files is not.
-pub(crate) fn match_run<'a>(files: &[FileUnits<'a>]) -> Vec<Paired<'a>> {
+pub(crate) fn match_run<'a, U: Matchable>(files: &[FileUnits<'a, U>]) -> Vec<Paired<'a, U>> {
     let mut matches = Vec::new();
     let mut old_left = Vec::new();
     let mut new_left = Vec::new();
@@ -91,12 +172,15 @@ pub(crate) fn match_run<'a>(files: &[FileUnits<'a>]) -> Vec<Paired<'a>> {
     matches
 }
 
-type Pass<'a> = (Vec<Paired<'a>>, Vec<UnitRef<'a>>, Vec<UnitRef<'a>>);
+type Pass<'a, U> = (Vec<Paired<'a, U>>, Vec<UnitRef<'a, U>>, Vec<UnitRef<'a, U>>);
 
-fn body_pass<'a>(old_units: &[UnitRef<'a>], new_units: &[UnitRef<'a>]) -> Pass<'a> {
-    let old_by_body = lookup(grouped(old_units, |unit| unit.unit.body_key));
-    let mut partner: HashMap<(usize, usize), UnitRef<'a>> = HashMap::new();
-    for (body_key, news) in grouped(new_units, |unit| unit.unit.body_key) {
+fn body_pass<'a, U: Matchable>(
+    old_units: &[UnitRef<'a, U>],
+    new_units: &[UnitRef<'a, U>],
+) -> Pass<'a, U> {
+    let old_by_body = lookup(grouped(old_units, |unit| unit.unit.body_key()));
+    let mut partner: HashMap<(usize, usize), UnitRef<'a, U>> = HashMap::new();
+    for (body_key, news) in grouped(new_units, |unit| unit.unit.body_key()) {
         let olds = old_by_body.get(&body_key).map_or(&[][..], Vec::as_slice);
         partner.extend(body_group(olds, &news));
     }
@@ -122,13 +206,13 @@ fn body_pass<'a>(old_units: &[UnitRef<'a>], new_units: &[UnitRef<'a>]) -> Pass<'
 
 // body_key omits the unit's own name, so a renamed copy has its original's key.
 // Same names pair first, so a copy cannot take its original's old unit.
-fn body_group<'a>(
-    olds: &[UnitRef<'a>],
-    news: &[UnitRef<'a>],
-) -> Vec<((usize, usize), UnitRef<'a>)> {
-    let old_named = lookup(grouped(olds, |unit| unit.unit.qualname.as_str()));
+fn body_group<'a, U: Matchable>(
+    olds: &[UnitRef<'a, U>],
+    news: &[UnitRef<'a, U>],
+) -> Vec<((usize, usize), UnitRef<'a, U>)> {
+    let old_named = lookup(grouped(olds, |unit| unit.unit.qualname()));
     let mut partner = Vec::new();
-    for (qualname, named) in grouped(news, |unit| unit.unit.qualname.as_str()) {
+    for (qualname, named) in grouped(news, |unit| unit.unit.qualname()) {
         let same = old_named.get(qualname).map_or(&[][..], Vec::as_slice);
         partner.extend(named.iter().zip(same).map(|(new, old)| (new.id(), *old)));
     }
@@ -145,14 +229,14 @@ fn body_group<'a>(
     partner
 }
 
-fn name_and_collision_passes<'a>(
-    old_left: &[UnitRef<'a>],
-    new_left: &[UnitRef<'a>],
-) -> (Vec<Paired<'a>>, Vec<UnitRef<'a>>) {
-    let old_named = lookup(grouped(old_left, |unit| unit.unit.qualname.as_str()));
+fn name_and_collision_passes<'a, U: Matchable>(
+    old_left: &[UnitRef<'a, U>],
+    new_left: &[UnitRef<'a, U>],
+) -> (Vec<Paired<'a, U>>, Vec<UnitRef<'a, U>>) {
+    let old_named = lookup(grouped(old_left, |unit| unit.unit.qualname()));
     let mut matches = Vec::new();
     let mut unpaired = Vec::new();
-    for (qualname, news) in grouped(new_left, |unit| unit.unit.qualname.as_str()) {
+    for (qualname, news) in grouped(new_left, |unit| unit.unit.qualname()) {
         let olds = old_named.get(qualname).map_or(&[][..], Vec::as_slice);
         if let ([old], [new]) = (olds, news.as_slice()) {
             matches.push(Paired {
@@ -176,13 +260,13 @@ fn name_and_collision_passes<'a>(
     (matches, unpaired)
 }
 
-fn ranked<'a>(units: &[UnitRef<'a>]) -> Vec<UnitRef<'a>> {
+fn ranked<'a, U: Matchable>(units: &[UnitRef<'a, U>]) -> Vec<UnitRef<'a, U>> {
     let mut ranked = units.to_vec();
-    ranked.sort_by_key(|unit| (Reverse(unit.unit.cc), unit.unit.start_byte));
+    ranked.sort_by_key(|unit| unit.unit.rank());
     ranked
 }
 
-fn without<'a>(units: &[UnitRef<'a>], gone: &HashSet<(usize, usize)>) -> Vec<UnitRef<'a>> {
+fn without<'a, U>(units: &[UnitRef<'a, U>], gone: &HashSet<(usize, usize)>) -> Vec<UnitRef<'a, U>> {
     units
         .iter()
         .filter(|unit| !gone.contains(&unit.id()))
@@ -191,12 +275,12 @@ fn without<'a>(units: &[UnitRef<'a>], gone: &HashSet<(usize, usize)>) -> Vec<Uni
 }
 
 // Groups in the order each key first appears, each group in input order.
-fn grouped<'a, K: Hash + Eq + Copy>(
-    units: &[UnitRef<'a>],
-    key: impl Fn(&UnitRef<'a>) -> K,
-) -> Vec<(K, Vec<UnitRef<'a>>)> {
+fn grouped<'a, U, K: Hash + Eq + Copy>(
+    units: &[UnitRef<'a, U>],
+    key: impl Fn(&UnitRef<'a, U>) -> K,
+) -> Vec<(K, Vec<UnitRef<'a, U>>)> {
     let mut slots: HashMap<K, usize> = HashMap::new();
-    let mut groups: Vec<(K, Vec<UnitRef<'a>>)> = Vec::new();
+    let mut groups: Vec<(K, Vec<UnitRef<'a, U>>)> = Vec::new();
     for unit in units {
         let group = key(unit);
         let slot = *slots.entry(group).or_insert_with(|| {
@@ -208,6 +292,8 @@ fn grouped<'a, K: Hash + Eq + Copy>(
     groups
 }
 
-fn lookup<K: Hash + Eq>(groups: Vec<(K, Vec<UnitRef<'_>>)>) -> HashMap<K, Vec<UnitRef<'_>>> {
+fn lookup<K: Hash + Eq, U>(
+    groups: Vec<(K, Vec<UnitRef<'_, U>>)>,
+) -> HashMap<K, Vec<UnitRef<'_, U>>> {
     groups.into_iter().collect()
 }
