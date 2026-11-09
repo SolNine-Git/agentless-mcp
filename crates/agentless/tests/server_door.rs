@@ -368,18 +368,11 @@ fn requests() -> Vec<(String, Value)> {
 }
 
 // A copy of the request's fixture repository with its extra files, committed with the pinned
-// identity, as the render goldens build it.
+// identity, then the request's history, as the render goldens build it.
 fn rig(tree: &Tree, request: &Value) -> PathBuf {
     let fixture = request["fixture"].as_str().expect("a fixture name");
     copied(&characterization(&["fixtures", fixture]), tree, "repo");
-    for (path, text) in request["files"].as_object().into_iter().flatten() {
-        let relative = format!("repo/{path}");
-        if let Some((parent, _)) = relative.rsplit_once('/') {
-            tree.create_dir(parent).expect("a folder");
-        }
-        let text = text.as_str().expect("a file's text");
-        tree.write_file(&relative, text).expect("an extra file");
-    }
+    written(&request["files"], tree);
     for (path, size) in request["sparse"].as_object().into_iter().flatten() {
         let relative = format!("repo/{path}");
         tree.write_file(&relative, "").expect("a sparse file");
@@ -395,7 +388,29 @@ fn rig(tree: &Tree, request: &Value) -> PathBuf {
     ] {
         drop(run_git(&root, args, &env, &IDENTITY));
     }
+    let git = |args: &[&str]| drop(run_git(&root, args, &env, &IDENTITY));
+    if let Some(tag) = request["tag"].as_str() {
+        git(&["tag", tag]);
+    }
+    for commit in request["commits"].as_array().into_iter().flatten() {
+        written(&commit["files"], tree);
+        let message = commit["message"].as_str().expect("a commit message");
+        git(&["add", "-A"]);
+        git(&["commit", "--quiet", "-m", message]);
+    }
+    written(&request["working"], tree);
     root
+}
+
+fn written(files: &Value, tree: &Tree) {
+    for (path, text) in files.as_object().into_iter().flatten() {
+        let relative = format!("repo/{path}");
+        if let Some((parent, _)) = relative.rsplit_once('/') {
+            tree.create_dir(parent).expect("a folder");
+        }
+        let text = text.as_str().expect("a file's text");
+        tree.write_file(&relative, text).expect("an extra file");
+    }
 }
 
 fn copied(from: &Path, tree: &Tree, below: &str) {
@@ -420,7 +435,13 @@ fn copied(from: &Path, tree: &Tree, below: &str) {
 fn command_line(tool: &str, arguments: &Value, root: &Path) -> Vec<String> {
     let mut args = vec![tool.to_owned()];
     let text = |name: &str| arguments[name].as_str().map(str::to_owned);
-    for (name, flag) in [("more", "--more"), ("files", "--files"), ("path", "--path")] {
+    let flags = [
+        ("more", "--more"),
+        ("rev", "--rev"),
+        ("files", "--files"),
+        ("path", "--path"),
+    ];
+    for (name, flag) in flags {
         if let Some(value) = text(name) {
             args.extend([flag.to_owned(), value]);
         }

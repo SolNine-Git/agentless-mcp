@@ -100,7 +100,9 @@ impl Rig {
         ] {
             drop(run_git(&root, args, &env, &IDENTITY));
         }
-        history(request, &tree, |args| drop(run_git(&root, args, &env, &IDENTITY)));
+        history(request, &tree, |args| {
+            drop(run_git(&root, args, &env, &IDENTITY));
+        });
         let services = Services::new(&EnvConfig::new(env, root.clone()));
         let repo = Repo::load(&services, &root).unwrap_or_else(|error| panic!("{error}"));
         let snapshot = services.git.snapshot(&repo.root, Some(&repo.root));
