@@ -976,6 +976,15 @@ Each byte count is of the served bytes.
 
 ### Fixed
 
+- **`gate-report` reads a record with an empty `transcript_path` as a call
+  with no transcript.** The gate logs `""` when the hook payload names no
+  transcript, and the report opened that path as `.` and stopped on the
+  first such record ("cannot read the transcript .: [Errno 21] Is a
+  directory"), as the Python reference did. Now an empty path names no
+  transcript: its findings count as unresolved, as with a missing file, and
+  the `Transcripts:` line does not count it. Measured on a real log of
+  7,675 records: the report stopped before the change and exits 0 after
+  it. This departs on purpose from the reference outcome.
 - **cargo deny passes again: rmcp 3.12.0 drops chrono.** chrono is
   unmaintained (RUSTSEC-2026-0543), and rmcp 3.9.0 pulled it in, so
   cargo deny refused the graph. rmcp 3.12.0 makes chrono a default

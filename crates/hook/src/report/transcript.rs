@@ -36,9 +36,11 @@ pub(crate) type Transcripts = BTreeMap<CodePointString, Transcript>;
 
 pub(crate) fn read_transcripts(records: &[Record]) -> Result<Transcripts, String> {
     let mut transcripts = Transcripts::new();
+    // An empty path names no transcript: its calls stay unresolved, as with a missing file.
     for path in records
         .iter()
         .filter_map(|record| record.transcript_path.as_ref())
+        .filter(|path| path.as_str() != Some(""))
     {
         transcripts.entry(path.clone()).or_insert(Transcript {
             results: None,

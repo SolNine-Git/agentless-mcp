@@ -463,3 +463,43 @@ fn a_transcript_path_with_a_nul_byte_stops_with_the_value_error_line() {
         (1, expected, String::new())
     );
 }
+
+fn report_of(sandbox: &Sandbox, name: &str, record: &crate::record::Record) -> Output {
+    let line =
+        json::to_text(record, json::JsonForm::Compact).unwrap_or_else(|error| panic!("{error}"));
+    let log = sandbox.put(name, format!("{line}\n"));
+    gate_report(&log.display().to_string(), None, None, "0")
+}
+
+fn without_transcript_line(stdout: &str) -> Vec<&str> {
+    stdout
+        .lines()
+        .filter(|line| !line.starts_with("Transcripts:"))
+        .collect()
+}
+
+// The gate logs "" when the hook payload names no transcript; the report must not open ".".
+#[test]
+fn an_empty_transcript_path_reads_as_no_transcript() {
+    let sandbox = Sandbox::new();
+    let missing = report_of(&sandbox, "missing.jsonl", &written_record());
+    let mut record = written_record();
+    record.identify(crate::record::Identity {
+        session_id: Some("s1".to_owned()),
+        transcript_path: Some(String::new()),
+        tool_use_id: Some("toolu_1".to_owned()),
+        tool_name: Some("Edit".to_owned()),
+    });
+    let empty = report_of(&sandbox, "empty.jsonl", &record);
+    assert_eq!((empty.code, empty.stderr.as_str()), (0, ""));
+    assert_eq!(missing.code, 0);
+    assert!(
+        empty.stdout.contains("Transcripts: 0 named, 0 missing."),
+        "{}",
+        empty.stdout
+    );
+    assert_eq!(
+        without_transcript_line(&empty.stdout),
+        without_transcript_line(&missing.stdout)
+    );
+}
