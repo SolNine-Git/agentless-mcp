@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "agentless"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "app",
  "cli",
@@ -33,7 +33,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "checks",
  "facts",
@@ -168,7 +168,7 @@ dependencies = [
 
 [[package]]
 name = "checks"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "io",
  "kernel",
@@ -183,7 +183,7 @@ dependencies = [
 
 [[package]]
 name = "cli"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "app",
  "facts",
@@ -258,7 +258,7 @@ dependencies = [
 
 [[package]]
 name = "facts"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "kernel",
  "serde",
@@ -415,7 +415,7 @@ dependencies = [
 
 [[package]]
 name = "git"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "io",
  "kernel",
@@ -428,7 +428,7 @@ dependencies = [
 
 [[package]]
 name = "graph"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "facts",
  "kernel",
@@ -459,7 +459,7 @@ dependencies = [
 
 [[package]]
 name = "hook"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "app",
  "checks",
@@ -577,7 +577,7 @@ dependencies = [
 
 [[package]]
 name = "io"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "json",
  "kernel",
@@ -645,7 +645,7 @@ dependencies = [
 
 [[package]]
 name = "json"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -654,7 +654,7 @@ dependencies = [
 
 [[package]]
 name = "kernel"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -692,7 +692,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "mcp"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "app",
  "git",
@@ -720,7 +720,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "metrics"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "kernel",
  "prompts",
@@ -757,7 +757,7 @@ checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
 name = "patch"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "json",
  "kernel",
@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "patchcheck"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "checks",
  "facts",
@@ -830,7 +830,7 @@ dependencies = [
 
 [[package]]
 name = "prompts"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "serde_json",
  "text",
@@ -919,7 +919,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "render"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "app",
  "checks",
@@ -1182,7 +1182,7 @@ dependencies = [
 
 [[package]]
 name = "store"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "facts",
  "io",
@@ -1229,7 +1229,7 @@ dependencies = [
 
 [[package]]
 name = "syntax"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "cc",
  "ruzstd",
@@ -1256,7 +1256,7 @@ dependencies = [
 
 [[package]]
 name = "text"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -1583,7 +1583,7 @@ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 
 [[package]]
 name = "xtask"
-version = "0.11.0-rc.1"
+version = "0.11.0-rc.2"
 dependencies = [
  "proc-macro2",
  "serde",
