@@ -976,6 +976,13 @@ Each byte count is of the served bytes.
 
 ### Fixed
 
+- **cargo deny passes again: rmcp 3.12.0 drops chrono.** chrono is
+  unmaintained (RUSTSEC-2026-0543), and rmcp 3.9.0 pulled it in, so
+  cargo deny refused the graph. rmcp 3.12.0 makes chrono a default
+  feature; this build turns rmcp's default features off, so chrono,
+  iana-time-zone and their platform crates leave the graph, and jiff (the
+  advisory's recommended alternative) arrives through rmcp. cargo deny
+  check: advisories, bans, licenses and sources ok.
 - **`hook --help` and `hook <name> --help` print the usage.** Both forms
   were refused with exit 2, as a hook command line that names no hook.
   Now `agentless-mcp hook --help`, `hook -h`, and `hook <hook> --help` for
