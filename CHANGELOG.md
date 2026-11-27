@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.11.0rc2 -- unreleased
+## 0.11.0rc2 -- 2026-11-27
 
 Each cl100k count of the tool surface in this section uses one method:
 tiktoken `cl100k_base`, `encode_ordinary`, over the compact JSON array of the
