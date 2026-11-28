@@ -46,6 +46,10 @@ impl Markers {
 
     // The marked roots in path order, each as the marker holds it.
     pub(crate) fn marked(&self) -> Vec<PathBuf> {
+        // Another user can plant markers in a base folder that is not private.
+        if !state::private_dir(&self.base) {
+            return Vec::new();
+        }
         let Ok(entries) = fs::read_dir(self.session.join(REPOS)) else {
             return Vec::new();
         };

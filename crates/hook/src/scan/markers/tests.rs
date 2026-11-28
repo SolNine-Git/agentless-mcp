@@ -102,6 +102,18 @@ fn a_full_repos_folder_keeps_no_new_mark() {
 }
 
 #[test]
+fn a_state_folder_that_others_can_write_lists_no_root() {
+    let sandbox = Sandbox::new();
+    let held = markers(&sandbox, "one");
+    assert!(held.mark(Path::new("/work/a")));
+    sandbox.set_mode("state", 0o777);
+
+    assert_eq!(held.marked(), Vec::<PathBuf>::new());
+    sandbox.set_mode("state", 0o700);
+    assert_eq!(held.marked(), [PathBuf::from("/work/a")]);
+}
+
+#[test]
 fn a_marker_that_is_no_absolute_path_is_not_a_root() {
     let sandbox = Sandbox::new();
     let held = markers(&sandbox, "one");
