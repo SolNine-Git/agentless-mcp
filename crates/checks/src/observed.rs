@@ -29,6 +29,8 @@ pub struct Observed {
     pub clone_instances: Option<Vec<CloneState>>,
     /// The key of every comment finding in the new texts.
     pub comment_keys: Option<Vec<CommentState>>,
+    /// The key of every linter finding in the new texts.
+    pub linter_keys: Option<Vec<LinterState>>,
 }
 
 impl Observed {
@@ -41,6 +43,7 @@ impl Observed {
             contract_keys: self.contract_keys.or(other.contract_keys),
             clone_instances: self.clone_instances.or(other.clone_instances),
             comment_keys: self.comment_keys.or(other.comment_keys),
+            linter_keys: self.linter_keys.or(other.linter_keys),
         }
     }
 }
@@ -54,6 +57,7 @@ impl Serialize for Observed {
             self.contract_keys.is_some(),
             self.clone_instances.is_some(),
             self.comment_keys.is_some(),
+            self.linter_keys.is_some(),
         ];
         let fields = held.iter().filter(|&&is_held| is_held).count();
         let mut row = serializer.serialize_struct("Observed", fields)?;
@@ -67,6 +71,7 @@ impl Serialize for Observed {
             self.clone_instances.as_ref(),
         )?;
         listed(&mut row, schema::COMMENT_KEYS, self.comment_keys.as_ref())?;
+        listed(&mut row, schema::LINTER_KEYS, self.linter_keys.as_ref())?;
         row.end()
     }
 }
@@ -155,6 +160,17 @@ pub struct CommentState {
     pub key: String,
 }
 
+/// One linter finding of a new text, by its key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinterState {
+    /// The repo-relative path.
+    pub path: String,
+    /// The linter's rule code.
+    pub code: String,
+    /// The source line with whitespace collapsed, or empty for the syntax-error key.
+    pub key: String,
+}
+
 keyed! {
     UnitState { PATH: path, UNIT: unit, LINE: line, CC: cc, SLOC: sloc }
     UnitChange {
@@ -170,4 +186,5 @@ keyed! {
     HitState { PATH: path, RULE: rule, UNIT: unit, CAPTURE: capture }
     CloneState { PATH: path, KEY: key, LINE: line, END_LINE: end_line }
     CommentState { PATH: path, RULE: rule, KEY: key }
+    LinterState { PATH: path, CODE: code, KEY: key }
 }

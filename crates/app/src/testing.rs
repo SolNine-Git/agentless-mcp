@@ -210,6 +210,7 @@ pub(crate) fn tool(program: &str, args: Vec<OsString>, env: Vec<(OsString, OsStr
         timeout: Duration::from_secs(30),
         stdout_cap: 1 << 24,
         stderr_cap: 1 << 16,
+        stdin: None,
     };
     let outcome = io::run(&spec);
     let io::Outcome::Exited {

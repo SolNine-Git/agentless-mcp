@@ -262,6 +262,7 @@ pub fn run_git(
         timeout: GIT_TIMEOUT,
         stdout_cap: 1 << 24,
         stderr_cap: 1 << 16,
+        stdin: None,
     };
     match run(&spec) {
         Outcome::Exited { status, stdout, .. } if status.success() => stdout,
@@ -332,6 +333,7 @@ pub fn run_child_through(
         timeout,
         stdout_cap: 1 << 16,
         stderr_cap: 1 << 16,
+        stdin: None,
     };
     match run(&spec) {
         Outcome::Exited { status, stderr, .. } => {

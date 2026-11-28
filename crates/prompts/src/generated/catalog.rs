@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 435] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 448] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -1458,6 +1458,84 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 435] = [
         "lint_unknown_severity",
         &["name", "severities"],
         messages::LINT_UNKNOWN_SEVERITY.pieces(),
+    ),
+    (
+        "messages",
+        "linter_budget_spent",
+        &[],
+        &[Piece::Text(messages::LINTER_BUDGET_SPENT)],
+    ),
+    (
+        "messages",
+        "linter_evidence",
+        &["rule"],
+        messages::LINTER_EVIDENCE.pieces(),
+    ),
+    (
+        "messages",
+        "linter_exited",
+        &["status", "detail"],
+        messages::LINTER_EXITED.pieces(),
+    ),
+    (
+        "messages",
+        "linter_exited_silent",
+        &["status"],
+        messages::LINTER_EXITED_SILENT.pieces(),
+    ),
+    (
+        "messages",
+        "linter_failed",
+        &["path", "name", "reason"],
+        messages::LINTER_FAILED.pieces(),
+    ),
+    (
+        "messages",
+        "linter_finding",
+        &["rule", "name", "text"],
+        messages::LINTER_FINDING.pieces(),
+    ),
+    (
+        "messages",
+        "linter_finding_fix",
+        &["rule", "name", "detail", "text"],
+        messages::LINTER_FINDING_FIX.pieces(),
+    ),
+    (
+        "messages",
+        "linter_no_binary",
+        &["file", "path", "name"],
+        messages::LINTER_NO_BINARY.pieces(),
+    ),
+    (
+        "messages",
+        "linter_no_config",
+        &["file", "path", "name", "listed", "text"],
+        messages::LINTER_NO_CONFIG.pieces(),
+    ),
+    (
+        "messages",
+        "linter_not_run",
+        &["reason"],
+        messages::LINTER_NOT_RUN.pieces(),
+    ),
+    (
+        "messages",
+        "linter_output_capped",
+        &["cap"],
+        messages::LINTER_OUTPUT_CAPPED.pieces(),
+    ),
+    (
+        "messages",
+        "linter_timed_out",
+        &["text"],
+        messages::LINTER_TIMED_OUT.pieces(),
+    ),
+    (
+        "messages",
+        "linter_unparsed",
+        &["error"],
+        messages::LINTER_UNPARSED.pieces(),
     ),
     (
         "messages",

@@ -4,12 +4,12 @@ use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::fs;
-use std::io::{self, ErrorKind, Read};
+use std::io::{self, ErrorKind, Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SendError, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -21,7 +21,7 @@ use crate::strerror;
 // The default Linux pipe capacity, so one read can empty a full pipe.
 const CHUNK_BYTES: usize = 65_536;
 
-/// What to run and the bounds it runs under. stdin is null; the child gets `env` and nothing else.
+/// What to run and the bounds it runs under. The child gets `env` and nothing else.
 #[derive(Clone, Debug)]
 pub struct Spec {
     /// The program, found through the `PATH` in `env` when it holds no slash.
@@ -39,6 +39,8 @@ pub struct Spec {
     pub stdout_cap: usize,
     /// The most stderr bytes kept; the rest is read and dropped.
     pub stderr_cap: usize,
+    /// The bytes written to the child's stdin, which then closes; `None` gives a null stdin.
+    pub stdin: Option<Vec<u8>>,
 }
 
 /// How a run ended.
@@ -159,7 +161,11 @@ fn command(spec: &Spec, program: &OsStr) -> Command {
         .current_dir(&spec.cwd)
         .env_clear()
         .envs(spec.env.iter().map(|(name, value)| (name, value)))
-        .stdin(Stdio::null())
+        .stdin(if spec.stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     command
@@ -185,6 +191,7 @@ enum Drained {
 enum Stream {
     Stdout = 0,
     Stderr = 1,
+    Stdin = 2,
 }
 
 struct Capped {
@@ -199,9 +206,18 @@ struct Event {
 
 type Pipe = Box<dyn Read + Send>;
 
-// Each pipe has its own reader thread, so a full stderr pipe cannot stall the stdout read.
+// Each pipe has its own thread, so a full stderr pipe cannot stall the stdout read, and a child
+// that never reads its stdin cannot stall either read.
 fn drain(child: &mut Child, spec: &Spec, deadline: Option<Instant>) -> Drained {
     let (sender, events) = mpsc::channel();
+    if let Some(input) = &spec.stdin {
+        let Some(pipe) = child.stdin.take() else {
+            return Drained::Failed(io::Error::other("the child has no Stdin pipe"));
+        };
+        if let Err(error) = spawn_writer(pipe, input.clone(), sender.clone()) {
+            return Drained::Failed(error);
+        }
+    }
     let readers = [
         (
             Stream::Stdout,
@@ -225,7 +241,7 @@ fn drain(child: &mut Child, spec: &Spec, deadline: Option<Instant>) -> Drained {
         }
     }
     drop(sender);
-    collect(&events, deadline)
+    collect(&events, deadline, spec.stdin.is_some())
 }
 
 fn box_pipe(pipe: impl Read + Send + 'static) -> Pipe {
@@ -242,6 +258,33 @@ fn spawn_reader(stream: Stream, pipe: Pipe, cap: usize, sender: Sender<Event>) -
         }
     })?;
     Ok(())
+}
+
+fn spawn_writer(pipe: ChildStdin, input: Vec<u8>, sender: Sender<Event>) -> io::Result<()> {
+    thread::Builder::new()
+        .name("io-run-Stdin".to_owned())
+        .spawn(move || {
+            let result = fed(pipe, &input);
+            if let Err(SendError(late)) = sender.send(Event {
+                stream: Stream::Stdin,
+                result,
+            }) {
+                drop(late);
+            }
+        })?;
+    Ok(())
+}
+
+// Writes `input` and closes the pipe. A child that closes its stdin first keeps what it read, so
+// its output stands.
+fn fed(mut pipe: ChildStdin, input: &[u8]) -> io::Result<Capped> {
+    match pipe.write_all(input) {
+        Err(error) if error.kind() != ErrorKind::BrokenPipe => Err(error),
+        _ => Ok(Capped {
+            bytes: Vec::new(),
+            over: false,
+        }),
+    }
 }
 
 // Reads to end of file and keeps the first `cap` bytes; with `stop_at_cap` it stops at one more.
@@ -265,10 +308,12 @@ fn read_capped(mut pipe: Pipe, cap: usize, stop_at_cap: bool) -> io::Result<Capp
     }
 }
 
-fn collect(events: &Receiver<Event>, deadline: Option<Instant>) -> Drained {
+// With `writing`, the run is done only once the stdin writer has finished too.
+fn collect(events: &Receiver<Event>, deadline: Option<Instant>, writing: bool) -> Drained {
     let mut done: [Option<Vec<u8>>; 2] = [None, None];
+    let mut written = !writing;
     loop {
-        if let [Some(stdout), Some(stderr)] = &mut done {
+        if let ([Some(stdout), Some(stderr)], true) = (&mut done, written) {
             return Drained::Done {
                 stdout: std::mem::take(stdout),
                 stderr: std::mem::take(stderr),
@@ -287,12 +332,16 @@ fn collect(events: &Receiver<Event>, deadline: Option<Instant>) -> Drained {
                 result: Ok(Capped { bytes, over: true }),
             }) => return Drained::Truncated(bytes),
             Ok(Event {
-                stream,
+                stream: Stream::Stdin,
+                result: Ok(_),
+            }) => written = true,
+            Ok(Event {
+                stream: stream @ (Stream::Stdout | Stream::Stderr),
                 result: Ok(capped),
             }) => done[stream as usize] = Some(capped.bytes),
             Err(RecvTimeoutError::Timeout) => return Drained::TimedOut,
             Err(RecvTimeoutError::Disconnected) => {
-                return Drained::Failed(io::Error::other("a pipe reader stopped without a result"));
+                return Drained::Failed(io::Error::other("a pipe thread stopped without a result"));
             }
         }
     }
@@ -343,6 +392,7 @@ mod tests {
             timeout,
             stdout_cap: 1024,
             stderr_cap: 1024,
+            stdin: None,
         }
     }
 
@@ -426,6 +476,43 @@ mod tests {
     #[test]
     fn stdin_is_empty() {
         assert_eq!(exited(run(&sh("cat", LONG))).1, b"");
+    }
+
+    // 1 MiB is past the pipe capacity, so a write that waited for the read would never finish.
+    #[test]
+    fn an_input_past_the_pipe_capacity_reaches_the_child_whole() {
+        let input: Vec<u8> = (0..=u8::MAX).cycle().take(1 << 20).collect();
+        let spec = Spec {
+            stdout_cap: 2 << 20,
+            stdin: Some(input.clone()),
+            ..sh("cat", LONG)
+        };
+        assert!(
+            exited(run(&spec)).1 == input,
+            "the child echoed another text"
+        );
+    }
+
+    #[test]
+    fn a_child_that_exits_without_reading_its_input_keeps_its_output() {
+        let spec = Spec {
+            stdin: Some(vec![b'x'; 1 << 20]),
+            ..sh("printf done", LONG)
+        };
+        let (status, stdout, _) = exited(run(&spec));
+        assert_eq!((status.code(), &stdout[..]), (Some(0), &b"done"[..]));
+    }
+
+    #[test]
+    fn the_deadline_kills_a_child_that_never_reads_its_input() {
+        let spec = Spec {
+            stdin: Some(vec![b'x'; 1 << 20]),
+            ..sh("exec sleep 30", Duration::from_millis(200))
+        };
+        let started = Instant::now();
+        let outcome = run(&spec);
+        assert!(started.elapsed() < LONG, "the kill came after the sleep");
+        assert!(matches!(outcome, Outcome::TimedOut), "{outcome:?}");
     }
 
     #[test]

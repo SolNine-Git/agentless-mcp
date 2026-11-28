@@ -122,8 +122,9 @@ pub io::GatedCheck::CloneDelta
 pub io::GatedCheck::CommentDelta
 pub io::GatedCheck::ComplexityDelta
 pub io::GatedCheck::ContractDrift
+pub io::GatedCheck::LinterDelta
 impl io::GatedCheck
-pub const io::GatedCheck::ALL: [Self; 4]
+pub const io::GatedCheck::ALL: [Self; 5]
 pub fn io::GatedCheck::built_in_mode(self) -> io::GateMode
 pub fn io::GatedCheck::name(self) -> &'static str
 impl core::clone::Clone for io::GatedCheck
@@ -751,6 +752,7 @@ pub io::Spec::cwd: std::path::PathBuf
 pub io::Spec::env: alloc::vec::Vec<(std::ffi::os_str::OsString, std::ffi::os_str::OsString)>
 pub io::Spec::program: std::ffi::os_str::OsString
 pub io::Spec::stderr_cap: usize
+pub io::Spec::stdin: core::option::Option<alloc::vec::Vec<u8>>
 pub io::Spec::stdout_cap: usize
 pub io::Spec::timeout: core::time::Duration
 impl core::clone::Clone for io::Spec

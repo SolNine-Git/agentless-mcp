@@ -326,9 +326,14 @@ fn full_state() -> checks::Observed {
             end_line: 6,
         }]),
         comment_keys: Some(vec![checks::CommentState {
-            path,
+            path: path.clone(),
             rule: "run".to_owned(),
             key: "# a\n# b\n# c".to_owned(),
+        }]),
+        linter_keys: Some(vec![checks::LinterState {
+            path,
+            code: "F401".to_owned(),
+            key: "import os".to_owned(),
         }]),
     }
 }
@@ -365,6 +370,10 @@ fn written_record() -> crate::record::Record {
         rule: "run".to_owned(),
         key: "# a\n# b\n# c".to_owned(),
     };
+    let linter = checks::LinterKey {
+        code: "F401".to_owned(),
+        key: "import os".to_owned(),
+    };
     let mut record = crate::record::Record::blank(1_791_600_000.0);
     record.identify(crate::record::Identity {
         session_id: Some("s1".to_owned()),
@@ -383,6 +392,7 @@ fn written_record() -> crate::record::Record {
             pair(checks::CONTRACT_DRIFT, checks::Detail::Drift(drift)),
             pair(checks::CLONE_DELTA, checks::Detail::Copy(copy)),
             pair(checks::COMMENT_DELTA, checks::Detail::Comment(comment)),
+            pair(checks::LINTER_DELTA, checks::Detail::Linter(linter)),
         ],
         observed: Some(full_state()),
     });
@@ -412,7 +422,8 @@ fn the_report_reads_every_field_that_the_gate_writes() {
             "complexity_delta",
             "contract_drift",
             "clone_delta",
-            "comment_delta"
+            "comment_delta",
+            "linter_delta"
         ]
     );
     assert!(
@@ -431,8 +442,9 @@ fn the_report_reads_every_field_that_the_gate_writes() {
         state.contract_keys.as_ref().map(Vec::len),
         state.clone_instances.as_ref().map(Vec::len),
         state.comment_keys.as_ref().map(Vec::len),
+        state.linter_keys.as_ref().map(Vec::len),
     ];
-    assert_eq!(held, [Some(1); 4]);
+    assert_eq!(held, [Some(1); 5]);
 }
 
 #[test]

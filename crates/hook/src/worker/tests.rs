@@ -20,6 +20,7 @@ fn job(sandbox: &Sandbox) -> Job {
                 after: After::Text(String::new()),
             },
             checks: PairSelection::edited_files(),
+            budget: None,
         },
     }
 }

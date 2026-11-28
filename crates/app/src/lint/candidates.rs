@@ -22,6 +22,7 @@ use patch::{DiffNote, Edit, ParseResult};
 use patchcheck::{CHECK_NEAR_DUPLICATES, PatchBaseline};
 
 use super::{BlockSource, LintReport, candidate, empty, with_rows};
+use crate::linter::Linting;
 use crate::pair_runs::{IndexOf, Reported};
 use crate::pairs::{Judged, built_index};
 use crate::reuse::ReuseSource;
@@ -109,6 +110,7 @@ pub(crate) fn candidates_with(
         checks: &request.checks,
         index: &mut index,
         reuse: &mut reuse,
+        linting: Linting::of(services, root, None),
     };
     let report = if request.checks.patch_checks() {
         let scan = RepoFacts::load(services, reading);
@@ -173,6 +175,7 @@ struct Judge<'a, 'i> {
     checks: &'a CheckSelection,
     index: &'a mut IndexOf<'i>,
     reuse: &'a mut ReuseSource<'i>,
+    linting: Linting<'a>,
 }
 
 impl Judge<'_, '_> {
@@ -221,6 +224,7 @@ impl Judge<'_, '_> {
             index: &mut *self.index,
             reported: &Reported::new(),
             reuse: &mut *self.reuse,
+            linting: self.linting,
         };
         let paired = pair_rows(&admitted.edits, &mut reads, selection, self.config, run)?;
         Ok(with_rows(admitted.rows, paired))
@@ -235,6 +239,7 @@ impl Judge<'_, '_> {
             index: &mut *self.index,
             reported,
             reuse: &mut *self.reuse,
+            linting: self.linting,
         };
         pair_rows(edits, &mut reads, selection, self.config, run)
     }

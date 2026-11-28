@@ -31,6 +31,7 @@ syntax = { path = "../syntax" }
 text = { path = "../text" }
 thiserror.workspace = true
 tiktoken-rs = "=0.12.1"
+toml.workspace = true
 
 [dev-dependencies]
 io = { path = "../io", features = ["test-support"] }

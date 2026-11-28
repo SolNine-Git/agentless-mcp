@@ -1,7 +1,8 @@
-//! Caller-facing message templates and tool descriptions as typed data, and the contract and
-//! comment rules.
+//! Caller-facing message templates and tool descriptions as typed data, and the contract,
+//! comment and linter rules.
 
 mod comment_rule;
+mod linter_rule;
 mod rule;
 mod template;
 #[cfg(test)]
@@ -12,6 +13,7 @@ mod generated {
     pub mod catalog;
     pub mod comment_rules;
     pub mod envelope;
+    pub mod linter_rules;
     pub mod messages;
     pub mod parameter_descriptions;
     pub mod rules;
@@ -23,6 +25,7 @@ pub use comment_rule::{
     SuppressionRules,
 };
 pub use generated::{envelope, messages, parameter_descriptions, tool_descriptions};
+pub use linter_rule::{Linter, LinterGap, LinterRules};
 pub use rule::{ContractRule, Severity};
 pub use template::{Count, Filled, Kind, Signature, Template, Text};
 
@@ -36,4 +39,10 @@ pub fn contract_rules() -> &'static [ContractRule] {
 #[must_use]
 pub fn comment_rules() -> &'static [CommentRules] {
     &generated::comment_rules::COMMENT_RULES
+}
+
+/// Returns the linter row of every language, one record per language, in name order.
+#[must_use]
+pub fn linter_rules() -> &'static [LinterRules] {
+    &generated::linter_rules::LINTER_RULES
 }

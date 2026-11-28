@@ -57,6 +57,35 @@ pub(super) fn entries<T>(
     Ok((values, problems))
 }
 
+/// The rules of one language, and the Rust expression of its record.
+#[derive(Debug)]
+pub struct LanguageRow {
+    pub language: String,
+    pub record: String,
+}
+
+// The rows of a per-language rule file, each read by `read`, in name order with each language
+// once.
+pub(super) fn language_rows(
+    file: &str,
+    text: &str,
+    read: impl Fn(&Value) -> Result<LanguageRow, String>,
+) -> Result<Vec<LanguageRow>, Vec<String>> {
+    let (rows, mut problems) = entries(file, text, "languages", "language", read)?;
+    let unsorted = rows
+        .windows(2)
+        .filter(|pair| pair[0].language >= pair[1].language);
+    problems.extend(unsorted.map(|pair| {
+        let (first, second) = (&pair[0].language, &pair[1].language);
+        format!("{file}: language {second:?} must come after {first:?}, in name order, once")
+    }));
+    if problems.is_empty() {
+        Ok(rows)
+    } else {
+        Err(problems)
+    }
+}
+
 fn listed<'v>(document: &'v Value, key: &str) -> Result<&'v Vec<Value>, String> {
     let top = object(document, &[key]).map_err(|problem| format!("the top level {problem}"))?;
     match &top[key] {
@@ -180,6 +209,18 @@ fn record(rule: &Rule) -> String {
         literal(&rule.query),
         literal(&rule.message)
     )
+}
+
+// Fails unless one of `problems` starts with `file` and holds each of `words`.
+#[cfg(test)]
+pub(super) fn assert_named(problems: &[String], file: &str, words: &[&str]) {
+    let named = problems
+        .iter()
+        .find(|problem| words.iter().all(|word| problem.contains(word)));
+    assert!(
+        named.is_some_and(|problem| problem.starts_with(file)),
+        "{words:?}: {problems:?}"
+    );
 }
 
 #[cfg(test)]

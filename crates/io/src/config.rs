@@ -108,15 +108,18 @@ pub enum GatedCheck {
     CloneDelta,
     /// `comment_delta`.
     CommentDelta,
+    /// `linter_delta`.
+    LinterDelta,
 }
 
 impl GatedCheck {
     /// Every gated check, in the config order.
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::ComplexityDelta,
         Self::ContractDrift,
         Self::CloneDelta,
         Self::CommentDelta,
+        Self::LinterDelta,
     ];
 
     /// Returns the check as the config spells it.
@@ -127,6 +130,7 @@ impl GatedCheck {
             "contract_drift",
             "clone_delta",
             "comment_delta",
+            "linter_delta",
         ][self as usize]
     }
 
@@ -134,7 +138,9 @@ impl GatedCheck {
     #[must_use]
     pub fn built_in_mode(self) -> GateMode {
         match self {
-            Self::ComplexityDelta | Self::ContractDrift | Self::CloneDelta => GateMode::Advisory,
+            Self::ComplexityDelta | Self::ContractDrift | Self::CloneDelta | Self::LinterDelta => {
+                GateMode::Advisory
+            }
             Self::CommentDelta => GateMode::Block,
         }
     }

@@ -114,6 +114,7 @@ fn each_pair_check_keeps_the_paths_of_its_rule() {
         ("cycle_dodge", [true, false, false, false]),
         ("reuse_candidates", [true, false, false, false]),
         ("comment_delta", [true, true, true, true]),
+        ("linter_delta", [true, true, true, false]),
     ];
     assert_eq!(found, expected);
 }

@@ -4,11 +4,15 @@ mod candidates;
 
 use std::cell::{OnceCell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
 
 use checks::{CloneIndex, Observed, PairFinding};
+use kernel::Deadline;
 use serde::Serialize;
 
 use crate::detached::drop_detached;
+use crate::linter::Linting;
 use crate::pair_runs::{IndexOf, Reported, RunInputs, TreeOf};
 use crate::pairs::{Judged, Lookup, built_index, run_pairs};
 use crate::proposed::{After, Proposed, proposed};
@@ -59,13 +63,15 @@ pub enum LintForm {
     },
 }
 
-/// One lint call: the form and the pair checks to run.
+/// One lint call: the form, the pair checks to run, and the time the call may take.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LintRequest {
     /// What to compare.
     pub form: LintForm,
     /// The checks to run.
     pub checks: PairSelection,
+    /// The time from the call's start that its linter runs may use, or `None` for no limit.
+    pub budget: Option<Duration>,
 }
 
 /// The lint report: one candidate per call.
@@ -131,11 +137,14 @@ pub(crate) fn lint_with(
         units,
         warnings: &warnings,
     };
+    let deadline = (request.budget)
+        .map(|budget| Deadline::new(budget.as_secs_f64(), 0.0, Arc::clone(&services.clock)));
     let tree = TreeSources {
         cached,
         index: &mut index,
         scan: &mut scan,
         reuse: &mut reuse,
+        linting: Linting::of(services, &repo.root, deadline.as_ref()),
     };
     let report = report(services, repo, request, tree);
     if let Some(scan) = scanned.into_inner() {
@@ -147,13 +156,14 @@ pub(crate) fn lint_with(
     }
 }
 
-// What the run reads from the tree besides the edited files: whether a tag cache is usable, the
-// clone index, the scan that the tree checks share, and the source of reuse_candidates.
+// What the run reads besides the edited files: whether a tag cache is usable, the clone index,
+// the scan that the tree checks share, the source of reuse_candidates, and the linter runs.
 struct TreeSources<'r, 'i> {
     cached: bool,
     index: &'r mut IndexOf<'i>,
     scan: &'r mut TreeOf<'i>,
     reuse: &'r mut ReuseSource<'i>,
+    linting: Linting<'r>,
 }
 
 // Without a usable tag cache, the proposed form reports the no_tag_cache gap and reads no other
@@ -169,16 +179,22 @@ fn report(
         index,
         scan,
         reuse,
+        linting,
     } = tree;
     let (id, judged) = match &request.form {
         LintForm::Proposed { path, after } => {
             let compared = proposed(&repo.root, path, after, services.cwd.as_deref());
             let mut no_cache = |_: &[&checks::Pair]| Ok(Rc::new(CloneIndex::NoTagCache));
             let index: &mut IndexOf<'_> = if cached { index } else { &mut no_cache };
-            (
-                path,
-                judge_proposed(compared, request.checks, &repo.config, index, reuse)?,
-            )
+            let inputs = RunInputs {
+                config: &repo.config,
+                index,
+                reported: &Reported::new(),
+                tree: None,
+                reuse,
+                linting,
+            };
+            (path, judge_proposed(compared, request.checks, inputs)?)
         }
         LintForm::Revision { revision } => {
             let compared = compared(&services.git, &repo.root, revision)?;
@@ -188,6 +204,7 @@ fn report(
                 reported: &Reported::new(),
                 tree: Some(scan),
                 reuse,
+                linting,
             };
             let judged = run_pairs(compared.pairs, request.checks, inputs)?;
             (revision, with_rows(compared.rows, judged))
@@ -198,24 +215,13 @@ fn report(
     })
 }
 
-fn judge_proposed<'i>(
+fn judge_proposed(
     compared: Proposed,
     checks: PairSelection,
-    config: &io::ProjectConfig,
-    index: &mut IndexOf<'i>,
-    reuse: &mut ReuseSource<'i>,
+    inputs: RunInputs<'_, '_>,
 ) -> Result<Judged, Error> {
     match compared {
-        Proposed::Pair(pair) => {
-            let inputs = RunInputs {
-                config,
-                index,
-                reported: &Reported::new(),
-                tree: None,
-                reuse,
-            };
-            run_pairs(vec![pair], checks, inputs)
-        }
+        Proposed::Pair(pair) => run_pairs(vec![pair], checks, inputs),
         Proposed::Rows(rows) => Ok(with_rows(rows, empty())),
         Proposed::Skipped => Ok(empty()),
     }
@@ -242,7 +248,8 @@ fn candidate(id: &str, judged: Judged) -> LintCandidate {
         || observed.units_changed.is_some()
         || observed.contract_keys.is_some()
         || observed.clone_instances.is_some()
-        || observed.comment_keys.is_some();
+        || observed.comment_keys.is_some()
+        || observed.linter_keys.is_some();
     LintCandidate {
         id: id.to_owned(),
         findings: judged.rows,

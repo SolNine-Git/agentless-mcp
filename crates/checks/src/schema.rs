@@ -11,6 +11,8 @@ pub const CONTRACT_KEYS: &str = "contract_keys";
 pub const CLONE_INSTANCES: &str = "clone_instances";
 /// The observed keys of the comment findings.
 pub const COMMENT_KEYS: &str = "comment_keys";
+/// The observed keys of the linter findings.
+pub const LINTER_KEYS: &str = "linter_keys";
 
 /// A repo-relative path.
 pub const PATH: &str = "path";
@@ -40,8 +42,10 @@ pub const THRESHOLD: &str = "threshold";
 pub const RULE: &str = "rule";
 /// A contract hit's normalized text.
 pub const CAPTURE: &str = "capture";
-/// A block's Type-2 key, or the text a comment finding keys on.
+/// A block's Type-2 key, or the text a comment or linter finding keys on.
 pub const KEY: &str = "key";
+/// A linter's rule code.
+pub const CODE: &str = "code";
 /// A copied block's first other instances.
 pub const SITES: &str = "sites";
 /// The number of a copied block's other instances.

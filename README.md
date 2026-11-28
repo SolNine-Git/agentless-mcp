@@ -158,10 +158,11 @@ It compares `REL` as the working tree holds it with the whole proposed text in
 `FILE`, and it runs only the pair checks. The erosion gate hook calls lint this
 way. `lint --since REV` is the review mode. It compares each file changed since
 the commit `REV` with its text in the working tree, and it runs only the pair
-checks. Both forms run `clone_delta` and `comment_delta` only when `--only`
-names them. Fixture paths, `testdata` directories included, are outside every
-check but `comment_delta`, and test paths are outside every check but
-`complexity_delta` and `comment_delta`.
+checks. Both forms run `clone_delta`, `comment_delta` and `linter_delta` only
+when `--only` names them. Fixture paths, `testdata` directories included, are
+outside every check but `comment_delta` and `linter_delta`, and test paths are
+outside every check but `complexity_delta`, `comment_delta` and
+`linter_delta`.
 
 By default `lint` exits 0 whatever it found. For a CI gate, `--fail-on
 SEVERITY[,SEVERITY...]` (`warning`, `advisory`, `not_checked`) exits 3 when a
@@ -651,16 +652,21 @@ measure, not a measure of the patch. The record is
 before the call lands. It computes the whole text the call would leave on
 disk, runs lint on that text in its own process, and reports what the change
 makes worse. The checks are `complexity_delta`, `contract_drift`,
-`clone_delta`, and `comment_delta`. `complexity_delta` reports a function
-above the complexity threshold that gets more complex, a function that crosses
-the threshold, and a new function above it. `contract_drift` reports a silent
+`clone_delta`, `comment_delta`, and `linter_delta`. `complexity_delta` reports
+a function above the complexity threshold that gets more complex, a function
+that crosses the threshold, and a new function above it. `contract_drift` reports a silent
 default or a swallowed error in a module that `boundary_globs` names.
 `clone_delta` reports a block of 3 or more source lines and 40 or more tokens
 that the change adds while the repository already has a copy of it, with
 names and literals ignored. `comment_delta` reports a lint suppression, a
 banner, a comment over 2 lines, or a docstring or JSDoc tag that the comment
 rules forbid, when the change adds it to a Python, JavaScript, TypeScript or
-TSX file.
+TSX file. `linter_delta` reports each ruff finding that the change adds to a
+Python file, with ruff's fix when it has one. It runs the repository's own
+`.venv/bin/ruff`, or `ruff` on `PATH`, never `uv run`, and only when a
+`ruff.toml`, `.ruff.toml`, or a `pyproject.toml` with a `tool.ruff` key is in
+the file's folder or above it, up to the root. With no config or no ruff, the
+check is off for that edit.
 
 **Modes.** Each check has one mode: `off`, `advisory`, or `block`.
 
@@ -675,9 +681,9 @@ The repository's `erosion_gate` key in `.agentless-mcp.json` sets a mode per
 check, for example `{"erosion_gate": {"complexity_delta": "block"}}`. A check
 that the key leaves unset takes `AGENTLESS_EROSION_GATE` (`advisory` or
 `block`). Without that variable, the check takes its built-in mode: `block`
-for `comment_delta`, `advisory` for the others. The variable sets
-`clone_delta` too, so `AGENTLESS_EROSION_GATE=block` blocks on copies. To keep
-`clone_delta` advisory while it is on trial, set
+for `comment_delta`, `advisory` for the others, `linter_delta` included. The
+variable sets `clone_delta` too, so `AGENTLESS_EROSION_GATE=block` blocks on
+copies. To keep `clone_delta` advisory while it is on trial, set
 `{"erosion_gate": {"clone_delta": "advisory"}}`.
 `AGENTLESS_EROSION_GATE=off` turns the gate off on the whole machine, and it
 wins over every repository key.

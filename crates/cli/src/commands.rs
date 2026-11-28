@@ -270,7 +270,9 @@ fn only_help() -> String {
          imports of every file in the working tree, and only --since runs them. reuse_candidates \
          reads the action names of every function from the tag cache, and only --only runs it, in \
          --since and --path. comment_delta reads only the edited files, and only --only runs it. \
-         A run with only pair checks skips the symbol scan that the patch checks need",
+         linter_delta runs the repository's ruff on the old and new text of each edited Python \
+         file that has a ruff config, and only --only runs it. A run with only pair checks skips \
+         the symbol scan that the patch checks need",
         all.join(", "),
         pairs.join(", "),
         edited_checks()

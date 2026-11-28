@@ -193,6 +193,7 @@ impl Git {
             timeout: Duration::from_secs(limits.seconds),
             stdout_cap: limits.cap,
             stderr_cap: MAX_STDERR_BYTES,
+            stdin: None,
         }
     }
 }

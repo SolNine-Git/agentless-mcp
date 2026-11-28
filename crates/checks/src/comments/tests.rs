@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::path::Path;
 
 use prompts::CommentGroup;
 use serde::Deserialize;
@@ -387,21 +386,7 @@ fn the_observed_keys_hold_every_finding_of_the_new_text() {
 // A new language file fails here until its row or its gap is in the rule file.
 #[test]
 fn every_language_file_has_rules_or_a_gap_in_each_group() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../syntax/languages");
-    let files: BTreeSet<String> = std::fs::read_dir(&dir)
-        .expect("the language folder")
-        .map(|entry| entry.expect("an entry").path())
-        .filter(|path| {
-            path.extension()
-                .is_some_and(|extension| extension == "toml")
-        })
-        .map(|path| {
-            path.file_stem()
-                .expect("a name")
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect();
+    let files = crate::tests::language_files();
     let rows: BTreeSet<String> = (prompts::comment_rules().iter())
         .map(|rules| rules.language.to_owned())
         .collect();

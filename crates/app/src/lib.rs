@@ -28,6 +28,7 @@ pub mod hooks;
 mod html;
 mod index;
 mod lint;
+mod linter;
 mod map;
 mod noted;
 pub mod ops;
@@ -107,6 +108,7 @@ pub use lint::{
     load_lint_diff,
 };
 pub use lint::{LintCandidate, LintForm, LintReport, LintRequest, lint};
+pub use linter::{ChildRunner, SystemRunner};
 pub use map::{
     BodyMapResult, Companion, Companions, MapEntry, MapFile, MapRequest, MapResult, body_map, map,
     map_rows_text,

@@ -5,6 +5,7 @@
 mod comment_rules;
 mod descriptions;
 mod guide;
+mod linter_rules;
 mod literal;
 mod placeholders;
 mod rules;
@@ -21,6 +22,7 @@ const ENVELOPE: &str = "crates/prompts/data/envelope.json";
 const MESSAGES: &str = "crates/prompts/data/messages.json";
 const RULES: &str = "crates/prompts/data/contract_rules.json";
 const COMMENT_RULES: &str = "crates/prompts/data/comment_rules.json";
+const LINTER_RULES: &str = "crates/prompts/data/linter_rules.json";
 const TOOLS: &str = "crates/prompts/data/tool_descriptions.json";
 const PARAMETERS: &str = "crates/prompts/data/parameter_descriptions.json";
 const OUTPUT: &str = "crates/prompts/src/generated";
@@ -61,14 +63,18 @@ fn fresh(root: &Path) -> Result<Files, Failure> {
     let read = |file: &str| repo::read(&root.join(file));
     let templates = sources(&read(ENVELOPE)?, &read(MESSAGES)?, &read(RULES)?);
     let descriptions = description_sources(&read(TOOLS)?, &read(PARAMETERS)?);
-    let comments = comment_sources(&read(COMMENT_RULES)?);
-    let sources = joined(joined(templates, descriptions), comments);
+    let tables = table_sources(&read(COMMENT_RULES)?, &read(LINTER_RULES)?);
+    let sources = joined(joined(templates, descriptions), tables);
     formatted(root, sources.map_err(Failure::Gate)?)
 }
 
-fn comment_sources(text: &str) -> Result<Files, Vec<String>> {
-    let rows = comment_rules::parse(COMMENT_RULES, text)?;
-    Ok(vec![("comment_rules.rs", comment_rules::module(&rows))])
+// The per-language tables: the comment rules and the linter rows.
+fn table_sources(comments: &str, linters: &str) -> Result<Files, Vec<String>> {
+    let comments = comment_rules::parse(COMMENT_RULES, comments)
+        .map(|rows| vec![("comment_rules.rs", comment_rules::module(&rows))]);
+    let linters = linter_rules::parse(LINTER_RULES, linters)
+        .map(|rows| vec![("linter_rules.rs", linter_rules::module(&rows))]);
+    joined(comments, linters)
 }
 
 fn description_sources(tools: &str, parameters: &str) -> Result<Files, Vec<String>> {
@@ -186,9 +192,9 @@ mod tests {
     use serde_json::Value;
 
     use super::{
-        COMMENT_RULES, ENVELOPE, Files, MESSAGES, OUTPUT, PARAMETERS, RULES, TOOLS, comment_rules,
-        comment_sources, description_sources, descriptions, fresh, fresh_guide, fresh_syntax,
-        guide, rules, sources, syntax, templates,
+        COMMENT_RULES, ENVELOPE, Files, LINTER_RULES, MESSAGES, OUTPUT, PARAMETERS, RULES, TOOLS,
+        comment_rules, description_sources, descriptions, fresh, fresh_guide, fresh_syntax, guide,
+        linter_rules, rules, sources, syntax, table_sources, templates,
     };
     use crate::repo;
 
@@ -231,7 +237,7 @@ mod tests {
     fn the_prompt_files_parse_with_no_problem() {
         let envelope = templates::parse(ENVELOPE, &read(ENVELOPE)).unwrap();
         let messages = templates::parse(MESSAGES, &read(MESSAGES)).unwrap();
-        assert_eq!((envelope.len(), messages.len()), (13, 422));
+        assert_eq!((envelope.len(), messages.len()), (13, 435));
         let text = read(RULES);
         let entries: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(entries["rules"].as_array().map(Vec::len), Some(22));
@@ -242,13 +248,20 @@ mod tests {
         assert_eq!((tools.len(), parameters.len()), (18, 58));
         let comments = comment_rules::parse(COMMENT_RULES, &read(COMMENT_RULES)).unwrap();
         assert_eq!(comments.len(), 22);
+        let linters = linter_rules::parse(LINTER_RULES, &read(LINTER_RULES)).unwrap();
+        assert_eq!(linters.len(), 22);
     }
 
     #[test]
-    fn a_problem_of_the_comment_rule_file_names_it() {
-        let problems = comment_sources("{}").unwrap_err();
-        assert_eq!(problems.len(), 1, "{problems:?}");
-        assert!(problems[0].starts_with(COMMENT_RULES), "{problems:?}");
+    fn the_problems_of_both_table_files_come_together() {
+        let problems = table_sources("{}", "{}").unwrap_err();
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        for file in [COMMENT_RULES, LINTER_RULES] {
+            assert!(
+                problems.iter().any(|problem| problem.starts_with(file)),
+                "{file}: {problems:?}"
+            );
+        }
     }
 
     #[test]

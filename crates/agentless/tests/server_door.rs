@@ -62,6 +62,7 @@ fn run(program: &str, tree: &Tree, args: &[&str]) -> Ran {
         timeout: DEADLINE,
         stdout_cap: 1 << 20,
         stderr_cap: 1 << 16,
+        stdin: None,
     };
     let outcome = io::run(&spec);
     let io::Outcome::Exited {

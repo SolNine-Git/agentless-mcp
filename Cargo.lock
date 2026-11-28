@@ -55,6 +55,7 @@ dependencies = [
  "text",
  "thiserror",
  "tiktoken-rs",
+ "toml",
 ]
 
 [[package]]

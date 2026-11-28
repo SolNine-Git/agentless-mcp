@@ -14,6 +14,25 @@ use crate::{
     pair_language,
 };
 
+// The name of each language file in the syntax crate, which a per-language table must cover.
+pub(crate) fn language_files() -> BTreeSet<String> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../syntax/languages");
+    std::fs::read_dir(&dir)
+        .expect("the language folder")
+        .map(|entry| entry.expect("an entry").path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "toml")
+        })
+        .map(|path| {
+            path.file_stem()
+                .expect("a name")
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect()
+}
+
 pub(crate) struct Fixture {
     texts: BTreeMap<String, String>,
     document: Value,

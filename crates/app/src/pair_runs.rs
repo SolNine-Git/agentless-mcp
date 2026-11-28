@@ -6,6 +6,7 @@ use std::rc::Rc;
 use checks::{CloneIndex, Outcome, Pair, Side};
 
 use crate::callees::callee_tree;
+use crate::linter::{self, Linting};
 use crate::reuse::{self, ReuseSource};
 use crate::tree_scan::TreeScan;
 use crate::{Error, dodges, parallel};
@@ -21,13 +22,14 @@ pub(crate) type Reported = BTreeSet<(String, u32)>;
 // shares one scan.
 pub(crate) type TreeOf<'a> = dyn FnMut() -> Result<&'a TreeScan, Error> + 'a;
 
-// What a run reads besides its pairs.
+// What a run reads besides its pairs. `linting` holds the root and the injected child runner.
 pub(crate) struct RunInputs<'r, 'i> {
     pub(crate) config: &'r io::ProjectConfig,
     pub(crate) index: &'r mut IndexOf<'i>,
     pub(crate) reported: &'r Reported,
     pub(crate) tree: Option<&'r mut TreeOf<'i>>,
     pub(crate) reuse: &'r mut ReuseSource<'i>,
+    pub(crate) linting: Linting<'r>,
 }
 
 // A check's run on the pairs it keeps. `None` is a run that gives no outcome at all.
@@ -91,6 +93,18 @@ pub(crate) fn comment_delta(
     _inputs: &mut RunInputs<'_, '_>,
 ) -> Result<Option<Outcome>, Error> {
     Ok(Some(checks::comment_delta(pairs)?))
+}
+
+// With no pair kept, no linter runs and the check gives no outcome.
+pub(crate) fn linter_delta(
+    pairs: &[&Pair],
+    inputs: &mut RunInputs<'_, '_>,
+) -> Result<Option<Outcome>, Error> {
+    if pairs.is_empty() {
+        return Ok(None);
+    }
+    let linted = linter::linted(pairs, &inputs.linting);
+    Ok(Some(checks::linter_delta(&linted)?))
 }
 
 // The --since form gives the tree scan, which resolves the references between a row's functions.

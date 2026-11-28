@@ -91,7 +91,11 @@ fn request(sandbox: &Sandbox, scenario: &Scenario, in_memory: bool) -> LintReque
         }
     };
     let checks = PairSelection::from_names(&scenario.checks, kind).expect("a pair selection");
-    LintRequest { form, checks }
+    LintRequest {
+        form,
+        checks,
+        budget: None,
+    }
 }
 
 // A fresh tag cache stores the blocks that a re-measure gives, so a lookup that always misses
@@ -185,6 +189,7 @@ fn a_run_without_clone_delta_never_reads_a_stored_block() {
             revision: "HEAD".to_owned(),
         },
         checks: PairSelection::edited_files(),
+        budget: None,
     };
 
     let found = lint_with(&services, &repo, source, &request).value;
@@ -214,6 +219,7 @@ fn a_relative_after_file_with_an_unread_cwd_gives_the_new_side_row() {
             after: After::File(std::path::PathBuf::from("after.py")),
         },
         checks: PairSelection::edited_files(),
+        budget: None,
     };
 
     let found = lint(&services, &repo, &tags, &request).value;
@@ -254,6 +260,7 @@ fn since_report(services: &crate::Services, root: &Path, checks: &[&str]) -> Lin
             revision: "HEAD".to_owned(),
         },
         checks: PairSelection::from_names(&names, FormKind::Since).expect("a selection"),
+        budget: None,
     };
     let mut lookup = |_: &str, _: &str, _| Stored::Miss;
     let mut units = |_: &str, _: &str, _| StoredUnits::Miss;
@@ -588,6 +595,7 @@ fn proposed_rows(
         },
         checks: PairSelection::from_names(&["reuse_candidates".to_owned()], FormKind::Path)
             .expect("a selection"),
+        budget: None,
     };
     let mut lookup = |_: &str, _: &str, _| Stored::Miss;
     let mut units = |_: &str, _: &str, _| StoredUnits::Miss;

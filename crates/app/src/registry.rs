@@ -2,7 +2,7 @@
 
 use checks::{
     CALLEE_OVERLAP, CLONE_DELTA, COMMENT_DELTA, COMPLEXITY_DELTA, CONTRACT_DRIFT, CYCLE_DODGE,
-    Outcome, Pair, REUSE_CANDIDATES,
+    LINTER_DELTA, Outcome, Pair, REUSE_CANDIDATES,
 };
 use patchcheck::{
     CHECK_ARITY, CHECK_CYCLE_DELTA, CHECK_DANGLING_CALLERS, CHECK_DANGLING_REFERENCES,
@@ -15,6 +15,7 @@ use prompts::messages::{
 
 use crate::callees::in_callee_scope;
 use crate::dodges::in_dodge_scope;
+use crate::linter::has_linter;
 use crate::pair_runs::{self, Run, RunInputs};
 use crate::{Error, in_metric_scope, is_fixture_path, is_test_path};
 
@@ -61,7 +62,7 @@ const fn check(name: &'static str, input: CheckInput) -> LintCheck {
 }
 
 /// Every lint check in registry order, which is also the order the checks run in.
-pub const CHECKS: [LintCheck; 14] = [
+pub const CHECKS: [LintCheck; 15] = [
     check(CHECK_UNDECLARED_IMPORTS, CheckInput::Patch),
     check(CHECK_SHADOWING, CheckInput::Patch),
     check(CHECK_NEAR_DUPLICATES, CheckInput::Patch),
@@ -76,6 +77,7 @@ pub const CHECKS: [LintCheck; 14] = [
     PairCheck::CycleDodge.lint_check(),
     PairCheck::ReuseCandidates.lint_check(),
     PairCheck::CommentDelta.lint_check(),
+    PairCheck::LinterDelta.lint_check(),
 ];
 
 /// A check that compares the old and new text of each edited file.
@@ -95,6 +97,8 @@ pub enum PairCheck {
     ReuseCandidates,
     /// `comment_delta`.
     CommentDelta,
+    /// `linter_delta`.
+    LinterDelta,
 }
 
 // One row of the pair table. A check reads only the pairs whose path `keeps` accepts. Only a tree
@@ -113,7 +117,7 @@ struct PairRow {
 const EVERY_FORM: &[FormKind] = &[FormKind::Path, FormKind::Since];
 
 // Row i is the row of the check whose discriminant is i. Fixtures are skipped by every check but
-// comment_delta, and tests by all but complexity_delta and comment_delta.
+// comment_delta and linter_delta, and tests by all but those two and complexity_delta.
 const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
     PairRow {
         name: COMPLEXITY_DELTA,
@@ -178,11 +182,20 @@ const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
         opt_in: true,
         run: pair_runs::comment_delta,
     },
+    PairRow {
+        name: LINTER_DELTA,
+        input: CheckInput::Pairs,
+        keeps: has_linter,
+        forms: EVERY_FORM,
+        reads: None,
+        opt_in: true,
+        run: pair_runs::linter_delta,
+    },
 ];
 
 impl PairCheck {
     /// Every pair check, in registry order.
-    pub const ALL: [PairCheck; 7] = [
+    pub const ALL: [PairCheck; 8] = [
         Self::ComplexityDelta,
         Self::ContractDrift,
         Self::CloneDelta,
@@ -190,6 +203,7 @@ impl PairCheck {
         Self::CycleDodge,
         Self::ReuseCandidates,
         Self::CommentDelta,
+        Self::LinterDelta,
     ];
 
     /// Returns the check's name.

@@ -46,8 +46,57 @@
   `pub` removed, each made `pub(crate)`, and a `# Arguments` line after each
   `///` line) agreed on all 2,559, with 4,078 non-public and 4,046 section
   findings.
+- **`linter_delta`, the per-file linter check, with a ruff row (PB-86,
+  plan D4, U3).** It runs the repository's own linter on the old and the new
+  text of each edited file and reports each finding that the edit adds, as
+  an advisory row with the code, the message, and the linter's fix when it
+  gives one. A finding's key is its code and its source line with whitespace
+  collapsed; every syntax-error finding of one text is one key; old and new
+  keys compare as multisets, so a finding on a moved line is no finding. The
+  rows live in `crates/prompts/data/linter_rules.json`: python has the ruff
+  row, and every other language file declares a gap (`follow_up`,
+  `tier_two`, `data_language`), which a test requires. ruff runs as
+  `<root>/.venv/bin/ruff`, else `ruff` on `PATH`, never `uv run`, from the
+  root with only `HOME` and `PATH`, as `ruff check --force-exclude
+  --stdin-filename REL --output-format json --exit-zero -`, and only when a
+  `ruff.toml`, `.ruff.toml`, or a `pyproject.toml` whose TOML has a
+  `tool.ruff` key is in the file's folder or above it, up to the root. Each
+  run gets the lesser of 2 s and half the time the call has left
+  (`LintRequest.budget`, which the hook sets to its lint budget). No config
+  (`no_linter_config`) and no program (`no_linter_binary`) are off by config;
+  a non-zero exit, a timeout, a spent budget, or output that does not parse
+  is a `linter_failed` gap whose message holds the exit status and the first
+  stderr line. stdout parses only on exit 0, into typed findings; the parser
+  tests run on recorded JSON of ruff 0.15.16, 0.16.3 and 0.17.6
+  (`crates/checks/fixtures/ruff.json`). The check is opt-in in `lint` and
+  keeps every path in a language with a linter row, tests and fixtures
+  included, since ruff's own config excludes paths. `GatedCheck::LinterDelta`
+  has the built-in mode `advisory`, and its block fix line is the shared
+  "Change the code as each blocking finding says". gate-report tracks its
+  findings by `detail.code` and `detail.key` and the new
+  `observed.linter_keys`. Every test uses a fake runner: no test starts ruff.
+- **`io::Spec` takes an optional stdin input.** The runner writes it on its
+  own thread while it reads stdout and stderr, all under the one timeout, so
+  a child that never reads stdin cannot stall the write; a child that closes
+  stdin early keeps its output. Tests cover a 1 MiB input through `cat`, a
+  child that exits without reading, and one that sleeps without reading.
 
 ### Changed
+
+- **Every hook record and mode line names `linter_delta`.** Each record's
+  `modes` gains `"linter_delta": "advisory"` (or the `AGENTLESS_EROSION_GATE`
+  value), its `checks` gains `linter_delta`, the advisory mode line ends
+  `comment_delta block, linter_delta advisory.`, and each record of a Python
+  edit that reached the verdict gains `linter_delta` under `off_by_config`,
+  because no hook scenario repository has a ruff config. The `all_off`
+  scenario and its two cache states turn `linter_delta` off too. The hook
+  fixtures `modes.json` (44 cases), `classify.json` (17), `scenarios.json`
+  and `states.json`, the goldens `hooks/erosion.write.{txt,stdout}` (cl100k
+  156 to 161 and 133 to 138), the guide fixtures, and the fixtures that list
+  the lint checks or the gated checks change for this and nothing else.
+- **gate-report reads comment and linter keys through one path.**
+  `Tracked::Comment` became `Tracked::Keyed` with the list it reads, so
+  `comment_delta` and `linter_delta` share the parse and the acted-on rule.
 
 - **Every hook record and mode line names `comment_delta`.** Each record's
   `modes` gains `"comment_delta": "block"` (the built-in mode) and its

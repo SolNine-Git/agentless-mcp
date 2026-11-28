@@ -1,6 +1,6 @@
 [package]
 name = "checks"
-description = "The erosion pair checks: complexity_delta, contract_drift, clone_delta, callee_overlap, cycle_dodge, reuse_candidates, and comment_delta."
+description = "The erosion pair checks: complexity_delta, contract_drift, clone_delta, callee_overlap, cycle_dodge, reuse_candidates, comment_delta, and linter_delta."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -18,10 +18,10 @@ metrics = { path = "../metrics" }
 prompts = { path = "../prompts" }
 regex = "1.13.1"
 serde.workspace = true
+serde_json.workspace = true
 syntax = { path = "../syntax" }
 text = { path = "../text" }
 thiserror.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 text = { path = "../text", features = ["test-support"] }

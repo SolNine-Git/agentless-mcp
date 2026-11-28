@@ -2088,6 +2088,108 @@ pub const LINT_UNKNOWN_SEVERITY: Template<(Text, Text)> = Template::new(&[
     Piece::Text("."),
 ]);
 
+/// A text that takes no values.
+pub const LINTER_BUDGET_SPENT: &str = "the call had no time left to run it";
+
+/// A template that takes `rule`.
+pub const LINTER_EVIDENCE: Template<Text> = Template::new(&[Piece::Text("code "), Piece::Value(0)]);
+
+/// A template that takes (`status`, `detail`).
+pub const LINTER_EXITED: Template<(Text, Text)> = Template::new(&[
+    Piece::Text("it ended with "),
+    Piece::Value(0),
+    Piece::Text("; stderr: "),
+    Piece::Value(1),
+]);
+
+/// A template that takes `status`.
+pub const LINTER_EXITED_SILENT: Template<Text> = Template::new(&[
+    Piece::Text("it ended with "),
+    Piece::Value(0),
+    Piece::Text(" and wrote nothing to stderr"),
+]);
+
+/// A template that takes (`path`, `name`, `reason`).
+pub const LINTER_FAILED: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Text("not checked: linter_delta could not lint "),
+    Piece::Value(0),
+    Piece::Text(" with "),
+    Piece::Value(1),
+    Piece::Text(": "),
+    Piece::Value(2),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`rule`, `name`, `text`).
+pub const LINTER_FINDING: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(2),
+]);
+
+/// A template that takes (`rule`, `name`, `detail`, `text`).
+pub const LINTER_FINDING_FIX: Template<(Text, Text, Text, Text)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Value(0),
+    Piece::Text(": "),
+    Piece::Value(3),
+    Piece::Text(". Fix: "),
+    Piece::Value(2),
+]);
+
+/// A template that takes (`file`, `path`, `name`).
+pub const LINTER_NO_BINARY: Template<(Text, Text, Text)> = Template::new(&[
+    Piece::Text("not checked: linter_delta found no "),
+    Piece::Value(2),
+    Piece::Text(" program at "),
+    Piece::Value(0),
+    Piece::Text(" or on PATH, so it did not lint "),
+    Piece::Value(1),
+    Piece::Text("."),
+]);
+
+/// A template that takes (`file`, `path`, `name`, `listed`, `text`).
+pub const LINTER_NO_CONFIG: Template<(Text, Text, Text, Text, Text)> = Template::new(&[
+    Piece::Text("not checked: linter_delta found no "),
+    Piece::Value(2),
+    Piece::Text(" config from the folder of "),
+    Piece::Value(1),
+    Piece::Text(" up to the repository root ("),
+    Piece::Value(3),
+    Piece::Text(", or "),
+    Piece::Value(0),
+    Piece::Text(" with a ["),
+    Piece::Value(4),
+    Piece::Text("] table), so it did not lint the file."),
+]);
+
+/// A template that takes `reason`.
+pub const LINTER_NOT_RUN: Template<Text> =
+    Template::new(&[Piece::Text("it did not run to the end: "), Piece::Value(0)]);
+
+/// A template that takes `cap`.
+pub const LINTER_OUTPUT_CAPPED: Template<Count> = Template::new(&[
+    Piece::Text("its output passed "),
+    Piece::Value(0),
+    Piece::Text(" bytes"),
+]);
+
+/// A template that takes `text`.
+pub const LINTER_TIMED_OUT: Template<Text> = Template::new(&[
+    Piece::Text("it ran past its timeout of "),
+    Piece::Value(0),
+    Piece::Text(" s"),
+]);
+
+/// A template that takes `error`.
+pub const LINTER_UNPARSED: Template<Text> = Template::new(&[
+    Piece::Text("its output is not the JSON list of findings it prints: "),
+    Piece::Value(0),
+]);
+
 /// A template that takes (`name`, `listed`).
 pub const LISTED_AND: Template<(Text, Text)> =
     Template::new(&[Piece::Value(1), Piece::Text(" and "), Piece::Value(0)]);

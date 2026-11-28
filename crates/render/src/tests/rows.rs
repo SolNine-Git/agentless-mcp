@@ -6,8 +6,8 @@ use app::{
     LintCandidate, LintCheckRow, LintReport, Observed, PairFinding, Roots, Setting, Severity,
 };
 use checks::{
-    CloneCopy, CloneSite, CloneState, CommentState, DriftKey, HitState, Match, UnitChange,
-    UnitDelta, UnitState,
+    CloneCopy, CloneSite, CloneState, CommentState, DriftKey, HitState, LinterState, Match,
+    UnitChange, UnitDelta, UnitState,
 };
 use io::ProjectConfig;
 use json::JsonValue;
@@ -246,6 +246,7 @@ fn observed(row: &Value) -> Observed {
         contract_keys: present(row, "contract_keys", hit_state),
         clone_instances: present(row, "clone_instances", clone_state),
         comment_keys: present(row, "comment_keys", comment_state),
+        linter_keys: present(row, "linter_keys", linter_state),
     }
 }
 
@@ -294,6 +295,14 @@ fn comment_state(row: &Value) -> CommentState {
     CommentState {
         path: text(row, "path"),
         rule: text(row, "rule"),
+        key: text(row, "key"),
+    }
+}
+
+fn linter_state(row: &Value) -> LinterState {
+    LinterState {
+        path: text(row, "path"),
+        code: text(row, "code"),
         key: text(row, "key"),
     }
 }

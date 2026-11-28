@@ -1,5 +1,5 @@
 //! The erosion pair checks: `complexity_delta`, `contract_drift`, `clone_delta`,
-//! `callee_overlap`, `cycle_dodge`, `reuse_candidates`, and `comment_delta`.
+//! `callee_overlap`, `cycle_dodge`, `reuse_candidates`, `comment_delta`, and `linter_delta`.
 
 mod callees;
 mod clone;
@@ -11,6 +11,7 @@ mod dodges;
 mod error;
 mod finding;
 mod index;
+mod linter;
 mod matching;
 mod observed;
 mod pair;
@@ -32,12 +33,17 @@ pub use dodges::{
 pub use error::{Error, SideError};
 pub use finding::{
     CalleeShare, ChainHop, CheckGap, CloneCopy, CloneSite, CommentKey, Detail, DodgeVia, DriftKey,
-    Finding, ImportDodge, Match, NameShare, PairFinding, Severity, SharedCallee, TieredCallee,
-    UnitDelta,
+    Finding, ImportDodge, LinterKey, Match, NameShare, PairFinding, Severity, SharedCallee,
+    TieredCallee, UnitDelta,
 };
 pub use index::{CloneIndex, IndexedFiles, clone_index};
+pub use linter::{
+    LintedPair, LintedSides, LinterFailure, LinterFinding, NotLinted, linter_delta, ran,
+};
 pub use matching::{Matchable, Pairing, pair_units};
-pub use observed::{CloneState, CommentState, HitState, Observed, Outcome, UnitChange, UnitState};
+pub use observed::{
+    CloneState, CommentState, HitState, LinterState, Observed, Outcome, UnitChange, UnitState,
+};
 pub use pair::{FUNCTION_REASONS, Pair, Side, SideText, TextPair, measure_blocks, pair_language};
 pub use reuse::{Link, NamedFunction, NamedTree, Proposed, reuse_candidates};
 
@@ -58,3 +64,5 @@ pub const CYCLE_DODGE: &str = "cycle_dodge";
 pub const REUSE_CANDIDATES: &str = "reuse_candidates";
 /// The name of the check that reports the comment findings a change adds.
 pub const COMMENT_DELTA: &str = "comment_delta";
+/// The name of the check that reports the linter findings a change adds.
+pub const LINTER_DELTA: &str = "linter_delta";

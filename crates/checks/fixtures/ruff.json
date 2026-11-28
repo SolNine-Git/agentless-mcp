@@ -1,0 +1,213 @@
+{
+ "inputs": {
+  "findings": "import os\nimport sys\n\n\ndef f(x):\n    l = 1\n    return x == None\n",
+  "syntax": "def f(:\n    return 1\nx = (\n",
+  "clean": "x = 1\n"
+ },
+ "outputs": [
+  {
+   "version": "0.15.16",
+   "input": "findings",
+   "stdout": "[\n  {\n    \"cell\": null,\n    \"code\": \"F401\",\n    \"end_location\": {\n      \"column\": 10,\n      \"row\": 1\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": {\n      \"applicability\": \"safe\",\n      \"edits\": [\n        {\n          \"content\": \"\",\n          \"end_location\": {\n            \"column\": 1,\n            \"row\": 2\n          },\n          \"location\": {\n            \"column\": 1,\n            \"row\": 1\n          }\n        }\n      ],\n      \"message\": \"Remove unused import: `os`\"\n    },\n    \"location\": {\n      \"column\": 8,\n      \"row\": 1\n    },\n    \"message\": \"`os` imported but unused\",\n    \"noqa_row\": 1,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/unused-import\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"F401\",\n    \"end_location\": {\n      \"column\": 11,\n      \"row\": 2\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": {\n      \"applicability\": \"safe\",\n      \"edits\": [\n        {\n          \"content\": \"\",\n          \"end_location\": {\n            \"column\": 1,\n            \"row\": 3\n          },\n          \"location\": {\n            \"column\": 1,\n            \"row\": 2\n          }\n        }\n      ],\n      \"message\": \"Remove unused import: `sys`\"\n    },\n    \"location\": {\n      \"column\": 8,\n      \"row\": 2\n    },\n    \"message\": \"`sys` imported but unused\",\n    \"noqa_row\": 2,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/unused-import\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"E741\",\n    \"end_location\": {\n      \"column\": 6,\n      \"row\": 6\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": null,\n    \"location\": {\n      \"column\": 5,\n      \"row\": 6\n    },\n    \"message\": \"Ambiguous variable name: `l`\",\n    \"noqa_row\": 6,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/ambiguous-variable-name\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"F841\",\n    \"end_location\": {\n      \"column\": 6,\n      \"row\": 6\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": {\n      \"applicability\": \"unsafe\",\n      \"edits\": [\n        {\n          \"content\": \"\",\n          \"end_location\": {\n            \"column\": 1,\n            \"row\": 7\n          },\n          \"location\": {\n            \"column\": 1,\n            \"row\": 6\n          }\n        }\n      ],\n      \"message\": \"Remove assignment to unused variable `l`\"\n    },\n    \"location\": {\n      \"column\": 5,\n      \"row\": 6\n    },\n    \"message\": \"Local variable `l` is assigned to but never used\",\n    \"noqa_row\": 6,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/unused-variable\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"E711\",\n    \"end_location\": {\n      \"column\": 21,\n      \"row\": 7\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": {\n      \"applicability\": \"unsafe\",\n      \"edits\": [\n        {\n          \"content\": \"x is None\",\n          \"end_location\": {\n            \"column\": 21,\n            \"row\": 7\n          },\n          \"location\": {\n            \"column\": 12,\n            \"row\": 7\n          }\n        }\n      ],\n      \"message\": \"Replace with `cond is None`\"\n    },\n    \"location\": {\n      \"column\": 17,\n      \"row\": 7\n    },\n    \"message\": \"Comparison to `None` should be `cond is None`\",\n    \"noqa_row\": 7,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/none-comparison\"\n  }\n]",
+   "findings": [
+    [
+     "F401",
+     "`os` imported but unused",
+     1,
+     "Remove unused import: `os`"
+    ],
+    [
+     "F401",
+     "`sys` imported but unused",
+     2,
+     "Remove unused import: `sys`"
+    ],
+    [
+     "E741",
+     "Ambiguous variable name: `l`",
+     6,
+     null
+    ],
+    [
+     "F841",
+     "Local variable `l` is assigned to but never used",
+     6,
+     "Remove assignment to unused variable `l`"
+    ],
+    [
+     "E711",
+     "Comparison to `None` should be `cond is None`",
+     7,
+     "Replace with `cond is None`"
+    ]
+   ]
+  },
+  {
+   "version": "0.15.16",
+   "input": "syntax",
+   "stdout": "[\n  {\n    \"cell\": null,\n    \"code\": \"invalid-syntax\",\n    \"end_location\": {\n      \"column\": 8,\n      \"row\": 1\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": null,\n    \"location\": {\n      \"column\": 7,\n      \"row\": 1\n    },\n    \"message\": \"Expected a parameter or the end of the parameter list\",\n    \"noqa_row\": null,\n    \"severity\": \"error\",\n    \"url\": null\n  },\n  {\n    \"cell\": null,\n    \"code\": \"invalid-syntax\",\n    \"end_location\": {\n      \"column\": 1,\n      \"row\": 2\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": null,\n    \"location\": {\n      \"column\": 8,\n      \"row\": 1\n    },\n    \"message\": \"Expected `)`, found newline\",\n    \"noqa_row\": null,\n    \"severity\": \"error\",\n    \"url\": null\n  },\n  {\n    \"cell\": null,\n    \"code\": \"invalid-syntax\",\n    \"end_location\": {\n      \"column\": 1,\n      \"row\": 4\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": null,\n    \"location\": {\n      \"column\": 1,\n      \"row\": 4\n    },\n    \"message\": \"unexpected EOF while parsing\",\n    \"noqa_row\": null,\n    \"severity\": \"error\",\n    \"url\": null\n  }\n]",
+   "findings": [
+    [
+     "invalid-syntax",
+     "Expected a parameter or the end of the parameter list",
+     1,
+     null
+    ],
+    [
+     "invalid-syntax",
+     "Expected `)`, found newline",
+     1,
+     null
+    ],
+    [
+     "invalid-syntax",
+     "unexpected EOF while parsing",
+     4,
+     null
+    ]
+   ]
+  },
+  {
+   "version": "0.15.16",
+   "input": "clean",
+   "stdout": "[]",
+   "findings": []
+  },
+  {
+   "version": "0.16.3",
+   "input": "findings",
+   "stdout": "[\n  {\n    \"cell\": null,\n    \"code\": \"F401\",\n    \"end_location\": {\n      \"column\": 10,\n      \"row\": 1\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": {\n      \"applicability\": \"safe\",\n      \"edits\": [\n        {\n          \"content\": \"\",\n          \"end_location\": {\n            \"column\": 1,\n            \"row\": 2\n          },\n          \"location\": {\n            \"column\": 1,\n            \"row\": 1\n          }\n        }\n      ],\n      \"message\": \"Remove unused import: `os`\"\n    },\n    \"location\": {\n      \"column\": 8,\n      \"row\": 1\n    },\n    \"message\": \"`os` imported but unused\",\n    \"name\": \"unused-import\",\n    \"noqa_row\": 1,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/unused-import\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"F401\",\n    \"end_location\": {\n      \"column\": 11,\n      \"row\": 2\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": {\n      \"applicability\": \"safe\",\n      \"edits\": [\n        {\n          \"content\": \"\",\n          \"end_location\": {\n            \"column\": 1,\n            \"row\": 3\n          },\n          \"location\": {\n            \"column\": 1,\n            \"row\": 2\n          }\n        }\n      ],\n      \"message\": \"Remove unused import: `sys`\"\n    },\n    \"location\": {\n      \"column\": 8,\n      \"row\": 2\n    },\n    \"message\": \"`sys` imported but unused\",\n    \"name\": \"unused-import\",\n    \"noqa_row\": 2,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/unused-import\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"E741\",\n    \"end_location\": {\n      \"column\": 6,\n      \"row\": 6\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": null,\n    \"location\": {\n      \"column\": 5,\n      \"row\": 6\n    },\n    \"message\": \"Ambiguous variable name: `l`\",\n    \"name\": \"ambiguous-variable-name\",\n    \"noqa_row\": 6,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/ambiguous-variable-name\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"F841\",\n    \"end_location\": {\n      \"column\": 6,\n      \"row\": 6\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": {\n      \"applicability\": \"unsafe\",\n      \"edits\": [\n        {\n          \"content\": \"\",\n          \"end_location\": {\n            \"column\": 1,\n            \"row\": 7\n          },\n          \"location\": {\n            \"column\": 1,\n            \"row\": 6\n          }\n        }\n      ],\n      \"message\": \"Remove assignment to unused variable `l`\"\n    },\n    \"location\": {\n      \"column\": 5,\n      \"row\": 6\n    },\n    \"message\": \"Local variable `l` is assigned to but never used\",\n    \"name\": \"unused-variable\",\n    \"noqa_row\": 6,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/unused-variable\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"E711\",\n    \"end_location\": {\n      \"column\": 21,\n      \"row\": 7\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": {\n      \"applicability\": \"unsafe\",\n      \"edits\": [\n        {\n          \"content\": \"x is None\",\n          \"end_location\": {\n            \"column\": 21,\n            \"row\": 7\n          },\n          \"location\": {\n            \"column\": 12,\n            \"row\": 7\n          }\n        }\n      ],\n      \"message\": \"Replace with `cond is None`\"\n    },\n    \"location\": {\n      \"column\": 17,\n      \"row\": 7\n    },\n    \"message\": \"Comparison to `None` should be `cond is None`\",\n    \"name\": \"none-comparison\",\n    \"noqa_row\": 7,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/none-comparison\"\n  }\n]",
+   "findings": [
+    [
+     "F401",
+     "`os` imported but unused",
+     1,
+     "Remove unused import: `os`"
+    ],
+    [
+     "F401",
+     "`sys` imported but unused",
+     2,
+     "Remove unused import: `sys`"
+    ],
+    [
+     "E741",
+     "Ambiguous variable name: `l`",
+     6,
+     null
+    ],
+    [
+     "F841",
+     "Local variable `l` is assigned to but never used",
+     6,
+     "Remove assignment to unused variable `l`"
+    ],
+    [
+     "E711",
+     "Comparison to `None` should be `cond is None`",
+     7,
+     "Replace with `cond is None`"
+    ]
+   ]
+  },
+  {
+   "version": "0.16.3",
+   "input": "syntax",
+   "stdout": "[\n  {\n    \"cell\": null,\n    \"code\": \"invalid-syntax\",\n    \"end_location\": {\n      \"column\": 8,\n      \"row\": 1\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": null,\n    \"location\": {\n      \"column\": 7,\n      \"row\": 1\n    },\n    \"message\": \"Expected a parameter or the end of the parameter list\",\n    \"name\": \"invalid-syntax\",\n    \"noqa_row\": null,\n    \"severity\": \"error\",\n    \"url\": null\n  },\n  {\n    \"cell\": null,\n    \"code\": \"invalid-syntax\",\n    \"end_location\": {\n      \"column\": 1,\n      \"row\": 2\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": null,\n    \"location\": {\n      \"column\": 8,\n      \"row\": 1\n    },\n    \"message\": \"Expected `)`, found newline\",\n    \"name\": \"invalid-syntax\",\n    \"noqa_row\": null,\n    \"severity\": \"error\",\n    \"url\": null\n  },\n  {\n    \"cell\": null,\n    \"code\": \"invalid-syntax\",\n    \"end_location\": {\n      \"column\": 1,\n      \"row\": 4\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": null,\n    \"location\": {\n      \"column\": 1,\n      \"row\": 4\n    },\n    \"message\": \"unexpected EOF while parsing\",\n    \"name\": \"invalid-syntax\",\n    \"noqa_row\": null,\n    \"severity\": \"error\",\n    \"url\": null\n  }\n]",
+   "findings": [
+    [
+     "invalid-syntax",
+     "Expected a parameter or the end of the parameter list",
+     1,
+     null
+    ],
+    [
+     "invalid-syntax",
+     "Expected `)`, found newline",
+     1,
+     null
+    ],
+    [
+     "invalid-syntax",
+     "unexpected EOF while parsing",
+     4,
+     null
+    ]
+   ]
+  },
+  {
+   "version": "0.16.3",
+   "input": "clean",
+   "stdout": "[]",
+   "findings": []
+  },
+  {
+   "version": "0.17.6",
+   "input": "findings",
+   "stdout": "[\n  {\n    \"cell\": null,\n    \"code\": \"F401\",\n    \"end_location\": {\n      \"column\": 10,\n      \"row\": 1\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": {\n      \"applicability\": \"safe\",\n      \"edits\": [\n        {\n          \"content\": \"\",\n          \"end_location\": {\n            \"column\": 1,\n            \"row\": 2\n          },\n          \"location\": {\n            \"column\": 1,\n            \"row\": 1\n          }\n        }\n      ],\n      \"message\": \"Remove unused import: `os`\"\n    },\n    \"location\": {\n      \"column\": 8,\n      \"row\": 1\n    },\n    \"message\": \"`os` imported but unused\",\n    \"name\": \"unused-import\",\n    \"noqa_row\": 1,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/unused-import\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"F401\",\n    \"end_location\": {\n      \"column\": 11,\n      \"row\": 2\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": {\n      \"applicability\": \"safe\",\n      \"edits\": [\n        {\n          \"content\": \"\",\n          \"end_location\": {\n            \"column\": 1,\n            \"row\": 3\n          },\n          \"location\": {\n            \"column\": 1,\n            \"row\": 2\n          }\n        }\n      ],\n      \"message\": \"Remove unused import: `sys`\"\n    },\n    \"location\": {\n      \"column\": 8,\n      \"row\": 2\n    },\n    \"message\": \"`sys` imported but unused\",\n    \"name\": \"unused-import\",\n    \"noqa_row\": 2,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/unused-import\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"E741\",\n    \"end_location\": {\n      \"column\": 6,\n      \"row\": 6\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": null,\n    \"location\": {\n      \"column\": 5,\n      \"row\": 6\n    },\n    \"message\": \"Ambiguous variable name: `l`\",\n    \"name\": \"ambiguous-variable-name\",\n    \"noqa_row\": 6,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/ambiguous-variable-name\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"F841\",\n    \"end_location\": {\n      \"column\": 6,\n      \"row\": 6\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": {\n      \"applicability\": \"unsafe\",\n      \"edits\": [\n        {\n          \"content\": \"\",\n          \"end_location\": {\n            \"column\": 1,\n            \"row\": 7\n          },\n          \"location\": {\n            \"column\": 1,\n            \"row\": 6\n          }\n        }\n      ],\n      \"message\": \"Remove assignment to unused variable `l`\"\n    },\n    \"location\": {\n      \"column\": 5,\n      \"row\": 6\n    },\n    \"message\": \"Local variable `l` is assigned to but never used\",\n    \"name\": \"unused-variable\",\n    \"noqa_row\": 6,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/unused-variable\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"E711\",\n    \"end_location\": {\n      \"column\": 21,\n      \"row\": 7\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": {\n      \"applicability\": \"unsafe\",\n      \"edits\": [\n        {\n          \"content\": \"x is None\",\n          \"end_location\": {\n            \"column\": 21,\n            \"row\": 7\n          },\n          \"location\": {\n            \"column\": 12,\n            \"row\": 7\n          }\n        }\n      ],\n      \"message\": \"Replace with `cond is None`\"\n    },\n    \"location\": {\n      \"column\": 17,\n      \"row\": 7\n    },\n    \"message\": \"Comparison to `None` should be `cond is None`\",\n    \"name\": \"none-comparison\",\n    \"noqa_row\": 7,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/none-comparison\"\n  }\n]",
+   "findings": [
+    [
+     "F401",
+     "`os` imported but unused",
+     1,
+     "Remove unused import: `os`"
+    ],
+    [
+     "F401",
+     "`sys` imported but unused",
+     2,
+     "Remove unused import: `sys`"
+    ],
+    [
+     "E741",
+     "Ambiguous variable name: `l`",
+     6,
+     null
+    ],
+    [
+     "F841",
+     "Local variable `l` is assigned to but never used",
+     6,
+     "Remove assignment to unused variable `l`"
+    ],
+    [
+     "E711",
+     "Comparison to `None` should be `cond is None`",
+     7,
+     "Replace with `cond is None`"
+    ]
+   ]
+  },
+  {
+   "version": "0.17.6",
+   "input": "syntax",
+   "stdout": "[\n  {\n    \"cell\": null,\n    \"code\": \"invalid-syntax\",\n    \"end_location\": {\n      \"column\": 8,\n      \"row\": 1\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": null,\n    \"location\": {\n      \"column\": 7,\n      \"row\": 1\n    },\n    \"message\": \"Expected a parameter or the end of the parameter list\",\n    \"name\": \"invalid-syntax\",\n    \"noqa_row\": null,\n    \"severity\": \"error\",\n    \"url\": null\n  },\n  {\n    \"cell\": null,\n    \"code\": \"invalid-syntax\",\n    \"end_location\": {\n      \"column\": 1,\n      \"row\": 2\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": null,\n    \"location\": {\n      \"column\": 8,\n      \"row\": 1\n    },\n    \"message\": \"Expected `)`, found newline\",\n    \"name\": \"invalid-syntax\",\n    \"noqa_row\": null,\n    \"severity\": \"error\",\n    \"url\": null\n  },\n  {\n    \"cell\": null,\n    \"code\": \"invalid-syntax\",\n    \"end_location\": {\n      \"column\": 1,\n      \"row\": 4\n    },\n    \"filename\": \"/repo/src/a.py\",\n    \"fix\": null,\n    \"location\": {\n      \"column\": 1,\n      \"row\": 4\n    },\n    \"message\": \"unexpected EOF while parsing\",\n    \"name\": \"invalid-syntax\",\n    \"noqa_row\": null,\n    \"severity\": \"error\",\n    \"url\": null\n  }\n]",
+   "findings": [
+    [
+     "invalid-syntax",
+     "Expected a parameter or the end of the parameter list",
+     1,
+     null
+    ],
+    [
+     "invalid-syntax",
+     "Expected `)`, found newline",
+     1,
+     null
+    ],
+    [
+     "invalid-syntax",
+     "unexpected EOF while parsing",
+     4,
+     null
+    ]
+   ]
+  },
+  {
+   "version": "0.17.6",
+   "input": "clean",
+   "stdout": "[]",
+   "findings": []
+  }
+ ]
+}

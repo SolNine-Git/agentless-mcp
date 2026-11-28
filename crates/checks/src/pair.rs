@@ -413,7 +413,7 @@ pub(crate) fn each_pair<'a, T>(
     Ok((values, rows))
 }
 
-fn refuse_repeats(pairs: &[&Pair]) -> Result<(), Error> {
+pub(crate) fn refuse_repeats(pairs: &[&Pair]) -> Result<(), Error> {
     let mut seen = HashSet::new();
     match pairs.iter().find(|pair| !seen.insert(pair.path.as_str())) {
         Some(pair) => Err(Error::RepeatedPath {

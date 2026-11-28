@@ -9,10 +9,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::clock::{Clock, SystemClock};
+use crate::linter::{ChildRunner, SystemRunner};
 use crate::tokens::{Chars4, TokenCounter};
 
 /// The time the clone index may spend on the repository walk and the files it reads.
 pub const WALK_BUDGET: Duration = Duration::from_secs(10);
+
+// The start-up variables that a linter run gets, and no others.
+const LINTER_VARS: [&str; 2] = ["HOME", "PATH"];
 
 /// The process environment and working directory, read once at start-up.
 #[derive(Clone, Debug)]
@@ -130,11 +134,15 @@ pub struct Services {
     pub clock: Arc<dyn Clock>,
     /// The token counter of every budget and of the output ceiling.
     pub counter: Arc<dyn TokenCounter>,
+    /// The port that starts each linter run.
+    pub runner: Arc<dyn ChildRunner>,
+    /// The `HOME` and `PATH` of the start-up environment, the whole environment of a linter run.
+    pub linter_env: Vec<(OsString, OsString)>,
 }
 
 impl Services {
-    /// Builds the services from the start-up environment, with the system clocks and the
-    /// [`Chars4`] counter.
+    /// Builds the services from the start-up environment, with the system clocks, the
+    /// [`Chars4`] counter, and the [`SystemRunner`].
     #[must_use]
     pub fn new(env: &EnvConfig) -> Self {
         Self {
@@ -148,6 +156,11 @@ impl Services {
             walk_budget: WALK_BUDGET,
             clock: Arc::new(SystemClock),
             counter: Arc::new(Chars4),
+            runner: Arc::new(SystemRunner),
+            linter_env: LINTER_VARS
+                .into_iter()
+                .filter_map(|name| Some((OsString::from(name), env.var(name)?.to_os_string())))
+                .collect(),
         }
     }
 }

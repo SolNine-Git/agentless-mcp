@@ -1,0 +1,38 @@
+{
+  "languages": [
+    {"language": "bash", "gap": "follow_up"},
+    {"language": "c", "gap": "follow_up"},
+    {"language": "cpp", "gap": "follow_up"},
+    {"language": "csharp", "gap": "tier_two"},
+    {"language": "go", "gap": "follow_up"},
+    {"language": "hcl", "gap": "data_language"},
+    {"language": "java", "gap": "follow_up"},
+    {"language": "javascript", "gap": "follow_up"},
+    {"language": "json", "gap": "data_language"},
+    {"language": "kotlin", "gap": "tier_two"},
+    {"language": "lua", "gap": "follow_up"},
+    {"language": "php", "gap": "tier_two"},
+    {
+      "language": "python",
+      "linter": {
+        "name": "ruff",
+        "local": ".venv/bin/ruff",
+        "program": "ruff",
+        "args": ["check", "--force-exclude", "--stdin-filename", "{path}", "--output-format", "json", "--exit-zero", "-"],
+        "configs": ["ruff.toml", ".ruff.toml"],
+        "manifest": "pyproject.toml",
+        "table": ["tool", "ruff"],
+        "syntax_code": "invalid-syntax"
+      }
+    },
+    {"language": "ruby", "gap": "follow_up"},
+    {"language": "rust", "gap": "follow_up"},
+    {"language": "scala", "gap": "tier_two"},
+    {"language": "sql", "gap": "data_language"},
+    {"language": "swift", "gap": "tier_two"},
+    {"language": "toml", "gap": "data_language"},
+    {"language": "tsx", "gap": "follow_up"},
+    {"language": "typescript", "gap": "follow_up"},
+    {"language": "yaml", "gap": "data_language"}
+  ]
+}

@@ -174,7 +174,11 @@ fn request(compared: &Compared<'_>) -> Result<LintRequest, String> {
             (LintForm::Revision { revision }, *checks)
         }
     };
-    Ok(LintRequest { form, checks })
+    Ok(LintRequest {
+        form,
+        checks,
+        budget: None,
+    })
 }
 
 // Exit 3 when a finding has a severity that --fail-on names.

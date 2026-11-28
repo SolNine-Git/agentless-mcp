@@ -50,7 +50,8 @@ fn the_active_checks_are_the_ones_not_off_in_config_order() {
         [
             GatedCheck::ContractDrift,
             GatedCheck::CloneDelta,
-            GatedCheck::CommentDelta
+            GatedCheck::CommentDelta,
+            GatedCheck::LinterDelta
         ]
     );
 }

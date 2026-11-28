@@ -1567,6 +1567,96 @@
       },
       "text": "unknown severity 'error'. The severities are: advisory, warning, not_checked."
     },
+    "linter_budget_spent": {
+      "arguments": {},
+      "text": "the call had no time left to run it"
+    },
+    "linter_evidence": {
+      "arguments": {
+        "rule": "F401"
+      },
+      "text": "code F401"
+    },
+    "linter_exited": {
+      "arguments": {
+        "detail": "ruff failed",
+        "status": "exit status: 2"
+      },
+      "text": "it ended with exit status: 2; stderr: ruff failed"
+    },
+    "linter_exited_silent": {
+      "arguments": {
+        "status": "signal: 9 (SIGKILL)"
+      },
+      "text": "it ended with signal: 9 (SIGKILL) and wrote nothing to stderr"
+    },
+    "linter_failed": {
+      "arguments": {
+        "name": "ruff",
+        "path": "src/app.py",
+        "reason": "the call had no time left to run it"
+      },
+      "text": "not checked: linter_delta could not lint src/app.py with ruff: the call had no time left to run it."
+    },
+    "linter_finding": {
+      "arguments": {
+        "name": "ruff",
+        "rule": "F401",
+        "text": "`os` imported but unused"
+      },
+      "text": "ruff F401: `os` imported but unused"
+    },
+    "linter_finding_fix": {
+      "arguments": {
+        "detail": "Remove unused import: `os`",
+        "name": "ruff",
+        "rule": "F401",
+        "text": "`os` imported but unused"
+      },
+      "text": "ruff F401: `os` imported but unused. Fix: Remove unused import: `os`"
+    },
+    "linter_no_binary": {
+      "arguments": {
+        "file": ".venv/bin/ruff",
+        "name": "ruff",
+        "path": "src/app.py"
+      },
+      "text": "not checked: linter_delta found no ruff program at .venv/bin/ruff or on PATH, so it did not lint src/app.py."
+    },
+    "linter_no_config": {
+      "arguments": {
+        "file": "pyproject.toml",
+        "listed": "ruff.toml, .ruff.toml",
+        "name": "ruff",
+        "path": "src/app.py",
+        "text": "tool.ruff"
+      },
+      "text": "not checked: linter_delta found no ruff config from the folder of src/app.py up to the repository root (ruff.toml, .ruff.toml, or pyproject.toml with a [tool.ruff] table), so it did not lint the file."
+    },
+    "linter_not_run": {
+      "arguments": {
+        "reason": "Permission denied"
+      },
+      "text": "it did not run to the end: Permission denied"
+    },
+    "linter_output_capped": {
+      "arguments": {
+        "cap": 16777216
+      },
+      "text": "its output passed 16777216 bytes"
+    },
+    "linter_timed_out": {
+      "arguments": {
+        "text": "2.0"
+      },
+      "text": "it ran past its timeout of 2.0 s"
+    },
+    "linter_unparsed": {
+      "arguments": {
+        "error": "expected value at line 1 column 1"
+      },
+      "text": "its output is not the JSON list of findings it prints: expected value at line 1 column 1"
+    },
     "listed_and": {
       "arguments": {
         "listed": "source, target, include_unique",

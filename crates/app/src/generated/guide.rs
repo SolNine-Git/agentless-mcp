@@ -1229,11 +1229,11 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         the checks.** Name checks from the\ntable below. An unknown \
         name is a usage error (exit 2). \
         `complexity_delta`,\n`contract_drift`, `clone_delta`, \
-        `callee_overlap`, `cycle_dodge`,\n`reuse_candidates`, and \
-        `comment_delta` are pair checks: they compare each\nedited \
-        file's whole text before and after the \
-        change.\n`complexity_delta` and `contract_drift` read only the \
-        edited files.\n`clone_delta` also reads every tier-1 source \
+        `callee_overlap`, `cycle_dodge`,\n`reuse_candidates`, \
+        `comment_delta`, and `linter_delta` are pair checks: \
+        they\ncompare each edited file's whole text before and after \
+        the change.\n`complexity_delta` and `contract_drift` read only \
+        the edited files.\n`clone_delta` also reads every tier-1 source \
         file outside test and fixture\npaths, to find the copies of a \
         block. It reads them only when a change edits a\nfile in that \
         scope, once for all the candidates of a run, and it stops \
@@ -1244,58 +1244,62 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         reads the action names of every function outside test \
         and\nfixture paths, and runs only when `--only` names it. \
         `comment_delta` reads only\nthe edited files, and runs only \
-        when `--only` names it. When `--only` names pair\nchecks alone, \
-        `lint` skips the symbol scan that the patch checks need. \
-        The\npair checks pair functions across all the files of one \
-        candidate, so a\nfunction moved to another file without other \
-        change is not a finding, and a\ncontract hit that moves with \
-        its function is not new.\n\n**`--path REL --after FILE` is the \
-        per-edit hook form.** `REL` names a file in\n`--repo`, and \
-        `FILE` holds its proposed whole new text. `lint` compares \
-        the\nworking-tree text at `REL` with `FILE`, so no patch is \
-        needed. This form runs\nthe pair checks only. Without `--only` \
-        it runs `complexity_delta` and\n`contract_drift`, which read \
-        only this file. `--only clone_delta` adds the\nclone check. In \
-        this form it reads the clone blocks of the source files \
-        from\nthe tag cache only, and it parses just this file and the \
-        files that changed\nsince the index. Without a tag cache, as on \
-        a repository never indexed or with\n`--no-cache`, it gives one \
-        `not_checked` row with `detail`\n`{\"reason\": \
-        \"no_tag_cache\"}` and parses nothing. Run `agentless-mcp \
-        index`, or\nlet the MCP server index the repository, to turn it \
-        on. `--only\nreuse_candidates` reads the functions of the \
-        source files from the tag cache\nin the same way, and without a \
-        tag cache it gives one `not_checked` row.\n`--only \
-        comment_delta` adds the comment check, which reads only this \
-        file. An\n`--only` that names another check is a usage error \
-        (exit 2). A path that does\nnot exist yet is a new file, so \
-        every function in `FILE` counts as new. Both\nsides are read as \
-        UTF-8 with their line endings kept, up to 1,000,000 \
-        bytes\neach. A side that is larger, unreadable, or not UTF-8 \
-        gives a `not_checked`\nrow. The report has one candidate, and \
-        its id is `REL`. A file in a language\nthat has no complexity \
-        rules gives no row. The hook form sees one file, so a\nfunction \
-        moved here from another file counts as new.\n\n**`--since REV` \
-        is the review mode.** `lint` compares each file changed \
-        since\nthe commit `REV` with its text in the working tree. \
-        Committed, staged,\nunstaged, and untracked changes all count. \
-        For a branch, pass the merge-base:\n`--since \"$(git merge-base \
-        HEAD main)\"`. This form runs the pair checks only.\nWithout \
+        when `--only` names it. `linter_delta` runs the\nrepository's \
+        own linter on the old and the new text of each edited file, \
+        and\nruns only when `--only` names it. When `--only` names \
+        pair\nchecks alone, `lint` skips the symbol scan that the patch \
+        checks need. The\npair checks pair functions across all the \
+        files of one candidate, so a\nfunction moved to another file \
+        without other change is not a finding, and a\ncontract hit that \
+        moves with its function is not new.\n\n**`--path REL --after \
+        FILE` is the per-edit hook form.** `REL` names a file \
+        in\n`--repo`, and `FILE` holds its proposed whole new text. \
+        `lint` compares the\nworking-tree text at `REL` with `FILE`, so \
+        no patch is needed. This form runs\nthe pair checks only. \
+        Without `--only` it runs `complexity_delta` \
+        and\n`contract_drift`, which read only this file. `--only \
+        clone_delta` adds the\nclone check. In this form it reads the \
+        clone blocks of the source files from\nthe tag cache only, and \
+        it parses just this file and the files that changed\nsince the \
+        index. Without a tag cache, as on a repository never indexed or \
+        with\n`--no-cache`, it gives one `not_checked` row with \
+        `detail`\n`{\"reason\": \"no_tag_cache\"}` and parses nothing. \
+        Run `agentless-mcp index`, or\nlet the MCP server index the \
+        repository, to turn it on. `--only\nreuse_candidates` reads the \
+        functions of the source files from the tag cache\nin the same \
+        way, and without a tag cache it gives one `not_checked` \
+        row.\n`--only comment_delta` adds the comment check, which \
+        reads only this file.\n`--only linter_delta` adds the linter \
+        check, which runs ruff on this file's old\nand new text. \
+        An\n`--only` that names another check is a usage error (exit \
+        2). A path that does\nnot exist yet is a new file, so every \
+        function in `FILE` counts as new. Both\nsides are read as UTF-8 \
+        with their line endings kept, up to 1,000,000 bytes\neach. A \
+        side that is larger, unreadable, or not UTF-8 gives a \
+        `not_checked`\nrow. The report has one candidate, and its id is \
+        `REL`. A file in a language\nthat has no complexity rules gives \
+        no row. The hook form sees one file, so a\nfunction moved here \
+        from another file counts as new.\n\n**`--since REV` is the \
+        review mode.** `lint` compares each file changed since\nthe \
+        commit `REV` with its text in the working tree. Committed, \
+        staged,\nunstaged, and untracked changes all count. For a \
+        branch, pass the merge-base:\n`--since \"$(git merge-base HEAD \
+        main)\"`. This form runs the pair checks only.\nWithout \
         `--only` it runs `complexity_delta` and `contract_drift`, which \
         read\nonly the changed files. `--only` can add `clone_delta`, \
-        `callee_overlap`,\n`cycle_dodge`, `reuse_candidates`, and \
-        `comment_delta`.\nAn `--only` that names another check is a \
-        usage error (exit 2). `--since` with\n`--after` is a \
-        usage\nerror, and so is a `REV` that names no commit. Each \
-        file's old text comes\nfrom git, one `git cat-file blob` per \
-        file. A renamed file is compared at its\nnew path with its old \
-        text. A deleted file has no new text, and an added \
-        or\nuntracked file has no old text. A binary file (a NUL byte \
-        in its first 8,000\nbytes), a submodule, and a path with an \
-        unmerged status each give one\n`not_checked` row.\nA symbolic \
-        link is not compared, because its committed text is a target \
-        path.\nA file in a language with no complexity rules gives no \
-        row. A git call that\nfails or times out gives one \
+        `callee_overlap`,\n`cycle_dodge`, `reuse_candidates`, \
+        `comment_delta`, and `linter_delta`.\nAn `--only` that names \
+        another check is a usage error (exit 2). `--since` \
+        with\n`--after` is a usage\nerror, and so is a `REV` that names \
+        no commit. Each file's old text comes\nfrom git, one `git \
+        cat-file blob` per file. A renamed file is compared at its\nnew \
+        path with its old text. A deleted file has no new text, and an \
+        added or\nuntracked file has no old text. A binary file (a NUL \
+        byte in its first 8,000\nbytes), a submodule, and a path with \
+        an unmerged status each give one\n`not_checked` row.\nA \
+        symbolic link is not compared, because its committed text is a \
+        target path.\nA file in a language with no complexity rules \
+        gives no row. A git call that\nfails or times out gives one \
         `not_checked` row, and so does a run in which no\nfile changed \
         since `REV`. The report has one candidate, and its id is `REV` \
         as\nyou typed it. On a scratch clone of mcp-local, `--since \
@@ -1342,140 +1346,171 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         callee as `{callee, tier, other_tier}`, with its stable\nid and \
         the tier of each function's edge to it; and `other_callees`, \
         each callee\nof the existing function as `{callee, tier}`. A \
-        row about text that was not\nread, does not parse, or cannot be \
-        measured has no `detail`.\nNo other finding has `detail`, and \
-        the text form does not print it.\n\n**`--json` also carries \
-        `observed` on a candidate.** It describes the new text,\nnot \
-        the change, so a later run on the same file can show whether a \
-        function\ngot simpler, a hit went away, or a copy was removed. \
-        It has five lists, each\npresent only when its check measured \
-        at least one file of the candidate. An\nempty list means that \
-        the check measured and found nothing. An absent list\nmeans \
-        that the check did not measure a file, and `observed` itself is \
-        absent\nwhen no list is present.\n\n- `units_over_threshold`: \
-        each function in the new text above the threshold,\n  as \
-        `{path, unit, line, cc, sloc}`, unchanged functions \
-        included.\n- `units_changed`: each function the change added or \
-        altered, as `{path, unit,\n  line, match, cc_old, cc_new, \
-        sloc_old, sloc_new}`. `match` is `name`,\n  `collision`, or \
-        `new`, and the old values are `null` for a new function. A\n  \
-        function that is unchanged, or renamed or moved without other \
-        change, is not\n  listed.\n- `contract_keys`: each contract hit \
-        in the new text of every boundary file\n  that `contract_drift` \
-        checked, as `{path, rule, unit, capture}`, with\n  duplicates \
-        kept.\n- `clone_instances`: each block in the new text of every \
-        file `clone_delta`\n  indexed that it could report, as `{path, \
-        key, line, end_line}`: 40 or more\n  tokens, and a copy in the \
+        `linter_delta` finding has\n`detail`: `code` (the linter's rule \
+        code) and `key` (the source line with\nwhitespace collapsed, \
+        empty for a syntax error). A `linter_delta` `not_checked`\nrow \
+        has `detail` `{\"reason\": \"no_linter_config\"}`, \
+        `{\"reason\":\n\"no_linter_binary\"}`, or `{\"reason\": \
+        \"linter_failed\"}`. A row about text that\nwas not read, does \
+        not parse, or cannot be measured has no `detail`.\nNo other \
+        finding has `detail`, and the text form does not print \
+        it.\n\n**`--json` also carries `observed` on a candidate.** It \
+        describes the new text,\nnot the change, so a later run on the \
+        same file can show whether a function\ngot simpler, a hit went \
+        away, or a copy was removed. It has six lists, each\npresent \
+        only when its check measured at least one file of the \
+        candidate. An\nempty list means that the check measured and \
+        found nothing. An absent list\nmeans that the check did not \
+        measure a file, and `observed` itself is absent\nwhen no list \
+        is present.\n\n- `units_over_threshold`: each function in the \
+        new text above the threshold,\n  as `{path, unit, line, cc, \
+        sloc}`, unchanged functions included.\n- `units_changed`: each \
+        function the change added or altered, as `{path, unit,\n  line, \
+        match, cc_old, cc_new, sloc_old, sloc_new}`. `match` is \
+        `name`,\n  `collision`, or `new`, and the old values are `null` \
+        for a new function. A\n  function that is unchanged, or renamed \
+        or moved without other change, is not\n  listed.\n- \
+        `contract_keys`: each contract hit in the new text of every \
+        boundary file\n  that `contract_drift` checked, as `{path, \
+        rule, unit, capture}`, with\n  duplicates kept.\n- \
+        `clone_instances`: each block in the new text of every file \
+        `clone_delta`\n  indexed that it could report, as `{path, key, \
+        line, end_line}`: 40 or more\n  tokens, and a copy in the \
         repository after the change. A new copy and its\n  original in \
         the same file both appear. The list names blocks, not \
         changes,\n  so a later run shows whether a copy went away.\n- \
         `comment_keys`: each comment finding in the new text of every \
         file that\n  `comment_delta` compared, as `{path, rule, key}`, \
-        findings the old text had\n  included.\n\nEvery `unit` in \
-        `observed` is the function's qualified name in the new \
-        text,\nor `<module>`. A renamed function therefore appears \
-        under its new name, while\nthe `detail.unit` of a \
-        `contract_drift` finding keeps its old name. The text\nform \
-        does not print `observed`.\n\n**No MCP tool, by design.** \
-        Patches are write-side input, like `validate` \
-        and\n`vote`.\n\n**Nothing here is a verdict.** The report has \
-        no ok field. By default no\nfinding fails the command, and \
-        `lint` exits 0 whatever it found. The tests\ndecide whether a \
-        patch is right. This decides what to look at first. For a \
-        CI\ngate, `--fail-on SEVERITY[,SEVERITY...]` (`warning`, \
-        `advisory`,\n`not_checked`) exits 3 when a finding has a listed \
-        severity, after the report\nis printed.\n\n**One path-scope \
-        rule.** Fixture paths, `testdata` directories included, \
-        are\noutside every check but `comment_delta`. Test paths are \
-        outside `clone_delta`,\n`contract_drift` and `callee_overlap`, \
-        as they are outside `health`.\n`complexity_delta` checks test \
-        paths, because test code is maintained code.\n`comment_delta` \
-        checks every path.\n\n| Check | Severity | Fires when \
-        |\n|---|---|---|\n| `undeclared_imports` | warning | the patch \
-        imports a top-level package that is in neither the declared \
-        dependencies, nor the standard library, nor already imported \
-        somewhere in the repository (the slopsquatting check) |\n| \
-        `shadowing` | warning | the patch adds a module-level \
-        `def`/`class` whose name already lives in that file, other than \
-        the symbol it is replacing |\n| `near_duplicates` | advisory | \
-        an introduced function's body is the same as an existing one \
-        token for token, with comments and indentation left out \
-        \u{2014} \"you already have this at file:line\" |\n| \
-        `dangling_references` | warning | the patch calls a name, or \
-        inherits from a base, that nothing in the repository defines, \
-        the patch does not define, and which is no builtin or stdlib \
-        module; existing names within two edits are offered as near \
-        misses |\n| `dangling_callers` | warning | the patch removes or \
-        renames a symbol that files it does not touch still reference, \
-        listed with `file:line` |\n| `arity` | advisory | a call in new \
-        code cannot fit the signature of the single, undecorated, \
-        strongly-resolved function it names |\n| `cycle_delta` | \
-        warning | an import cycle exists after the patch and did not \
-        before it, rendered as the chain that closes |\n| \
-        `complexity_delta` | warning | a function above the complexity \
-        threshold grows, a function crosses the threshold, or a new \
-        function arrives above it. In the hook form, a function moved \
-        from another file also counts as new. The threshold is 10 \
-        unless `complexity_threshold` in `.agentless-mcp.json` sets it. \
-        Complexity counts decision points the way scb-check does. \
-        Functions are paired by body, then by name, then by rank among \
-        functions that share a name, so a rename or a reordering is not \
-        a finding |\n| `clone_delta` | advisory | the change adds a \
-        block of three or more source lines and 40 or more tokens that \
-        has a copy elsewhere in the repository once names, literals, \
-        comments, and docstrings are ignored (a Type-2 clone). A block \
-        is a function, loop, branch, or try statement. A copy moved to \
-        another file, or renamed in place, is not a finding. One \
-        finding covers a copied function and the copied blocks inside \
-        it |\n| `callee_overlap` | advisory | a function that the \
-        change adds or rewrites calls at least 80% of the three or more \
-        functions that an existing function calls, and does not call \
-        that function. Only `--since` runs it. A function moved to \
-        another file or renamed without other change is not a finding \
-        |\n| `reuse_candidates` | advisory | a function that the change \
-        adds calls and reads mostly the same names as an existing \
-        function of the same language: an IDF-weighted Jaccard score of \
-        0.3 or more over the names in call and field position. A row \
-        names a candidate to read, not a verdict. Only `--only \
-        reuse_candidates` runs it |\n| `comment_delta` | warning | the \
-        change adds a lint suppression comment or Rust attribute \
-        (`allow`, `expect`, `rustfmt::skip`, or a `cfg_attr` that holds \
-        `allow` or `expect`), a banner comment, an own-line comment run \
-        or a block comment over 2 lines, a docstring on a Python \
-        function whose name starts with `_`, an \
-        `Args:`/`Returns:`/`Raises:` section in a public docstring, \
-        JSDoc `@param`/`@returns`/`@throws` tags, a Rust doc comment on \
-        a trait-impl item or on an item that is not bare `pub`, or a `# \
-        Arguments`/`# Returns` section in a Rust doc comment. A \
-        finding's key is its rule and its text, with no line, and a key \
-        the old text holds as many times is not new, so a moved comment \
-        is not a finding. Python, JavaScript, TypeScript, TSX and Rust \
-        have rules. A Rust trait or enum member takes its parent's \
-        visibility, a `macro_rules!` macro is public only with \
-        `#[macro_export]`, and the Rust doc rules skip macro bodies, \
-        groups, and the items whose clap, schemars, pyo3 or rmcp \
-        attribute publishes their docs. Another tier-1 language gives \
-        one `not_checked` row per rule group, with `detail` \
-        `{\"reason\": \"no_comment_rules\", \"language\": ..., \
-        \"group\": ...}`. Only `--only comment_delta` runs it |\n| \
-        `contract_drift` | warning | the change adds a silent default \
-        or a swallowed error to a boundary module, a file that \
-        `boundary_globs` in `.agentless-mcp.json` matches. Each hit is \
-        keyed by its rule, the function that holds it, and its text. A \
-        hit the code already had is not a finding, and a renamed \
-        function keeps its hits, as does a function moved to another \
-        file of the same candidate. A hit that moves into another \
-        function is a finding |\n\n**`contract_drift` matches syntax, \
-        not types or data flow.** Each rule is a\ntree-sitter query, \
-        and the rule id names the syntax it matches. An empty value\nis \
-        matched by its exact text, so `[ ]` with a space is not `[]`. \
-        An empty body\nholds no statement, or one comment and no \
-        statement. Only the edited files\nthat match `boundary_globs` \
-        are checked. The rules:\n\n| Language | Rule | Matches \
-        |\n|---|---|---|\n| python | `get-default-empty` | `x.get(k, \
-        d)` where `d` is `[]`, `{}`, `\"\"`, `''`, or `0` |\n| python | \
-        `or-empty-default` | `x or []`, `x or {}` |\n| python | \
-        `getattr-default` | `getattr(o, name, default)` |\n| python | \
+        findings the old text had\n  included.\n- `linter_keys`: each \
+        linter finding in the new text of every file that\n  \
+        `linter_delta` linted, as `{path, code, key}`, findings the old \
+        text had\n  included.\n\nEvery `unit` in `observed` is the \
+        function's qualified name in the new text,\nor `<module>`. A \
+        renamed function therefore appears under its new name, \
+        while\nthe `detail.unit` of a `contract_drift` finding keeps \
+        its old name. The text\nform does not print `observed`.\n\n**No \
+        MCP tool, by design.** Patches are write-side input, like \
+        `validate` and\n`vote`.\n\n**Nothing here is a verdict.** The \
+        report has no ok field. By default no\nfinding fails the \
+        command, and `lint` exits 0 whatever it found. The \
+        tests\ndecide whether a patch is right. This decides what to \
+        look at first. For a CI\ngate, `--fail-on \
+        SEVERITY[,SEVERITY...]` (`warning`, `advisory`,\n`not_checked`) \
+        exits 3 when a finding has a listed severity, after the \
+        report\nis printed.\n\n**One path-scope rule.** Fixture paths, \
+        `testdata` directories included, are\noutside every check but \
+        `comment_delta` and `linter_delta`. Test paths are\noutside \
+        `clone_delta`, `contract_drift` and `callee_overlap`, as they \
+        are\noutside `health`. `complexity_delta` checks test paths, \
+        because test code is\nmaintained code. `comment_delta` checks \
+        every path. `linter_delta` checks every\npath in a language \
+        with a linter, and the linter's own config excludes paths.\n\n| \
+        Check | Severity | Fires when |\n|---|---|---|\n| \
+        `undeclared_imports` | warning | the patch imports a top-level \
+        package that is in neither the declared dependencies, nor the \
+        standard library, nor already imported somewhere in the \
+        repository (the slopsquatting check) |\n| `shadowing` | warning \
+        | the patch adds a module-level `def`/`class` whose name \
+        already lives in that file, other than the symbol it is \
+        replacing |\n| `near_duplicates` | advisory | an introduced \
+        function's body is the same as an existing one token for token, \
+        with comments and indentation left out \u{2014} \"you already \
+        have this at file:line\" |\n| `dangling_references` | warning | \
+        the patch calls a name, or inherits from a base, that nothing \
+        in the repository defines, the patch does not define, and which \
+        is no builtin or stdlib module; existing names within two edits \
+        are offered as near misses |\n| `dangling_callers` | warning | \
+        the patch removes or renames a symbol that files it does not \
+        touch still reference, listed with `file:line` |\n| `arity` | \
+        advisory | a call in new code cannot fit the signature of the \
+        single, undecorated, strongly-resolved function it names |\n| \
+        `cycle_delta` | warning | an import cycle exists after the \
+        patch and did not before it, rendered as the chain that closes \
+        |\n| `complexity_delta` | warning | a function above the \
+        complexity threshold grows, a function crosses the threshold, \
+        or a new function arrives above it. In the hook form, a \
+        function moved from another file also counts as new. The \
+        threshold is 10 unless `complexity_threshold` in \
+        `.agentless-mcp.json` sets it. Complexity counts decision \
+        points the way scb-check does. Functions are paired by body, \
+        then by name, then by rank among functions that share a name, \
+        so a rename or a reordering is not a finding |\n| `clone_delta` \
+        | advisory | the change adds a block of three or more source \
+        lines and 40 or more tokens that has a copy elsewhere in the \
+        repository once names, literals, comments, and docstrings are \
+        ignored (a Type-2 clone). A block is a function, loop, branch, \
+        or try statement. A copy moved to another file, or renamed in \
+        place, is not a finding. One finding covers a copied function \
+        and the copied blocks inside it |\n| `callee_overlap` | \
+        advisory | a function that the change adds or rewrites calls at \
+        least 80% of the three or more functions that an existing \
+        function calls, and does not call that function. Only `--since` \
+        runs it. A function moved to another file or renamed without \
+        other change is not a finding |\n| `reuse_candidates` | \
+        advisory | a function that the change adds calls and reads \
+        mostly the same names as an existing function of the same \
+        language: an IDF-weighted Jaccard score of 0.3 or more over the \
+        names in call and field position. A row names a candidate to \
+        read, not a verdict. Only `--only reuse_candidates` runs it \
+        |\n| `comment_delta` | warning | the change adds a lint \
+        suppression comment or Rust attribute (`allow`, `expect`, \
+        `rustfmt::skip`, or a `cfg_attr` that holds `allow` or \
+        `expect`), a banner comment, an own-line comment run or a block \
+        comment over 2 lines, a docstring on a Python function whose \
+        name starts with `_`, an `Args:`/`Returns:`/`Raises:` section \
+        in a public docstring, JSDoc `@param`/`@returns`/`@throws` \
+        tags, a Rust doc comment on a trait-impl item or on an item \
+        that is not bare `pub`, or a `# Arguments`/`# Returns` section \
+        in a Rust doc comment. A finding's key is its rule and its \
+        text, with no line, and a key the old text holds as many times \
+        is not new, so a moved comment is not a finding. Python, \
+        JavaScript, TypeScript, TSX and Rust have rules. A Rust trait \
+        or enum member takes its parent's visibility, a `macro_rules!` \
+        macro is public only with `#[macro_export]`, and the Rust doc \
+        rules skip macro bodies, groups, and the items whose clap, \
+        schemars, pyo3 or rmcp attribute publishes their docs. Another \
+        tier-1 language gives one `not_checked` row per rule group, \
+        with `detail` `{\"reason\": \"no_comment_rules\", \"language\": \
+        ..., \"group\": ...}`. Only `--only comment_delta` runs it |\n| \
+        `linter_delta` | advisory | the change adds a finding of the \
+        repository's own linter. Python has a row: ruff, run as \
+        `.venv/bin/ruff` below the root when it is there and otherwise \
+        as `ruff` on `PATH`, with only `HOME` and `PATH` set, never \
+        through `uv run`. It runs only when a `ruff.toml`, a \
+        `.ruff.toml`, or a `pyproject.toml` with a `tool.ruff` key is \
+        in the file's folder or a folder above it, up to the root. Each \
+        text goes on stdin, as `ruff check --force-exclude \
+        --stdin-filename REL --output-format json --exit-zero -`, from \
+        the root, once for the old text and once for the new; each run \
+        gets at most 2 s and at most half of the time the call has \
+        left. A finding's key is its code and its source line with \
+        whitespace collapsed, every syntax error of one text is one \
+        key, and a key the old text holds as many times is not new, so \
+        a finding on a moved line is not a finding. A finding names the \
+        code, the message, and ruff's fix when it has one. No config or \
+        no program gives one `not_checked` row, `no_linter_config` or \
+        `no_linter_binary`; a run that exits non-zero, times out, has \
+        no time left, or prints output that does not parse gives \
+        `linter_failed`, with the exit status and the first stderr \
+        line. Only `--only linter_delta` runs it |\n| `contract_drift` \
+        | warning | the change adds a silent default or a swallowed \
+        error to a boundary module, a file that `boundary_globs` in \
+        `.agentless-mcp.json` matches. Each hit is keyed by its rule, \
+        the function that holds it, and its text. A hit the code \
+        already had is not a finding, and a renamed function keeps its \
+        hits, as does a function moved to another file of the same \
+        candidate. A hit that moves into another function is a finding \
+        |\n\n**`contract_drift` matches syntax, not types or data \
+        flow.** Each rule is a\ntree-sitter query, and the rule id \
+        names the syntax it matches. An empty value\nis matched by its \
+        exact text, so `[ ]` with a space is not `[]`. An empty \
+        body\nholds no statement, or one comment and no statement. Only \
+        the edited files\nthat match `boundary_globs` are checked. The \
+        rules:\n\n| Language | Rule | Matches |\n|---|---|---|\n| \
+        python | `get-default-empty` | `x.get(k, d)` where `d` is `[]`, \
+        `{}`, `\"\"`, `''`, or `0` |\n| python | `or-empty-default` | \
+        `x or []`, `x or {}` |\n| python | `getattr-default` | \
+        `getattr(o, name, default)` |\n| python | \
         `except-return-default` | `return None`, `False`, `0`, `[]`, or \
         `{}` directly in an `except` block |\n| python | `except-pass` \
         | an `except` block that holds only `pass` |\n| javascript, \
@@ -1905,28 +1940,28 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         `health` counts a unit\ntoward erosion, from 1 to 100. The \
         default is 10.\n\n`erosion_gate` maps a check name to `off`, \
         `advisory`, or `block`. The names it\ntakes are \
-        `complexity_delta`, `contract_drift`, `clone_delta`, \
-        and\n`comment_delta`. It is for the per-edit erosion hook. \
-        `lint` ignores it,\nbecause `lint` never blocks. A check the \
-        key leaves unset takes the hook's\n`AGENTLESS_EROSION_GATE` \
-        value when it is `advisory` or `block`, and otherwise\nits \
-        built-in mode: `block` for `comment_delta`, `advisory` for the \
-        others. The\nvariable sets `clone_delta` too: to keep it \
-        advisory while it is on trial, set\nits entry to `advisory`. A \
-        bad entry is dropped with a warning, and\n`capabilities` shows \
-        the entries in force.\n\n`boundary_globs` lists the modules \
-        that parse foreign data, the only files\n`lint`'s \
-        `contract_drift` checks. It is empty by default. It holds at \
-        most 64\nglobs of at most 256 characters each. Each glob \
-        matches a repo-relative path\nwith `/` separators. `*` matches \
-        within one path segment. `**/` matches zero or\nmore whole \
-        segments, and a final `/**` matches everything inside a \
-        directory,\nso `**/adapters/**` matches both `adapters/x.py` \
-        and `src/pkg/adapters/x.py`.\nEvery other character is literal. \
-        A list longer than 64 is ignored whole. An\nentry that is not a \
-        repo-relative glob (empty, longer than 256 \
-        characters,\nabsolute, holding `\\`, a control character, or a \
-        `.`, `..`, or empty segment)\nis dropped with a warning. \
+        `complexity_delta`, `contract_drift`, \
+        `clone_delta`,\n`comment_delta`, and `linter_delta`. It is for \
+        the per-edit erosion hook.\n`lint` ignores it, because `lint` \
+        never blocks. A check the key leaves unset\ntakes the hook's \
+        `AGENTLESS_EROSION_GATE` value when it is `advisory` \
+        or\n`block`, and otherwise its built-in mode: `block` for \
+        `comment_delta`,\n`advisory` for the others. The variable sets \
+        `clone_delta` too: to keep it\nadvisory while it is on trial, \
+        set its entry to `advisory`. A bad entry is\ndropped with a \
+        warning, and `capabilities` shows the entries in \
+        force.\n\n`boundary_globs` lists the modules that parse foreign \
+        data, the only files\n`lint`'s `contract_drift` checks. It is \
+        empty by default. It holds at most 64\nglobs of at most 256 \
+        characters each. Each glob matches a repo-relative path\nwith \
+        `/` separators. `*` matches within one path segment. `**/` \
+        matches zero or\nmore whole segments, and a final `/**` matches \
+        everything inside a directory,\nso `**/adapters/**` matches \
+        both `adapters/x.py` and `src/pkg/adapters/x.py`.\nEvery other \
+        character is literal. A list longer than 64 is ignored whole. \
+        An\nentry that is not a repo-relative glob (empty, longer than \
+        256 characters,\nabsolute, holding `\\`, a control character, \
+        or a `.`, `..`, or empty segment)\nis dropped with a warning. \
         `capabilities` shows the globs in force.\n\n## Token \
         counting\n\nThe tool estimates budgets at one token per four \
         characters by default. That\nestimate is deliberately crude, \
@@ -1950,7 +1985,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 4_060, 4_893),
     ("stable-ids", 4_895, 6_384),
     ("the-two-surfaces", 6_386, 12_069),
-    ("per-tool-usage", 12_071, 107_740),
+    ("per-tool-usage", 12_071, 109_836),
     ("claude-code-specifics", 13_687, 16_226),
     ("map", 16_228, 26_257),
     ("tree", 26_259, 26_580),
@@ -1970,10 +2005,10 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("resolve-locs", 63_284, 64_099),
     ("capabilities", 64_101, 65_815),
     ("index", 65_817, 68_558),
-    ("lint", 68_560, 96_540),
-    ("validate-vote", 96_542, 106_139),
-    ("warmup", 106_141, 107_740),
-    ("project-defaults-agentless-mcp-json", 107_742, 111_836),
-    ("token-counting", 111_838, 112_252),
-    ("exit-codes", 112_254, 112_712),
+    ("lint", 68_560, 98_636),
+    ("validate-vote", 98_638, 108_235),
+    ("warmup", 108_237, 109_836),
+    ("project-defaults-agentless-mcp-json", 109_838, 113_948),
+    ("token-counting", 113_950, 114_364),
+    ("exit-codes", 114_366, 114_824),
 ];

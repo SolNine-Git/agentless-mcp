@@ -8,6 +8,7 @@ use patch::{Edit, EditOutcome, apply_edits};
 use prompts::messages::{PAIR_EDITS_UNAPPLIED, PAIR_OLD_UNREAD};
 use syntax::Language;
 
+use crate::linter::Linting;
 use crate::pair_runs::{IndexOf, Reported, RunInputs};
 use crate::pairs::{Judged, run_pairs};
 use crate::proposed::working_read;
@@ -19,11 +20,12 @@ use crate::{Error, PairSelection};
 // could not be read.
 pub(super) type WorkingRead = Option<Result<Vec<u8>, String>>;
 
-// The shared clone index of the run, and the functions near_duplicates reported.
+// The shared clone index of the run, the functions near_duplicates reported, and the linter runs.
 pub(super) struct Run<'a, 'i> {
     pub(super) index: &'a mut IndexOf<'i>,
     pub(super) reported: &'a Reported,
     pub(super) reuse: &'a mut ReuseSource<'i>,
+    pub(super) linting: Linting<'a>,
 }
 
 // The edited files the scan would read, so orientation without a scan judges the same files.
@@ -67,6 +69,7 @@ pub(super) fn pair_rows(
         index,
         reported,
         reuse,
+        linting,
     }: Run<'_, '_>,
 ) -> Result<Judged, Error> {
     let mut rows = Vec::new();
@@ -87,6 +90,7 @@ pub(super) fn pair_rows(
         reported,
         tree: None,
         reuse,
+        linting,
     };
     let judged = run_pairs(pairs, selection, inputs)?;
     rows.extend(judged.rows);

@@ -220,6 +220,19 @@ pub const prompts::messages::HOOK_UNINSTALL_HELP: &str
 pub const prompts::messages::HOOK_UNINSTALL_NONE: prompts::Template<prompts::Text>
 pub const prompts::messages::HOOK_UNINSTALL_REPORT: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::HOOK_USAGE: &str
+pub const prompts::messages::LINTER_BUDGET_SPENT: &str
+pub const prompts::messages::LINTER_EVIDENCE: prompts::Template<prompts::Text>
+pub const prompts::messages::LINTER_EXITED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::LINTER_EXITED_SILENT: prompts::Template<prompts::Text>
+pub const prompts::messages::LINTER_FAILED: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::LINTER_FINDING: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::LINTER_FINDING_FIX: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::LINTER_NOT_RUN: prompts::Template<prompts::Text>
+pub const prompts::messages::LINTER_NO_BINARY: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::LINTER_NO_CONFIG: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::LINTER_OUTPUT_CAPPED: prompts::Template<prompts::Count>
+pub const prompts::messages::LINTER_TIMED_OUT: prompts::Template<prompts::Text>
+pub const prompts::messages::LINTER_UNPARSED: prompts::Template<prompts::Text>
 pub const prompts::messages::LINT_NO_CHECKS: prompts::Template<prompts::Text>
 pub const prompts::messages::LINT_PATH_NEEDS_AFTER: &str
 pub const prompts::messages::LINT_PATH_TAKES_PAIR_CHECKS: prompts::Template<(prompts::Text, prompts::Text)>
@@ -633,6 +646,28 @@ impl core::marker::Unpin for prompts::Head
 impl core::marker::UnsafeUnpin for prompts::Head
 impl core::panic::unwind_safe::RefUnwindSafe for prompts::Head
 impl core::panic::unwind_safe::UnwindSafe for prompts::Head
+pub enum prompts::LinterGap
+pub prompts::LinterGap::DataLanguage
+pub prompts::LinterGap::FollowUp
+pub prompts::LinterGap::TierTwo
+impl prompts::LinterGap
+pub const fn prompts::LinterGap::name(self) -> &'static str
+impl core::clone::Clone for prompts::LinterGap
+pub fn prompts::LinterGap::clone(&self) -> Self
+impl core::cmp::Eq for prompts::LinterGap
+impl core::cmp::PartialEq for prompts::LinterGap
+pub fn prompts::LinterGap::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::LinterGap
+pub fn prompts::LinterGap::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::LinterGap
+impl core::marker::StructuralPartialEq for prompts::LinterGap
+impl core::marker::Freeze for prompts::LinterGap
+impl core::marker::Send for prompts::LinterGap
+impl core::marker::Sync for prompts::LinterGap
+impl core::marker::Unpin for prompts::LinterGap
+impl core::marker::UnsafeUnpin for prompts::LinterGap
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::LinterGap
+impl core::panic::unwind_safe::UnwindSafe for prompts::LinterGap
 pub enum prompts::Severity
 pub prompts::Severity::Advisory
 pub prompts::Severity::Warning
@@ -748,6 +783,50 @@ impl core::marker::Unpin for prompts::Filled
 impl core::marker::UnsafeUnpin for prompts::Filled
 impl core::panic::unwind_safe::RefUnwindSafe for prompts::Filled
 impl core::panic::unwind_safe::UnwindSafe for prompts::Filled
+pub struct prompts::Linter
+pub prompts::Linter::args: &'static [&'static str]
+pub prompts::Linter::configs: &'static [&'static str]
+pub prompts::Linter::local: &'static str
+pub prompts::Linter::manifest: &'static str
+pub prompts::Linter::name: &'static str
+pub prompts::Linter::program: &'static str
+pub prompts::Linter::syntax_code: &'static str
+pub prompts::Linter::table: &'static [&'static str]
+impl core::clone::Clone for prompts::Linter
+pub fn prompts::Linter::clone(&self) -> Self
+impl core::cmp::Eq for prompts::Linter
+impl core::cmp::PartialEq for prompts::Linter
+pub fn prompts::Linter::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::Linter
+pub fn prompts::Linter::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::Linter
+impl core::marker::StructuralPartialEq for prompts::Linter
+impl core::marker::Freeze for prompts::Linter
+impl core::marker::Send for prompts::Linter
+impl core::marker::Sync for prompts::Linter
+impl core::marker::Unpin for prompts::Linter
+impl core::marker::UnsafeUnpin for prompts::Linter
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::Linter
+impl core::panic::unwind_safe::UnwindSafe for prompts::Linter
+pub struct prompts::LinterRules
+pub prompts::LinterRules::language: &'static str
+pub prompts::LinterRules::linter: core::result::Result<prompts::Linter, prompts::LinterGap>
+impl core::clone::Clone for prompts::LinterRules
+pub fn prompts::LinterRules::clone(&self) -> Self
+impl core::cmp::Eq for prompts::LinterRules
+impl core::cmp::PartialEq for prompts::LinterRules
+pub fn prompts::LinterRules::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::LinterRules
+pub fn prompts::LinterRules::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::LinterRules
+impl core::marker::StructuralPartialEq for prompts::LinterRules
+impl core::marker::Freeze for prompts::LinterRules
+impl core::marker::Send for prompts::LinterRules
+impl core::marker::Sync for prompts::LinterRules
+impl core::marker::Unpin for prompts::LinterRules
+impl core::marker::UnsafeUnpin for prompts::LinterRules
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::LinterRules
+impl core::panic::unwind_safe::UnwindSafe for prompts::LinterRules
 pub struct prompts::RunRules
 pub prompts::RunRules::banner: &'static str
 pub prompts::RunRules::block: core::option::Option<&'static str>
@@ -848,3 +927,4 @@ pub type K::Values<'a> = <K as prompts::Kind>::Value
 pub fn K::filled(Self::Values) -> alloc::vec::Vec<prompts::Filled>
 pub fn prompts::comment_rules() -> &'static [prompts::CommentRules]
 pub fn prompts::contract_rules() -> &'static [prompts::ContractRule]
+pub fn prompts::linter_rules() -> &'static [prompts::LinterRules]

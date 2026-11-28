@@ -55,10 +55,19 @@ pub(crate) enum Tracked {
     Clone {
         key: CodePointString,
     },
-    Comment {
-        rule: CodePointString,
+    Keyed {
+        list: KeyedList,
+        label: CodePointString,
         key: CodePointString,
     },
+}
+
+// The observed list of a check whose finding is a label, a comment rule or a linter code, and a
+// text key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum KeyedList {
+    Comment,
+    Linter,
 }
 
 // The observed state of a record: `None` for a list whose check measured no file.
@@ -66,7 +75,17 @@ pub(crate) struct Observed {
     pub(crate) units_over_threshold: Option<Vec<UnitCc>>,
     pub(crate) contract_keys: Option<Vec<Hit>>,
     pub(crate) clone_instances: Option<Vec<Instance>>,
-    pub(crate) comment_keys: Option<Vec<CommentHit>>,
+    pub(crate) comment_keys: Option<Vec<KeyedHit>>,
+    pub(crate) linter_keys: Option<Vec<KeyedHit>>,
+}
+
+impl Observed {
+    pub(crate) fn keyed(&self, list: KeyedList) -> Option<&Vec<KeyedHit>> {
+        match list {
+            KeyedList::Comment => self.comment_keys.as_ref(),
+            KeyedList::Linter => self.linter_keys.as_ref(),
+        }
+    }
 }
 
 pub(crate) struct UnitCc {
@@ -86,9 +105,9 @@ pub(crate) struct Instance {
     pub(crate) key: CodePointString,
 }
 
-pub(crate) struct CommentHit {
+pub(crate) struct KeyedHit {
     pub(crate) path: CodePointString,
-    pub(crate) rule: CodePointString,
+    pub(crate) label: CodePointString,
     pub(crate) key: CodePointString,
 }
 
@@ -263,7 +282,12 @@ fn with_detail(
         GatedCheck::ComplexityDelta => with_numbers(finding, detail, at),
         GatedCheck::ContractDrift => with_key(finding, detail, at),
         GatedCheck::CloneDelta => with_clone(finding, detail, at),
-        GatedCheck::CommentDelta => with_comment_key(finding, detail, at),
+        GatedCheck::CommentDelta => {
+            with_text_key(finding, (KeyedList::Comment, schema::RULE), detail, at)
+        }
+        GatedCheck::LinterDelta => {
+            with_text_key(finding, (KeyedList::Linter, schema::CODE), detail, at)
+        }
     }
 }
 
@@ -279,12 +303,17 @@ fn with_key(finding: Finding, detail: &Pairs, at: &str) -> Result<Finding, Strin
     })
 }
 
-// A comment finding carries no line in its key: a moved comment keeps it.
-fn with_comment_key(finding: Finding, detail: &Pairs, at: &str) -> Result<Finding, String> {
-    let rule = field::text(detail, schema::RULE, at)?;
+// A comment or linter finding carries no line in its key: a moved comment or line keeps it.
+fn with_text_key(
+    finding: Finding,
+    (list, label): (KeyedList, &str),
+    detail: &Pairs,
+    at: &str,
+) -> Result<Finding, String> {
+    let label = field::text(detail, label, at)?;
     let key = field::text(detail, schema::KEY, at)?;
     Ok(Finding {
-        tracked: Some(Tracked::Comment { rule, key }),
+        tracked: Some(Tracked::Keyed { list, label, key }),
         ..finding
     })
 }
@@ -346,6 +375,7 @@ fn observed(value: &Pairs, at: &str) -> Result<Observed, String> {
         contract_keys: rows(value, schema::CONTRACT_KEYS, at, hit)?,
         clone_instances: rows(value, schema::CLONE_INSTANCES, at, instance)?,
         comment_keys: rows(value, schema::COMMENT_KEYS, at, comment_hit)?,
+        linter_keys: rows(value, schema::LINTER_KEYS, at, linter_hit)?,
     })
 }
 
@@ -403,11 +433,19 @@ fn hit(row: &Pairs, at: &str) -> Result<Hit, String> {
     })
 }
 
-fn comment_hit(row: &Pairs, at: &str) -> Result<CommentHit, String> {
+fn comment_hit(row: &Pairs, at: &str) -> Result<KeyedHit, String> {
+    keyed_hit(row, schema::RULE, at)
+}
+
+fn linter_hit(row: &Pairs, at: &str) -> Result<KeyedHit, String> {
+    keyed_hit(row, schema::CODE, at)
+}
+
+fn keyed_hit(row: &Pairs, label: &str, at: &str) -> Result<KeyedHit, String> {
     let path = field::text(row, schema::PATH, at)?;
-    let rule = field::text(row, schema::RULE, at)?;
+    let label = field::text(row, label, at)?;
     let key = field::text(row, schema::KEY, at)?;
-    Ok(CommentHit { path, rule, key })
+    Ok(KeyedHit { path, label, key })
 }
 
 fn instance(row: &Pairs, at: &str) -> Result<Instance, String> {

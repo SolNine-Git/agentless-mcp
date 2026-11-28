@@ -106,6 +106,7 @@ pub(crate) fn mkfifo(path: &Path) -> std::io::Result<()> {
         timeout: MKFIFO_TIMEOUT,
         stdout_cap: 1 << 10,
         stderr_cap: 1 << 10,
+        stdin: None,
     };
     match run(&spec) {
         Outcome::Exited { status, .. } if status.success() => Ok(()),

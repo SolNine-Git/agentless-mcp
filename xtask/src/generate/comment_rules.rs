@@ -3,7 +3,7 @@
 use serde_json::{Map, Value};
 
 use super::literal::{literal, unspaced_literal};
-use super::rules::{entries, object, text};
+use super::rules::{LanguageRow, language_rows, object, text};
 
 const ROW_KEYS: [&str; 4] = ["language", "runs", "docs", "suppressions"];
 const GAP_KEY: &str = "gap";
@@ -23,31 +23,12 @@ const GAPS: [(&str, &str); 4] = [
 const HEADS: [(&str, &str); 2] = [("comment", "Comment"), ("first_line", "FirstLine")];
 const TARGETS: [(&str, &str); 2] = [("comment", "Comment"), ("attribute", "Attribute")];
 
-/// The comment rules of one language, and the Rust expression of its record.
-#[derive(Debug)]
-pub struct Row {
-    pub language: String,
-    pub record: String,
-}
-
 /// Parses the rule file into one record per language, in name order, or gives each problem.
-pub fn parse(file: &str, text: &str) -> Result<Vec<Row>, Vec<String>> {
-    let (rows, mut problems) = entries(file, text, "languages", "language", row)?;
-    let unsorted = rows
-        .windows(2)
-        .filter(|pair| pair[0].language >= pair[1].language);
-    problems.extend(unsorted.map(|pair| {
-        let (first, second) = (&pair[0].language, &pair[1].language);
-        format!("{file}: language {second:?} must come after {first:?}, in name order, once")
-    }));
-    if problems.is_empty() {
-        Ok(rows)
-    } else {
-        Err(problems)
-    }
+pub fn parse(file: &str, text: &str) -> Result<Vec<LanguageRow>, Vec<String>> {
+    language_rows(file, text, row)
 }
 
-fn row(entry: &Value) -> Result<Row, String> {
+fn row(entry: &Value) -> Result<LanguageRow, String> {
     let map = object(entry, &ROW_KEYS)?;
     let language = text(map, "language")?;
     let runs = declared(map, "runs", runs)?;
@@ -63,7 +44,7 @@ fn row(entry: &Value) -> Result<Row, String> {
         "CommentRules {{ language: {}, runs: {runs}, docs: {docs}, suppressions: {suppressions} }}",
         literal(language)
     );
-    Ok(Row {
+    Ok(LanguageRow {
         language: language.to_owned(),
         record,
     })
@@ -188,7 +169,7 @@ fn aliases(value: &Value) -> Result<String, String> {
 }
 
 /// Returns the Rust module that holds the comment rules as a static table.
-pub fn module(rows: &[Row]) -> String {
+pub fn module(rows: &[LanguageRow]) -> String {
     let count = rows.len();
     let records = rows.iter().map(|row| row.record.as_str());
     let table = records.collect::<Vec<_>>().join(",\n");
@@ -204,6 +185,7 @@ pub fn module(rows: &[Row]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::rules::assert_named;
     use super::{module, parse};
 
     const FILE: &str = "crates/prompts/data/comment_rules.json";
@@ -224,14 +206,7 @@ mod tests {
     }
 
     fn says(text: &str, words: &[&str]) {
-        let problems = parse(FILE, text).unwrap_err();
-        let named = problems
-            .iter()
-            .find(|problem| words.iter().all(|word| problem.contains(word)));
-        assert!(
-            named.is_some_and(|problem| problem.starts_with(FILE)),
-            "{words:?}: {problems:?}"
-        );
+        assert_named(&parse(FILE, text).unwrap_err(), FILE, words);
     }
 
     #[test]

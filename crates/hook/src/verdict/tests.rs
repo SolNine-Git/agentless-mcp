@@ -218,6 +218,51 @@ fn a_language_with_no_comment_rules_is_off_by_config() {
     );
 }
 
+// No ruff config or no ruff is off by config, and a failed run is a gap, so it degrades the edit.
+#[test]
+fn a_missing_linter_or_config_is_off_by_config_and_a_failed_run_is_a_gap() {
+    let row = |gap| {
+        let mut row = warning_at(checks::LINTER_DELTA, 0);
+        row.finding.severity = Severity::NotChecked;
+        row.detail = Some(Detail::Gap(gap));
+        row
+    };
+    let rows = [
+        row(CheckGap::NoLinterConfig),
+        row(CheckGap::NoLinterBinary),
+        row(CheckGap::LinterFailed),
+    ];
+    let modes = resolve(None, None).0;
+    let settled = classify(&rows, modes).expect("gap rows").settled(None);
+    assert_eq!(
+        settled.off_by_config,
+        [checks::LINTER_DELTA, checks::LINTER_DELTA]
+    );
+    let gaps: Vec<&str> = settled.gaps.iter().map(|gap| gap.check).collect();
+    assert_eq!(gaps, [checks::LINTER_DELTA]);
+    assert_eq!(
+        serde_json::to_value(settled.outcome).ok(),
+        Some("degraded".into())
+    );
+}
+
+// linter_delta is advisory by default, so its finding never blocks and the mode line names it.
+#[test]
+fn a_linter_finding_is_advisory_by_default_and_the_mode_line_names_the_check() {
+    let rows = [warning_at(checks::LINTER_DELTA, 3)];
+    let modes = resolve(None, None).0;
+    let verdict = classify(&rows, modes).expect("the check is gated");
+    let decision = verdict.decision(modes).expect("the reply serializes");
+    assert_eq!(decision.code, 0);
+    assert!(
+        decision.stdout.contains(
+            "comment_delta block, linter_delta advisory. Change it with the erosion_gate key"
+        ),
+        "{}",
+        decision.stdout
+    );
+}
+
 #[test]
 fn a_row_for_a_check_that_is_not_gated_is_an_internal_error() {
     let finding = Finding {

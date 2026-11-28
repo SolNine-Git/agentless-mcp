@@ -1391,8 +1391,8 @@ reason, and the candidate is not half-checked.
 **`--only CHECK[,CHECK...]` runs a subset of the checks.** Name checks from the
 table below. An unknown name is a usage error (exit 2). `complexity_delta`,
 `contract_drift`, `clone_delta`, `callee_overlap`, `cycle_dodge`,
-`reuse_candidates`, and `comment_delta` are pair checks: they compare each
-edited file's whole text before and after the change.
+`reuse_candidates`, `comment_delta`, and `linter_delta` are pair checks: they
+compare each edited file's whole text before and after the change.
 `complexity_delta` and `contract_drift` read only the edited files.
 `clone_delta` also reads every tier-1 source file outside test and fixture
 paths, to find the copies of a block. It reads them only when a change edits a
@@ -1402,7 +1402,9 @@ so only `--since` runs it. `--candidates` and `--diff` leave it out, and an
 `--only` that names it in any other form is a usage error (exit 2).
 `reuse_candidates` reads the action names of every function outside test and
 fixture paths, and runs only when `--only` names it. `comment_delta` reads only
-the edited files, and runs only when `--only` names it. When `--only` names pair
+the edited files, and runs only when `--only` names it. `linter_delta` runs the
+repository's own linter on the old and the new text of each edited file, and
+runs only when `--only` names it. When `--only` names pair
 checks alone, `lint` skips the symbol scan that the patch checks need. The
 pair checks pair functions across all the files of one candidate, so a
 function moved to another file without other change is not a finding, and a
@@ -1421,7 +1423,9 @@ since the index. Without a tag cache, as on a repository never indexed or with
 let the MCP server index the repository, to turn it on. `--only
 reuse_candidates` reads the functions of the source files from the tag cache
 in the same way, and without a tag cache it gives one `not_checked` row.
-`--only comment_delta` adds the comment check, which reads only this file. An
+`--only comment_delta` adds the comment check, which reads only this file.
+`--only linter_delta` adds the linter check, which runs ruff on this file's old
+and new text. An
 `--only` that names another check is a usage error (exit 2). A path that does
 not exist yet is a new file, so every function in `FILE` counts as new. Both
 sides are read as UTF-8 with their line endings kept, up to 1,000,000 bytes
@@ -1436,7 +1440,7 @@ unstaged, and untracked changes all count. For a branch, pass the merge-base:
 `--since "$(git merge-base HEAD main)"`. This form runs the pair checks only.
 Without `--only` it runs `complexity_delta` and `contract_drift`, which read
 only the changed files. `--only` can add `clone_delta`, `callee_overlap`,
-`cycle_dodge`, `reuse_candidates`, and `comment_delta`.
+`cycle_dodge`, `reuse_candidates`, `comment_delta`, and `linter_delta`.
 An `--only` that names another check is a usage error (exit 2). `--since` with
 `--after` is a usage
 error, and so is a `REV` that names no commit. Each file's old text comes
@@ -1484,13 +1488,17 @@ order), and `sites_total` (how many other instances there are). A
 function; `family`, how many other functions also meet the rule for it;
 `shared`, each shared callee as `{callee, tier, other_tier}`, with its stable
 id and the tier of each function's edge to it; and `other_callees`, each callee
-of the existing function as `{callee, tier}`. A row about text that was not
-read, does not parse, or cannot be measured has no `detail`.
+of the existing function as `{callee, tier}`. A `linter_delta` finding has
+`detail`: `code` (the linter's rule code) and `key` (the source line with
+whitespace collapsed, empty for a syntax error). A `linter_delta` `not_checked`
+row has `detail` `{"reason": "no_linter_config"}`, `{"reason":
+"no_linter_binary"}`, or `{"reason": "linter_failed"}`. A row about text that
+was not read, does not parse, or cannot be measured has no `detail`.
 No other finding has `detail`, and the text form does not print it.
 
 **`--json` also carries `observed` on a candidate.** It describes the new text,
 not the change, so a later run on the same file can show whether a function
-got simpler, a hit went away, or a copy was removed. It has five lists, each
+got simpler, a hit went away, or a copy was removed. It has six lists, each
 present only when its check measured at least one file of the candidate. An
 empty list means that the check measured and found nothing. An absent list
 means that the check did not measure a file, and `observed` itself is absent
@@ -1514,6 +1522,9 @@ when no list is present.
 - `comment_keys`: each comment finding in the new text of every file that
   `comment_delta` compared, as `{path, rule, key}`, findings the old text had
   included.
+- `linter_keys`: each linter finding in the new text of every file that
+  `linter_delta` linted, as `{path, code, key}`, findings the old text had
+  included.
 
 Every `unit` in `observed` is the function's qualified name in the new text,
 or `<module>`. A renamed function therefore appears under its new name, while
@@ -1531,10 +1542,11 @@ gate, `--fail-on SEVERITY[,SEVERITY...]` (`warning`, `advisory`,
 is printed.
 
 **One path-scope rule.** Fixture paths, `testdata` directories included, are
-outside every check but `comment_delta`. Test paths are outside `clone_delta`,
-`contract_drift` and `callee_overlap`, as they are outside `health`.
-`complexity_delta` checks test paths, because test code is maintained code.
-`comment_delta` checks every path.
+outside every check but `comment_delta` and `linter_delta`. Test paths are
+outside `clone_delta`, `contract_drift` and `callee_overlap`, as they are
+outside `health`. `complexity_delta` checks test paths, because test code is
+maintained code. `comment_delta` checks every path. `linter_delta` checks every
+path in a language with a linter, and the linter's own config excludes paths.
 
 | Check | Severity | Fires when |
 |---|---|---|
@@ -1550,6 +1562,7 @@ outside every check but `comment_delta`. Test paths are outside `clone_delta`,
 | `callee_overlap` | advisory | a function that the change adds or rewrites calls at least 80% of the three or more functions that an existing function calls, and does not call that function. Only `--since` runs it. A function moved to another file or renamed without other change is not a finding |
 | `reuse_candidates` | advisory | a function that the change adds calls and reads mostly the same names as an existing function of the same language: an IDF-weighted Jaccard score of 0.3 or more over the names in call and field position. A row names a candidate to read, not a verdict. Only `--only reuse_candidates` runs it |
 | `comment_delta` | warning | the change adds a lint suppression comment or Rust attribute (`allow`, `expect`, `rustfmt::skip`, or a `cfg_attr` that holds `allow` or `expect`), a banner comment, an own-line comment run or a block comment over 2 lines, a docstring on a Python function whose name starts with `_`, an `Args:`/`Returns:`/`Raises:` section in a public docstring, JSDoc `@param`/`@returns`/`@throws` tags, a Rust doc comment on a trait-impl item or on an item that is not bare `pub`, or a `# Arguments`/`# Returns` section in a Rust doc comment. A finding's key is its rule and its text, with no line, and a key the old text holds as many times is not new, so a moved comment is not a finding. Python, JavaScript, TypeScript, TSX and Rust have rules. A Rust trait or enum member takes its parent's visibility, a `macro_rules!` macro is public only with `#[macro_export]`, and the Rust doc rules skip macro bodies, groups, and the items whose clap, schemars, pyo3 or rmcp attribute publishes their docs. Another tier-1 language gives one `not_checked` row per rule group, with `detail` `{"reason": "no_comment_rules", "language": ..., "group": ...}`. Only `--only comment_delta` runs it |
+| `linter_delta` | advisory | the change adds a finding of the repository's own linter. Python has a row: ruff, run as `.venv/bin/ruff` below the root when it is there and otherwise as `ruff` on `PATH`, with only `HOME` and `PATH` set, never through `uv run`. It runs only when a `ruff.toml`, a `.ruff.toml`, or a `pyproject.toml` with a `tool.ruff` key is in the file's folder or a folder above it, up to the root. Each text goes on stdin, as `ruff check --force-exclude --stdin-filename REL --output-format json --exit-zero -`, from the root, once for the old text and once for the new; each run gets at most 2 s and at most half of the time the call has left. A finding's key is its code and its source line with whitespace collapsed, every syntax error of one text is one key, and a key the old text holds as many times is not new, so a finding on a moved line is not a finding. A finding names the code, the message, and ruff's fix when it has one. No config or no program gives one `not_checked` row, `no_linter_config` or `no_linter_binary`; a run that exits non-zero, times out, has no time left, or prints output that does not parse gives `linter_failed`, with the exit status and the first stderr line. Only `--only linter_delta` runs it |
 | `contract_drift` | warning | the change adds a silent default or a swallowed error to a boundary module, a file that `boundary_globs` in `.agentless-mcp.json` matches. Each hit is keyed by its rule, the function that holds it, and its text. A hit the code already had is not a finding, and a renamed function keeps its hits, as does a function moved to another file of the same candidate. A hit that moves into another function is a finding |
 
 **`contract_drift` matches syntax, not types or data flow.** Each rule is a
@@ -2018,14 +2031,14 @@ three views. Three things are worth knowing before you set it:
 toward erosion, from 1 to 100. The default is 10.
 
 `erosion_gate` maps a check name to `off`, `advisory`, or `block`. The names it
-takes are `complexity_delta`, `contract_drift`, `clone_delta`, and
-`comment_delta`. It is for the per-edit erosion hook. `lint` ignores it,
-because `lint` never blocks. A check the key leaves unset takes the hook's
-`AGENTLESS_EROSION_GATE` value when it is `advisory` or `block`, and otherwise
-its built-in mode: `block` for `comment_delta`, `advisory` for the others. The
-variable sets `clone_delta` too: to keep it advisory while it is on trial, set
-its entry to `advisory`. A bad entry is dropped with a warning, and
-`capabilities` shows the entries in force.
+takes are `complexity_delta`, `contract_drift`, `clone_delta`,
+`comment_delta`, and `linter_delta`. It is for the per-edit erosion hook.
+`lint` ignores it, because `lint` never blocks. A check the key leaves unset
+takes the hook's `AGENTLESS_EROSION_GATE` value when it is `advisory` or
+`block`, and otherwise its built-in mode: `block` for `comment_delta`,
+`advisory` for the others. The variable sets `clone_delta` too: to keep it
+advisory while it is on trial, set its entry to `advisory`. A bad entry is
+dropped with a warning, and `capabilities` shows the entries in force.
 
 `boundary_globs` lists the modules that parse foreign data, the only files
 `lint`'s `contract_drift` checks. It is empty by default. It holds at most 64

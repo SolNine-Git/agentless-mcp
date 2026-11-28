@@ -2238,9 +2238,10 @@ pub app::PairCheck::CommentDelta
 pub app::PairCheck::ComplexityDelta
 pub app::PairCheck::ContractDrift
 pub app::PairCheck::CycleDodge
+pub app::PairCheck::LinterDelta
 pub app::PairCheck::ReuseCandidates
 impl app::PairCheck
-pub const app::PairCheck::ALL: [app::PairCheck; 7]
+pub const app::PairCheck::ALL: [app::PairCheck; 8]
 pub fn app::PairCheck::from_name(&str) -> core::option::Option<app::PairCheck>
 pub const fn app::PairCheck::name(self) -> &'static str
 impl core::clone::Clone for app::PairCheck
@@ -3699,6 +3700,7 @@ impl core::marker::UnsafeUnpin for app::LintReport
 impl core::panic::unwind_safe::RefUnwindSafe for app::LintReport
 impl core::panic::unwind_safe::UnwindSafe for app::LintReport
 pub struct app::LintRequest
+pub app::LintRequest::budget: core::option::Option<core::time::Duration>
 pub app::LintRequest::checks: app::PairSelection
 pub app::LintRequest::form: app::LintForm
 impl core::clone::Clone for app::LintRequest
@@ -4289,7 +4291,9 @@ pub app::Services::counter: alloc::rcs::arc::Arc<dyn app::TokenCounter>
 pub app::Services::cwd: core::result::Result<std::path::PathBuf, app::UnreadCwd>
 pub app::Services::git: git::run::Git
 pub app::Services::home: core::option::Option<std::ffi::os_str::OsString>
+pub app::Services::linter_env: alloc::vec::Vec<(std::ffi::os_str::OsString, std::ffi::os_str::OsString)>
 pub app::Services::max_cache_bytes: core::option::Option<std::ffi::os_str::OsString>
+pub app::Services::runner: alloc::rcs::arc::Arc<dyn app::ChildRunner>
 pub app::Services::walk_budget: core::time::Duration
 impl app::Services
 pub fn app::Services::new(&app::EnvConfig) -> Self
@@ -4427,6 +4431,23 @@ impl core::marker::Unpin for app::SymbolCard
 impl core::marker::UnsafeUnpin for app::SymbolCard
 impl core::panic::unwind_safe::RefUnwindSafe for app::SymbolCard
 impl core::panic::unwind_safe::UnwindSafe for app::SymbolCard
+pub struct app::SystemRunner
+impl app::ChildRunner for app::SystemRunner
+pub fn app::SystemRunner::run(&self, &io::runner::Spec) -> io::runner::Outcome
+impl core::clone::Clone for app::SystemRunner
+pub fn app::SystemRunner::clone(&self) -> Self
+impl core::default::Default for app::SystemRunner
+pub fn app::SystemRunner::default() -> Self
+impl core::fmt::Debug for app::SystemRunner
+pub fn app::SystemRunner::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::SystemRunner
+impl core::marker::Freeze for app::SystemRunner
+impl core::marker::Send for app::SystemRunner
+impl core::marker::Sync for app::SystemRunner
+impl core::marker::Unpin for app::SystemRunner
+impl core::marker::UnsafeUnpin for app::SystemRunner
+impl core::panic::unwind_safe::RefUnwindSafe for app::SystemRunner
+impl core::panic::unwind_safe::UnwindSafe for app::SystemRunner
 pub struct app::Tags
 impl app::Tags
 pub fn app::Tags::open(&app::Services, &app::Repo) -> app::Noted<core::result::Result<app::Tags, app::Error>>
@@ -4687,7 +4708,7 @@ impl core::marker::UnsafeUnpin for app::WarmupRequest
 impl core::panic::unwind_safe::RefUnwindSafe for app::WarmupRequest
 impl core::panic::unwind_safe::UnwindSafe for app::WarmupRequest
 pub const app::CAPS: [(&str, app::CapValue); 28]
-pub const app::CHECKS: [app::LintCheck; 14]
+pub const app::CHECKS: [app::LintCheck; 15]
 pub const app::COVERAGE: &str
 pub const app::DEFAULT_JOBS: usize
 pub const app::DEFAULT_REPEAT_BASELINE: usize
@@ -4700,6 +4721,10 @@ pub const app::NOT_UTF8: &str
 pub const app::NO_SUCH_FILE: &str
 pub const app::ROW_INDENT: &str
 pub const app::WALK_BUDGET: core::time::Duration
+pub trait app::ChildRunner: core::marker::Send + core::marker::Sync
+pub fn app::ChildRunner::run(&self, &io::runner::Spec) -> io::runner::Outcome
+impl app::ChildRunner for app::SystemRunner
+pub fn app::SystemRunner::run(&self, &io::runner::Spec) -> io::runner::Outcome
 pub trait app::TestRunner: core::marker::Sync
 pub fn app::TestRunner::interrupted(&self) -> bool
 pub fn app::TestRunner::run(&self, &io::testrun::TestCommand<'_>) -> core::result::Result<io::testrun::TestRun, io::testrun::TestRunError>

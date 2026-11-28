@@ -7,7 +7,7 @@ use io::GatedCheck;
 
 use crate::record::Outcome;
 use crate::report::field::Int;
-use crate::report::log::{Finding, Observed, Record, Tracked, UnitCc};
+use crate::report::log::{Finding, KeyedList, Observed, Record, Tracked, UnitCc};
 use crate::report::transcript::{Status, Transcripts};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -173,7 +173,7 @@ fn observes(tracked: &Tracked, observed: &Observed) -> bool {
         Tracked::Complexity { .. } => observed.units_over_threshold.is_some(),
         Tracked::Contract { .. } => observed.contract_keys.is_some(),
         Tracked::Clone { .. } => observed.clone_instances.is_some(),
-        Tracked::Comment { .. } => observed.comment_keys.is_some(),
+        Tracked::Keyed { list, .. } => observed.keyed(*list).is_some(),
     }
 }
 
@@ -207,23 +207,25 @@ fn acted(
                 copy.path == finding.path && copy.key == *key
             })
         }
-        Tracked::Comment { rule, key } => comment_acted(finding, (rule, key), at_finding, later),
+        Tracked::Keyed { list, label, key } => {
+            keyed_acted(finding, (*list, label, key), at_finding, later)
+        }
     }
 }
 
 // Undone when the later state holds the key fewer times than the state at the finding.
-fn comment_acted(
+fn keyed_acted(
     finding: &Finding,
-    (rule, key): (&CodePointString, &CodePointString),
+    (list, label, key): (KeyedList, &CodePointString, &CodePointString),
     at_finding: Option<&Observed>,
     later: &Observed,
 ) -> bool {
-    let Some(after) = later.comment_keys.as_ref() else {
+    let Some(after) = later.keyed(list) else {
         return false;
     };
-    let before = at_finding.and_then(|observed| observed.comment_keys.as_ref());
+    let before = at_finding.and_then(|observed| observed.keyed(list));
     fewer(after, before, |hit| {
-        hit.path == finding.path && hit.rule == *rule && hit.key == *key
+        hit.path == finding.path && hit.label == *label && hit.key == *key
     })
 }
 

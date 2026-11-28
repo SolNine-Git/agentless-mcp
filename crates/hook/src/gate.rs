@@ -181,6 +181,7 @@ fn lint(
                 after: After::Text(text),
             },
             checks: selection,
+            budget: Some(budget),
         },
     };
     let linted = worker::run(LINT_THREAD, job.linted_by(ports.lint), budget)

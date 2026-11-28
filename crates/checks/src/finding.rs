@@ -124,6 +124,8 @@ pub enum Detail {
     Reuse(Box<NameShare>),
     /// A `comment_delta` finding's key.
     Comment(CommentKey),
+    /// A `linter_delta` finding's key.
+    Linter(LinterKey),
 }
 
 /// How `complexity_delta` paired a new unit with an old one.
@@ -200,6 +202,15 @@ pub struct CommentKey {
     pub key: String,
 }
 
+/// One linter finding's identity: its code and its source line, with no line number.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinterKey {
+    /// The linter's rule code.
+    pub code: String,
+    /// The source line with whitespace collapsed, or empty for the syntax-error key.
+    pub key: String,
+}
+
 /// Why a pair check did not check a change, by design, as a reason a caller can match.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CheckGap {
@@ -211,6 +222,12 @@ pub enum CheckGap {
     NoTagCache,
     /// The language declares no comment rules in the group.
     NoCommentRules(Language, CommentGroup),
+    /// No config names the linter's settings from the file's folder up to the root.
+    NoLinterConfig,
+    /// The linter's program is neither in the repository nor on `PATH`.
+    NoLinterBinary,
+    /// A linter run exited non-zero, timed out, had no time left, or printed unparsable output.
+    LinterFailed,
 }
 
 impl CheckGap {
@@ -222,6 +239,9 @@ impl CheckGap {
             Self::NoRulesForLanguage(_) => "no_rules_for_language",
             Self::NoTagCache => "no_tag_cache",
             Self::NoCommentRules(..) => "no_comment_rules",
+            Self::NoLinterConfig => "no_linter_config",
+            Self::NoLinterBinary => "no_linter_binary",
+            Self::LinterFailed => "linter_failed",
         }
     }
 }
@@ -240,7 +260,11 @@ impl Serialize for CheckGap {
         let (language, group) = match self {
             Self::NoRulesForLanguage(language) => (Some(language.name()), None),
             Self::NoCommentRules(language, group) => (Some(language.name()), Some(group.name())),
-            Self::NoBoundaryGlobs | Self::NoTagCache => (None, None),
+            Self::NoBoundaryGlobs
+            | Self::NoTagCache
+            | Self::NoLinterConfig
+            | Self::NoLinterBinary
+            | Self::LinterFailed => (None, None),
         };
         let row = GapRow {
             reason: self.reason(),
@@ -405,6 +429,7 @@ keyed! {
     }
     DriftKey { RULE: rule, UNIT: unit, CAPTURE: capture }
     CommentKey { RULE: rule, KEY: key }
+    LinterKey { CODE: code, KEY: key }
     CloneCopy {
         KEY: key,
         LINE: line,

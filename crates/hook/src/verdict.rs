@@ -91,6 +91,10 @@ fn off_by_config(row: &PairFinding) -> bool {
             CheckGap::NoBoundaryGlobs | CheckGap::NoRulesForLanguage(_)
         ) | (checks::CLONE_DELTA, CheckGap::NoTagCache)
             | (checks::COMMENT_DELTA, CheckGap::NoCommentRules(..))
+            | (
+                checks::LINTER_DELTA,
+                CheckGap::NoLinterConfig | CheckGap::NoLinterBinary
+            )
     )
 }
 
@@ -217,9 +221,10 @@ fn fix_lines(blocking: &[&Finding]) -> Vec<String> {
 
 fn fix_block(check: GatedCheck) -> &'static [&'static str] {
     match check {
-        GatedCheck::ComplexityDelta | GatedCheck::ContractDrift | GatedCheck::CloneDelta => {
-            &CHANGE_FIX
-        }
+        GatedCheck::ComplexityDelta
+        | GatedCheck::ContractDrift
+        | GatedCheck::CloneDelta
+        | GatedCheck::LinterDelta => &CHANGE_FIX,
         GatedCheck::CommentDelta => &COMMENT_FIX,
     }
 }

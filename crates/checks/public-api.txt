@@ -7,6 +7,7 @@ pub const checks::schema::CC_NEW: &str
 pub const checks::schema::CC_OLD: &str
 pub const checks::schema::CHAIN: &str
 pub const checks::schema::CLONE_INSTANCES: &str
+pub const checks::schema::CODE: &str
 pub const checks::schema::COMMENT_KEYS: &str
 pub const checks::schema::CONTRACT_KEYS: &str
 pub const checks::schema::END_LINE: &str
@@ -14,6 +15,7 @@ pub const checks::schema::FAMILY: &str
 pub const checks::schema::FUNCTION: &str
 pub const checks::schema::KEY: &str
 pub const checks::schema::LINE: &str
+pub const checks::schema::LINTER_KEYS: &str
 pub const checks::schema::MATCH: &str
 pub const checks::schema::MODULE: &str
 pub const checks::schema::OTHER: &str
@@ -57,8 +59,11 @@ impl core::marker::UnsafeUnpin for checks::CalleeTree
 impl core::panic::unwind_safe::RefUnwindSafe for checks::CalleeTree
 impl core::panic::unwind_safe::UnwindSafe for checks::CalleeTree
 pub enum checks::CheckGap
+pub checks::CheckGap::LinterFailed
 pub checks::CheckGap::NoBoundaryGlobs
 pub checks::CheckGap::NoCommentRules(syntax::language::Language, prompts::comment_rule::CommentGroup)
+pub checks::CheckGap::NoLinterBinary
+pub checks::CheckGap::NoLinterConfig
 pub checks::CheckGap::NoRulesForLanguage(syntax::language::Language)
 pub checks::CheckGap::NoTagCache
 impl checks::CheckGap
@@ -105,6 +110,7 @@ pub checks::Detail::Copy(checks::CloneCopy)
 pub checks::Detail::Dodge(checks::ImportDodge)
 pub checks::Detail::Drift(checks::DriftKey)
 pub checks::Detail::Gap(checks::CheckGap)
+pub checks::Detail::Linter(checks::LinterKey)
 pub checks::Detail::Overlap(alloc::boxed::Box<checks::CalleeShare>)
 pub checks::Detail::Reuse(alloc::boxed::Box<checks::NameShare>)
 pub checks::Detail::Unit(checks::UnitDelta)
@@ -183,6 +189,30 @@ impl core::marker::Unpin for checks::Error
 impl core::marker::UnsafeUnpin for checks::Error
 impl core::panic::unwind_safe::RefUnwindSafe for checks::Error
 impl core::panic::unwind_safe::UnwindSafe for checks::Error
+pub enum checks::LinterFailure
+pub checks::LinterFailure::BudgetSpent
+pub checks::LinterFailure::Capped(usize)
+pub checks::LinterFailure::Exited
+pub checks::LinterFailure::Exited::status: alloc::string::String
+pub checks::LinterFailure::Exited::stderr: core::option::Option<alloc::string::String>
+pub checks::LinterFailure::NotRun(alloc::string::String)
+pub checks::LinterFailure::TimedOut(core::time::Duration)
+pub checks::LinterFailure::Unparsed(alloc::string::String)
+impl core::clone::Clone for checks::LinterFailure
+pub fn checks::LinterFailure::clone(&self) -> Self
+impl core::cmp::Eq for checks::LinterFailure
+impl core::cmp::PartialEq for checks::LinterFailure
+pub fn checks::LinterFailure::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::LinterFailure
+pub fn checks::LinterFailure::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::LinterFailure
+impl core::marker::Freeze for checks::LinterFailure
+impl core::marker::Send for checks::LinterFailure
+impl core::marker::Sync for checks::LinterFailure
+impl core::marker::Unpin for checks::LinterFailure
+impl core::marker::UnsafeUnpin for checks::LinterFailure
+impl core::panic::unwind_safe::RefUnwindSafe for checks::LinterFailure
+impl core::panic::unwind_safe::UnwindSafe for checks::LinterFailure
 pub enum checks::Match
 pub checks::Match::Body
 pub checks::Match::Collision
@@ -232,6 +262,25 @@ impl core::marker::Unpin for checks::NamedTree
 impl core::marker::UnsafeUnpin for checks::NamedTree
 impl core::panic::unwind_safe::RefUnwindSafe for checks::NamedTree
 impl core::panic::unwind_safe::UnwindSafe for checks::NamedTree
+pub enum checks::NotLinted
+pub checks::NotLinted::Failed(checks::LinterFailure)
+pub checks::NotLinted::NoBinary
+pub checks::NotLinted::NoConfig
+impl core::clone::Clone for checks::NotLinted
+pub fn checks::NotLinted::clone(&self) -> Self
+impl core::cmp::Eq for checks::NotLinted
+impl core::cmp::PartialEq for checks::NotLinted
+pub fn checks::NotLinted::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::NotLinted
+pub fn checks::NotLinted::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::NotLinted
+impl core::marker::Freeze for checks::NotLinted
+impl core::marker::Send for checks::NotLinted
+impl core::marker::Sync for checks::NotLinted
+impl core::marker::Unpin for checks::NotLinted
+impl core::marker::UnsafeUnpin for checks::NotLinted
+impl core::panic::unwind_safe::RefUnwindSafe for checks::NotLinted
+impl core::panic::unwind_safe::UnwindSafe for checks::NotLinted
 pub enum checks::Severity
 pub checks::Severity::Advisory
 pub checks::Severity::NotChecked
@@ -627,6 +676,98 @@ impl core::marker::Unpin for checks::IndexedFiles
 impl core::marker::UnsafeUnpin for checks::IndexedFiles
 impl core::panic::unwind_safe::RefUnwindSafe for checks::IndexedFiles
 impl core::panic::unwind_safe::UnwindSafe for checks::IndexedFiles
+pub struct checks::LintedPair<'a>
+pub checks::LintedPair::linted: core::result::Result<checks::LintedSides, checks::NotLinted>
+pub checks::LintedPair::linter: &'static prompts::linter_rule::Linter
+pub checks::LintedPair::pair: &'a checks::Pair
+impl<'a> core::marker::Freeze for checks::LintedPair<'a>
+impl<'a> core::marker::Send for checks::LintedPair<'a>
+impl<'a> core::marker::Sync for checks::LintedPair<'a>
+impl<'a> core::marker::Unpin for checks::LintedPair<'a>
+impl<'a> core::marker::UnsafeUnpin for checks::LintedPair<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for checks::LintedPair<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for checks::LintedPair<'a>
+pub struct checks::LintedSides
+pub checks::LintedSides::new: alloc::vec::Vec<checks::LinterFinding>
+pub checks::LintedSides::old: alloc::vec::Vec<checks::LinterFinding>
+impl core::clone::Clone for checks::LintedSides
+pub fn checks::LintedSides::clone(&self) -> Self
+impl core::cmp::Eq for checks::LintedSides
+impl core::cmp::PartialEq for checks::LintedSides
+pub fn checks::LintedSides::eq(&self, &Self) -> bool
+impl core::default::Default for checks::LintedSides
+pub fn checks::LintedSides::default() -> Self
+impl core::fmt::Debug for checks::LintedSides
+pub fn checks::LintedSides::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::LintedSides
+impl core::marker::Freeze for checks::LintedSides
+impl core::marker::Send for checks::LintedSides
+impl core::marker::Sync for checks::LintedSides
+impl core::marker::Unpin for checks::LintedSides
+impl core::marker::UnsafeUnpin for checks::LintedSides
+impl core::panic::unwind_safe::RefUnwindSafe for checks::LintedSides
+impl core::panic::unwind_safe::UnwindSafe for checks::LintedSides
+pub struct checks::LinterFinding
+pub checks::LinterFinding::code: alloc::string::String
+pub checks::LinterFinding::fix: core::option::Option<alloc::string::String>
+pub checks::LinterFinding::message: alloc::string::String
+pub checks::LinterFinding::row: u32
+impl core::clone::Clone for checks::LinterFinding
+pub fn checks::LinterFinding::clone(&self) -> Self
+impl core::cmp::Eq for checks::LinterFinding
+impl core::cmp::PartialEq for checks::LinterFinding
+pub fn checks::LinterFinding::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::LinterFinding
+pub fn checks::LinterFinding::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::LinterFinding
+impl core::marker::Freeze for checks::LinterFinding
+impl core::marker::Send for checks::LinterFinding
+impl core::marker::Sync for checks::LinterFinding
+impl core::marker::Unpin for checks::LinterFinding
+impl core::marker::UnsafeUnpin for checks::LinterFinding
+impl core::panic::unwind_safe::RefUnwindSafe for checks::LinterFinding
+impl core::panic::unwind_safe::UnwindSafe for checks::LinterFinding
+pub struct checks::LinterKey
+pub checks::LinterKey::code: alloc::string::String
+pub checks::LinterKey::key: alloc::string::String
+impl core::clone::Clone for checks::LinterKey
+pub fn checks::LinterKey::clone(&self) -> Self
+impl core::cmp::Eq for checks::LinterKey
+impl core::cmp::PartialEq for checks::LinterKey
+pub fn checks::LinterKey::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::LinterKey
+pub fn checks::LinterKey::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::LinterKey
+impl serde_core::ser::Serialize for checks::LinterKey
+pub fn checks::LinterKey::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::LinterKey
+impl core::marker::Send for checks::LinterKey
+impl core::marker::Sync for checks::LinterKey
+impl core::marker::Unpin for checks::LinterKey
+impl core::marker::UnsafeUnpin for checks::LinterKey
+impl core::panic::unwind_safe::RefUnwindSafe for checks::LinterKey
+impl core::panic::unwind_safe::UnwindSafe for checks::LinterKey
+pub struct checks::LinterState
+pub checks::LinterState::code: alloc::string::String
+pub checks::LinterState::key: alloc::string::String
+pub checks::LinterState::path: alloc::string::String
+impl core::clone::Clone for checks::LinterState
+pub fn checks::LinterState::clone(&self) -> Self
+impl core::cmp::Eq for checks::LinterState
+impl core::cmp::PartialEq for checks::LinterState
+pub fn checks::LinterState::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::LinterState
+pub fn checks::LinterState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::LinterState
+impl serde_core::ser::Serialize for checks::LinterState
+pub fn checks::LinterState::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::LinterState
+impl core::marker::Send for checks::LinterState
+impl core::marker::Sync for checks::LinterState
+impl core::marker::Unpin for checks::LinterState
+impl core::marker::UnsafeUnpin for checks::LinterState
+impl core::panic::unwind_safe::RefUnwindSafe for checks::LinterState
+impl core::panic::unwind_safe::UnwindSafe for checks::LinterState
 pub struct checks::LoadedModule
 pub checks::LoadedModule::level: u32
 pub checks::LoadedModule::module: alloc::string::String
@@ -749,6 +890,7 @@ pub struct checks::Observed
 pub checks::Observed::clone_instances: core::option::Option<alloc::vec::Vec<checks::CloneState>>
 pub checks::Observed::comment_keys: core::option::Option<alloc::vec::Vec<checks::CommentState>>
 pub checks::Observed::contract_keys: core::option::Option<alloc::vec::Vec<checks::HitState>>
+pub checks::Observed::linter_keys: core::option::Option<alloc::vec::Vec<checks::LinterState>>
 pub checks::Observed::units_changed: core::option::Option<alloc::vec::Vec<checks::UnitChange>>
 pub checks::Observed::units_over_threshold: core::option::Option<alloc::vec::Vec<checks::UnitState>>
 impl checks::Observed
@@ -1070,6 +1212,7 @@ pub const checks::COMPLEXITY_DELTA: &str
 pub const checks::CONTRACT_DRIFT: &str
 pub const checks::CYCLE_DODGE: &str
 pub const checks::FUNCTION_REASONS: metrics::Reasons
+pub const checks::LINTER_DELTA: &str
 pub const checks::REUSE_CANDIDATES: &str
 pub trait checks::LoadChains
 pub fn checks::LoadChains::chain(&mut self, checks::Tree, &str, &str) -> core::result::Result<core::option::Option<alloc::vec::Vec<checks::ChainHop>>, checks::BudgetSpent>
@@ -1092,8 +1235,10 @@ pub fn checks::comment_delta(&[&checks::Pair]) -> core::result::Result<checks::O
 pub fn checks::complexity_delta(&[&checks::Pair], u32) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::contract_drift(&[&checks::Pair], &[alloc::string::String]) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::cycle_dodge(&[&checks::Pair], checks::DodgeTree<'_>) -> core::result::Result<checks::Outcome, checks::Error>
+pub fn checks::linter_delta(&[checks::LintedPair<'_>]) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::measure_blocks(syntax::language::Language, &str) -> core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>
 pub fn checks::pair_language(&str) -> core::option::Option<syntax::language::Language>
 pub fn checks::pair_units<U: checks::Matchable>(&[(&[U], &[U])]) -> alloc::vec::Vec<checks::Pairing>
+pub fn checks::ran(io::runner::Outcome, core::time::Duration, usize) -> core::result::Result<alloc::vec::Vec<checks::LinterFinding>, checks::NotLinted>
 pub fn checks::reuse_candidates<'t>(&[&checks::Pair], &'t checks::NamedTree) -> core::result::Result<checks::Proposed<'t>, checks::Error>
 pub type checks::Link = (usize, usize)
