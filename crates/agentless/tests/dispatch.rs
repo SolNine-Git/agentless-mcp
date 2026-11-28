@@ -13,7 +13,7 @@ use io::testing::{Identity, Tree};
 const BINARY: &str = env!("CARGO_BIN_EXE_agentless-mcp");
 const DEADLINE: Duration = Duration::from_secs(30);
 const HOOK_REFUSAL: &str = "agentless-mcp: hook takes one hook name: read-card, ledger-mark, \
-                            brief-record, subagent-map, prompt-map, erosion or ledger-reset. hook \
+                            brief-record, subagent-map, prompt-map, erosion, ledger-reset or erosion-scan. hook \
                             install, hook status and hook uninstall manage the hook entries of a \
                             settings file. gate-check and gate-mark are retired: each still exits \
                             0 with no output.\n";
@@ -417,7 +417,7 @@ fn hook_install_status_and_uninstall_write_only_the_fixture_settings() {
         &binary.display().to_string(),
     );
     assert_eq!((dry.code, dry.out.as_str()), (Some(0), expected.as_str()));
-    let fresh = "added 7, replaced 0, removed 0 retired, kept 0 other handlers";
+    let fresh = "added 10, replaced 0, removed 0 retired, kept 0 other handlers";
     assert_eq!(
         dry.err,
         format!("{fresh}; --dry-run wrote nothing to {path}\n")
@@ -429,9 +429,9 @@ fn hook_install_status_and_uninstall_write_only_the_fixture_settings() {
     assert_eq!(installed.out, format!("{fresh}; wrote {path}\n"));
     assert_eq!(
         (after.code, after.out.lines().last()),
-        (Some(0), Some("ledger-reset: current"))
+        (Some(0), Some("erosion-scan (SubagentStop): current"))
     );
-    let removed = format!("removed 7 agentless handlers, kept 0 other handlers; wrote {path}\n");
+    let removed = format!("removed 10 agentless handlers, kept 0 other handlers; wrote {path}\n");
     assert_eq!((uninstalled.code, uninstalled.out), (Some(0), removed));
     assert_eq!(
         std::fs::read_to_string(&settings).ok().as_deref(),
@@ -449,6 +449,41 @@ fn hook_erosion_reaches_the_hook() {
     );
     assert_eq!(
         (ran.code, ran.out.as_str(), ran.err.as_str()),
+        (Some(0), "", "")
+    );
+}
+
+#[test]
+fn hook_erosion_scan_reaches_the_hook_and_fails_open_on_a_payload_it_cannot_read() {
+    let tree = sandbox();
+    let log = tree.join("scan.jsonl");
+    let shown = log.to_str().expect("a UTF-8 log path");
+    let mut command = Command::new(BINARY);
+    command.args(["hook", "erosion-scan"]);
+
+    let ran = fed(
+        command,
+        &tree,
+        "{\"hook_event_name\": \"Stop\"}",
+        &[("AGENTLESS_EROSION_SCAN_LOG", shown)],
+    );
+
+    assert_eq!(
+        (ran.code, ran.out.as_str(), ran.err.as_str()),
+        (Some(0), "", "")
+    );
+    let record = std::fs::read_to_string(&log).expect("the log");
+    assert!(
+        record.contains("\"reason\": \"malformed payload: payload.session_id is missing\""),
+        "{record}"
+    );
+    let off = run(
+        &tree,
+        &["hook", "erosion-scan"],
+        &[("AGENTLESS_EROSION_GATE", "off")],
+    );
+    assert_eq!(
+        (off.code, off.out.as_str(), off.err.as_str()),
         (Some(0), "", "")
     );
 }

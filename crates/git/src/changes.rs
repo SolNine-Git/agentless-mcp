@@ -40,6 +40,16 @@ pub(crate) const BLOB: Limits = Limits {
     cap: MAX_BLOB_OUTPUT_BYTES,
 };
 
+// The branches a change is measured from, local before remote, in the order a tie resolves.
+const BASE_REFS: [&str; 6] = [
+    "refs/heads/main",
+    "refs/heads/develop",
+    "refs/heads/master",
+    "refs/remotes/origin/main",
+    "refs/remotes/origin/develop",
+    "refs/remotes/origin/master",
+];
+
 const TWO_PATH_STATUSES: [char; 2] = ['R', 'C'];
 const MODE_SHOWN_CHARS: usize = 12;
 
@@ -135,6 +145,36 @@ impl Git {
         let range = format!("{base}..HEAD");
         let rest = ["--count", "--end-of-options", range.as_str()].map(OsStr::new);
         self.run_offline(root, "rev-list", &rest, COMMIT)
+    }
+
+    /// Returns the merge base of HEAD with the nearest of main, develop and master, local or
+    /// `origin`, by the fewest commits that HEAD holds past it, or `None` when no such branch
+    /// gives one.
+    #[must_use]
+    pub fn closest_base(&self, root: &Path) -> Option<String> {
+        let mut closest: Option<(usize, String)> = None;
+        for name in BASE_REFS {
+            let Some((ahead, base)) = self.ahead_of(root, name) else {
+                continue;
+            };
+            if closest.as_ref().is_none_or(|(held, _)| ahead < *held) {
+                closest = Some((ahead, base));
+            }
+        }
+        closest.map(|(_, base)| base)
+    }
+
+    // The merge base of HEAD with the ref, and the commits that HEAD holds past it.
+    fn ahead_of(&self, root: &Path, name: &str) -> Option<(usize, String)> {
+        let GitOutcome::Printed(printed) = self.merge_base(root, name) else {
+            return None;
+        };
+        let base = parse_commit(&printed).ok()?;
+        let GitOutcome::Printed(count) = self.commits_since(root, &base) else {
+            return None;
+        };
+        let ahead = String::from_utf8_lossy(&count).trim().parse().ok()?;
+        Some((ahead, base))
     }
 
     /// Prints `path` as `commit` has it, up to the per-file cap.

@@ -34,7 +34,12 @@ pub(crate) fn private_dir(dir: &Path) -> bool {
 
 // The first claim wins, so parallel runs stay safe. A symlink at the name is no claim.
 pub(crate) fn claim(path: &Path) -> Claim {
-    match io::write_new_file(path, b"") {
+    claim_with(path, b"")
+}
+
+// A claim whose file holds `content`.
+pub(crate) fn claim_with(path: &Path, content: &[u8]) -> Claim {
+    match io::write_new_file(path, content) {
         Ok(()) => Claim::New,
         Err(error) if error.kind() == ErrorKind::AlreadyExists && is_plain_file(path) => {
             Claim::Held

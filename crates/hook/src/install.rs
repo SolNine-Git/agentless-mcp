@@ -222,12 +222,12 @@ pub(crate) fn statused(args: &[OsString], env: &EnvConfig, binary: &str) -> Outp
 
 fn status_lines(status: &HookStatus) -> Vec<String> {
     let rows = status.rows.iter().map(|row| {
-        let name = row.entry.hook.name();
+        let name = row.entry.label();
         match &row.state {
-            EntryState::Current => HOOK_STATUS_CURRENT.render(name),
-            EntryState::Missing => HOOK_STATUS_MISSING.render(name),
-            EntryState::Stale(_) => HOOK_STATUS_STALE.render(name),
-            EntryState::OtherPath(path) => HOOK_STATUS_OTHER_PATH.render((path, name)),
+            EntryState::Current => HOOK_STATUS_CURRENT.render(&name),
+            EntryState::Missing => HOOK_STATUS_MISSING.render(&name),
+            EntryState::Stale(_) => HOOK_STATUS_STALE.render(&name),
+            EntryState::OtherPath(path) => HOOK_STATUS_OTHER_PATH.render((path, &name)),
         }
     });
     let retired = (Retired::ALL.into_iter())
@@ -248,9 +248,12 @@ fn document(bytes: &[u8]) -> Result<JsonValue, NoEdit> {
 
 fn counts(removed: &Removed, server: &str) -> String {
     let rows = hooks::entries(server);
-    let replaced = (rows.iter())
-        .filter(|row| removed.current.contains(&row.hook))
-        .count();
+    let replaced: usize = (hooks::Hook::ALL.into_iter())
+        .map(|hook| {
+            let held = rows.iter().filter(|row| row.hook == hook).count();
+            held.min(removed.current.iter().filter(|gone| **gone == hook).count())
+        })
+        .sum();
     let names: Vec<&str> = (Retired::ALL.into_iter())
         .filter(|hook| removed.retired.contains(hook))
         .map(Retired::name)

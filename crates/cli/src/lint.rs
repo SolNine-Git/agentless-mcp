@@ -171,7 +171,13 @@ fn request(compared: &Compared<'_>) -> Result<LintRequest, String> {
         }
         Compared::Revision { revision, checks } => {
             let revision = revision.utf8("--since")?;
-            (LintForm::Revision { revision }, *checks)
+            (
+                LintForm::Revision {
+                    revision,
+                    limits: None,
+                },
+                *checks,
+            )
         }
     };
     Ok(LintRequest {

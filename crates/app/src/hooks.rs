@@ -59,6 +59,8 @@ pub enum Hook {
     Erosion,
     /// The removal of the main context's ledger at compaction.
     LedgerReset,
+    /// The scan of the files that a shell write changed, on the write and at the end of a turn.
+    ErosionScan,
 }
 
 /// A hook that an earlier release installed and this one no longer serves.
@@ -78,14 +80,18 @@ pub enum Event {
     SubagentStart,
     UserPromptSubmit,
     SessionStart,
+    Stop,
+    SubagentStop,
 }
 
-const EVENT_KEYS: [&str; 5] = [
+const EVENT_KEYS: [&str; 7] = [
     "PreToolUse",
     "PostToolUse",
     "SubagentStart",
     "UserPromptSubmit",
     "SessionStart",
+    "Stop",
+    "SubagentStop",
 ];
 
 impl Event {
@@ -98,7 +104,7 @@ impl Event {
 
 impl Hook {
     /// Every hook, in the order of the entry table.
-    pub const ALL: [Hook; 7] = [
+    pub const ALL: [Hook; 8] = [
         Hook::ReadCard,
         Hook::LedgerMark,
         Hook::BriefRecord,
@@ -106,6 +112,7 @@ impl Hook {
         Hook::PromptMap,
         Hook::Erosion,
         Hook::LedgerReset,
+        Hook::ErosionScan,
     ];
 
     /// Returns the subcommand name, such as `read-card`.
@@ -119,6 +126,7 @@ impl Hook {
             Hook::PromptMap => "prompt-map",
             Hook::Erosion => "erosion",
             Hook::LedgerReset => "ledger-reset",
+            Hook::ErosionScan => "erosion-scan",
         }
     }
 
@@ -130,28 +138,34 @@ impl Hook {
             Hook::ReadCard => Duration::from_secs(3),
             Hook::LedgerMark => Duration::from_secs(2),
             Hook::BriefRecord | Hook::LedgerReset => Duration::from_secs(1),
-            Hook::SubagentMap | Hook::PromptMap | Hook::Erosion => Duration::from_secs(5),
+            Hook::SubagentMap | Hook::PromptMap | Hook::Erosion | Hook::ErosionScan => {
+                Duration::from_secs(5)
+            }
         }
     }
 
-    fn event(self) -> Event {
+    /// Returns the events the hook runs on, the first one first.
+    #[must_use]
+    pub fn events(self) -> &'static [Event] {
         match self {
-            Hook::ReadCard | Hook::LedgerMark => Event::PostToolUse,
-            Hook::BriefRecord | Hook::Erosion => Event::PreToolUse,
-            Hook::SubagentMap => Event::SubagentStart,
-            Hook::PromptMap => Event::UserPromptSubmit,
-            Hook::LedgerReset => Event::SessionStart,
+            Hook::ReadCard | Hook::LedgerMark => &[Event::PostToolUse],
+            Hook::BriefRecord | Hook::Erosion => &[Event::PreToolUse],
+            Hook::SubagentMap => &[Event::SubagentStart],
+            Hook::PromptMap => &[Event::UserPromptSubmit],
+            Hook::LedgerReset => &[Event::SessionStart],
+            Hook::ErosionScan => &[Event::PostToolUse, Event::Stop, Event::SubagentStop],
         }
     }
 
-    fn matcher(self, server_name: &str) -> Option<String> {
+    fn matcher(self, event: Event, server_name: &str) -> Option<String> {
         let matcher = match self {
             Hook::ReadCard => "Read|Bash",
             Hook::LedgerMark => return Some(format!("{TRACE_PREFIX}{server_name}{TRACE_SUFFIX}")),
             Hook::BriefRecord => "Agent",
             Hook::Erosion => "Write|Edit",
             Hook::LedgerReset => "compact",
-            Hook::SubagentMap | Hook::PromptMap => return None,
+            Hook::ErosionScan if event == Event::PostToolUse => "Bash",
+            Hook::SubagentMap | Hook::PromptMap | Hook::ErosionScan => return None,
         };
         Some(matcher.to_owned())
     }
@@ -171,7 +185,7 @@ impl Retired {
     }
 }
 
-/// One row of the entry table: the hook, its event, its matcher and its settings timeout.
+/// One row of the entry table: the hook, one of its events, its matcher and its settings timeout.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Entry {
     /// The hook.
@@ -184,15 +198,31 @@ pub struct Entry {
     pub timeout: u32,
 }
 
-/// Returns the entry table, in install order, for the MCP server that `server_name` names.
+impl Entry {
+    /// Returns the hook's name, with the event in brackets when the hook runs on more than one.
+    #[must_use]
+    pub fn label(&self) -> String {
+        let name = self.hook.name();
+        if self.hook.events().len() > 1 {
+            format!("{name} ({})", self.event.as_str())
+        } else {
+            name.to_owned()
+        }
+    }
+}
+
+/// Returns the entry table, in install order, for the MCP server that `server_name` names: one row
+/// for each event of each hook.
 #[must_use]
 pub fn entries(server_name: &str) -> Vec<Entry> {
     (Hook::ALL.into_iter())
-        .map(|hook| Entry {
-            hook,
-            event: hook.event(),
-            matcher: hook.matcher(server_name),
-            timeout: timeout(hook.deadline()),
+        .flat_map(|hook| {
+            hook.events().iter().map(move |&event| Entry {
+                hook,
+                event,
+                matcher: hook.matcher(event, server_name),
+                timeout: timeout(hook.deadline()),
+            })
         })
         .collect()
 }
@@ -355,7 +385,7 @@ pub fn compare(handlers: &[Handler], own: &str, server: ServerName<'_>) -> HookS
     let rows = (entries(shown).into_iter())
         .map(|entry| {
             let found: Vec<Found> = (current.iter())
-                .filter(|(hook, _)| *hook == entry.hook)
+                .filter(|(hook, found)| holds(&entry, *hook, found))
                 .map(|(_, found)| found.clone())
                 .collect();
             let state = state(&entry, found, own, server);
@@ -391,6 +421,18 @@ fn found(handler: &Handler, path: String) -> Found {
         timeout: handler.timeout,
         path,
     }
+}
+
+// A handler belongs to the row of its hook and event. One under an event that the hook does not
+// run on belongs to the hook's first row, which it makes stale.
+fn holds(entry: &Entry, hook: Hook, found: &Found) -> bool {
+    if hook != entry.hook {
+        return false;
+    }
+    let events = hook.events();
+    found.event == entry.event.as_str()
+        || (events.first() == Some(&entry.event)
+            && !(events.iter()).any(|event| event.as_str() == found.event))
 }
 
 // A handler that two settings files define runs once, so a copy is one handler.

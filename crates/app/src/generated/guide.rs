@@ -1952,8 +1952,16 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         `comment_delta`,\n`advisory` for the others. The variable sets \
         `clone_delta` too: to keep it\nadvisory while it is on trial, \
         set its entry to `advisory`. A bad entry is\ndropped with a \
-        warning, and `capabilities` shows the entries in \
-        force.\n\n`boundary_globs` lists the modules that parse foreign \
+        warning, and `capabilities` shows the entries in force.\n\nThe \
+        erosion-scan hook (`agentless-mcp hook erosion-scan`, on \
+        `PostToolUse` for\n`Bash`, on `Stop` and on `SubagentStop`) \
+        covers the writes that skip the Write\nand Edit tools. It runs \
+        only the checks that are in `block` mode for a\nrepository, \
+        over the files that a shell write changed since the closest \
+        merge\nbase of `main`, `develop` and `master`. \
+        `AGENTLESS_EROSION_SCAN_IGNORE` lists\nthe repository roots \
+        that it never scans, and `AGENTLESS_EROSION_GATE=off`\nturns it \
+        off.\n\n`boundary_globs` lists the modules that parse foreign \
         data, the only files\n`lint`'s `contract_drift` checks. It is \
         empty by default. It holds at most 64\nglobs of at most 256 \
         characters each. Each glob matches a repo-relative path\nwith \
@@ -2011,7 +2019,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("lint", 68_560, 98_819),
     ("validate-vote", 98_821, 108_418),
     ("warmup", 108_420, 110_019),
-    ("project-defaults-agentless-mcp-json", 110_021, 114_131),
-    ("token-counting", 114_133, 114_547),
-    ("exit-codes", 114_549, 115_007),
+    ("project-defaults-agentless-mcp-json", 110_021, 114_606),
+    ("token-counting", 114_608, 115_022),
+    ("exit-codes", 115_024, 115_482),
 ];

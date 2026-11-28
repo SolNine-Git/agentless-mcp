@@ -795,6 +795,39 @@ applied findings, and a labeled precision of 90% or more. The log cannot show
 the third condition. Confirm that the check's rules and message did not change
 after its trial started.
 
+### Erosion scan (shell writes)
+
+A write that skips the `Write` and `Edit` tools, such as `cat >`, `sed -i`,
+`tee`, `cp` or `Path.write_text` inside `python -c`, skips the erosion gate.
+`agentless-mcp hook erosion-scan` covers those writes on three events:
+`PostToolUse` for `Bash`, `Stop`, and `SubagentStop`. `hook install` writes
+all three entries, and `contrib/hooks/settings-example.json` holds them.
+
+- On a shell write, the hook finds the git root of the working folder and of
+  each source path in the command, at most 6 roots. It records each root for
+  the session, then compares each root with the closest merge base of `main`,
+  `develop` and `master` (local or `origin`, by the fewest commits ahead; with
+  none, `HEAD`). It runs only the checks that are in `block` mode for that
+  root, and it reads at most 300 files of up to 400 KB each. It exits 2 with
+  each finding that the session has not been shown yet, in the block layout of
+  the erosion gate, then "This write skipped the Write/Edit gate. Fix these
+  now."
+- On `Stop` and `SubagentStop`, the hook scans every root that a shell write
+  recorded for the session and exits 2 with every finding still on disk, then
+  "Fix these before you end the turn." When `stop_hook_active` is set, it
+  exits 0.
+- `AGENTLESS_EROSION_GATE=off` turns this hook off too. Any internal error,
+  a malformed payload, and a scan past the 5 s deadline exit 0 and are logged.
+
+| Variable | Effect |
+|---|---|
+| `AGENTLESS_EROSION_SCAN_IGNORE` | Absolute repository roots, separated by `:`, with `~` expanded, that the hook never scans. Use it for checkouts that this machine only pulls. |
+| `AGENTLESS_EROSION_SCAN_LOG` | A file path. The hook appends one JSON line per run. |
+
+On the largest local branch, `agentless-mcp lint --since <merge base> --only
+comment_delta` took a median of 0.46 s and a maximum of 0.96 s over 5 runs
+(246 changed files, 164 of them source files).
+
 ### Navigation craft for the agent
 
 The gate decides *when* the structural pass happens; the routing knowledge

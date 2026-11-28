@@ -88,6 +88,40 @@
   stdin early keeps its output. Tests cover a 1 MiB input through `cat`, a
   child that exits without reading, and one that sleeps without reading.
 
+- **`hook erosion-scan`, the erosion gate for writes that skip Write and Edit
+  (U4).** It runs on `PostToolUse` for `Bash`, on `Stop` and on `SubagentStop`.
+  On a shell write (the forms of `WRITE_SHELL` in `comment_gate_scan.py`:
+  a redirect, `tee`, `sed -i`, `perl -i`, `write_text`, `patch`, `cp`, `mv`
+  and the rest) it finds the git root of the working folder and of each tier-1
+  source path in the command, at most 6, less each root that
+  `AGENTLESS_EROSION_SCAN_IGNORE` lists (absolute paths, `:`-separated, `~`
+  expanded), and records each root for the session as an exclusive-create
+  file under `agentless_scan/<sha256(session)>/repos/`. It then runs `lint`
+  against the closest merge base of `main`, `develop` and `master` (local or
+  `origin`, by the fewest commits ahead, with `HEAD` when there is none),
+  with only the checks that are in `block` mode for that root, and exits 2
+  with each finding the session has not seen, in the block layout of the
+  erosion gate, then "This write skipped the Write/Edit gate. Fix these now."
+  A `Stop` or `SubagentStop` scans every recorded root and exits 2 with every
+  finding still on disk, then "Fix these before you end the turn."; with
+  `stop_hook_active` set it exits 0. A malformed payload, any internal error
+  and a scan past the 5 s deadline exit 0 and go to
+  `AGENTLESS_EROSION_SCAN_LOG`. `AGENTLESS_EROSION_GATE=off` turns it off.
+  The deadline is 5 s, so the settings timeout is 15 s: `lint --since <merge
+  base> --only comment_delta` on the largest local branch (athenaeum,
+  `fix/audit-followups`, 246 changed files) took a median of 0.46 s and a
+  maximum of 0.96 s over 5 runs of a release build at 1e67553, and 3 times
+  the maximum is 2.9 s. `Hook::events` lists the events of a hook and
+  `hook::entries` gives one row for each hook and event, so `hook status`
+  names a row `erosion-scan (PostToolUse)`, `erosion-scan (Stop)` and
+  `erosion-scan (SubagentStop)`. An install of the earlier seven hooks still
+  reads as current for those seven. The hook states the shell-write table
+  with `regex`, the one approved crate that `crates/hook` now uses. `git`
+  gains `Git::closest_base`, and `LintForm::Revision` gains `limits`
+  (`RevisionLimits`: at most 300 compared files in path order and 400,000
+  bytes of a working-tree file, each skip a `not_checked` row), which the
+  command line sets to none.
+
 ### Changed
 
 - **Every hook record and mode line names `linter_delta`.** Each record's
@@ -104,6 +138,15 @@
 - **gate-report reads comment and linter keys through one path.**
   `Tracked::Comment` became `Tracked::Keyed` with the list it reads, so
   `comment_delta` and `linter_delta` share the parse and the acted-on rule.
+
+- **`hook install` writes 10 entries, and the hook usage, the status note and the
+  agent guide name `erosion-scan`.** `hook install` reports `added 10` on a
+  fresh file (it was 7), `hook status` and the server's hook note count 10
+  entries and label the three rows of `erosion-scan` by event, the `hook`
+  usage ends "erosion, ledger-reset or erosion-scan", `contrib/hooks/
+  settings-example.json` gains the `Bash` group under `PostToolUse` and the
+  `Stop` and `SubagentStop` events, and the guide's project-defaults section
+  gains one paragraph on the scan.
 
 - **Every hook record and mode line names `comment_delta`.** Each record's
   `modes` gains `"comment_delta": "block"` (the built-in mode) and its

@@ -27,6 +27,7 @@ mod report;
 mod repository;
 mod retired;
 mod run;
+mod scan;
 mod search;
 mod signals;
 mod state;
@@ -77,6 +78,13 @@ pub struct Output {
 #[must_use]
 pub fn erosion(env: &EnvConfig, services: &Services, stdin: &mut dyn Read) -> Output {
     erosion_with(env, services, stdin, Box::new(SystemClock))
+}
+
+/// Scans the one `PostToolUse` or Stop payload that `stdin` holds, and returns what the process
+/// writes.
+#[must_use]
+pub fn erosion_scan(env: &EnvConfig, services: &Services, stdin: &mut dyn Read) -> Output {
+    scan::run(env, services, stdin, &SystemClock)
 }
 
 fn erosion_with(

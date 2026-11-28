@@ -15,7 +15,7 @@ use crate::testing::{MANIFEST_DIR, Sandbox};
 
 const BINARY: &str = "/opt/agentless/bin/agentless-mcp";
 const PLACEHOLDER: &str = "/ABSOLUTE/PATH/TO/agentless-mcp";
-const FRESH: &str = "added 7, replaced 0, removed 0 retired, kept 0 other handlers";
+const FRESH: &str = "added 10, replaced 0, removed 0 retired, kept 0 other handlers";
 
 // A sandbox with a user config folder, a home and a repository, and the environment that names
 // them. No test reaches a settings file outside the sandbox.
@@ -145,7 +145,7 @@ fn foreign_handlers_mixed_groups_and_other_keys_stay_and_retired_entries_go() {
 
     let output = rig.install(&[]);
 
-    let report = "added 6, replaced 1, removed 2 retired (gate-check, gate-mark), kept 2 other \
+    let report = "added 9, replaced 1, removed 2 retired (gate-check, gate-mark), kept 2 other \
                   handlers; wrote <SANDBOX>/config/settings.json\n";
     assert_eq!(rig.shown(&output), (0, report.to_owned(), String::new()));
     let text = text(&rig.settings());
@@ -161,6 +161,7 @@ fn foreign_handlers_mixed_groups_and_other_keys_stay_and_retired_entries_go() {
         "SubagentStart",
         "UserPromptSubmit",
         "SessionStart",
+        "SubagentStop",
     ];
     assert!(
         events.map(at).is_sorted() && at("SessionStart") < at("env"),
@@ -175,9 +176,13 @@ fn foreign_handlers_mixed_groups_and_other_keys_stay_and_retired_entries_go() {
         .map(|group| group["matcher"].as_str().unwrap_or("-"))
         .collect();
     assert_eq!(matchers, ["Grep|Glob|Bash", "Agent", "Write|Edit"]);
+    let scan = format!("{BINARY} hook erosion-scan");
     assert_eq!(
         document["hooks"]["Stop"],
-        json!([{"hooks": [{"type": "command", "command": "notify-send done"}]}])
+        json!([
+            {"hooks": [{"type": "command", "command": "notify-send done"}]},
+            {"hooks": [{"type": "command", "command": scan, "timeout": 15}]},
+        ])
     );
     assert!(text.contains("\"BIG\": 12345678901234567890"), "{text}");
     assert!(text.contains("\"NAME\": \"Z\\u00fcrich\""), "{text}");
@@ -281,7 +286,7 @@ fn a_repeated_hooks_key_is_read_and_written_as_its_last_value() {
         "{}",
         status.stdout
     );
-    let report = "added 7, replaced 0, removed 0 retired, kept 1 other handler; wrote \
+    let report = "added 10, replaced 0, removed 0 retired, kept 1 other handler; wrote \
                   <SANDBOX>/config/settings.json\n";
     assert_eq!(rig.shown(&output), (0, report.to_owned(), String::new()));
     let text = text(&rig.settings());
@@ -441,12 +446,17 @@ fn status_names_each_entry_and_exits_1_until_every_entry_is_current() {
         "prompt-map",
         "erosion",
         "ledger-reset",
+        "erosion-scan (PostToolUse)",
+        "erosion-scan (Stop)",
+        "erosion-scan (SubagentStop)",
     ];
     let lines = |state: &str| names.map(|name| format!("{name}: {state}\n")).concat();
     assert_eq!(rig.shown(&missing), (1, lines("missing"), String::new()));
     let old_lines = "read-card: missing\nledger-mark: missing\nbrief-record: missing\n\
                      subagent-map: missing\nprompt-map: missing\nerosion: runs \
                      /old/bin/agentless-mcp, not this binary\nledger-reset: missing\n\
+                     erosion-scan (PostToolUse): missing\nerosion-scan (Stop): missing\n\
+                     erosion-scan (SubagentStop): missing\n\
                      gate-check: retired: hook install removes it\n\
                      gate-mark: retired: hook install removes it\n";
     assert_eq!(rig.shown(&old), (1, old_lines.to_owned(), String::new()));
@@ -481,7 +491,10 @@ fn status_reads_the_project_and_local_files_and_reports_one_it_cannot_read() {
     let (code, stdout, _) = rig.shown(&broken);
     assert_eq!(code, 1);
     assert!(stdout.starts_with(first), "{stdout}");
-    assert!(stdout.ends_with("ledger-reset: current\n"), "{stdout}");
+    assert!(
+        stdout.ends_with("erosion-scan (SubagentStop): current\n"),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -518,7 +531,7 @@ fn uninstall_removes_the_agentless_entries_only() {
     let first = rig.uninstall(&[]);
     let second = rig.uninstall(&[]);
 
-    let report = "removed 7 agentless handlers, kept 2 other handlers; wrote \
+    let report = "removed 10 agentless handlers, kept 2 other handlers; wrote \
                   <SANDBOX>/config/settings.json\n";
     assert_eq!(rig.shown(&first), (0, report.to_owned(), String::new()));
     assert_eq!(rig.shown(&second), (0, NOTHING.to_owned(), String::new()));
@@ -533,7 +546,7 @@ fn uninstall_removes_the_agentless_entries_only() {
     let all = rig.uninstall(&[]);
     assert!(
         all.stdout
-            .starts_with("removed 7 agentless handlers, kept 0 other handlers")
+            .starts_with("removed 10 agentless handlers, kept 0 other handlers")
     );
     assert_eq!(text(&rig.settings()), "{}\n");
 }

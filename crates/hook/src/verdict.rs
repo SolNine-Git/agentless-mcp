@@ -179,14 +179,28 @@ fn advisory_reply(text: &str) -> Result<String, Halt> {
 // The text the model reads: blocking findings first, at most 15 findings, then the mode, or the
 // fix lines when a finding blocks.
 pub(crate) fn findings_text(blocking: &[&Finding], advisory: &[&Finding], modes: Modes) -> String {
+    let tail = if blocking.is_empty() {
+        vec![mode_line(modes)]
+    } else {
+        fix_lines(blocking)
+    };
+    laid_out(blocking, advisory, tail)
+}
+
+// The text of findings that all block: the same layout, with no advisory finding and no mode.
+pub(crate) fn blocked_text(blocking: &[&Finding]) -> String {
+    laid_out(blocking, &[], fix_lines(blocking))
+}
+
+fn laid_out(blocking: &[&Finding], advisory: &[&Finding], tail: Vec<String>) -> String {
     let listed_blocking = &blocking[..blocking.len().min(MAX_LISTED)];
     let room = MAX_LISTED - listed_blocking.len();
     let listed_advisory = &advisory[..advisory.len().min(room)];
     let hidden = blocking.len() + advisory.len() - listed_blocking.len() - listed_advisory.len();
-    let (header, tail) = if blocking.is_empty() {
-        (ADVISORY_HEADER, vec![mode_line(modes)])
+    let header = if blocking.is_empty() {
+        ADVISORY_HEADER
     } else {
-        (BLOCK_HEADER, fix_lines(blocking))
+        BLOCK_HEADER
     };
     let mut lines = vec![header.to_owned()];
     lines.extend(listed_blocking.iter().map(|finding| line(finding)));

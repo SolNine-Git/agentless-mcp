@@ -470,6 +470,7 @@ dependencies = [
  "json",
  "kernel",
  "prompts",
+ "regex",
  "render",
  "serde",
  "serde_json",

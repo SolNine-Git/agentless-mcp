@@ -6,11 +6,13 @@ use std::path::Path;
 use checks::{PairFinding, TextPair};
 use git::{Change, GitOutcome, Side};
 use prompts::messages::{
-    LINT_REVISION_BINARY, LINT_REVISION_BINARY_EVIDENCE, LINT_REVISION_LISTING_CAPPED,
-    LINT_REVISION_NOT_RESOLVED, LINT_REVISION_OUTPUT_MALFORMED, LINT_REVISION_STATUS,
-    LINT_REVISION_STATUS_EVIDENCE, LINT_REVISION_SUBMODULE, LINT_REVISION_SUBMODULE_EVIDENCE,
-    LINT_REVISION_UNCHANGED, LINT_REVISION_UNCHANGED_EVIDENCE, LINT_REVISION_UNLISTED,
-    LINT_REVISION_UNRESOLVED, PAIR_BLOB_OVER_CAP, PAIR_OLD_UNREAD, PAIR_WORKTREE_UNREAD,
+    LINT_REVISION_BINARY, LINT_REVISION_BINARY_EVIDENCE, LINT_REVISION_FILES_LIMIT,
+    LINT_REVISION_FILES_LIMIT_EVIDENCE, LINT_REVISION_LISTING_CAPPED, LINT_REVISION_NOT_RESOLVED,
+    LINT_REVISION_OUTPUT_MALFORMED, LINT_REVISION_OVER_BYTES, LINT_REVISION_OVER_BYTES_EVIDENCE,
+    LINT_REVISION_STATUS, LINT_REVISION_STATUS_EVIDENCE, LINT_REVISION_SUBMODULE,
+    LINT_REVISION_SUBMODULE_EVIDENCE, LINT_REVISION_UNCHANGED, LINT_REVISION_UNCHANGED_EVIDENCE,
+    LINT_REVISION_UNLISTED, LINT_REVISION_UNRESOLVED, PAIR_BLOB_OVER_CAP, PAIR_OLD_UNREAD,
+    PAIR_WORKTREE_UNREAD,
 };
 
 use crate::rows::{Gap, bounded_read, coverage, refused_row, side_text};
@@ -18,6 +20,15 @@ use crate::{Error, parallel};
 
 // Each old side is one git process. More than four at a time read no faster.
 const MAX_BLOB_READS: usize = 4;
+
+/// What one revision run reads: the files it compares and the size of each working-tree file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RevisionLimits {
+    /// The most files that the run compares, in path order.
+    pub max_files: usize,
+    /// The most bytes of a working-tree file that the run reads.
+    pub max_bytes: usize,
+}
 
 // What the revision form compares: the coverage rows, sorted by path, and the text pairs.
 pub(crate) struct Compared {
@@ -33,7 +44,12 @@ pub(crate) struct PairSpec {
     pub(crate) new_path: Option<String>,
 }
 
-pub(crate) fn compared(git: &git::Git, root: &Path, revision: &str) -> Result<Compared, Error> {
+pub(crate) fn compared(
+    git: &git::Git,
+    root: &Path,
+    revision: &str,
+    limits: Option<RevisionLimits>,
+) -> Result<Compared, Error> {
     let commit = match commit_from(revision, git.verify(root, revision))? {
         Ok(commit) => commit,
         Err(row) => return Ok(alone(*row)),
@@ -47,9 +63,13 @@ pub(crate) fn compared(git: &git::Git, root: &Path, revision: &str) -> Result<Co
         let evidence = LINT_REVISION_UNCHANGED_EVIDENCE.to_owned();
         return Ok(alone(coverage(message, "", evidence)));
     }
-    let (mut rows, specs) = pair_specs(&changes);
+    let (mut rows, mut specs) = pair_specs(&changes);
+    let max_bytes = limits.map(|limits| limits.max_bytes);
+    rows.extend(limited(&mut specs, limits));
     let threads = parallel::threads().min(MAX_BLOB_READS);
-    let read = parallel::map_in_order(&specs, threads, |spec| pair(git, root, &commit, spec));
+    let read = parallel::map_in_order(&specs, threads, |spec| {
+        pair(git, root, &commit, spec, max_bytes)
+    });
     let mut pairs = Vec::new();
     for result in read {
         match result {
@@ -59,6 +79,19 @@ pub(crate) fn compared(git: &git::Git, root: &Path, revision: &str) -> Result<Co
     }
     rows.sort_by(|left, right| left.finding.path.cmp(&right.finding.path));
     Ok(Compared { rows, pairs })
+}
+
+// Cuts the specs to the file limit, and returns the row that says how many it left out.
+fn limited(specs: &mut Vec<PairSpec>, limits: Option<RevisionLimits>) -> Option<PairFinding> {
+    let max = limits?.max_files;
+    let skipped = specs
+        .len()
+        .checked_sub(max)
+        .filter(|skipped| *skipped > 0)?;
+    specs.truncate(max);
+    let message = LINT_REVISION_FILES_LIMIT.render((max, skipped));
+    let evidence = LINT_REVISION_FILES_LIMIT_EVIDENCE.render((max, skipped));
+    Some(coverage(message, "", evidence))
 }
 
 fn alone(row: PairFinding) -> Compared {
@@ -222,7 +255,13 @@ fn joined(held: PairSpec, spec: PairSpec) -> PairSpec {
     }
 }
 
-fn pair(git: &git::Git, root: &Path, commit: &str, spec: &PairSpec) -> Result<TextPair, Gap> {
+fn pair(
+    git: &git::Git,
+    root: &Path,
+    commit: &str,
+    spec: &PairSpec,
+    max_bytes: Option<usize>,
+) -> Result<TextPair, Gap> {
     let old = spec
         .old_path
         .as_ref()
@@ -231,6 +270,13 @@ fn pair(git: &git::Git, root: &Path, commit: &str, spec: &PairSpec) -> Result<Te
         Some(path) => Some(worktree_read(root, path)?),
         None => None,
     };
+    if let (Some(Ok(data)), Some(max)) = (&new, max_bytes)
+        && data.len() > max
+    {
+        let message = LINT_REVISION_OVER_BYTES.render((&spec.path, max));
+        let evidence = LINT_REVISION_OVER_BYTES_EVIDENCE.render(max);
+        return Err(Box::new(coverage(message, &spec.path, evidence)));
+    }
     if old.as_ref().is_some_and(binary) || new.as_ref().is_some_and(binary) {
         let message = LINT_REVISION_BINARY.render(&spec.path);
         let evidence = LINT_REVISION_BINARY_EVIDENCE.render(git::BINARY_PROBE_BYTES);

@@ -107,7 +107,7 @@ pub use lint::{
     CandidatesRequest, CheckSelection, LintCandidateInput, lint_candidates, load_lint_candidates,
     load_lint_diff,
 };
-pub use lint::{LintCandidate, LintForm, LintReport, LintRequest, lint};
+pub use lint::{LintCandidate, LintForm, LintReport, LintRequest, RevisionLimits, lint};
 pub use linter::{ChildRunner, SystemRunner};
 pub use map::{
     BodyMapResult, Companion, Companions, MapEntry, MapFile, MapRequest, MapResult, body_map, map,
