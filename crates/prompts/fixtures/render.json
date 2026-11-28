@@ -1621,7 +1621,7 @@
         "name": "ruff",
         "path": "src/app.py"
       },
-      "text": "not checked: linter_delta found no ruff program at .venv/bin/ruff or on PATH, so it did not lint src/app.py."
+      "text": "not checked: linter_delta found no ruff program that it trusts, so it did not lint src/app.py. .venv/bin/ruff is missing, tracked by git, or outside the repository, and PATH has no ruff."
     },
     "linter_no_config": {
       "arguments": {

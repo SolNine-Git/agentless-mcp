@@ -238,7 +238,7 @@
   "linter_finding_fix": "{name} {rule}: {text}. Fix: {detail}",
   "linter_evidence": "code {rule}",
   "linter_no_config": "not checked: linter_delta found no {name} config from the folder of {path} up to the repository root ({listed}, or {file} with a [{text}] table), so it did not lint the file.",
-  "linter_no_binary": "not checked: linter_delta found no {name} program at {file} or on PATH, so it did not lint {path}.",
+  "linter_no_binary": "not checked: linter_delta found no {name} program that it trusts, so it did not lint {path}. {file} is missing, tracked by git, or outside the repository, and PATH has no {name}.",
   "linter_failed": "not checked: linter_delta could not lint {path} with {name}: {reason}.",
   "linter_exited": "it ended with {status}; stderr: {detail}",
   "linter_exited_silent": "it ended with {status} and wrote nothing to stderr",

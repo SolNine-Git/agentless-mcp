@@ -57,6 +57,23 @@ fn the_first_entry_of_a_repeated_name_wins() {
 }
 
 #[test]
+fn a_linter_run_gets_only_the_absolute_path_entries_in_their_order() {
+    let entry = |name: &str, value: &str| (OsString::from(name), OsString::from(value));
+    let linter_env = |path: &str| {
+        let vars = [entry("HOME", "/home/a"), entry("PATH", path)];
+        Services::new(&EnvConfig::new(vars, "/".into())).linter_env
+    };
+    let home = entry("HOME", "/home/a");
+    let kept = entry("PATH", "/usr/bin:/opt/x/bin");
+    let mixed = ".:/usr/bin::bin:/opt/x/bin:";
+    assert_eq!(linter_env(mixed), [home.clone(), kept]);
+    assert_eq!(linter_env("/bin"), [home.clone(), entry("PATH", "/bin")]);
+    // An empty PATH value would search the working directory, so no entry leaves PATH unset.
+    assert_eq!(linter_env(""), std::slice::from_ref(&home));
+    assert_eq!(linter_env(".::bin"), [home]);
+}
+
+#[test]
 fn an_unread_start_directory_keeps_the_first_entry_too() {
     let vars = [("HOME", "/first"), ("HOME", "/second")]
         .map(|(name, value)| (OsString::from(name), OsString::from(value)));

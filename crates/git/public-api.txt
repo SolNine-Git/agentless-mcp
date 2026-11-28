@@ -230,6 +230,26 @@ impl core::marker::Unpin for git::Toplevel
 impl core::marker::UnsafeUnpin for git::Toplevel
 impl core::panic::unwind_safe::RefUnwindSafe for git::Toplevel
 impl core::panic::unwind_safe::UnwindSafe for git::Toplevel
+pub enum git::TrackedError
+pub git::TrackedError::Failed(git::Failure)
+pub git::TrackedError::Unfinished(git::Unfinished)
+impl core::clone::Clone for git::TrackedError
+pub fn git::TrackedError::clone(&self) -> Self
+impl core::cmp::Eq for git::TrackedError
+impl core::cmp::PartialEq for git::TrackedError
+pub fn git::TrackedError::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::TrackedError
+pub fn git::TrackedError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for git::TrackedError
+pub fn git::TrackedError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::TrackedError
+impl core::marker::Freeze for git::TrackedError
+impl core::marker::Send for git::TrackedError
+impl core::marker::Sync for git::TrackedError
+impl core::marker::Unpin for git::TrackedError
+impl core::marker::UnsafeUnpin for git::TrackedError
+impl core::panic::unwind_safe::RefUnwindSafe for git::TrackedError
+impl core::panic::unwind_safe::UnwindSafe for git::TrackedError
 pub enum git::Unfinished
 pub git::Unfinished::NotInstalled
 pub git::Unfinished::NotRun
@@ -467,6 +487,8 @@ pub fn git::Git::root(&self, &std::path::Path) -> core::option::Option<std::path
 pub fn git::Git::snapshot(&self, &std::path::Path, core::option::Option<&std::path::Path>) -> git::Snapshot
 impl git::Git
 pub fn git::Git::toplevel(&self, &std::path::Path, core::time::Duration) -> git::Toplevel
+impl git::Git
+pub fn git::Git::tracks(&self, &std::path::Path, &std::path::Path) -> core::result::Result<bool, git::TrackedError>
 impl git::Git
 pub fn git::Git::tree_walk(&self, &std::path::Path, &str, io::walk::ScanReads) -> git::Walk
 impl git::Git

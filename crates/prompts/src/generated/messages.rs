@@ -2144,10 +2144,15 @@ pub const LINTER_FINDING_FIX: Template<(Text, Text, Text, Text)> = Template::new
 pub const LINTER_NO_BINARY: Template<(Text, Text, Text)> = Template::new(&[
     Piece::Text("not checked: linter_delta found no "),
     Piece::Value(2),
-    Piece::Text(" program at "),
-    Piece::Value(0),
-    Piece::Text(" or on PATH, so it did not lint "),
+    Piece::Text(" program that it trusts, so it did not lint "),
     Piece::Value(1),
+    Piece::Text(". "),
+    Piece::Value(0),
+    Piece::Text(
+        " is missing, tracked by git, or outside the repository, and \
+        PATH has no ",
+    ),
+    Piece::Value(2),
     Piece::Text("."),
 ]);
 

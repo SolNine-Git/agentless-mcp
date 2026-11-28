@@ -8,6 +8,7 @@ mod last_commit;
 mod run;
 mod snapshot;
 mod toplevel;
+mod tracked;
 mod tree;
 mod walk;
 mod worktree;
@@ -30,6 +31,7 @@ pub use last_commit::LastCommit;
 pub use run::{Failure, Git, GitOutcome, Unfinished};
 pub use snapshot::{SHORT_SHA_LENGTH, Snapshot};
 pub use toplevel::Toplevel;
+pub use tracked::TrackedError;
 pub use walk::{RepoFile, Walk, WalkError, WalkWarning};
 pub use worktree::{
     CleanupNote, MAX_GIT_OUTPUT_BYTES, NO_REPO_CODE, PinError, RunGitError, WORKTREE_DIR, Worktree,

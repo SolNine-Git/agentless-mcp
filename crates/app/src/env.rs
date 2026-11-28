@@ -15,9 +15,6 @@ use crate::tokens::{Chars4, TokenCounter};
 /// The time the clone index may spend on the repository walk and the files it reads.
 pub const WALK_BUDGET: Duration = Duration::from_secs(10);
 
-// The start-up variables that a linter run gets, and no others.
-const LINTER_VARS: [&str; 2] = ["HOME", "PATH"];
-
 /// The process environment and working directory, read once at start-up.
 #[derive(Clone, Debug)]
 pub struct EnvConfig {
@@ -136,7 +133,7 @@ pub struct Services {
     pub counter: Arc<dyn TokenCounter>,
     /// The port that starts each linter run.
     pub runner: Arc<dyn ChildRunner>,
-    /// The `HOME` and `PATH` of the start-up environment, the whole environment of a linter run.
+    /// The start-up `HOME` and the absolute `PATH` entries, the whole environment of a linter run.
     pub linter_env: Vec<(OsString, OsString)>,
 }
 
@@ -157,12 +154,32 @@ impl Services {
             clock: Arc::new(SystemClock),
             counter: Arc::new(Chars4),
             runner: Arc::new(SystemRunner),
-            linter_env: LINTER_VARS
-                .into_iter()
-                .filter_map(|name| Some((OsString::from(name), env.var(name)?.to_os_string())))
-                .collect(),
+            linter_env: linter_env(env),
         }
     }
+}
+
+// The start-up variables that a linter run gets, and no others: HOME, and PATH with its
+// absolute entries only, since an empty or relative entry searches the root a run starts in.
+fn linter_env(env: &EnvConfig) -> Vec<(OsString, OsString)> {
+    let home = env.var("HOME").map(OsStr::to_os_string);
+    let path = env.var("PATH").and_then(absolute_entries);
+    [("HOME", home), ("PATH", path)]
+        .into_iter()
+        .filter_map(|(name, value)| Some((OsString::from(name), value?)))
+        .collect()
+}
+
+// None when no entry is absolute: an empty PATH would search the working directory too.
+fn absolute_entries(path: &OsStr) -> Option<OsString> {
+    let mut kept = OsString::new();
+    for entry in std::env::split_paths(path).filter(|entry| entry.is_absolute()) {
+        if !kept.is_empty() {
+            kept.push(":");
+        }
+        kept.push(entry);
+    }
+    (!kept.is_empty()).then_some(kept)
 }
 
 #[cfg(test)]

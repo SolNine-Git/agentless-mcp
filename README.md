@@ -663,10 +663,13 @@ banner, a comment over 2 lines, or a docstring or JSDoc tag that the comment
 rules forbid, when the change adds it to a Python, JavaScript, TypeScript or
 TSX file. `linter_delta` reports each ruff finding that the change adds to a
 Python file, with ruff's fix when it has one. It runs the repository's own
-`.venv/bin/ruff`, or `ruff` on `PATH`, never `uv run`, and only when a
-`ruff.toml`, `.ruff.toml`, or a `pyproject.toml` with a `tool.ruff` key is in
-the file's folder or above it, up to the root. With no config or no ruff, the
-check is off for that edit.
+`.venv/bin/ruff` only when that file resolves inside the repository and git
+tracks nothing at `.venv`, below it, or at the resolved file, in any letter
+case, so a clone cannot supply the binary. Otherwise, and when git cannot
+answer, it runs `ruff` from an absolute `PATH` entry. It never runs `uv run`,
+and it runs only when a `ruff.toml`, `.ruff.toml`, or a `pyproject.toml` with a
+`tool.ruff` key is in the file's folder or above it, up to the root. With no
+config or no ruff, the check is off for that edit.
 
 **Modes.** Each check has one mode: `off`, `advisory`, or `block`.
 

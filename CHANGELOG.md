@@ -56,10 +56,17 @@
   rows live in `crates/prompts/data/linter_rules.json`: python has the ruff
   row, and every other language file declares a gap (`follow_up`,
   `tier_two`, `data_language`), which a test requires. ruff runs as
-  `<root>/.venv/bin/ruff`, else `ruff` on `PATH`, never `uv run`, from the
-  root with only `HOME` and `PATH`, as `ruff check --force-exclude
-  --stdin-filename REL --output-format json --exit-zero -`, and only when a
-  `ruff.toml`, `.ruff.toml`, or a `pyproject.toml` whose TOML has a
+  `<root>/.venv/bin/ruff` only when that file resolves inside the root and
+  the index holds nothing at `.venv`, below it, or at the resolved file, in
+  any letter case (the new `Git::tracks`, one `ls-files --cached` call with
+  a `:(literal,icase)` pathspec), so a committed program, a committed
+  symlink, or a submodule at `.venv` never runs on the first edit after a
+  clone. Otherwise, and when git cannot answer, `ruff` runs from `PATH`,
+  never `uv run`, from the root with only `HOME` and the absolute entries of
+  `PATH`, since an empty or relative entry would search the root. It runs
+  as `ruff check --force-exclude --stdin-filename REL --output-format json
+  --exit-zero -`, and only when a `ruff.toml`, `.ruff.toml`, or a
+  `pyproject.toml` whose TOML has a
   `tool.ruff` key is in the file's folder or above it, up to the root. Each
   run gets the lesser of 2 s and half the time the call has left
   (`LintRequest.budget`, which the hook sets to its lint budget). No config

@@ -1,12 +1,13 @@
 use std::ffi::OsString;
 use std::os::unix::process::ExitStatusExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use checks::{CheckGap, Detail, PairFinding, Severity};
 
+use super::{Linting, SystemRunner, linter_of, program};
 use crate::testing::Sandbox;
 use crate::{After, LintCandidate, LintForm, LintRequest, PairCheck, PairSelection, Repo, Tags};
 
@@ -148,6 +149,8 @@ fn gap_of(candidate: &LintCandidate) -> (CheckGap, String) {
 
 const RUFF_TOML: (&str, &str) = ("ruff.toml", "[lint]\nselect = [\"F\"]\n");
 const OLD: (&str, &str) = ("src/app.py", "x = 1\n");
+// uv writes this file into each venv it makes, so git adds nothing below the venv.
+const VENV_IGNORE: (&str, &str) = (".venv/.gitignore", "*\n");
 
 #[test]
 fn an_added_unused_import_gives_one_advisory_that_names_its_code_and_fix() {
@@ -224,15 +227,99 @@ fn each_run_lints_one_text_on_stdin_from_the_root_with_only_home_and_path() {
 #[test]
 fn the_repository_program_runs_before_the_one_on_path() {
     let ruff = FakeRuff::new(unused_imports);
-    let local = (".venv/bin/ruff", "#!/bin/sh\n");
-    let linted = lint(
-        &[RUFF_TOML, OLD, local],
+    let sandbox = Sandbox::new();
+    sandbox.put("repo/.venv/bin/ruff", "#!/bin/sh\n");
+    let linted = lint_in(
+        &sandbox,
+        &[RUFF_TOML, OLD, VENV_IGNORE],
         ("src/app.py", "y = 2\n"),
         &ruff,
         None,
     );
     let program = linted.root.join(".venv/bin/ruff").into_os_string();
     assert!(ruff.runs().iter().all(|spec| spec.program == program));
+}
+
+// The program that a pair below `root` runs, with `git` answering whether the index holds it.
+fn program_in(root: &Path, git: &git::Git) -> OsString {
+    let linting = Linting {
+        root,
+        runner: &SystemRunner,
+        env: &[],
+        git,
+        deadline: None,
+    };
+    program(&linting, linter_of("src/app.py").expect("the ruff row"))
+}
+
+fn local_program(root: &Path) -> OsString {
+    root.join(".venv/bin/ruff").into_os_string()
+}
+
+#[test]
+fn a_venv_program_runs_only_when_the_index_holds_nothing_at_its_venv_or_below_it() {
+    let cases: [(&[(&str, &str)], bool); 3] = [
+        (&[VENV_IGNORE], true),
+        (&[(".venv/bin/ruff", "#!/bin/sh\n")], false),
+        // An entry in another letter case, which a case-insensitive file system shares.
+        (&[(".VENV/notes", "x\n")], false),
+    ];
+    for (committed, runs) in cases {
+        let sandbox = Sandbox::new();
+        let root = sandbox.repo("repo", committed);
+        sandbox.put("repo/.venv/bin/ruff", "#!/bin/sh\n");
+        let services = sandbox.services(&root);
+        let expected = if runs {
+            local_program(&root)
+        } else {
+            OsString::from("ruff")
+        };
+        assert_eq!(program_in(&root, &services.git), expected, "{committed:?}");
+    }
+    let sandbox = Sandbox::new();
+    let root = sandbox.repo("repo", &[]);
+    sandbox.put("repo/.venv/bin/ruff", "#!/bin/sh\n");
+    let head = String::from_utf8(sandbox.git(&root, &["rev-parse", "HEAD"])).expect("a hex id");
+    let gitlink = format!("160000,{},.venv", head.trim());
+    sandbox.git(&root, &["update-index", "--add", "--cacheinfo", &gitlink]);
+    let services = sandbox.services(&root);
+    assert_eq!(program_in(&root, &services.git), "ruff", "a submodule");
+}
+
+#[test]
+fn a_symlinked_program_runs_only_when_it_resolves_to_an_untracked_file_inside_the_root() {
+    let targets = [
+        ("<SANDBOX>/outside/ruff", false),
+        ("../../tools/ruff", false),
+        ("../real/ruff", true),
+    ];
+    for (target, runs) in targets {
+        let sandbox = Sandbox::new();
+        sandbox.put("outside/ruff", "#!/bin/sh\n");
+        let root = sandbox.repo("repo", &[VENV_IGNORE, ("tools/ruff", "#!/bin/sh\n")]);
+        sandbox.put("repo/.venv/real/ruff", "#!/bin/sh\n");
+        sandbox.mkdir("repo/.venv/bin");
+        sandbox.apply(&["symlink", "repo/.venv/bin/ruff", target].map(serde_json::Value::from));
+        let services = sandbox.services(&root);
+        let expected = if runs {
+            local_program(&root)
+        } else {
+            OsString::from("ruff")
+        };
+        assert_eq!(program_in(&root, &services.git), expected, "{target}");
+    }
+}
+
+#[test]
+fn a_git_that_cannot_answer_leaves_the_name_on_path() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repo("repo", &[VENV_IGNORE]);
+    sandbox.put("repo/.venv/bin/ruff", "#!/bin/sh\n");
+    sandbox.put("bin/git", "#!/bin/sh\nexit 128\n");
+    sandbox.chmod("bin/git", 0o755);
+    let path = sandbox.path().join("bin").into_os_string();
+    let failing = git::Git::new([(OsString::from("PATH"), path)]);
+    assert_eq!(program_in(&root, &failing), "ruff");
 }
 
 #[test]

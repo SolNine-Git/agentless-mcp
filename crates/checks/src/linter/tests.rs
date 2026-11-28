@@ -263,8 +263,9 @@ fn a_pair_that_was_not_linted_gives_one_not_checked_row_with_its_gap() {
         (
             NotLinted::NoBinary,
             CheckGap::NoLinterBinary,
-            "not checked: linter_delta found no ruff program at .venv/bin/ruff or on PATH, so \
-             it did not lint src/a.py.",
+            "not checked: linter_delta found no ruff program that it trusts, so it did not lint \
+             src/a.py. .venv/bin/ruff is missing, tracked by git, or outside the repository, and \
+             PATH has no ruff.",
         ),
         (
             NotLinted::Failed(failure),

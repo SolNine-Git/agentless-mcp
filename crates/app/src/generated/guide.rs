@@ -1474,8 +1474,11 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         ..., \"group\": ...}`. Only `--only comment_delta` runs it |\n| \
         `linter_delta` | advisory | the change adds a finding of the \
         repository's own linter. Python has a row: ruff, run as \
-        `.venv/bin/ruff` below the root when it is there and otherwise \
-        as `ruff` on `PATH`, with only `HOME` and `PATH` set, never \
+        `.venv/bin/ruff` below the root only when that file resolves \
+        inside the root and git tracks nothing at `.venv`, below it, or \
+        at the resolved file, in any letter case, and otherwise, or \
+        when git cannot answer, as `ruff` on `PATH`. The run gets only \
+        `HOME` and the absolute entries of `PATH`, and never goes \
         through `uv run`. It runs only when a `ruff.toml`, a \
         `.ruff.toml`, or a `pyproject.toml` with a `tool.ruff` key is \
         in the file's folder or a folder above it, up to the root. Each \
@@ -1985,7 +1988,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 4_060, 4_893),
     ("stable-ids", 4_895, 6_384),
     ("the-two-surfaces", 6_386, 12_069),
-    ("per-tool-usage", 12_071, 109_836),
+    ("per-tool-usage", 12_071, 110_019),
     ("claude-code-specifics", 13_687, 16_226),
     ("map", 16_228, 26_257),
     ("tree", 26_259, 26_580),
@@ -2005,10 +2008,10 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("resolve-locs", 63_284, 64_099),
     ("capabilities", 64_101, 65_815),
     ("index", 65_817, 68_558),
-    ("lint", 68_560, 98_636),
-    ("validate-vote", 98_638, 108_235),
-    ("warmup", 108_237, 109_836),
-    ("project-defaults-agentless-mcp-json", 109_838, 113_948),
-    ("token-counting", 113_950, 114_364),
-    ("exit-codes", 114_366, 114_824),
+    ("lint", 68_560, 98_819),
+    ("validate-vote", 98_821, 108_418),
+    ("warmup", 108_420, 110_019),
+    ("project-defaults-agentless-mcp-json", 110_021, 114_131),
+    ("token-counting", 114_133, 114_547),
+    ("exit-codes", 114_549, 115_007),
 ];

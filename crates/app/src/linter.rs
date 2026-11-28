@@ -3,7 +3,7 @@
 
 use std::ffi::OsString;
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use checks::{LintedPair, LintedSides, LinterFailure, LinterFinding, NotLinted, Pair};
@@ -40,6 +40,7 @@ pub(crate) struct Linting<'a> {
     pub(crate) root: &'a Path,
     pub(crate) runner: &'a dyn ChildRunner,
     pub(crate) env: &'a [(OsString, OsString)],
+    pub(crate) git: &'a git::Git,
     pub(crate) deadline: Option<&'a Deadline>,
 }
 
@@ -53,6 +54,7 @@ impl<'a> Linting<'a> {
             root,
             runner: &*services.runner,
             env: &services.linter_env,
+            git: &services.git,
             deadline,
         }
     }
@@ -96,7 +98,7 @@ fn lint_pair(
     if !has_config(linting.root, path, linter) {
         return Err(NotLinted::NoConfig);
     }
-    let program = program(linting.root, linter);
+    let program = program(linting, linter);
     let run = |text: &str| run_once(linting, linter, (&program, path), text);
     let old = match pair.old_text() {
         Some(old) => run(old)?,
@@ -134,14 +136,37 @@ fn run_once(
     checks::ran(linting.runner.run(&spec), timeout, STDOUT_CAP)
 }
 
-// The repository's own program when it is there, else the bare name, which the run finds on PATH.
-fn program(root: &Path, linter: &Linter) -> OsString {
-    let local = root.join(linter.local);
-    if local.is_file() {
-        local.into_os_string()
+// The repository's own program when no tracked content can have put it there, else the bare
+// name, which the run finds on PATH.
+fn program(linting: &Linting<'_>, linter: &Linter) -> OsString {
+    if untracked_inside(linting.git, linting.root, linter.local) {
+        linting.root.join(linter.local).into_os_string()
     } else {
         OsString::from(linter.program)
     }
+}
+
+// A file that resolves inside the root, with no tracked entry at its top folder or below it (a
+// symlink or a submodule there included) or at its target. A git that cannot answer gives false.
+fn untracked_inside(git: &git::Git, root: &Path, local: &str) -> bool {
+    let named = Path::new(local);
+    let program = root.join(named);
+    if !program.is_file() {
+        return false;
+    }
+    let Some(target) = resolved_below(root, &program) else {
+        return false;
+    };
+    let untracked = |path: &Path| git.tracks(root, path) == Ok(false);
+    let folder = named.iter().next().map_or(named, Path::new);
+    untracked(folder) && (target == named || untracked(&target))
+}
+
+// The path below the root of the file that `path` resolves to, when that file is inside the root.
+fn resolved_below(root: &Path, path: &Path) -> Option<PathBuf> {
+    let top = io::resolve(root).ok()?;
+    let resolved = io::contained_path(&top, path).ok()?;
+    resolved.strip_prefix(&top).ok().map(Path::to_path_buf)
 }
 
 // A config in the folder of `path` or in a folder above it, up to the root.
