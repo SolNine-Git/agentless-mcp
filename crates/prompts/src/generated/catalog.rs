@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 435] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 441] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -783,6 +783,18 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 435] = [
     ),
     (
         "messages",
+        "erosion_scan_stop_closing",
+        &[],
+        &[Piece::Text(messages::EROSION_SCAN_STOP_CLOSING)],
+    ),
+    (
+        "messages",
+        "erosion_scan_write_closing",
+        &[],
+        &[Piece::Text(messages::EROSION_SCAN_WRITE_CLOSING)],
+    ),
+    (
+        "messages",
         "expand_batch_shortened",
         &["shortened", "total", "budget"],
         messages::EXPAND_BATCH_SHORTENED.pieces(),
@@ -1365,6 +1377,18 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 435] = [
     ),
     (
         "messages",
+        "lint_revision_files_limit",
+        &["max", "skipped"],
+        messages::LINT_REVISION_FILES_LIMIT.pieces(),
+    ),
+    (
+        "messages",
+        "lint_revision_files_limit_evidence",
+        &["max", "skipped"],
+        messages::LINT_REVISION_FILES_LIMIT_EVIDENCE.pieces(),
+    ),
+    (
+        "messages",
         "lint_revision_listing_capped",
         &["command", "bytes"],
         messages::LINT_REVISION_LISTING_CAPPED.pieces(),
@@ -1380,6 +1404,18 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 435] = [
         "lint_revision_output_malformed",
         &["detail"],
         messages::LINT_REVISION_OUTPUT_MALFORMED.pieces(),
+    ),
+    (
+        "messages",
+        "lint_revision_over_bytes",
+        &["path", "bytes"],
+        messages::LINT_REVISION_OVER_BYTES.pieces(),
+    ),
+    (
+        "messages",
+        "lint_revision_over_bytes_evidence",
+        &["bytes"],
+        messages::LINT_REVISION_OVER_BYTES_EVIDENCE.pieces(),
     ),
     (
         "messages",

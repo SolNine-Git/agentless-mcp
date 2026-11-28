@@ -7,7 +7,7 @@ use json::{JsonForm, to_text};
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::{BlockSource, LintForm, LintReport, LintRequest, lint, lint_with};
+use super::{BlockSource, LintForm, LintReport, LintRequest, RevisionLimits, lint, lint_with};
 use crate::clock::PinnedClock;
 use crate::pairs::Stored;
 use crate::reuse::StoredUnits;
@@ -87,7 +87,13 @@ fn request(sandbox: &Sandbox, scenario: &Scenario, in_memory: bool) -> LintReque
         }
         _ => {
             let revision = scenario.target.clone();
-            (LintForm::Revision { revision }, FormKind::Since)
+            (
+                LintForm::Revision {
+                    revision,
+                    limits: None,
+                },
+                FormKind::Since,
+            )
         }
     };
     let checks = PairSelection::from_names(&scenario.checks, kind).expect("a pair selection");
@@ -183,6 +189,7 @@ fn a_run_without_clone_delta_never_reads_a_stored_block() {
     let request = LintRequest {
         form: LintForm::Revision {
             revision: "HEAD".to_owned(),
+            limits: None,
         },
         checks: PairSelection::edited_files(),
     };
@@ -247,11 +254,21 @@ fn callee_report(services: &crate::Services, root: &Path) -> LintReport {
 
 // The report of `lint --since HEAD --only <checks>` on the repository at `root`.
 fn since_report(services: &crate::Services, root: &Path, checks: &[&str]) -> LintReport {
+    limited_report(services, root, checks, None)
+}
+
+fn limited_report(
+    services: &crate::Services,
+    root: &Path,
+    checks: &[&str],
+    limits: Option<RevisionLimits>,
+) -> LintReport {
     let repo = Repo::load(services, root).expect("the repository loads");
     let names: Vec<String> = checks.iter().map(|check| (*check).to_owned()).collect();
     let request = LintRequest {
         form: LintForm::Revision {
             revision: "HEAD".to_owned(),
+            limits,
         },
         checks: PairSelection::from_names(&names, FormKind::Since).expect("a selection"),
     };
@@ -764,4 +781,62 @@ fn a_run_of_both_tree_checks_gives_the_rows_of_each() {
             ("b.py:5".to_owned(), "cycle_dodge")
         ]
     );
+}
+
+const LONG_COMMENT: &str = "# one\n# two\n# three\nx = 1\n";
+
+// The path and the message of each row of `--since HEAD --only comment_delta` with `limits`, over a
+// repository whose three new files each hold a three-line comment.
+fn limited_rows(limits: RevisionLimits, big: Option<&str>) -> Vec<(String, String)> {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repo("repo", &[("base.py", "x = 0\n")]);
+    for name in ["c.py", "a.py", "b.py"] {
+        sandbox.put(&format!("repo/{name}"), LONG_COMMENT);
+    }
+    if let Some(text) = big {
+        sandbox.put("repo/big.py", text);
+    }
+    let services = sandbox.services(sandbox.path());
+    let report = limited_report(&services, &root, &["comment_delta"], Some(limits));
+    (report.candidates[0].findings.iter())
+        .map(|row| (row.finding.path.clone(), row.finding.message.clone()))
+        .collect()
+}
+
+#[test]
+fn a_file_limit_compares_the_first_files_in_path_order_and_names_the_rest() {
+    let limits = RevisionLimits {
+        max_files: 2,
+        max_bytes: 1_000,
+    };
+
+    let rows = limited_rows(limits, None);
+
+    let skipped = "not checked: the run compares at most 2 changed files, so no pair check \
+                   compared 1 of them.";
+    let run = "3-line comment; why-comments run 1-2 lines";
+    let expected = [("", skipped), ("a.py", run), ("b.py", run)];
+    let expected: Vec<(String, String)> = (expected.iter())
+        .map(|(path, message)| ((*path).to_owned(), (*message).to_owned()))
+        .collect();
+    assert_eq!(rows, expected);
+}
+
+#[test]
+fn a_byte_limit_skips_a_file_over_it_and_says_so() {
+    let limits = RevisionLimits {
+        max_files: 300,
+        max_bytes: 100,
+    };
+    let big = format!("{LONG_COMMENT}{}", "y = 2\n".repeat(40));
+
+    let rows = limited_rows(limits, Some(&big));
+
+    let over = "not checked: big.py is over 100 bytes, so no pair check compared this file.";
+    assert!(
+        rows.contains(&("big.py".to_owned(), over.to_owned())),
+        "{rows:?}"
+    );
+    let paths: Vec<&str> = rows.iter().map(|(path, _)| path.as_str()).collect();
+    assert_eq!(paths, ["big.py", "a.py", "b.py", "c.py"]);
 }

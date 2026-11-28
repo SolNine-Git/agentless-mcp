@@ -297,6 +297,31 @@ fn merge_base_is_the_fork_point_and_commits_since_counts_head_past_it() {
     assert_eq!(count, GitOutcome::Printed(b"2\n".to_vec()));
 }
 
+#[test]
+fn the_closest_base_is_the_merge_base_with_the_fewest_commits_ahead() {
+    let scratch = Scratch::new();
+    let root = scratch.repo("repo", &[("a.py", "x = 1\n")]);
+    let git = scratch.git();
+    scratch.run_git(&root, &["branch", "-m", "main", "trunk"]);
+    assert_eq!(git.closest_base(&root), None);
+    scratch.run_git(&root, &["branch", "-m", "trunk", "main"]);
+    let commit_of = |revision: &str| match git.verify(&root, revision) {
+        GitOutcome::Printed(stdout) => parse_commit(&stdout).expect("one full object name"),
+        other => panic!("git printed no commit: {other:?}"),
+    };
+    let first = commit_of("HEAD");
+    scratch.run_git(&root, &["branch", "master"]);
+    scratch.write("repo/a.py", "x = 2\n");
+    scratch.run_git(&root, &["commit", "--quiet", "-am", "second"]);
+    let second = commit_of("HEAD");
+    scratch.run_git(&root, &["checkout", "--quiet", "-b", "work"]);
+    scratch.write("repo/a.py", "x = 3\n");
+    scratch.run_git(&root, &["commit", "--quiet", "-am", "third"]);
+    assert_eq!(git.closest_base(&root), Some(second));
+    scratch.run_git(&root, &["branch", "-D", "main"]);
+    assert_eq!(git.closest_base(&root), Some(first));
+}
+
 // Each revision is bound after --end-of-options, so one that starts with "-" names no commit and
 // never reaches git as an option such as --output.
 #[test]

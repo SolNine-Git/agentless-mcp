@@ -2027,6 +2027,14 @@ variable sets `clone_delta` too: to keep it advisory while it is on trial, set
 its entry to `advisory`. A bad entry is dropped with a warning, and
 `capabilities` shows the entries in force.
 
+The erosion-scan hook (`agentless-mcp hook erosion-scan`, on `PostToolUse` for
+`Bash`, on `Stop` and on `SubagentStop`) covers the writes that skip the Write
+and Edit tools. It runs only the checks that are in `block` mode for a
+repository, over the files that a shell write changed since the closest merge
+base of `main`, `develop` and `master`. `AGENTLESS_EROSION_SCAN_IGNORE` lists
+the repository roots that it never scans, and `AGENTLESS_EROSION_GATE=off`
+turns it off.
+
 `boundary_globs` lists the modules that parse foreign data, the only files
 `lint`'s `contract_drift` checks. It is empty by default. It holds at most 64
 globs of at most 256 characters each. Each glob matches a repo-relative path

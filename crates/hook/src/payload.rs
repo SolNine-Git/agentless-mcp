@@ -147,21 +147,25 @@ fn mistyped(key: &str, place: &str, kind: &str) -> Halt {
     Halt::malformed(format!("{place}.{key} is not a {kind}"))
 }
 
-fn string<'a>(fields: &'a Fields, key: &str, place: &str) -> Result<&'a CodePointString, Halt> {
+pub(crate) fn string<'a>(
+    fields: &'a Fields,
+    key: &str,
+    place: &str,
+) -> Result<&'a CodePointString, Halt> {
     match field(fields, key, place)? {
         JsonValue::Str(value) => Ok(value),
         _ => Err(mistyped(key, place, "str")),
     }
 }
 
-fn object<'a>(fields: &'a Fields, key: &str, place: &str) -> Result<&'a Fields, Halt> {
+pub(crate) fn object<'a>(fields: &'a Fields, key: &str, place: &str) -> Result<&'a Fields, Halt> {
     match field(fields, key, place)? {
         JsonValue::Object(value) => Ok(value),
         _ => Err(mistyped(key, place, "dict")),
     }
 }
 
-fn boolean(fields: &Fields, key: &str, place: &str) -> Result<bool, Halt> {
+pub(crate) fn boolean(fields: &Fields, key: &str, place: &str) -> Result<bool, Halt> {
     match field(fields, key, place)? {
         JsonValue::Bool(value) => Ok(*value),
         _ => Err(mistyped(key, place, "bool")),

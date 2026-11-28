@@ -49,7 +49,9 @@ pub enum app::hooks::Event
 pub app::hooks::Event::PostToolUse
 pub app::hooks::Event::PreToolUse
 pub app::hooks::Event::SessionStart
+pub app::hooks::Event::Stop
 pub app::hooks::Event::SubagentStart
+pub app::hooks::Event::SubagentStop
 pub app::hooks::Event::UserPromptSubmit
 impl app::hooks::Event
 pub fn app::hooks::Event::as_str(self) -> &'static str
@@ -93,14 +95,16 @@ impl core::panic::unwind_safe::UnwindSafe for app::hooks::Expected
 pub enum app::hooks::Hook
 pub app::hooks::Hook::BriefRecord
 pub app::hooks::Hook::Erosion
+pub app::hooks::Hook::ErosionScan
 pub app::hooks::Hook::LedgerMark
 pub app::hooks::Hook::LedgerReset
 pub app::hooks::Hook::PromptMap
 pub app::hooks::Hook::ReadCard
 pub app::hooks::Hook::SubagentMap
 impl app::hooks::Hook
-pub const app::hooks::Hook::ALL: [app::hooks::Hook; 7]
+pub const app::hooks::Hook::ALL: [app::hooks::Hook; 8]
 pub fn app::hooks::Hook::deadline(self) -> core::time::Duration
+pub fn app::hooks::Hook::events(self) -> &'static [app::hooks::Event]
 pub fn app::hooks::Hook::name(self) -> &'static str
 impl core::clone::Clone for app::hooks::Hook
 pub fn app::hooks::Hook::clone(&self) -> Self
@@ -223,6 +227,8 @@ pub app::hooks::Entry::event: app::hooks::Event
 pub app::hooks::Entry::hook: app::hooks::Hook
 pub app::hooks::Entry::matcher: core::option::Option<alloc::string::String>
 pub app::hooks::Entry::timeout: u32
+impl app::hooks::Entry
+pub fn app::hooks::Entry::label(&self) -> alloc::string::String
 impl core::clone::Clone for app::hooks::Entry
 pub fn app::hooks::Entry::clone(&self) -> Self
 impl core::cmp::Eq for app::hooks::Entry
@@ -2192,6 +2198,7 @@ pub app::LintForm::Proposed
 pub app::LintForm::Proposed::after: app::After
 pub app::LintForm::Proposed::path: alloc::string::String
 pub app::LintForm::Revision
+pub app::LintForm::Revision::limits: core::option::Option<app::RevisionLimits>
 pub app::LintForm::Revision::revision: alloc::string::String
 impl core::clone::Clone for app::LintForm
 pub fn app::LintForm::clone(&self) -> Self
@@ -4230,6 +4237,25 @@ impl core::marker::Unpin for app::Repo
 impl core::marker::UnsafeUnpin for app::Repo
 impl core::panic::unwind_safe::RefUnwindSafe for app::Repo
 impl core::panic::unwind_safe::UnwindSafe for app::Repo
+pub struct app::RevisionLimits
+pub app::RevisionLimits::max_bytes: usize
+pub app::RevisionLimits::max_files: usize
+impl core::clone::Clone for app::RevisionLimits
+pub fn app::RevisionLimits::clone(&self) -> Self
+impl core::cmp::Eq for app::RevisionLimits
+impl core::cmp::PartialEq for app::RevisionLimits
+pub fn app::RevisionLimits::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::RevisionLimits
+pub fn app::RevisionLimits::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::RevisionLimits
+impl core::marker::StructuralPartialEq for app::RevisionLimits
+impl core::marker::Freeze for app::RevisionLimits
+impl core::marker::Send for app::RevisionLimits
+impl core::marker::Sync for app::RevisionLimits
+impl core::marker::Unpin for app::RevisionLimits
+impl core::marker::UnsafeUnpin for app::RevisionLimits
+impl core::panic::unwind_safe::RefUnwindSafe for app::RevisionLimits
+impl core::panic::unwind_safe::UnwindSafe for app::RevisionLimits
 pub struct app::Roots
 pub app::Roots::client: alloc::vec::Vec<alloc::string::String>
 pub app::Roots::configured: core::option::Option<alloc::vec::Vec<alloc::string::String>>

@@ -13,6 +13,7 @@ use crate::pair_runs::{IndexOf, Reported, RunInputs, TreeOf};
 use crate::pairs::{Judged, Lookup, built_index, run_pairs};
 use crate::proposed::{After, Proposed, proposed};
 use crate::reuse::{ReuseSource, UnitLookup};
+pub use crate::revision::RevisionLimits;
 use crate::revision::compared;
 use crate::tree_scan::{TreeScan, tree_scan};
 use crate::{Error, Noted, PairSelection, Repo, Services, Tags};
@@ -56,6 +57,8 @@ pub enum LintForm {
     Revision {
         /// The revision as the caller gave it; the report names the candidate by it.
         revision: String,
+        /// The most that the run reads, or `None` for no limit.
+        limits: Option<RevisionLimits>,
     },
 }
 
@@ -180,8 +183,8 @@ fn report(
                 judge_proposed(compared, request.checks, &repo.config, index, reuse)?,
             )
         }
-        LintForm::Revision { revision } => {
-            let compared = compared(&services.git, &repo.root, revision)?;
+        LintForm::Revision { revision, limits } => {
+            let compared = compared(&services.git, &repo.root, revision, *limits)?;
             let inputs = RunInputs {
                 config: &repo.config,
                 index,

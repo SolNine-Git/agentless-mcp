@@ -3,6 +3,7 @@
 
 pub(crate) mod log;
 pub(crate) mod shell;
+pub(crate) mod write;
 
 use std::io::Read;
 

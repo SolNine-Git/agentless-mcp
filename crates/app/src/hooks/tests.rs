@@ -98,10 +98,120 @@ fn the_table_holds_each_hook_with_its_event_matcher_and_three_times_its_deadline
             ("prompt-map", "UserPromptSubmit", None, 15),
             ("erosion", "PreToolUse", some("Write|Edit"), 15),
             ("ledger-reset", "SessionStart", some("compact"), 3),
+            ("erosion-scan", "PostToolUse", some("Bash"), 15),
+            ("erosion-scan", "Stop", None, 15),
+            ("erosion-scan", "SubagentStop", None, 15),
         ]
     );
     let other = entries("tools");
     assert_eq!(other[1].matcher.as_deref(), Some("mcp__tools__trace"));
+}
+
+#[test]
+fn a_hook_with_several_events_has_one_row_for_each_and_a_label_that_names_the_event() {
+    let labels: Vec<String> = entries("agentless")
+        .iter()
+        .map(super::Entry::label)
+        .collect();
+    assert_eq!(
+        &labels[5..],
+        [
+            "erosion",
+            "ledger-reset",
+            "erosion-scan (PostToolUse)",
+            "erosion-scan (Stop)",
+            "erosion-scan (SubagentStop)",
+        ]
+    );
+    assert_eq!(Hook::ErosionScan.events().len(), 3);
+    assert!(Hook::ALL.iter().all(|hook| !hook.events().is_empty()));
+}
+
+// The entries of the release before erosion-scan: the table's other seven hooks.
+fn before_erosion_scan() -> String {
+    let entry = |hook: &str, timeout: u32| {
+        format!(
+            "{{\"type\": \"command\", \"command\": \"{OWN} hook {hook}\", \"timeout\": {timeout}}}"
+        )
+    };
+    let group = |matcher: &str, hook: &str, timeout: u32| {
+        format!(
+            "{{\"matcher\": \"{matcher}\", \"hooks\": [{}]}}",
+            entry(hook, timeout)
+        )
+    };
+    format!(
+        "{{\"PostToolUse\": [{}, {}], \"PreToolUse\": [{}, {}], \"SubagentStart\": [{{\"hooks\": [{}]}}], \
+         \"UserPromptSubmit\": [{{\"hooks\": [{}]}}], \"SessionStart\": [{}]}}",
+        group("Read|Bash", "read-card", 9),
+        group("mcp__agentless__trace", "ledger-mark", 6),
+        group("Agent", "brief-record", 3),
+        group("Write|Edit", "erosion", 15),
+        entry("subagent-map", 15),
+        entry("prompt-map", 15),
+        group("compact", "ledger-reset", 3),
+    )
+}
+
+#[test]
+fn an_install_of_the_release_before_erosion_scan_still_reads_as_current_for_its_hooks() {
+    let before = status(&before_erosion_scan(), DEFAULT_SERVER_NAME);
+
+    for row in &before.rows {
+        let expected = if row.entry.hook == Hook::ErosionScan {
+            EntryState::Missing
+        } else {
+            EntryState::Current
+        };
+        assert_eq!(row.state, expected, "{}", row.entry.label());
+    }
+    assert!(!before.is_current());
+}
+
+#[test]
+fn each_event_of_a_hook_is_current_or_stale_on_its_own() {
+    let rows = |text: &str| -> Vec<(String, bool)> {
+        let read = status(text, "agentless");
+        read.rows
+            .iter()
+            .filter(|row| row.entry.hook == Hook::ErosionScan)
+            .map(|row| (row.entry.label(), row.state == EntryState::Current))
+            .collect()
+    };
+    let text = installed("agentless");
+    assert!(rows(&text).iter().all(|(_, current)| *current));
+    let stop = format!(
+        "\"Stop\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": \"{OWN} hook erosion-scan\", \"timeout\": 15}}]}}]"
+    );
+    assert!(text.contains(&stop), "{text}");
+
+    let changed = text.replace(&stop, &stop.replace("15", "7"));
+
+    assert_eq!(
+        rows(&changed),
+        [
+            ("erosion-scan (PostToolUse)".to_owned(), true),
+            ("erosion-scan (Stop)".to_owned(), false),
+            ("erosion-scan (SubagentStop)".to_owned(), true),
+        ]
+    );
+}
+
+#[test]
+fn a_handler_under_an_event_the_hook_does_not_run_on_makes_its_first_row_stale() {
+    let moved = format!(
+        "{{\"PreToolUse\": [{{\"matcher\": \"Bash\", \"hooks\": [{{\"type\": \"command\", \
+         \"command\": \"{OWN} hook erosion-scan\", \"timeout\": 15}}]}}]}}"
+    );
+    let read = status(&moved, DEFAULT_SERVER_NAME);
+    let scan: Vec<&EntryState> = (read.rows.iter())
+        .filter(|row| row.entry.hook == Hook::ErosionScan)
+        .map(|row| &row.state)
+        .collect();
+
+    assert!(matches!(scan[0], EntryState::Stale(_)), "{scan:?}");
+    assert_eq!(scan[1], &EntryState::Missing);
+    assert_eq!(scan[2], &EntryState::Missing);
 }
 
 #[test]

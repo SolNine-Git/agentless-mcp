@@ -25,6 +25,13 @@ impl Modes {
             .collect()
     }
 
+    pub(crate) fn blocking(self) -> Vec<GatedCheck> {
+        GatedCheck::ALL
+            .into_iter()
+            .filter(|check| self.of(*check) == GateMode::Block)
+            .collect()
+    }
+
     pub(crate) fn iter(self) -> impl Iterator<Item = (GatedCheck, GateMode)> {
         GatedCheck::ALL.into_iter().zip(self.0)
     }

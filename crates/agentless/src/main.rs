@@ -4,7 +4,7 @@
 mod server;
 
 use std::ffi::OsString;
-use std::io;
+use std::io::{self, Read};
 use std::panic::{self, AssertUnwindSafe};
 use std::process::ExitCode;
 use std::sync::OnceLock;
@@ -34,6 +34,14 @@ fn main() -> ExitCode {
 // One command on the settings files: its subcommand name and its run on the options after it.
 type SettingsRun = fn(&[OsString], &EnvConfig) -> hook::Output;
 
+// One erosion hook: its run on the payload that stdin holds.
+type GateRun = fn(&EnvConfig, &Services, &mut dyn Read) -> hook::Output;
+
+const GATES: [(&str, GateRun); 2] = [
+    ("erosion", hook::erosion),
+    ("erosion-scan", hook::erosion_scan),
+];
+
 const SETTINGS: [(&str, SettingsRun); 3] = [
     ("install", hook::install),
     ("status", hook::status),
@@ -46,13 +54,10 @@ fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
     if asks_hook_help(&words) {
         return with_streams(cli::hook_help);
     }
-    if let [Some("hook"), Some(name)] = words.as_slice() {
-        if *name == "erosion" {
-            return erosion(env, services);
-        }
-        if let Some(found) = hook::ContextHook::named(name) {
-            return context_hook(found, env, services);
-        }
+    if let [Some("hook"), Some(name)] = words.as_slice()
+        && let Some(code) = hook_named(name, env, services)
+    {
+        return code;
     }
     if words.first() == Some(&Some("gate-report")) {
         return with_streams(|streams| {
@@ -88,15 +93,22 @@ fn asks_hook_help(words: &[Option<&str>]) -> bool {
     let help = |word: &str| matches!(word, "-h" | "--help");
     match words {
         [Some("hook"), Some(flag)] => help(flag),
-        [Some("hook"), Some(name), Some(flag)] => {
-            help(flag) && (*name == "erosion" || hook::ContextHook::named(name).is_some())
-        }
+        [Some("hook"), Some(name), Some(flag)] => help(flag) && is_hook(name),
         _ => false,
     }
 }
 
-fn erosion(env: &EnvConfig, services: &Services) -> u8 {
-    answered(|| hook::erosion(env, services, &mut io::stdin().lock()))
+fn is_hook(name: &str) -> bool {
+    GATES.iter().any(|(gate, _)| *gate == name) || hook::ContextHook::named(name).is_some()
+}
+
+// The run of the hook that `name` names, or None when it names no hook.
+fn hook_named(name: &str, env: &EnvConfig, services: &Services) -> Option<u8> {
+    if let Some((_, gate)) = GATES.iter().find(|(gate, _)| *gate == name) {
+        return Some(answered(|| gate(env, services, &mut io::stdin().lock())));
+    }
+    let found = hook::ContextHook::named(name)?;
+    Some(context_hook(found, env, services))
 }
 
 // A context hook writes its reply itself. Claude Code reads plain stdout as context on some of

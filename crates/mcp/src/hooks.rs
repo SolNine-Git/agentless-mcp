@@ -164,10 +164,10 @@ fn status_note(status: &HookStatus, own: &str) -> Option<String> {
 // The missing, the stale and the retired entries, each named once; the first part says how many
 // entries the table has.
 fn summary(status: &HookStatus) -> Vec<String> {
-    let named = |wanted: fn(&EntryState) -> bool| -> Vec<&str> {
+    let named = |wanted: fn(&EntryState) -> bool| -> Vec<String> {
         (status.rows.iter())
             .filter(|row| wanted(&row.state))
-            .map(|row| row.entry.hook.name())
+            .map(|row| row.entry.label())
             .collect()
     };
     let missing = named(|state| matches!(state, EntryState::Missing));

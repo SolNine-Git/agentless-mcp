@@ -3,8 +3,9 @@ use serde_json::json;
 use super::{Setup, probe, quiet_ports};
 use crate::HookCheck;
 
-const NOTE: &str = "// note: hooks: 7 of 7 agentless hook entries are missing (read-card, \
-     ledger-mark, brief-record, subagent-map, prompt-map, erosion, ledger-reset). Run: \
+const NOTE: &str = "// note: hooks: 10 of 10 agentless hook entries are missing (read-card, \
+     ledger-mark, brief-record, subagent-map, prompt-map, erosion, ledger-reset, \
+     erosion-scan (PostToolUse), erosion-scan (Stop), erosion-scan (SubagentStop)). Run: \
      agentless-mcp hook install";
 
 // The first answer of each client session carries the note under the receipt line; a refusal has

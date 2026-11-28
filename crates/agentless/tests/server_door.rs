@@ -18,7 +18,7 @@ const BINARY: &str = env!("CARGO_BIN_EXE_agentless-mcp");
 const DEADLINE: Duration = Duration::from_secs(30);
 const SURFACE_REFUSED: &str = "agentless-mcp-server: error: --surface is no longer served: this \
      release publishes trace and search only. Drop --surface.\n";
-const ALL_MISSING: &str = "hooks: 7 of 7 agentless hook entries are missing";
+const ALL_MISSING: &str = "hooks: 10 of 10 agentless hook entries are missing";
 // The commit of every rig, as the render goldens pin it.
 const IDENTITY: Identity = Identity {
     name: "render goldens",

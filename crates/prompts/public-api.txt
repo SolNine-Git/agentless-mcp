@@ -128,6 +128,8 @@ pub const prompts::messages::DIAGRAM_SUMMARY_FOCUS_GROUPED: prompts::Template<(p
 pub const prompts::messages::DIAGRAM_SUMMARY_GROUPED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::DIAGRAM_TITLES: prompts::Template<prompts::Count>
 pub const prompts::messages::EROSION_GATE_FIX: &str
+pub const prompts::messages::EROSION_SCAN_STOP_CLOSING: &str
+pub const prompts::messages::EROSION_SCAN_WRITE_CLOSING: &str
 pub const prompts::messages::EXPAND_BATCH_SHORTENED: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPAND_BODY_TRUNCATED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPAND_NO_ROOM: prompts::Template<(prompts::Count, prompts::Count)>
@@ -225,9 +227,13 @@ pub const prompts::messages::LINT_PATH_NEEDS_AFTER: &str
 pub const prompts::messages::LINT_PATH_TAKES_PAIR_CHECKS: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::LINT_REVISION_BINARY: prompts::Template<prompts::Text>
 pub const prompts::messages::LINT_REVISION_BINARY_EVIDENCE: prompts::Template<prompts::Count>
+pub const prompts::messages::LINT_REVISION_FILES_LIMIT: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::LINT_REVISION_FILES_LIMIT_EVIDENCE: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::LINT_REVISION_LISTING_CAPPED: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::LINT_REVISION_NOT_RESOLVED: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::LINT_REVISION_OUTPUT_MALFORMED: prompts::Template<prompts::Text>
+pub const prompts::messages::LINT_REVISION_OVER_BYTES: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::LINT_REVISION_OVER_BYTES_EVIDENCE: prompts::Template<prompts::Count>
 pub const prompts::messages::LINT_REVISION_STATUS: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::LINT_REVISION_STATUS_EVIDENCE: prompts::Template<prompts::Text>
 pub const prompts::messages::LINT_REVISION_SUBMODULE: prompts::Template<prompts::Text>

@@ -7,8 +7,9 @@ use io::testing::Tree;
 
 use super::{HookCheck, Hooks, SessionNote};
 
-const ALL_MISSING: &str = "hooks: 7 of 7 agentless hook entries are missing (read-card, \
-     ledger-mark, brief-record, subagent-map, prompt-map, erosion, ledger-reset). Run: \
+const ALL_MISSING: &str = "hooks: 10 of 10 agentless hook entries are missing (read-card, \
+     ledger-mark, brief-record, subagent-map, prompt-map, erosion, ledger-reset, \
+     erosion-scan (PostToolUse), erosion-scan (Stop), erosion-scan (SubagentStop)). Run: \
      agentless-mcp hook install";
 
 // The settings of the 0.11.0 hooks, contrib/hooks/settings-example.json with `BINARY` for its
@@ -153,9 +154,10 @@ fn the_entries_of_the_last_release_are_missing_and_retired() {
     let rig = Rig::new();
     rig.write("config/settings.json", OLD_RELEASE);
     let hooks = Hooks::new(Some(rig.check()), &[]);
-    let want = "hooks: 5 of 7 agentless hook entries are missing (read-card, ledger-mark, \
-                brief-record, subagent-map, ledger-reset) and 2 are retired (gate-check, \
-                gate-mark). Run: agentless-mcp hook install";
+    let want = "hooks: 8 of 10 agentless hook entries are missing (read-card, ledger-mark, \
+                brief-record, subagent-map, ledger-reset, erosion-scan (PostToolUse), \
+                erosion-scan (Stop), erosion-scan (SubagentStop)) and 2 are retired \
+                (gate-check, gate-mark). Run: agentless-mcp hook install";
     assert_eq!(rig.note(&hooks).as_deref(), Some(want));
 }
 
@@ -168,9 +170,10 @@ fn a_changed_entry_is_stale_and_a_retired_one_is_named_once() {
     let retired = OLD_RELEASE.replace("hook erosion", "hook gate-check");
     rig.write("repo/.claude/settings.local.json", &retired);
     let hooks = Hooks::new(Some(rig.check()), &[]);
-    let want = "hooks: 3 of 7 agentless hook entries are stale (subagent-map, prompt-map, \
-                erosion) and 2 are retired (gate-check, gate-mark). Run: agentless-mcp hook \
-                install";
+    let want = "hooks: 6 of 10 agentless hook entries are stale (subagent-map, prompt-map, \
+                erosion, erosion-scan (PostToolUse), erosion-scan (Stop), erosion-scan \
+                (SubagentStop)) and 2 are retired (gate-check, gate-mark). Run: agentless-mcp \
+                hook install";
     assert_eq!(rig.note(&hooks).as_deref(), Some(want));
 }
 

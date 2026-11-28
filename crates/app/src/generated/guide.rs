@@ -1914,19 +1914,27 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         others. The\nvariable sets `clone_delta` too: to keep it \
         advisory while it is on trial, set\nits entry to `advisory`. A \
         bad entry is dropped with a warning, and\n`capabilities` shows \
-        the entries in force.\n\n`boundary_globs` lists the modules \
-        that parse foreign data, the only files\n`lint`'s \
-        `contract_drift` checks. It is empty by default. It holds at \
-        most 64\nglobs of at most 256 characters each. Each glob \
-        matches a repo-relative path\nwith `/` separators. `*` matches \
-        within one path segment. `**/` matches zero or\nmore whole \
-        segments, and a final `/**` matches everything inside a \
-        directory,\nso `**/adapters/**` matches both `adapters/x.py` \
-        and `src/pkg/adapters/x.py`.\nEvery other character is literal. \
-        A list longer than 64 is ignored whole. An\nentry that is not a \
-        repo-relative glob (empty, longer than 256 \
-        characters,\nabsolute, holding `\\`, a control character, or a \
-        `.`, `..`, or empty segment)\nis dropped with a warning. \
+        the entries in force.\n\nThe erosion-scan hook (`agentless-mcp \
+        hook erosion-scan`, on `PostToolUse` for\n`Bash`, on `Stop` and \
+        on `SubagentStop`) covers the writes that skip the Write\nand \
+        Edit tools. It runs only the checks that are in `block` mode \
+        for a\nrepository, over the files that a shell write changed \
+        since the closest merge\nbase of `main`, `develop` and \
+        `master`. `AGENTLESS_EROSION_SCAN_IGNORE` lists\nthe repository \
+        roots that it never scans, and \
+        `AGENTLESS_EROSION_GATE=off`\nturns it off.\n\n`boundary_globs` \
+        lists the modules that parse foreign data, the only \
+        files\n`lint`'s `contract_drift` checks. It is empty by \
+        default. It holds at most 64\nglobs of at most 256 characters \
+        each. Each glob matches a repo-relative path\nwith `/` \
+        separators. `*` matches within one path segment. `**/` matches \
+        zero or\nmore whole segments, and a final `/**` matches \
+        everything inside a directory,\nso `**/adapters/**` matches \
+        both `adapters/x.py` and `src/pkg/adapters/x.py`.\nEvery other \
+        character is literal. A list longer than 64 is ignored whole. \
+        An\nentry that is not a repo-relative glob (empty, longer than \
+        256 characters,\nabsolute, holding `\\`, a control character, \
+        or a `.`, `..`, or empty segment)\nis dropped with a warning. \
         `capabilities` shows the globs in force.\n\n## Token \
         counting\n\nThe tool estimates budgets at one token per four \
         characters by default. That\nestimate is deliberately crude, \
@@ -1973,7 +1981,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("lint", 68_560, 96_540),
     ("validate-vote", 96_542, 106_139),
     ("warmup", 106_141, 107_740),
-    ("project-defaults-agentless-mcp-json", 107_742, 111_836),
-    ("token-counting", 111_838, 112_252),
-    ("exit-codes", 112_254, 112_712),
+    ("project-defaults-agentless-mcp-json", 107_742, 112_311),
+    ("token-counting", 112_313, 112_727),
+    ("exit-codes", 112_729, 113_187),
 ];

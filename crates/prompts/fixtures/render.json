@@ -813,6 +813,14 @@
       "arguments": {},
       "text": "Change the code as each blocking finding says, then retry the edit."
     },
+    "erosion_scan_stop_closing": {
+      "arguments": {},
+      "text": "Fix these before you end the turn."
+    },
+    "erosion_scan_write_closing": {
+      "arguments": {},
+      "text": "This write skipped the Write/Edit gate. Fix these now."
+    },
     "expand_batch_shortened": {
       "arguments": {
         "budget": 12000,
@@ -1373,7 +1381,7 @@
     },
     "hook_usage": {
       "arguments": {},
-      "text": "hook takes one hook name: read-card, ledger-mark, brief-record, subagent-map, prompt-map, erosion or ledger-reset. hook install, hook status and hook uninstall manage the hook entries of a settings file. gate-check and gate-mark are retired: each still exits 0 with no output."
+      "text": "hook takes one hook name: read-card, ledger-mark, brief-record, subagent-map, prompt-map, erosion, ledger-reset or erosion-scan. hook install, hook status and hook uninstall manage the hook entries of a settings file. gate-check and gate-mark are retired: each still exits 0 with no output."
     },
     "hooks_missing": {
       "arguments": {
@@ -1468,6 +1476,20 @@
       },
       "text": "a NUL byte in the first 8000 bytes"
     },
+    "lint_revision_files_limit": {
+      "arguments": {
+        "max": 300,
+        "skipped": 12
+      },
+      "text": "not checked: the run compares at most 300 changed files, so no pair check compared 12 of them."
+    },
+    "lint_revision_files_limit_evidence": {
+      "arguments": {
+        "max": 300,
+        "skipped": 12
+      },
+      "text": "12 past the first 300"
+    },
     "lint_revision_listing_capped": {
       "arguments": {
         "bytes": 8000000,
@@ -1487,6 +1509,19 @@
         "detail": "a diff record ends before its path"
       },
       "text": "git printed output that the review cannot read: a diff record ends before its path."
+    },
+    "lint_revision_over_bytes": {
+      "arguments": {
+        "bytes": 400000,
+        "path": "src/app/big.py"
+      },
+      "text": "not checked: src/app/big.py is over 400000 bytes, so no pair check compared this file."
+    },
+    "lint_revision_over_bytes_evidence": {
+      "arguments": {
+        "bytes": 400000
+      },
+      "text": "over 400000 bytes"
     },
     "lint_revision_status": {
       "arguments": {

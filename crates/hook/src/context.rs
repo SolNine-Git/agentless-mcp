@@ -1,6 +1,6 @@
 //! The hooks that write at most one reply on stdout and exit 0: the hooks of the trace surface,
-//! the prompt map and the retired search gate. Erosion has its own entry, because its reply
-//! carries an exit code and stderr.
+//! the prompt map and the retired search gate. The two erosion hooks have their own entries,
+//! because their replies carry an exit code and stderr.
 
 use std::io::{Read, Write};
 
@@ -28,7 +28,7 @@ enum Named {
 }
 
 impl ContextHook {
-    /// Returns the hook that the subcommand `name` names, or None for erosion and an unknown name.
+    /// Returns the hook that the subcommand `name` names, or None for the two erosion hooks and an unknown name.
     #[must_use]
     pub fn named(name: &str) -> Option<Self> {
         if Retired::ALL.iter().any(|hook| hook.name() == name) {
@@ -48,7 +48,7 @@ impl ContextHook {
             },
             Hook::LedgerReset => |run, _, stdin, facts| ledger_reset::decide(run, stdin, facts),
             Hook::PromptMap => return Some(Self(Named::PromptMap)),
-            Hook::Erosion => return None,
+            Hook::Erosion | Hook::ErosionScan => return None,
         };
         Some(Self(Named::Trace(hook, decide)))
     }

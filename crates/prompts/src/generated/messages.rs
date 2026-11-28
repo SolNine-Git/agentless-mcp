@@ -966,6 +966,13 @@ pub const DIAGRAM_TITLES: Template<Count> = Template::new(&[
 pub const EROSION_GATE_FIX: &str = "Change the code as each blocking finding says, then retry the \
         edit.";
 
+/// A text that takes no values.
+pub const EROSION_SCAN_STOP_CLOSING: &str = "Fix these before you end the turn.";
+
+/// A text that takes no values.
+pub const EROSION_SCAN_WRITE_CLOSING: &str = "This write skipped the Write/Edit gate. Fix these \
+        now.";
+
 /// A template that takes (`shortened`, `total`, `budget`).
 pub const EXPAND_BATCH_SHORTENED: Template<(Count, Count, Count)> = Template::new(&[
     Piece::Text("// note: "),
@@ -1826,10 +1833,10 @@ pub const HOOK_UNINSTALL_REPORT: Template<(Text, Count, Count)> = Template::new(
 
 /// A text that takes no values.
 pub const HOOK_USAGE: &str = "hook takes one hook name: read-card, ledger-mark, brief-record, \
-        subagent-map, prompt-map, erosion or ledger-reset. hook \
-        install, hook status and hook uninstall manage the hook entries \
-        of a settings file. gate-check and gate-mark are retired: each \
-        still exits 0 with no output.";
+        subagent-map, prompt-map, erosion, ledger-reset or \
+        erosion-scan. hook install, hook status and hook uninstall \
+        manage the hook entries of a settings file. gate-check and \
+        gate-mark are retired: each still exits 0 with no output.";
 
 /// A template that takes (`count`, `total`, `listed`).
 pub const HOOKS_MISSING: Template<(Count, Count, Text)> = Template::new(&[
@@ -1952,6 +1959,22 @@ pub const LINT_REVISION_BINARY_EVIDENCE: Template<Count> = Template::new(&[
     Piece::Text(" bytes"),
 ]);
 
+/// A template that takes (`max`, `skipped`).
+pub const LINT_REVISION_FILES_LIMIT: Template<(Count, Count)> = Template::new(&[
+    Piece::Text("not checked: the run compares at most "),
+    Piece::Value(0),
+    Piece::Text(" changed files, so no pair check compared "),
+    Piece::Value(1),
+    Piece::Text(" of them."),
+]);
+
+/// A template that takes (`max`, `skipped`).
+pub const LINT_REVISION_FILES_LIMIT_EVIDENCE: Template<(Count, Count)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" past the first "),
+    Piece::Value(0),
+]);
+
 /// A template that takes (`command`, `bytes`).
 pub const LINT_REVISION_LISTING_CAPPED: Template<(Text, Count)> = Template::new(&[
     Piece::Text("not checked: git "),
@@ -1979,6 +2002,19 @@ pub const LINT_REVISION_OUTPUT_MALFORMED: Template<Text> = Template::new(&[
     Piece::Value(0),
     Piece::Text("."),
 ]);
+
+/// A template that takes (`path`, `bytes`).
+pub const LINT_REVISION_OVER_BYTES: Template<(Text, Count)> = Template::new(&[
+    Piece::Text("not checked: "),
+    Piece::Value(0),
+    Piece::Text(" is over "),
+    Piece::Value(1),
+    Piece::Text(" bytes, so no pair check compared this file."),
+]);
+
+/// A template that takes `bytes`.
+pub const LINT_REVISION_OVER_BYTES_EVIDENCE: Template<Count> =
+    Template::new(&[Piece::Text("over "), Piece::Value(0), Piece::Text(" bytes")]);
 
 /// A template that takes (`path`, `status`).
 pub const LINT_REVISION_STATUS: Template<(Text, Text)> = Template::new(&[
