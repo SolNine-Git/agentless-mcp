@@ -16,13 +16,18 @@
   its rule and its text with no line, and old and new keys compare as
   multisets per file, as `~/.claude/hooks/comment_rules.py` does, so a moved
   comment is no finding. The rows for Python, JavaScript, TypeScript, TSX and
-  Rust live in `crates/prompts/data/comment_rules.json`. The Rust rules read
+  Rust live in `crates/prompts/data/comment_rules.json`. bash, C, C++, Java
+  and Lua have run, block and banner rows too, with their doc forms exempt
+  (Doxygen `///`, `//!`, `/**` and `/*!`, Javadoc `/**`, Lua `---` and
+  `--[[--`) and their directives exempt (a shebang, `# shellcheck source=`,
+  and `clang-format off` and `on`) (U2). The Rust rules read
   the tree-sitter parse with every comment and string literal blanked, and
   port the reference's scope walk: trait and enum members take the parent's
   visibility, `macro_rules!` needs `#[macro_export]`, and macro bodies,
   groups and the items of clap, schemars, pyo3 and rmcp attributes are
   exempt. Every other language file declares a gap per rule group
-  (`follow_up` for bash, c, cpp, java and lua; `doc_attachment` for go and
+  (`follow_up` for the doc and suppression groups of bash, c, cpp, java and
+  lua; `doc_attachment` for go and
   ruby; `tier_two`; and `data_language`), and a tier-1 file in such a
   language gives one `not_checked` row per group with the gap
   `no_comment_rules`, which the hook logs under `off_by_config`. The check is opt-in in `lint`: only `--only

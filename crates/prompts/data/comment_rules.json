@@ -2,19 +2,40 @@
   "languages": [
     {
       "language": "bash",
-      "runs": {"gap": "follow_up"},
+      "runs": {
+        "line": "^#",
+        "block": null,
+        "doc": null,
+        "head": "comment",
+        "directive": "^(?:#!|#\\s*shellcheck\\s+source=)",
+        "banner": "^#\\s*(?:[-=~*#]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*$"
+      },
       "docs": {"gap": "follow_up"},
       "suppressions": {"gap": "follow_up"}
     },
     {
       "language": "c",
-      "runs": {"gap": "follow_up"},
+      "runs": {
+        "line": "^//",
+        "block": "^/\\*",
+        "doc": "^(?:///(?:[^/]|$)|//!(?:[^!]|$)|/\\*\\*(?:[^*]|$)|/\\*!(?:[^!]|$))",
+        "head": "first_line",
+        "directive": "^(?://|/\\*)\\s*clang-format\\s+(?:off|on)",
+        "banner": "^(?://|/\\*)\\s*(?:[-=~*#/]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*(?:\\*/)?\\s*$"
+      },
       "docs": {"gap": "follow_up"},
       "suppressions": {"gap": "follow_up"}
     },
     {
       "language": "cpp",
-      "runs": {"gap": "follow_up"},
+      "runs": {
+        "line": "^//",
+        "block": "^/\\*",
+        "doc": "^(?:///(?:[^/]|$)|//!(?:[^!]|$)|/\\*\\*(?:[^*]|$)|/\\*!(?:[^!]|$))",
+        "head": "first_line",
+        "directive": "^(?://|/\\*)\\s*clang-format\\s+(?:off|on)",
+        "banner": "^(?://|/\\*)\\s*(?:[-=~*#/]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*(?:\\*/)?\\s*$"
+      },
       "docs": {"gap": "follow_up"},
       "suppressions": {"gap": "follow_up"}
     },
@@ -38,7 +59,14 @@
     },
     {
       "language": "java",
-      "runs": {"gap": "follow_up"},
+      "runs": {
+        "line": "^//",
+        "block": "^/\\*",
+        "doc": "^/\\*\\*(?:[^*]|$)",
+        "head": "first_line",
+        "directive": null,
+        "banner": "^(?://|/\\*)\\s*(?:[-=~*#/]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*(?:\\*/)?\\s*$"
+      },
       "docs": {"gap": "follow_up"},
       "suppressions": {"gap": "follow_up"}
     },
@@ -76,7 +104,14 @@
     },
     {
       "language": "lua",
-      "runs": {"gap": "follow_up"},
+      "runs": {
+        "line": "^--",
+        "block": "^--\\[=*\\[",
+        "doc": "^(?:---(?:[^-]|$)|--\\[\\[--)",
+        "head": "first_line",
+        "directive": null,
+        "banner": "^(?:--|--\\[\\[)\\s*(?:[-=~*#/]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*(?:\\]\\])?\\s*$"
+      },
       "docs": {"gap": "follow_up"},
       "suppressions": {"gap": "follow_up"}
     },

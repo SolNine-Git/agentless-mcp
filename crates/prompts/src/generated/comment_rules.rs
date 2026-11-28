@@ -8,19 +8,48 @@ use crate::comment_rule::{
 pub(crate) static COMMENT_RULES: [CommentRules; 22] = [
     CommentRules {
         language: "bash",
-        runs: Declared::Gap(CommentGap::FollowUp),
+        runs: Declared::Rules(RunRules {
+            line: "^#",
+            block: None,
+            doc: None,
+            head: Head::Comment,
+            directive: Some("^(?:#!|#\\s*shellcheck\\s+source=)"),
+            banner: "^#\\s*(?:[-=~*#]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*$",
+        }),
         docs: Declared::Gap(CommentGap::FollowUp),
         suppressions: Declared::Gap(CommentGap::FollowUp),
     },
     CommentRules {
         language: "c",
-        runs: Declared::Gap(CommentGap::FollowUp),
+        runs: Declared::Rules(RunRules {
+            line: "^//",
+            block: Some("^/\\*"),
+            doc: Some(
+                "^(?:///(?:[^/]|$)|//!(?:[^!]|$)|/\\*\\*(?:[^*]|$)|/\\*!(?:[^!]|$\
+        ))",
+            ),
+            head: Head::FirstLine,
+            directive: Some("^(?://|/\\*)\\s*clang-format\\s+(?:off|on)"),
+            banner: "^(?://|/\\*)\\s*(?:[-=~*#/]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*(?:\
+        \\*/)?\\s*$",
+        }),
         docs: Declared::Gap(CommentGap::FollowUp),
         suppressions: Declared::Gap(CommentGap::FollowUp),
     },
     CommentRules {
         language: "cpp",
-        runs: Declared::Gap(CommentGap::FollowUp),
+        runs: Declared::Rules(RunRules {
+            line: "^//",
+            block: Some("^/\\*"),
+            doc: Some(
+                "^(?:///(?:[^/]|$)|//!(?:[^!]|$)|/\\*\\*(?:[^*]|$)|/\\*!(?:[^!]|$\
+        ))",
+            ),
+            head: Head::FirstLine,
+            directive: Some("^(?://|/\\*)\\s*clang-format\\s+(?:off|on)"),
+            banner: "^(?://|/\\*)\\s*(?:[-=~*#/]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*(?:\
+        \\*/)?\\s*$",
+        }),
         docs: Declared::Gap(CommentGap::FollowUp),
         suppressions: Declared::Gap(CommentGap::FollowUp),
     },
@@ -44,7 +73,15 @@ pub(crate) static COMMENT_RULES: [CommentRules; 22] = [
     },
     CommentRules {
         language: "java",
-        runs: Declared::Gap(CommentGap::FollowUp),
+        runs: Declared::Rules(RunRules {
+            line: "^//",
+            block: Some("^/\\*"),
+            doc: Some("^/\\*\\*(?:[^*]|$)"),
+            head: Head::FirstLine,
+            directive: None,
+            banner: "^(?://|/\\*)\\s*(?:[-=~*#/]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*(?:\
+        \\*/)?\\s*$",
+        }),
         docs: Declared::Gap(CommentGap::FollowUp),
         suppressions: Declared::Gap(CommentGap::FollowUp),
     },
@@ -90,7 +127,15 @@ pub(crate) static COMMENT_RULES: [CommentRules; 22] = [
     },
     CommentRules {
         language: "lua",
-        runs: Declared::Gap(CommentGap::FollowUp),
+        runs: Declared::Rules(RunRules {
+            line: "^--",
+            block: Some("^--\\[=*\\["),
+            doc: Some("^(?:---(?:[^-]|$)|--\\[\\[--)"),
+            head: Head::FirstLine,
+            directive: None,
+            banner: "^(?:--|--\\[\\[)\\s*(?:[-=~*#/]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s\
+        *(?:\\]\\])?\\s*$",
+        }),
         docs: Declared::Gap(CommentGap::FollowUp),
         suppressions: Declared::Gap(CommentGap::FollowUp),
     },

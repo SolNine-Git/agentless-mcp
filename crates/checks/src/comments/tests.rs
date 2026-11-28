@@ -423,3 +423,342 @@ fn every_rule_pattern_compiles() {
         assert_eq!(compiled.is_some(), has_runs, "{language:?}");
     }
 }
+
+// The runs group of the five languages that gained rows: each comment finding of the new text.
+// The test fails when the runs group is a gap, so the rows the task adds are what is tested.
+fn findings(pairs: &[Pair]) -> Vec<Shown> {
+    let outcome = run(pairs);
+    assert!(
+        !outcome.findings.iter().any(|row| matches!(
+            row.detail,
+            Some(Detail::Gap(CheckGap::NoCommentRules(_, CommentGroup::Runs)))
+        )),
+        "the runs group is a gap: {:?}",
+        outcome.findings
+    );
+    outcome
+        .findings
+        .iter()
+        .filter(|row| matches!(row.detail, Some(Detail::Comment(_))))
+        .map(shown)
+        .collect()
+}
+
+fn run_finding(line: u32, key: &str, message: &str) -> Shown {
+    (line, "run".to_owned(), key.to_owned(), message.to_owned())
+}
+
+fn banner_finding(line: u32, key: &str) -> Shown {
+    (
+        line,
+        "banner".to_owned(),
+        key.to_owned(),
+        "banner comment".to_owned(),
+    )
+}
+
+#[test]
+fn bash_line_run() {
+    let pairs = pairs(
+        "src/a.sh",
+        Some("x=1\n"),
+        Some("# one\n# two\n# three\nx=1\n"),
+    );
+    let expected = [run_finding(
+        1,
+        "# one\n# two\n# three",
+        "3-line comment; why-comments run 1-2 lines",
+    )];
+    assert_eq!(findings(&pairs), expected);
+}
+
+#[test]
+fn bash_banner() {
+    let pairs = pairs("src/a.sh", Some("x=1\n"), Some("# ====\nx=1\n"));
+    assert_eq!(findings(&pairs), [banner_finding(1, "# ====")]);
+}
+
+#[test]
+fn bash_directive_is_exempt() {
+    let pairs = pairs(
+        "src/a.sh",
+        Some("x=1\n"),
+        Some("#!/bin/bash\n# shellcheck source=lib.sh\nx=1\n"),
+    );
+    assert_eq!(findings(&pairs), []);
+}
+
+#[test]
+fn bash_old_run_stays() {
+    let old = "# one\n# two\n# three\nx=1\n";
+    let pairs = pairs(
+        "src/a.sh",
+        Some(old),
+        Some("# one\n# two\n# three\nx=1\ny=2\n"),
+    );
+    assert_eq!(findings(&pairs), []);
+}
+
+#[test]
+fn c_line_run() {
+    let pairs = pairs(
+        "src/a.c",
+        Some("int main(void) { return 0; }\n"),
+        Some("// one\n// two\n// three\nint main(void) { return 0; }\n"),
+    );
+    let expected = [run_finding(
+        1,
+        "// one\n// two\n// three",
+        "3-line comment; why-comments run 1-2 lines",
+    )];
+    assert_eq!(findings(&pairs), expected);
+}
+
+#[test]
+fn c_doc_run_is_exempt() {
+    let pairs = pairs(
+        "src/a.c",
+        Some("int main(void) { return 0; }\n"),
+        Some("/// one\n/// two\n/// three\nint main(void) { return 0; }\n"),
+    );
+    assert_eq!(findings(&pairs), []);
+}
+
+#[test]
+fn c_block_run() {
+    let pairs = pairs(
+        "src/a.c",
+        Some("int main(void) { return 0; }\n"),
+        Some("/* one\ntwo\nthree */\nint main(void) { return 0; }\n"),
+    );
+    let expected = [run_finding(
+        1,
+        "/* one\ntwo\nthree */",
+        "3-line comment; why-comments run 1-2 lines",
+    )];
+    assert_eq!(findings(&pairs), expected);
+}
+
+#[test]
+fn c_banner() {
+    let pairs = pairs(
+        "src/a.c",
+        Some("int main(void) { return 0; }\n"),
+        Some("// ====\nint main(void) { return 0; }\n"),
+    );
+    assert_eq!(findings(&pairs), [banner_finding(1, "// ====")]);
+}
+
+#[test]
+fn c_directive_is_exempt() {
+    let pairs = pairs(
+        "src/a.c",
+        Some("int main(void) { return 0; }\n"),
+        Some("// clang-format off\nint main(void) { return 0; }\n"),
+    );
+    assert_eq!(findings(&pairs), []);
+}
+
+#[test]
+fn c_old_run_stays() {
+    let old = "// one\n// two\n// three\nint main(void) { return 0; }\n";
+    let pairs = pairs(
+        "src/a.c",
+        Some(old),
+        Some("// one\n// two\n// three\nint main(void) { return 0; }\nint y = 1;\n"),
+    );
+    assert_eq!(findings(&pairs), []);
+}
+
+#[test]
+fn cpp_line_run() {
+    let pairs = pairs(
+        "src/a.cpp",
+        Some("int main(void) { return 0; }\n"),
+        Some("// one\n// two\n// three\nint main(void) { return 0; }\n"),
+    );
+    let expected = [run_finding(
+        1,
+        "// one\n// two\n// three",
+        "3-line comment; why-comments run 1-2 lines",
+    )];
+    assert_eq!(findings(&pairs), expected);
+}
+
+#[test]
+fn cpp_doc_run_is_exempt() {
+    let pairs = pairs(
+        "src/a.cpp",
+        Some("int main(void) { return 0; }\n"),
+        Some("/// one\n/// two\n/// three\nint main(void) { return 0; }\n"),
+    );
+    assert_eq!(findings(&pairs), []);
+}
+
+#[test]
+fn cpp_block_run() {
+    let pairs = pairs(
+        "src/a.cpp",
+        Some("int main(void) { return 0; }\n"),
+        Some("/* one\ntwo\nthree */\nint main(void) { return 0; }\n"),
+    );
+    let expected = [run_finding(
+        1,
+        "/* one\ntwo\nthree */",
+        "3-line comment; why-comments run 1-2 lines",
+    )];
+    assert_eq!(findings(&pairs), expected);
+}
+
+#[test]
+fn cpp_banner() {
+    let pairs = pairs(
+        "src/a.cpp",
+        Some("int main(void) { return 0; }\n"),
+        Some("// ====\nint main(void) { return 0; }\n"),
+    );
+    assert_eq!(findings(&pairs), [banner_finding(1, "// ====")]);
+}
+
+#[test]
+fn cpp_directive_is_exempt() {
+    let pairs = pairs(
+        "src/a.cpp",
+        Some("int main(void) { return 0; }\n"),
+        Some("// clang-format on\nint main(void) { return 0; }\n"),
+    );
+    assert_eq!(findings(&pairs), []);
+}
+
+#[test]
+fn cpp_old_run_stays() {
+    let old = "// one\n// two\n// three\nint main(void) { return 0; }\n";
+    let pairs = pairs(
+        "src/a.cpp",
+        Some(old),
+        Some("// one\n// two\n// three\nint main(void) { return 0; }\nint y = 1;\n"),
+    );
+    assert_eq!(findings(&pairs), []);
+}
+
+#[test]
+fn java_line_run() {
+    let pairs = pairs(
+        "src/a.java",
+        Some("public class A {}\n"),
+        Some("// one\n// two\n// three\npublic class A {}\n"),
+    );
+    let expected = [run_finding(
+        1,
+        "// one\n// two\n// three",
+        "3-line comment; why-comments run 1-2 lines",
+    )];
+    assert_eq!(findings(&pairs), expected);
+}
+
+#[test]
+fn java_doc_block_is_exempt() {
+    let pairs = pairs(
+        "src/a.java",
+        Some("public class A {}\n"),
+        Some("/** one\n * two\n * three */\npublic class A {}\n"),
+    );
+    assert_eq!(findings(&pairs), []);
+}
+
+#[test]
+fn java_block_run() {
+    let pairs = pairs(
+        "src/a.java",
+        Some("public class A {}\n"),
+        Some("/* one\ntwo\nthree */\npublic class A {}\n"),
+    );
+    let expected = [run_finding(
+        1,
+        "/* one\ntwo\nthree */",
+        "3-line comment; why-comments run 1-2 lines",
+    )];
+    assert_eq!(findings(&pairs), expected);
+}
+
+#[test]
+fn java_banner() {
+    let pairs = pairs(
+        "src/a.java",
+        Some("public class A {}\n"),
+        Some("// ====\npublic class A {}\n"),
+    );
+    assert_eq!(findings(&pairs), [banner_finding(1, "// ====")]);
+}
+
+#[test]
+fn java_old_run_stays() {
+    let old = "// one\n// two\n// three\npublic class A {}\n";
+    let pairs = pairs(
+        "src/a.java",
+        Some(old),
+        Some("// one\n// two\n// three\npublic class A {}\npublic class B {}\n"),
+    );
+    assert_eq!(findings(&pairs), []);
+}
+
+#[test]
+fn lua_line_run() {
+    let pairs = pairs(
+        "src/a.lua",
+        Some("local x = 1\n"),
+        Some("-- one\n-- two\n-- three\nlocal x = 1\n"),
+    );
+    let expected = [run_finding(
+        1,
+        "-- one\n-- two\n-- three",
+        "3-line comment; why-comments run 1-2 lines",
+    )];
+    assert_eq!(findings(&pairs), expected);
+}
+
+#[test]
+fn lua_doc_run_is_exempt() {
+    let pairs = pairs(
+        "src/a.lua",
+        Some("local x = 1\n"),
+        Some("--- one\n--- two\n--- three\nlocal x = 1\n"),
+    );
+    assert_eq!(findings(&pairs), []);
+}
+
+#[test]
+fn lua_block_run() {
+    let pairs = pairs(
+        "src/a.lua",
+        Some("local x = 1\n"),
+        Some("--[[\n-- one\n-- two\n-- three\n]]\nlocal x = 1\n"),
+    );
+    let expected = [run_finding(
+        1,
+        "--[[\n-- one\n-- two\n-- three\n]]",
+        "5-line comment; why-comments run 1-2 lines",
+    )];
+    assert_eq!(findings(&pairs), expected);
+}
+
+#[test]
+fn lua_banner() {
+    let pairs = pairs(
+        "src/a.lua",
+        Some("local x = 1\n"),
+        Some("-- ====\nlocal x = 1\n"),
+    );
+    assert_eq!(findings(&pairs), [banner_finding(1, "-- ====")]);
+}
+
+#[test]
+fn lua_old_run_stays() {
+    let old = "-- one\n-- two\n-- three\nlocal x = 1\n";
+    let pairs = pairs(
+        "src/a.lua",
+        Some(old),
+        Some("-- one\n-- two\n-- three\nlocal x = 1\nlocal y = 2\n"),
+    );
+    assert_eq!(findings(&pairs), []);
+}
