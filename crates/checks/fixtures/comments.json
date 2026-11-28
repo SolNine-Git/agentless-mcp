@@ -1,0 +1,856 @@
+{
+ "cases": [
+  {
+   "name": "python_suppression",
+   "path": "src/a.py",
+   "old": "x = 1\n",
+   "new": "x = 1  # noqa: E501\n",
+   "findings": [
+    [
+     1,
+     [
+      "suppress",
+      "# noqa: E501"
+     ],
+     "lint suppression: # noqa: E501"
+    ]
+   ]
+  },
+  {
+   "name": "python_banner",
+   "path": "src/a.py",
+   "old": "x = 1\n",
+   "new": "# ==== setup ====\nx = 1\n",
+   "findings": [
+    [
+     1,
+     [
+      "banner",
+      "# ==== setup ===="
+     ],
+     "banner comment"
+    ]
+   ]
+  },
+  {
+   "name": "python_run",
+   "path": "src/a.py",
+   "old": "x = 1\n",
+   "new": "# one\n# two\n# three\nx = 1\n",
+   "findings": [
+    [
+     1,
+     [
+      "run",
+      "# one",
+      "# two",
+      "# three"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "python_private_doc",
+   "path": "src/a.py",
+   "old": "def _f():\n    pass\n\n\nclass A:\n    def __init__(self):\n        pass\n",
+   "new": "def _f():\n    \"\"\"Do it.\"\"\"\n    pass\n\n\nclass A:\n    def __init__(self):\n        \"\"\"Make one.\"\"\"\n",
+   "findings": [
+    [
+     1,
+     [
+      "private-doc",
+      "_f"
+     ],
+     "docstring on non-public function _f"
+    ],
+    [
+     7,
+     [
+      "private-doc",
+      "__init__"
+     ],
+     "docstring on non-public function __init__"
+    ]
+   ]
+  },
+  {
+   "name": "python_section",
+   "path": "src/a.py",
+   "old": "def f(x):\n    \"\"\"Do it.\"\"\"\n",
+   "new": "def f(x):\n    \"\"\"Do it.\n\n    Args:\n        x: the input.\n    \"\"\"\n",
+   "findings": [
+    [
+     1,
+     [
+      "section",
+      "f"
+     ],
+     "Args/Returns/Raises section in docstring of f"
+    ]
+   ]
+  },
+  {
+   "name": "python_directive",
+   "path": "src/a.py",
+   "old": "x = 1\n",
+   "new": "#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\n# fmt: off\nx = 1\n",
+   "findings": []
+  },
+  {
+   "name": "python_banner_ends_run",
+   "path": "src/a.py",
+   "old": "x = 1\n",
+   "new": "# one\n# two\n# ====\n# three\n# four\nx = 1  # five\n# six\n",
+   "findings": [
+    [
+     3,
+     [
+      "banner",
+      "# ===="
+     ],
+     "banner comment"
+    ]
+   ]
+  },
+  {
+   "name": "python_moved_comment",
+   "path": "src/a.py",
+   "old": "# a\n# b\n# c\nx = 1\ny = 2\n",
+   "new": "x = 1\n# a\n# b\n# c\ny = 2\n",
+   "findings": []
+  },
+  {
+   "name": "python_duplicated_run",
+   "path": "src/a.py",
+   "old": "# a\n# b\n# c\nx = 1\n",
+   "new": "# a\n# b\n# c\nx = 1\n# a\n# b\n# c\ny = 2\n",
+   "findings": [
+    [
+     5,
+     [
+      "run",
+      "# a",
+      "# b",
+      "# c"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "python_grown_run",
+   "path": "src/a.py",
+   "old": "# a\n# b\n# c\nx = 1\n",
+   "new": "# a\n# b\n# c\n# d\nx = 1\n",
+   "findings": [
+    [
+     1,
+     [
+      "run",
+      "# a",
+      "# b",
+      "# c",
+      "# d"
+     ],
+     "4-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "python_syntax_error",
+   "path": "src/a.py",
+   "old": null,
+   "new": "# a\n# b\n# c\ndef _f():\n    \"\"\"Doc.\"\"\"\n    return (\n",
+   "findings": [
+    [
+     1,
+     [
+      "run",
+      "# a",
+      "# b",
+      "# c"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "python_format_string_is_no_docstring",
+   "path": "src/a.py",
+   "old": "def _f():\n    pass\n",
+   "new": "def _f():\n    f\"\"\"x{1}\"\"\"\n\n\ndef _g():\n    b\"y\"\n",
+   "findings": []
+  },
+  {
+   "name": "python_joined_string_is_a_docstring",
+   "path": "src/a.py",
+   "old": "def _f():\n    pass\n",
+   "new": "def _f():\n    \"a\" \"b\"\n    pass\n",
+   "findings": [
+    [
+     1,
+     [
+      "private-doc",
+      "_f"
+     ],
+     "docstring on non-public function _f"
+    ]
+   ]
+  },
+  {
+   "name": "python_old_findings_stay",
+   "path": "src/a.py",
+   "old": "def _f():\n    \"\"\"Doc.\"\"\"\n# ----\n",
+   "new": "def _f():\n    \"\"\"Doc.\"\"\"\n    return 1\n# ----\n",
+   "findings": []
+  },
+  {
+   "name": "javascript_suppression",
+   "path": "src/a.js",
+   "old": "let x = 1;\n",
+   "new": "// eslint-disable-next-line no-var\nlet x = 1;\n",
+   "findings": [
+    [
+     1,
+     [
+      "suppress",
+      "// eslint-disable-next-line no-var"
+     ],
+     "lint suppression: // eslint-disable-next-line no-var"
+    ]
+   ]
+  },
+  {
+   "name": "javascript_banner",
+   "path": "src/a.js",
+   "old": "let x = 1;\n",
+   "new": "// ---- setup ----\nlet x = 1;\n",
+   "findings": [
+    [
+     1,
+     [
+      "banner",
+      "// ---- setup ----"
+     ],
+     "banner comment"
+    ]
+   ]
+  },
+  {
+   "name": "javascript_section",
+   "path": "src/a.js",
+   "old": "let x = 1;\n",
+   "new": "/**\n * Do it.\n * @param x the input\n * @return nothing\n */\nlet x = 1;\n",
+   "findings": [
+    [
+     1,
+     [
+      "section",
+      "param",
+      "returns"
+     ],
+     "JSDoc @param, @returns tags; the typed signature carries them"
+    ]
+   ]
+  },
+  {
+   "name": "javascript_block_run",
+   "path": "src/a.js",
+   "old": "let x = 1;\n",
+   "new": "/* one\n   two\n   three */\nlet x = 1;\n",
+   "findings": [
+    [
+     1,
+     [
+      "run",
+      "/* one\n   two\n   three */"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "javascript_line_run",
+   "path": "src/a.js",
+   "old": "let x = 1;\n",
+   "new": "// one\n// two\n// three\nlet x = 1;\n",
+   "findings": [
+    [
+     1,
+     [
+      "run",
+      "// one",
+      "// two",
+      "// three"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "javascript_directive",
+   "path": "src/a.js",
+   "old": "let x = 1;\n",
+   "new": "/// <reference path=\"a.d.ts\" />\n// @flow\n// @jsx h\nlet x = 1;\n",
+   "findings": []
+  },
+  {
+   "name": "typescript_suppression",
+   "path": "src/a.ts",
+   "old": "let x: number = 1;\n",
+   "new": "// eslint-disable-next-line no-var\nlet x: number = 1;\n",
+   "findings": [
+    [
+     1,
+     [
+      "suppress",
+      "// eslint-disable-next-line no-var"
+     ],
+     "lint suppression: // eslint-disable-next-line no-var"
+    ]
+   ]
+  },
+  {
+   "name": "typescript_banner",
+   "path": "src/a.ts",
+   "old": "let x: number = 1;\n",
+   "new": "// ---- setup ----\nlet x: number = 1;\n",
+   "findings": [
+    [
+     1,
+     [
+      "banner",
+      "// ---- setup ----"
+     ],
+     "banner comment"
+    ]
+   ]
+  },
+  {
+   "name": "typescript_section",
+   "path": "src/a.ts",
+   "old": "let x: number = 1;\n",
+   "new": "/**\n * Do it.\n * @param x the input\n * @return nothing\n */\nlet x: number = 1;\n",
+   "findings": [
+    [
+     1,
+     [
+      "section",
+      "param",
+      "returns"
+     ],
+     "JSDoc @param, @returns tags; the typed signature carries them"
+    ]
+   ]
+  },
+  {
+   "name": "typescript_block_run",
+   "path": "src/a.ts",
+   "old": "let x: number = 1;\n",
+   "new": "/* one\n   two\n   three */\nlet x: number = 1;\n",
+   "findings": [
+    [
+     1,
+     [
+      "run",
+      "/* one\n   two\n   three */"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "typescript_line_run",
+   "path": "src/a.ts",
+   "old": "let x: number = 1;\n",
+   "new": "// one\n// two\n// three\nlet x: number = 1;\n",
+   "findings": [
+    [
+     1,
+     [
+      "run",
+      "// one",
+      "// two",
+      "// three"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "typescript_directive",
+   "path": "src/a.ts",
+   "old": "let x: number = 1;\n",
+   "new": "/// <reference path=\"a.d.ts\" />\n// @flow\n// @jsx h\nlet x: number = 1;\n",
+   "findings": []
+  },
+  {
+   "name": "typescript_ts_ignore",
+   "path": "src/a.ts",
+   "old": "let x: number = 1;\n",
+   "new": "// @ts-ignore\nlet x: number = 'a';\n",
+   "findings": [
+    [
+     1,
+     [
+      "suppress",
+      "// @ts-ignore"
+     ],
+     "lint suppression: // @ts-ignore"
+    ]
+   ]
+  },
+  {
+   "name": "tsx_suppression",
+   "path": "src/a.tsx",
+   "old": "const a = <div />;\n",
+   "new": "// eslint-disable-next-line no-var\nconst a = <div />;\n",
+   "findings": [
+    [
+     1,
+     [
+      "suppress",
+      "// eslint-disable-next-line no-var"
+     ],
+     "lint suppression: // eslint-disable-next-line no-var"
+    ]
+   ]
+  },
+  {
+   "name": "tsx_banner",
+   "path": "src/a.tsx",
+   "old": "const a = <div />;\n",
+   "new": "// ---- setup ----\nconst a = <div />;\n",
+   "findings": [
+    [
+     1,
+     [
+      "banner",
+      "// ---- setup ----"
+     ],
+     "banner comment"
+    ]
+   ]
+  },
+  {
+   "name": "tsx_section",
+   "path": "src/a.tsx",
+   "old": "const a = <div />;\n",
+   "new": "/**\n * Do it.\n * @param x the input\n * @return nothing\n */\nconst a = <div />;\n",
+   "findings": [
+    [
+     1,
+     [
+      "section",
+      "param",
+      "returns"
+     ],
+     "JSDoc @param, @returns tags; the typed signature carries them"
+    ]
+   ]
+  },
+  {
+   "name": "tsx_block_run",
+   "path": "src/a.tsx",
+   "old": "const a = <div />;\n",
+   "new": "/* one\n   two\n   three */\nconst a = <div />;\n",
+   "findings": [
+    [
+     1,
+     [
+      "run",
+      "/* one\n   two\n   three */"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "tsx_line_run",
+   "path": "src/a.tsx",
+   "old": "const a = <div />;\n",
+   "new": "// one\n// two\n// three\nconst a = <div />;\n",
+   "findings": [
+    [
+     1,
+     [
+      "run",
+      "// one",
+      "// two",
+      "// three"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "tsx_directive",
+   "path": "src/a.tsx",
+   "old": "const a = <div />;\n",
+   "new": "/// <reference path=\"a.d.ts\" />\n// @flow\n// @jsx h\nconst a = <div />;\n",
+   "findings": []
+  },
+  {
+   "name": "rust_suppression",
+   "path": "src/lib.rs",
+   "old": "fn f() {}\n",
+   "new": "#![allow(clippy::all)]\n#[derive(Debug)]\n#[expect(unused)]\n#[cfg_attr(test, allow(dead_code))]\n#[rustfmt::skip]\nfn f() {}\n",
+   "findings": [
+    [
+     1,
+     [
+      "suppress",
+      "#![allow(clippy::all)]"
+     ],
+     "lint suppression: #![allow(clippy::all)]"
+    ],
+    [
+     3,
+     [
+      "suppress",
+      "#[expect(unused)]"
+     ],
+     "lint suppression: #[expect(unused)]"
+    ],
+    [
+     4,
+     [
+      "suppress",
+      "#[cfg_attr(test, allow(dead_code))]"
+     ],
+     "lint suppression: #[cfg_attr(test, allow(dead_code))]"
+    ],
+    [
+     5,
+     [
+      "suppress",
+      "#[rustfmt::skip]"
+     ],
+     "lint suppression: #[rustfmt::skip]"
+    ]
+   ]
+  },
+  {
+   "name": "rust_banner",
+   "path": "src/lib.rs",
+   "old": "fn f() {}\n",
+   "new": "// ---- setup ----\nfn f() {}\n/// ====\npub fn g() {}\n/* ===== */\n",
+   "findings": [
+    [
+     1,
+     [
+      "banner",
+      "// ---- setup ----"
+     ],
+     "banner comment"
+    ],
+    [
+     3,
+     [
+      "banner",
+      "/// ===="
+     ],
+     "banner comment"
+    ],
+    [
+     5,
+     [
+      "banner",
+      "/* ===== */"
+     ],
+     "banner comment"
+    ]
+   ]
+  },
+  {
+   "name": "rust_line_run",
+   "path": "src/lib.rs",
+   "old": "fn f() {}\n",
+   "new": "//! a\n//! b\n//! c\n// one\n// two\n// three\nfn f() {}\n/// a\n/// b\n/// c\npub fn g() {}\n//// four\n//// five\n//// six\n",
+   "findings": [
+    [
+     4,
+     [
+      "run",
+      "// one",
+      "// two",
+      "// three"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ],
+    [
+     12,
+     [
+      "run",
+      "//// four",
+      "//// five",
+      "//// six"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "rust_block_run",
+   "path": "src/lib.rs",
+   "old": "fn f() {}\n",
+   "new": "/* one\n   two\n   three */\nfn f() {}\n/** doc\n * two\n * three */\npub fn g() {}\n",
+   "findings": [
+    [
+     1,
+     [
+      "run",
+      "/* one\n   two\n   three */"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "rust_private_doc",
+   "path": "src/lib.rs",
+   "old": "pub fn api() {}\n",
+   "new": "/// Doc.\nfn helper() {}\n/// Doc.\npub(crate) fn inner() {}\n/// Doc.\npub fn api() {}\npub struct S {\n    /// Doc.\n    field: u8,\n    /// Doc.\n    pub open: u8,\n}\n",
+   "findings": [
+    [
+     1,
+     [
+      "private-doc",
+      "helper"
+     ],
+     "doc comment on non-public item helper"
+    ],
+    [
+     3,
+     [
+      "private-doc",
+      "inner"
+     ],
+     "doc comment on non-public item inner"
+    ],
+    [
+     8,
+     [
+      "private-doc",
+      "field"
+     ],
+     "doc comment on non-public item field"
+    ]
+   ]
+  },
+  {
+   "name": "rust_trait_impl_doc",
+   "path": "src/lib.rs",
+   "old": "pub struct S;\n",
+   "new": "pub struct S;\nimpl std::fmt::Display for S {\n    /// Doc.\n    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n        write!(f, \"s\")\n    }\n}\nimpl S {\n    /// Doc.\n    pub fn new() -> Self {\n        S\n    }\n}\n",
+   "findings": [
+    [
+     3,
+     [
+      "private-doc",
+      "fmt"
+     ],
+     "doc comment on trait-impl item fmt; overrides carry no docs"
+    ]
+   ]
+  },
+  {
+   "name": "rust_section",
+   "path": "src/lib.rs",
+   "old": "pub fn f(x: u32) {}\n",
+   "new": "/// Do it.\n///\n/// # Arguments\n///\n/// * `x` - the input.\npub fn f(x: u32) {}\n/**\n * Make one.\n *\n * # Returns\n */\npub fn g() -> u32 {\n    1\n}\n",
+   "findings": [
+    [
+     1,
+     [
+      "section",
+      "f"
+     ],
+     "# Arguments/# Returns section in doc comment of f"
+    ],
+    [
+     7,
+     [
+      "section",
+      "g"
+     ],
+     "# Arguments/# Returns section in doc comment of g"
+    ]
+   ]
+  },
+  {
+   "name": "rust_enum_variants",
+   "path": "src/lib.rs",
+   "old": "pub enum E {\n    A,\n}\n",
+   "new": "pub enum E {\n    /// A.\n    A,\n    /// B.\n    B {\n        /// The x.\n        x: u32,\n    },\n}\nenum F {\n    /// C.\n    C,\n    /// D.\n    D {\n        /// y\n        y: u8,\n    },\n}\n",
+   "findings": [
+    [
+     11,
+     [
+      "private-doc",
+      "C"
+     ],
+     "doc comment on non-public item C"
+    ],
+    [
+     13,
+     [
+      "private-doc",
+      "D"
+     ],
+     "doc comment on non-public item D"
+    ],
+    [
+     15,
+     [
+      "private-doc",
+      "y"
+     ],
+     "doc comment on non-public item y"
+    ]
+   ]
+  },
+  {
+   "name": "rust_trait_members",
+   "path": "src/lib.rs",
+   "old": "pub trait T {\n    fn a(&self);\n}\n",
+   "new": "pub trait T {\n    /// Doc.\n    fn a(&self);\n}\ntrait U {\n    /// Doc.\n    fn b(&self);\n}\npub(crate) trait V {\n    /// Doc.\n    fn c(&self) {\n        /// Inner.\n        let x = 1;\n    }\n}\n",
+   "findings": [
+    [
+     6,
+     [
+      "private-doc",
+      "b"
+     ],
+     "doc comment on non-public item b"
+    ],
+    [
+     10,
+     [
+      "private-doc",
+      "c"
+     ],
+     "doc comment on non-public item c"
+    ],
+    [
+     12,
+     [
+      "private-doc",
+      "let"
+     ],
+     "doc comment on non-public item let"
+    ]
+   ]
+  },
+  {
+   "name": "rust_macro_body",
+   "path": "src/lib.rs",
+   "old": "fn f() {}\n",
+   "new": "macro_rules! make {\n    ($name:ident) => {\n        /// Doc.\n        pub fn $name() {}\n        /// Doc.\n        fn helper() {}\n    };\n}\nmake! {\n    /// Doc.\n    fn inside() {}\n}\nfn f() {\n    let v = vec![\n        /// Doc.\n        1,\n    ];\n}\n",
+   "findings": [
+    [
+     5,
+     [
+      "private-doc",
+      "helper"
+     ],
+     "doc comment on non-public item helper"
+    ]
+   ]
+  },
+  {
+   "name": "rust_macro_export",
+   "path": "src/lib.rs",
+   "old": "fn f() {}\n",
+   "new": "/// Doc.\n#[macro_export]\nmacro_rules! exported {\n    () => {};\n}\n/// Doc.\nmacro_rules! local {\n    () => {};\n}\n",
+   "findings": [
+    [
+     6,
+     [
+      "private-doc",
+      "local"
+     ],
+     "doc comment on non-public item local"
+    ]
+   ]
+  },
+  {
+   "name": "rust_clap_parser",
+   "path": "src/lib.rs",
+   "old": "use clap::Parser;\n",
+   "new": "use clap::Parser;\n/// The command line.\n#[derive(Debug, Parser)]\nstruct Cli {\n    /// The input file.\n    input: String,\n}\n/// The commands.\n#[derive(clap::Subcommand)]\nenum Command {\n    /// Run it.\n    Run {\n        /// Go fast.\n        fast: bool,\n    },\n}\n/// Not facing.\n#[derive(Debug)]\nstruct Plain {\n    /// Doc.\n    x: u8,\n}\n",
+   "findings": [
+    [
+     17,
+     [
+      "private-doc",
+      "Plain"
+     ],
+     "doc comment on non-public item Plain"
+    ],
+    [
+     20,
+     [
+      "private-doc",
+      "x"
+     ],
+     "doc comment on non-public item x"
+    ]
+   ]
+  },
+  {
+   "name": "rust_raw_string",
+   "path": "src/lib.rs",
+   "old": "fn f() {}\n",
+   "new": "const S: &str = r#\"// one\n// two\n// three\"#;\nconst T: &str = \"/* a\nb\nc */\";\nconst U: &str = \"#[allow(dead_code)]\";\nfn f() {}\n",
+   "findings": []
+  },
+  {
+   "name": "rust_lifetime_char",
+   "path": "src/lib.rs",
+   "old": "pub struct S;\n",
+   "new": "pub struct S;\nfn pick<'a>(x: &'a str) -> char {\n    if x.is_empty() { '}' } else { '{' }\n}\nconst Q: u8 = b'[';\nimpl Clone for S {\n    /// Doc.\n    fn clone(&self) -> Self {\n        S\n    }\n}\n",
+   "findings": [
+    [
+     7,
+     [
+      "private-doc",
+      "clone"
+     ],
+     "doc comment on trait-impl item clone; overrides carry no docs"
+    ]
+   ]
+  },
+  {
+   "name": "rust_nested_block",
+   "path": "src/lib.rs",
+   "old": "fn f() {}\n",
+   "new": "/* outer /* inner */ still\n   two\n   three */\nfn f() {}\n",
+   "findings": [
+    [
+     1,
+     [
+      "run",
+      "/* outer /* inner */ still\n   two\n   three */"
+     ],
+     "3-line comment; why-comments run 1-2 lines"
+    ]
+   ]
+  },
+  {
+   "name": "rust_moved_attribute",
+   "path": "src/lib.rs",
+   "old": "#[allow(dead_code)]\nfn a() {}\nfn b() {}\n",
+   "new": "fn a() {}\n#[allow(dead_code)]\nfn b() {}\n",
+   "findings": []
+  },
+  {
+   "name": "rust_facing",
+   "path": "src/lib.rs",
+   "old": "pub struct S;\n",
+   "new": "use rmcp::tool_router;\npub struct S;\n#[tool_router]\nimpl S {\n    /// Doc.\n    fn t(&self) {}\n}\n/// Doc.\n#[pyfunction]\nfn py() {}\n/// Doc.\n#[derive(schemars::JsonSchema)]\nstruct Shape {\n    /// Doc.\n    side: u8,\n}\n",
+   "findings": []
+  }
+ ]
+}

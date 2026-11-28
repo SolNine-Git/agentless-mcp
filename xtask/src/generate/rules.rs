@@ -6,7 +6,6 @@ use serde_json::{Map, Value};
 
 use super::literal::literal;
 
-const TOP_KEYS: [&str; 1] = ["rules"];
 const RULE_KEYS: [&str; 5] = ["id", "languages", "severity", "query", "message"];
 
 /// One contract rule for one language. `severity` is the name of a `Severity` variant.
@@ -21,17 +20,8 @@ pub struct Rule {
 
 /// Parses the rule file into one record per rule and language, in order, or gives each problem.
 pub fn parse(file: &str, text: &str) -> Result<Vec<Rule>, Vec<String>> {
-    let document: Value = serde_json::from_str(text)
-        .map_err(|error| vec![format!("{file}: the file is not valid JSON: {error}")])?;
-    let entries = entries(&document).map_err(|problem| vec![format!("{file}: {problem}")])?;
-    let mut rules = Vec::new();
-    let mut problems = Vec::new();
-    for (index, entry) in entries.iter().enumerate() {
-        match records(entry) {
-            Ok(records) => rules.extend(records),
-            Err(problem) => problems.push(format!("{file}: rule {index}: {problem}")),
-        }
-    }
+    let (records, mut problems) = entries(file, text, "rules", "rule", records)?;
+    let rules: Vec<Rule> = records.into_iter().flatten().collect();
     problems.extend(
         duplicates(&rules)
             .into_iter()
@@ -44,15 +34,41 @@ pub fn parse(file: &str, text: &str) -> Result<Vec<Rule>, Vec<String>> {
     }
 }
 
-fn entries(document: &Value) -> Result<&Vec<Value>, String> {
-    let top = object(document, &TOP_KEYS).map_err(|problem| format!("the top level {problem}"))?;
-    match &top["rules"] {
+// Each entry of the non-empty list under the one top-level `key`, read by `read`, and the problem
+// of each entry that `read` refuses.
+pub(super) fn entries<T>(
+    file: &str,
+    text: &str,
+    key: &str,
+    label: &str,
+    read: impl Fn(&Value) -> Result<T, String>,
+) -> Result<(Vec<T>, Vec<String>), Vec<String>> {
+    let document: Value = serde_json::from_str(text)
+        .map_err(|error| vec![format!("{file}: the file is not valid JSON: {error}")])?;
+    let listed = listed(&document, key).map_err(|problem| vec![format!("{file}: {problem}")])?;
+    let mut values = Vec::new();
+    let mut problems = Vec::new();
+    for (index, entry) in listed.iter().enumerate() {
+        match read(entry) {
+            Ok(value) => values.push(value),
+            Err(problem) => problems.push(format!("{file}: {label} {index}: {problem}")),
+        }
+    }
+    Ok((values, problems))
+}
+
+fn listed<'v>(document: &'v Value, key: &str) -> Result<&'v Vec<Value>, String> {
+    let top = object(document, &[key]).map_err(|problem| format!("the top level {problem}"))?;
+    match &top[key] {
         Value::Array(entries) if !entries.is_empty() => Ok(entries),
-        _ => Err("key \"rules\" must be a non-empty list".to_owned()),
+        _ => Err(format!("key {key:?} must be a non-empty list")),
     }
 }
 
-fn object<'v>(value: &'v Value, keys: &[&str]) -> Result<&'v Map<String, Value>, String> {
+pub(super) fn object<'v>(
+    value: &'v Value,
+    keys: &[&str],
+) -> Result<&'v Map<String, Value>, String> {
     let Value::Object(map) = value else {
         return Err("must be a JSON object".to_owned());
     };
@@ -94,7 +110,7 @@ fn records(entry: &Value) -> Result<Vec<Rule>, String> {
         .collect())
 }
 
-fn text<'m>(map: &'m Map<String, Value>, key: &str) -> Result<&'m str, String> {
+pub(super) fn text<'m>(map: &'m Map<String, Value>, key: &str) -> Result<&'m str, String> {
     map[key]
         .as_str()
         .filter(|text| !text.trim().is_empty())

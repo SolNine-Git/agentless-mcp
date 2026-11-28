@@ -2,6 +2,7 @@
 //! crates/syntax/src/generated/ from the language files, and crates/app/src/generated/ from the
 //! agent guide.
 
+mod comment_rules;
 mod descriptions;
 mod guide;
 mod literal;
@@ -19,6 +20,7 @@ use crate::{Failure, process, repo};
 const ENVELOPE: &str = "crates/prompts/data/envelope.json";
 const MESSAGES: &str = "crates/prompts/data/messages.json";
 const RULES: &str = "crates/prompts/data/contract_rules.json";
+const COMMENT_RULES: &str = "crates/prompts/data/comment_rules.json";
 const TOOLS: &str = "crates/prompts/data/tool_descriptions.json";
 const PARAMETERS: &str = "crates/prompts/data/parameter_descriptions.json";
 const OUTPUT: &str = "crates/prompts/src/generated";
@@ -59,10 +61,14 @@ fn fresh(root: &Path) -> Result<Files, Failure> {
     let read = |file: &str| repo::read(&root.join(file));
     let templates = sources(&read(ENVELOPE)?, &read(MESSAGES)?, &read(RULES)?);
     let descriptions = description_sources(&read(TOOLS)?, &read(PARAMETERS)?);
-    formatted(
-        root,
-        joined(templates, descriptions).map_err(Failure::Gate)?,
-    )
+    let comments = comment_sources(&read(COMMENT_RULES)?);
+    let sources = joined(joined(templates, descriptions), comments);
+    formatted(root, sources.map_err(Failure::Gate)?)
+}
+
+fn comment_sources(text: &str) -> Result<Files, Vec<String>> {
+    let rows = comment_rules::parse(COMMENT_RULES, text)?;
+    Ok(vec![("comment_rules.rs", comment_rules::module(&rows))])
 }
 
 fn description_sources(tools: &str, parameters: &str) -> Result<Files, Vec<String>> {
@@ -180,8 +186,9 @@ mod tests {
     use serde_json::Value;
 
     use super::{
-        ENVELOPE, Files, MESSAGES, OUTPUT, PARAMETERS, RULES, TOOLS, description_sources,
-        descriptions, fresh, fresh_guide, fresh_syntax, guide, rules, sources, syntax, templates,
+        COMMENT_RULES, ENVELOPE, Files, MESSAGES, OUTPUT, PARAMETERS, RULES, TOOLS, comment_rules,
+        comment_sources, description_sources, descriptions, fresh, fresh_guide, fresh_syntax,
+        guide, rules, sources, syntax, templates,
     };
     use crate::repo;
 
@@ -224,7 +231,7 @@ mod tests {
     fn the_prompt_files_parse_with_no_problem() {
         let envelope = templates::parse(ENVELOPE, &read(ENVELOPE)).unwrap();
         let messages = templates::parse(MESSAGES, &read(MESSAGES)).unwrap();
-        assert_eq!((envelope.len(), messages.len()), (13, 405));
+        assert_eq!((envelope.len(), messages.len()), (13, 422));
         let text = read(RULES);
         let entries: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(entries["rules"].as_array().map(Vec::len), Some(22));
@@ -233,6 +240,15 @@ mod tests {
         let tools = descriptions::parse(TOOLS, &read(TOOLS)).unwrap();
         let parameters = descriptions::parse(PARAMETERS, &read(PARAMETERS)).unwrap();
         assert_eq!((tools.len(), parameters.len()), (18, 58));
+        let comments = comment_rules::parse(COMMENT_RULES, &read(COMMENT_RULES)).unwrap();
+        assert_eq!(comments.len(), 22);
+    }
+
+    #[test]
+    fn a_problem_of_the_comment_rule_file_names_it() {
+        let problems = comment_sources("{}").unwrap_err();
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].starts_with(COMMENT_RULES), "{problems:?}");
     }
 
     #[test]

@@ -103,7 +103,7 @@ fn the_fixture_and_the_catalog_hold_the_same_templates() {
         .iter()
         .map(|(file, key, _, _)| (*file, *key))
         .collect();
-    assert_eq!(cataloged.len(), 418);
+    assert_eq!(cataloged.len(), 435);
     assert_eq!(fixed, cataloged);
 }
 
@@ -296,4 +296,13 @@ fn the_contract_rules_keep_the_rule_file_checks() {
             "{rule:?}"
         );
     }
+}
+
+#[test]
+fn the_comment_rules_hold_one_row_per_language_in_name_order() {
+    let names: Vec<&str> = (crate::comment_rules().iter())
+        .map(|rules| rules.language)
+        .collect();
+    assert_eq!(names.len(), 22);
+    assert!(names.windows(2).all(|pair| pair[0] < pair[1]), "{names:?}");
 }

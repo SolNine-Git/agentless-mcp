@@ -320,10 +320,15 @@ fn full_state() -> checks::Observed {
             capture: "c".to_owned(),
         }]),
         clone_instances: Some(vec![checks::CloneState {
-            path,
+            path: path.clone(),
             key,
             line: 1,
             end_line: 6,
+        }]),
+        comment_keys: Some(vec![checks::CommentState {
+            path,
+            rule: "run".to_owned(),
+            key: "# a\n# b\n# c".to_owned(),
         }]),
     }
 }
@@ -356,6 +361,10 @@ fn written_record() -> crate::record::Record {
         sites: vec![site],
         sites_total: 1,
     };
+    let comment = checks::CommentKey {
+        rule: "run".to_owned(),
+        key: "# a\n# b\n# c".to_owned(),
+    };
     let mut record = crate::record::Record::blank(1_791_600_000.0);
     record.identify(crate::record::Identity {
         session_id: Some("s1".to_owned()),
@@ -373,6 +382,7 @@ fn written_record() -> crate::record::Record {
             pair(checks::COMPLEXITY_DELTA, checks::Detail::Unit(numbers)),
             pair(checks::CONTRACT_DRIFT, checks::Detail::Drift(drift)),
             pair(checks::CLONE_DELTA, checks::Detail::Copy(copy)),
+            pair(checks::COMMENT_DELTA, checks::Detail::Comment(comment)),
         ],
         observed: Some(full_state()),
     });
@@ -398,7 +408,12 @@ fn the_report_reads_every_field_that_the_gate_writes() {
         .collect();
     assert_eq!(
         checks,
-        ["complexity_delta", "contract_drift", "clone_delta"]
+        [
+            "complexity_delta",
+            "contract_drift",
+            "clone_delta",
+            "comment_delta"
+        ]
     );
     assert!(
         record
@@ -415,8 +430,9 @@ fn the_report_reads_every_field_that_the_gate_writes() {
         state.units_over_threshold.as_ref().map(Vec::len),
         state.contract_keys.as_ref().map(Vec::len),
         state.clone_instances.as_ref().map(Vec::len),
+        state.comment_keys.as_ref().map(Vec::len),
     ];
-    assert_eq!(held, [Some(1); 3]);
+    assert_eq!(held, [Some(1); 4]);
 }
 
 #[test]

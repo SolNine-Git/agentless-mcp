@@ -1,8 +1,8 @@
 //! The lint check registry, the pair-check table and selection, and the refusals of a selection.
 
 use checks::{
-    CALLEE_OVERLAP, CLONE_DELTA, COMPLEXITY_DELTA, CONTRACT_DRIFT, CYCLE_DODGE, Outcome, Pair,
-    REUSE_CANDIDATES,
+    CALLEE_OVERLAP, CLONE_DELTA, COMMENT_DELTA, COMPLEXITY_DELTA, CONTRACT_DRIFT, CYCLE_DODGE,
+    Outcome, Pair, REUSE_CANDIDATES,
 };
 use patchcheck::{
     CHECK_ARITY, CHECK_CYCLE_DELTA, CHECK_DANGLING_CALLERS, CHECK_DANGLING_REFERENCES,
@@ -61,7 +61,7 @@ const fn check(name: &'static str, input: CheckInput) -> LintCheck {
 }
 
 /// Every lint check in registry order, which is also the order the checks run in.
-pub const CHECKS: [LintCheck; 13] = [
+pub const CHECKS: [LintCheck; 14] = [
     check(CHECK_UNDECLARED_IMPORTS, CheckInput::Patch),
     check(CHECK_SHADOWING, CheckInput::Patch),
     check(CHECK_NEAR_DUPLICATES, CheckInput::Patch),
@@ -75,6 +75,7 @@ pub const CHECKS: [LintCheck; 13] = [
     PairCheck::CalleeOverlap.lint_check(),
     PairCheck::CycleDodge.lint_check(),
     PairCheck::ReuseCandidates.lint_check(),
+    PairCheck::CommentDelta.lint_check(),
 ];
 
 /// A check that compares the old and new text of each edited file.
@@ -92,6 +93,8 @@ pub enum PairCheck {
     CycleDodge,
     /// `reuse_candidates`.
     ReuseCandidates,
+    /// `comment_delta`.
+    CommentDelta,
 }
 
 // One row of the pair table. A check reads only the pairs whose path `keeps` accepts. Only a tree
@@ -109,8 +112,8 @@ struct PairRow {
 
 const EVERY_FORM: &[FormKind] = &[FormKind::Path, FormKind::Since];
 
-// Row i is the row of the check whose discriminant is i. Fixtures are skipped by every check, and
-// tests by all but complexity_delta.
+// Row i is the row of the check whose discriminant is i. Fixtures are skipped by every check but
+// comment_delta, and tests by all but complexity_delta and comment_delta.
 const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
     PairRow {
         name: COMPLEXITY_DELTA,
@@ -166,17 +169,27 @@ const PAIR_CHECKS: [PairRow; PairCheck::ALL.len()] = [
         opt_in: true,
         run: pair_runs::reuse_candidates,
     },
+    PairRow {
+        name: COMMENT_DELTA,
+        input: CheckInput::Pairs,
+        keeps: |_| true,
+        forms: EVERY_FORM,
+        reads: None,
+        opt_in: true,
+        run: pair_runs::comment_delta,
+    },
 ];
 
 impl PairCheck {
     /// Every pair check, in registry order.
-    pub const ALL: [PairCheck; 6] = [
+    pub const ALL: [PairCheck; 7] = [
         Self::ComplexityDelta,
         Self::ContractDrift,
         Self::CloneDelta,
         Self::CalleeOverlap,
         Self::CycleDodge,
         Self::ReuseCandidates,
+        Self::CommentDelta,
     ];
 
     /// Returns the check's name.
@@ -244,11 +257,12 @@ pub struct PairSelection {
 }
 
 impl PairSelection {
-    /// Returns the default selection: the checks that read only the edited files.
+    /// Returns the default selection: the checks that read only the edited files and are not
+    /// opt-in.
     #[must_use]
     pub fn edited_files() -> PairSelection {
         PairSelection {
-            chosen: PAIR_CHECKS.map(|row| row.input == CheckInput::Pairs),
+            chosen: PAIR_CHECKS.map(|row| row.input == CheckInput::Pairs && !row.opt_in),
         }
     }
 

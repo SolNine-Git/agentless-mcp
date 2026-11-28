@@ -1,5 +1,82 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`comment_delta`, the comment check, blocks in the erosion gate by
+  default.** It reports each comment finding that an edit adds: a lint
+  suppression, a banner comment, an own-line comment run or a block comment
+  over 2 lines, a docstring on a Python function whose name starts with `_`,
+  an `Args:`/`Returns:`/`Raises:` section in a public docstring, JSDoc
+  `@param`/`@returns`/`@throws` tags, a Rust `allow`, `expect`,
+  `rustfmt::skip` or `cfg_attr` suppression attribute, a Rust doc comment on
+  a trait-impl item or on an item that is not bare `pub`, and a
+  `# Arguments`/`# Returns` section in a Rust doc comment. A finding's key is
+  its rule and its text with no line, and old and new keys compare as
+  multisets per file, as `~/.claude/hooks/comment_rules.py` does, so a moved
+  comment is no finding. The rows for Python, JavaScript, TypeScript, TSX and
+  Rust live in `crates/prompts/data/comment_rules.json`. The Rust rules read
+  the tree-sitter parse with every comment and string literal blanked, and
+  port the reference's scope walk: trait and enum members take the parent's
+  visibility, `macro_rules!` needs `#[macro_export]`, and macro bodies,
+  groups and the items of clap, schemars, pyo3 and rmcp attributes are
+  exempt. Every other language file declares a gap per rule group
+  (`follow_up` for bash, c, cpp, java and lua; `doc_attachment` for go and
+  ruby; `tier_two`; and `data_language`), and a tier-1 file in such a
+  language gives one `not_checked` row per group with the gap
+  `no_comment_rules`, which the hook logs under `off_by_config`. The check is opt-in in `lint`: only `--only
+  comment_delta` runs it. `GatedCheck::CommentDelta` has the built-in mode
+  `block`, and a block by it ends with the four rule lines of
+  `comment_gate.py` and "Delete the flagged text, then retry the edit. Do not
+  reword it." gate-report tracks its findings by `detail.key` and the new
+  `observed.comment_keys` (plan D3, U1a and U1b). The 50 cases of
+  `crates/checks/fixtures/comments.json` hold the outcomes that
+  `comment_rules.py` gives on each case, recorded once. A parity run of the
+  check and `comment_rules.py` over the 4,161 local `.py`, `.js`, `.ts`,
+  `.tsx` and `.rs` files, each as a new file and against its text at `HEAD~5`
+  or its first commit (8,134 comparisons), agreed on the key multisets of
+  8,132. The 2 others are files over the 1 MB per-file cap, which agentless
+  does not read. Three mutations of each of the 853 Rust files (each bare
+  `pub` removed, each made `pub(crate)`, and a `# Arguments` line after each
+  `///` line) agreed on all 2,559, with 4,078 non-public and 4,046 section
+  findings.
+
+### Changed
+
+- **Every hook record and mode line names `comment_delta`.** Each record's
+  `modes` gains `"comment_delta": "block"` (the built-in mode) and its
+  `checks` gains `comment_delta`; the advisory mode line ends `clone_delta
+  advisory, comment_delta block.`; each record of a Python, JavaScript,
+  TypeScript, TSX or Rust edit gains `"observed": {..., "comment_keys":
+  []}`; and a record of an edit in another tier-1 language gains
+  `comment_delta` three times under `off_by_config`. The `erosion_gate` unknown-entry warning lists
+  `comment_delta` among the gated checks, and the warning for a bad
+  `AGENTLESS_EROSION_GATE` ends "so each check takes its built-in mode", not
+  "so advisory applies". The hook fixtures `modes.json` (44 cases),
+  `classify.json` (17), `scenarios.json` and `states.json`, the goldens
+  `hooks/erosion.write.{txt,stdout}` (cl100k 152 to 156 and 129 to 133), and
+  the fixtures that list the lint checks or the gated checks change for this
+  and nothing else. The `all_off` scenario and its two cache states now turn
+  `comment_delta` off too, so they still test the skip of a hook with every
+  check off.
+
+- **A blocked edit ends with a fix line, not the mode line.** When an
+  erosion gate finding blocks, the text after the findings is "Change the
+  code as each blocking finding says, then retry the edit." in place of
+  "Erosion gate mode: ... Change it with the erosion_gate key in
+  .agentless-mcp.json or the AGENTLESS_EROSION_GATE variable", so the
+  block text no longer names the switch that turns the block off. Advisory
+  text keeps the mode line. The block cases of the hook fixtures
+  `classify.json` (6), `scenarios.json` (13) and `states.json` (26) change
+  that last line and nothing else
+  (docs/plans/2026-11-27_erosion-comment-and-lint-checks.md, D2).
+- **Each gated check has a built-in mode.** A check takes the repository's
+  `erosion_gate` entry, then `AGENTLESS_EROSION_GATE` when it is `advisory`
+  or `block`, then its own built-in mode (`GatedCheck::built_in_mode`).
+  `complexity_delta`, `contract_drift` and `clone_delta` keep `advisory`, so
+  no check resolves to a different mode (plan D1).
+
 ## 0.11.0rc2 -- 2026-11-27
 
 Each cl100k count of the tool surface in this section uses one method:

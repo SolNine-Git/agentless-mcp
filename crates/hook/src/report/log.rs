@@ -55,6 +55,10 @@ pub(crate) enum Tracked {
     Clone {
         key: CodePointString,
     },
+    Comment {
+        rule: CodePointString,
+        key: CodePointString,
+    },
 }
 
 // The observed state of a record: `None` for a list whose check measured no file.
@@ -62,6 +66,7 @@ pub(crate) struct Observed {
     pub(crate) units_over_threshold: Option<Vec<UnitCc>>,
     pub(crate) contract_keys: Option<Vec<Hit>>,
     pub(crate) clone_instances: Option<Vec<Instance>>,
+    pub(crate) comment_keys: Option<Vec<CommentHit>>,
 }
 
 pub(crate) struct UnitCc {
@@ -78,6 +83,12 @@ pub(crate) struct Hit {
 
 pub(crate) struct Instance {
     pub(crate) path: CodePointString,
+    pub(crate) key: CodePointString,
+}
+
+pub(crate) struct CommentHit {
+    pub(crate) path: CodePointString,
+    pub(crate) rule: CodePointString,
     pub(crate) key: CodePointString,
 }
 
@@ -252,6 +263,7 @@ fn with_detail(
         GatedCheck::ComplexityDelta => with_numbers(finding, detail, at),
         GatedCheck::ContractDrift => with_key(finding, detail, at),
         GatedCheck::CloneDelta => with_clone(finding, detail, at),
+        GatedCheck::CommentDelta => with_comment_key(finding, detail, at),
     }
 }
 
@@ -263,6 +275,16 @@ fn with_key(finding: Finding, detail: &Pairs, at: &str) -> Result<Finding, Strin
     Ok(Finding {
         unit: Some(unit),
         tracked: Some(Tracked::Contract { rule, capture }),
+        ..finding
+    })
+}
+
+// A comment finding carries no line in its key: a moved comment keeps it.
+fn with_comment_key(finding: Finding, detail: &Pairs, at: &str) -> Result<Finding, String> {
+    let rule = field::text(detail, schema::RULE, at)?;
+    let key = field::text(detail, schema::KEY, at)?;
+    Ok(Finding {
+        tracked: Some(Tracked::Comment { rule, key }),
         ..finding
     })
 }
@@ -323,6 +345,7 @@ fn observed(value: &Pairs, at: &str) -> Result<Observed, String> {
         units_over_threshold,
         contract_keys: rows(value, schema::CONTRACT_KEYS, at, hit)?,
         clone_instances: rows(value, schema::CLONE_INSTANCES, at, instance)?,
+        comment_keys: rows(value, schema::COMMENT_KEYS, at, comment_hit)?,
     })
 }
 
@@ -378,6 +401,13 @@ fn hit(row: &Pairs, at: &str) -> Result<Hit, String> {
         rule,
         capture,
     })
+}
+
+fn comment_hit(row: &Pairs, at: &str) -> Result<CommentHit, String> {
+    let path = field::text(row, schema::PATH, at)?;
+    let rule = field::text(row, schema::RULE, at)?;
+    let key = field::text(row, schema::KEY, at)?;
+    Ok(CommentHit { path, rule, key })
 }
 
 fn instance(row: &Pairs, at: &str) -> Result<Instance, String> {

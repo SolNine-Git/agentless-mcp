@@ -106,16 +106,37 @@ pub enum GatedCheck {
     ContractDrift,
     /// `clone_delta`.
     CloneDelta,
+    /// `comment_delta`.
+    CommentDelta,
 }
 
 impl GatedCheck {
     /// Every gated check, in the config order.
-    pub const ALL: [Self; 3] = [Self::ComplexityDelta, Self::ContractDrift, Self::CloneDelta];
+    pub const ALL: [Self; 4] = [
+        Self::ComplexityDelta,
+        Self::ContractDrift,
+        Self::CloneDelta,
+        Self::CommentDelta,
+    ];
 
     /// Returns the check as the config spells it.
     #[must_use]
     pub fn name(self) -> &'static str {
-        ["complexity_delta", "contract_drift", "clone_delta"][self as usize]
+        [
+            "complexity_delta",
+            "contract_drift",
+            "clone_delta",
+            "comment_delta",
+        ][self as usize]
+    }
+
+    /// Returns the mode the check takes when neither the repository nor the environment sets one.
+    #[must_use]
+    pub fn built_in_mode(self) -> GateMode {
+        match self {
+            Self::ComplexityDelta | Self::ContractDrift | Self::CloneDelta => GateMode::Advisory,
+            Self::CommentDelta => GateMode::Block,
+        }
     }
 }
 

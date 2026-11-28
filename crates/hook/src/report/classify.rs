@@ -173,6 +173,7 @@ fn observes(tracked: &Tracked, observed: &Observed) -> bool {
         Tracked::Complexity { .. } => observed.units_over_threshold.is_some(),
         Tracked::Contract { .. } => observed.contract_keys.is_some(),
         Tracked::Clone { .. } => observed.clone_instances.is_some(),
+        Tracked::Comment { .. } => observed.comment_keys.is_some(),
     }
 }
 
@@ -206,7 +207,24 @@ fn acted(
                 copy.path == finding.path && copy.key == *key
             })
         }
+        Tracked::Comment { rule, key } => comment_acted(finding, (rule, key), at_finding, later),
     }
+}
+
+// Undone when the later state holds the key fewer times than the state at the finding.
+fn comment_acted(
+    finding: &Finding,
+    (rule, key): (&CodePointString, &CodePointString),
+    at_finding: Option<&Observed>,
+    later: &Observed,
+) -> bool {
+    let Some(after) = later.comment_keys.as_ref() else {
+        return false;
+    };
+    let before = at_finding.and_then(|observed| observed.comment_keys.as_ref());
+    fewer(after, before, |hit| {
+        hit.path == finding.path && hit.rule == *rule && hit.key == *key
+    })
 }
 
 // Undone when fewer rows match than at the finding, or none when that state is unknown.

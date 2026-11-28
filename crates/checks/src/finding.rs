@@ -1,7 +1,7 @@
 //! Findings, their machine-readable details, and the one order every check returns them in.
 
 use kernel::Key;
-use prompts::messages;
+use prompts::{CommentGroup, messages};
 use serde::{Serialize, Serializer};
 use syntax::Language;
 
@@ -122,6 +122,8 @@ pub enum Detail {
     /// A `reuse_candidates` finding's two functions and the action names they share, boxed
     /// because it is far larger than most details.
     Reuse(Box<NameShare>),
+    /// A `comment_delta` finding's key.
+    Comment(CommentKey),
 }
 
 /// How `complexity_delta` paired a new unit with an old one.
@@ -189,6 +191,15 @@ pub struct DriftKey {
     pub capture: String,
 }
 
+/// One comment finding's identity: its rule and the text it keys on, with no line.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommentKey {
+    /// The rule: `suppress`, `banner`, `run`, `private-doc`, or `section`.
+    pub rule: String,
+    /// The text the rule keys on, one line per part.
+    pub key: String,
+}
+
 /// Why a pair check did not check a change, by design, as a reason a caller can match.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CheckGap {
@@ -198,6 +209,8 @@ pub enum CheckGap {
     NoRulesForLanguage(Language),
     /// The run has no tag cache to read clone blocks from.
     NoTagCache,
+    /// The language declares no comment rules in the group.
+    NoCommentRules(Language, CommentGroup),
 }
 
 impl CheckGap {
@@ -208,6 +221,7 @@ impl CheckGap {
             Self::NoBoundaryGlobs => "no_boundary_globs",
             Self::NoRulesForLanguage(_) => "no_rules_for_language",
             Self::NoTagCache => "no_tag_cache",
+            Self::NoCommentRules(..) => "no_comment_rules",
         }
     }
 }
@@ -217,17 +231,21 @@ struct GapRow {
     reason: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     language: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group: Option<&'static str>,
 }
 
 impl Serialize for CheckGap {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let language = match self {
-            Self::NoRulesForLanguage(language) => Some(language.name()),
-            Self::NoBoundaryGlobs | Self::NoTagCache => None,
+        let (language, group) = match self {
+            Self::NoRulesForLanguage(language) => (Some(language.name()), None),
+            Self::NoCommentRules(language, group) => (Some(language.name()), Some(group.name())),
+            Self::NoBoundaryGlobs | Self::NoTagCache => (None, None),
         };
         let row = GapRow {
             reason: self.reason(),
             language,
+            group,
         };
         row.serialize(serializer)
     }
@@ -386,6 +404,7 @@ keyed! {
         THRESHOLD: threshold,
     }
     DriftKey { RULE: rule, UNIT: unit, CAPTURE: capture }
+    CommentKey { RULE: rule, KEY: key }
     CloneCopy {
         KEY: key,
         LINE: line,

@@ -86,6 +86,13 @@ pub(crate) fn cycle_dodge(
     Ok(Some(dodges::cycle_dodge(scanned(inputs)?, pairs)?))
 }
 
+pub(crate) fn comment_delta(
+    pairs: &[&Pair],
+    _inputs: &mut RunInputs<'_, '_>,
+) -> Result<Option<Outcome>, Error> {
+    Ok(Some(checks::comment_delta(pairs)?))
+}
+
 // The --since form gives the tree scan, which resolves the references between a row's functions.
 pub(crate) fn reuse_candidates(
     pairs: &[&Pair],

@@ -159,6 +159,42 @@ impl Pair {
     pub(crate) fn has_new(&self) -> bool {
         self.new.is_some()
     }
+
+    pub(crate) fn old_side(&self) -> Option<&Side> {
+        self.old.as_ref()
+    }
+
+    pub(crate) fn new_side(&self) -> Option<&Side> {
+        self.new.as_ref()
+    }
+}
+
+// The tree of a side: its measurement's own tree, or a new parse when the side did not measure.
+pub(crate) enum SideTree<'a> {
+    Kept(&'a Parsed),
+    Fresh(Parsed),
+}
+
+impl SideTree<'_> {
+    pub(crate) fn parsed(&self) -> &Parsed {
+        match self {
+            Self::Kept(parsed) => parsed,
+            Self::Fresh(parsed) => parsed,
+        }
+    }
+}
+
+impl Side {
+    // A tree with a syntax error does not measure, and a check that reads comments still reads it.
+    pub(crate) fn tree(&self, language: Language) -> Result<SideTree<'_>, SideError> {
+        match &self.outcome {
+            Ok(measured) => Ok(SideTree::Kept(measured.parsed())),
+            Err(SideError::Unmeasurable(_)) => syntax::parse(language, Arc::clone(&self.text))
+                .map(SideTree::Fresh)
+                .map_err(SideError::Unparsable),
+            Err(error) => Err(error.clone()),
+        }
+    }
 }
 
 // The old text, then the new text, of a pair whose path is tier-1 source.

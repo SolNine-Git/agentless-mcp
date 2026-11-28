@@ -3,6 +3,10 @@
 
 use checks::{CheckGap, Detail, Finding, PairFinding, Severity};
 use io::{CONFIG_FILENAME, GateMode, GatedCheck};
+use prompts::messages::{
+    COMMENT_GATE_FIX, COMMENT_GATE_RULE_BANNERS, COMMENT_GATE_RULE_DOCSTRINGS,
+    COMMENT_GATE_RULE_SECTIONS, COMMENT_GATE_RULE_SUPPRESSIONS, EROSION_GATE_FIX,
+};
 use serde::Serialize;
 
 use crate::ENV_GATE;
@@ -16,6 +20,14 @@ const BLOCK_HEADER: &str = "Erosion gate blocked this edit:";
 const ADVISORY_HEADER: &str =
     "Erosion gate findings for this edit (advisory, the edit is not blocked):";
 const ADVISORY_LABEL: &str = "Advisory findings (these do not block):";
+const CHANGE_FIX: [&str; 1] = [EROSION_GATE_FIX];
+const COMMENT_FIX: [&str; 5] = [
+    COMMENT_GATE_RULE_DOCSTRINGS,
+    COMMENT_GATE_RULE_SECTIONS,
+    COMMENT_GATE_RULE_BANNERS,
+    COMMENT_GATE_RULE_SUPPRESSIONS,
+    COMMENT_GATE_FIX,
+];
 
 #[derive(Debug, Default)]
 pub(crate) struct Verdict<'a> {
@@ -78,6 +90,7 @@ fn off_by_config(row: &PairFinding) -> bool {
             checks::CONTRACT_DRIFT,
             CheckGap::NoBoundaryGlobs | CheckGap::NoRulesForLanguage(_)
         ) | (checks::CLONE_DELTA, CheckGap::NoTagCache)
+            | (checks::COMMENT_DELTA, CheckGap::NoCommentRules(..))
     )
 }
 
@@ -159,16 +172,17 @@ fn advisory_reply(text: &str) -> Result<String, Halt> {
         .map_err(|error| Halt::internal(format!("TypeError: {error}")))
 }
 
-// The text the model reads: blocking findings first, at most 15 lines, then the mode.
+// The text the model reads: blocking findings first, at most 15 findings, then the mode, or the
+// fix lines when a finding blocks.
 pub(crate) fn findings_text(blocking: &[&Finding], advisory: &[&Finding], modes: Modes) -> String {
     let listed_blocking = &blocking[..blocking.len().min(MAX_LISTED)];
     let room = MAX_LISTED - listed_blocking.len();
     let listed_advisory = &advisory[..advisory.len().min(room)];
     let hidden = blocking.len() + advisory.len() - listed_blocking.len() - listed_advisory.len();
-    let header = if blocking.is_empty() {
-        ADVISORY_HEADER
+    let (header, tail) = if blocking.is_empty() {
+        (ADVISORY_HEADER, vec![mode_line(modes)])
     } else {
-        BLOCK_HEADER
+        (BLOCK_HEADER, fix_lines(blocking))
     };
     let mut lines = vec![header.to_owned()];
     lines.extend(listed_blocking.iter().map(|finding| line(finding)));
@@ -179,12 +193,35 @@ pub(crate) fn findings_text(blocking: &[&Finding], advisory: &[&Finding], modes:
     if hidden > 0 {
         lines.push(format!("...and {hidden} more findings"));
     }
-    lines.push(mode_line(modes));
+    lines.extend(tail);
     lines.join("\n")
 }
 
 fn line(finding: &Finding) -> String {
     format!("{}:{}: {}", finding.path, finding.line, finding.message)
+}
+
+// The fix block of each check that blocks, in config order. A block that two checks share prints
+// once.
+fn fix_lines(blocking: &[&Finding]) -> Vec<String> {
+    let mut blocks: Vec<&[&str]> = Vec::new();
+    for check in GatedCheck::ALL {
+        let blocks_edit = blocking.iter().any(|finding| finding.check == check.name());
+        let fix = fix_block(check);
+        if blocks_edit && !blocks.contains(&fix) {
+            blocks.push(fix);
+        }
+    }
+    blocks.concat().into_iter().map(str::to_owned).collect()
+}
+
+fn fix_block(check: GatedCheck) -> &'static [&'static str] {
+    match check {
+        GatedCheck::ComplexityDelta | GatedCheck::ContractDrift | GatedCheck::CloneDelta => {
+            &CHANGE_FIX
+        }
+        GatedCheck::CommentDelta => &COMMENT_FIX,
+    }
 }
 
 fn mode_line(modes: Modes) -> String {

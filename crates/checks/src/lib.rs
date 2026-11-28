@@ -1,8 +1,9 @@
 //! The erosion pair checks: `complexity_delta`, `contract_drift`, `clone_delta`,
-//! `callee_overlap`, `cycle_dodge`, and `reuse_candidates`.
+//! `callee_overlap`, `cycle_dodge`, `reuse_candidates`, and `comment_delta`.
 
 mod callees;
 mod clone;
+mod comments;
 mod complexity;
 mod contract;
 mod copies;
@@ -21,6 +22,7 @@ mod tests;
 
 pub use callees::{Callee, CalleeTree, TreeFunction, callee_overlap};
 pub use clone::clone_delta;
+pub use comments::comment_delta;
 pub use complexity::complexity_delta;
 pub use contract::contract_drift;
 pub use dodges::{
@@ -29,12 +31,13 @@ pub use dodges::{
 };
 pub use error::{Error, SideError};
 pub use finding::{
-    CalleeShare, ChainHop, CheckGap, CloneCopy, CloneSite, Detail, DodgeVia, DriftKey, Finding,
-    ImportDodge, Match, NameShare, PairFinding, Severity, SharedCallee, TieredCallee, UnitDelta,
+    CalleeShare, ChainHop, CheckGap, CloneCopy, CloneSite, CommentKey, Detail, DodgeVia, DriftKey,
+    Finding, ImportDodge, Match, NameShare, PairFinding, Severity, SharedCallee, TieredCallee,
+    UnitDelta,
 };
 pub use index::{CloneIndex, IndexedFiles, clone_index};
 pub use matching::{Matchable, Pairing, pair_units};
-pub use observed::{CloneState, HitState, Observed, Outcome, UnitChange, UnitState};
+pub use observed::{CloneState, CommentState, HitState, Observed, Outcome, UnitChange, UnitState};
 pub use pair::{FUNCTION_REASONS, Pair, Side, SideText, TextPair, measure_blocks, pair_language};
 pub use reuse::{Link, NamedFunction, NamedTree, Proposed, reuse_candidates};
 
@@ -53,3 +56,5 @@ pub const CYCLE_DODGE: &str = "cycle_dodge";
 /// The name of the check that reports functions a change adds whose action names match those of
 /// an existing function.
 pub const REUSE_CANDIDATES: &str = "reuse_candidates";
+/// The name of the check that reports the comment findings a change adds.
+pub const COMMENT_DELTA: &str = "comment_delta";

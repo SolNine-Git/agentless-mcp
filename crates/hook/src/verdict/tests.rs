@@ -141,6 +141,83 @@ fn shown<T: serde::Serialize>(value: &T) -> String {
     to_text(value, JsonForm::Compact).expect("the value serializes")
 }
 
+fn warning_at(check: &'static str, line: u32) -> PairFinding {
+    PairFinding {
+        finding: Finding {
+            check,
+            severity: Severity::Warning,
+            message: format!("{check} at line {line}"),
+            path: "a.py".to_owned(),
+            line,
+            evidence: String::new(),
+        },
+        detail: None,
+    }
+}
+
+#[test]
+fn a_fix_line_that_two_blocking_checks_share_prints_once() {
+    let rows = [
+        warning_at(checks::COMPLEXITY_DELTA, 1),
+        warning_at(checks::CLONE_DELTA, 2),
+    ];
+    let modes = resolve(None, Some(std::ffi::OsStr::new("block"))).0;
+    let verdict = classify(&rows, modes).expect("both checks are gated");
+    let decision = verdict.decision(modes).expect("the reply serializes");
+    assert_eq!(
+        decision.stderr,
+        "Erosion gate blocked this edit:\n\
+         a.py:1: complexity_delta at line 1\n\
+         a.py:2: clone_delta at line 2\n\
+         Change the code as each blocking finding says, then retry the edit.\n"
+    );
+}
+
+// comment_delta blocks by default, so its rules close the text, and an advisory finding stays.
+#[test]
+fn a_comment_block_ends_with_the_comment_rules_and_no_mode_line() {
+    let rows = [
+        warning_at(checks::COMMENT_DELTA, 1),
+        warning_at(checks::COMPLEXITY_DELTA, 2),
+    ];
+    let modes = resolve(None, None).0;
+    let verdict = classify(&rows, modes).expect("both checks are gated");
+    let decision = verdict.decision(modes).expect("the reply serializes");
+    assert_eq!(decision.code, 2);
+    assert_eq!(
+        decision.stderr,
+        "Erosion gate blocked this edit:\n\
+         a.py:1: comment_delta at line 1\n\
+         Advisory findings (these do not block):\n\
+         a.py:2: complexity_delta at line 2\n\
+         - Docstrings on public API only; none on _private or dunder functions, Rust items \
+         without pub, or trait impls.\n\
+         - No Args/Returns/Raises sections, JSDoc @param/@returns tags or Rust # Arguments/# \
+         Returns sections; the typed signature carries them.\n\
+         - No banner comments. Why-comments run 1-2 lines.\n\
+         - Never silence a linter, formatter or type checker; fix the code it flags.\n\
+         Delete the flagged text, then retry the edit. Do not reword it.\n"
+    );
+}
+
+#[test]
+fn a_language_with_no_comment_rules_is_off_by_config() {
+    let go = checks::pair_language("x.go").expect("go is a pair-check language");
+    let gap = CheckGap::NoCommentRules(go, prompts::CommentGroup::Docs);
+    let mut row = warning_at(checks::COMMENT_DELTA, 0);
+    row.finding.severity = Severity::NotChecked;
+    row.detail = Some(Detail::Gap(gap));
+    let modes = resolve(None, None).0;
+    let verdict = classify(std::slice::from_ref(&row), modes).expect("a gap row");
+    let settled = verdict.settled(None);
+    assert_eq!(settled.off_by_config, [checks::COMMENT_DELTA]);
+    assert!(settled.gaps.is_empty());
+    assert_eq!(
+        serde_json::to_value(settled.outcome).ok(),
+        Some("clean".into())
+    );
+}
+
 #[test]
 fn a_row_for_a_check_that_is_not_gated_is_an_internal_error() {
     let finding = Finding {

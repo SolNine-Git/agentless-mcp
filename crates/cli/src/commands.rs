@@ -7,7 +7,7 @@ mod answers;
 mod write;
 
 use app::ops::{self, JSON, NO_CACHE, Op, REPO};
-use app::{CHECKS, CheckInput, Severity};
+use app::{CHECKS, CheckInput, PairCheck, PairSelection, Severity};
 use prompts::messages::LINT_UNKNOWN_SEVERITY;
 
 use crate::args::{
@@ -269,8 +269,8 @@ fn only_help() -> String {
          fixture paths. callee_overlap and cycle_dodge read the calls of every function and the \
          imports of every file in the working tree, and only --since runs them. reuse_candidates \
          reads the action names of every function from the tag cache, and only --only runs it, in \
-         --since and --path. A run with only pair checks skips the symbol scan that the patch \
-         checks need",
+         --since and --path. comment_delta reads only the edited files, and only --only runs it. \
+         A run with only pair checks skips the symbol scan that the patch checks need",
         all.join(", "),
         pairs.join(", "),
         edited_checks()
@@ -285,15 +285,11 @@ fn fail_on_help() -> String {
     )
 }
 
-// The checks that read only the edited files: the default of the two pair forms.
+// The default of the two pair forms: the checks that read only the edited files and are not
+// opt-in.
 fn edited_checks() -> String {
-    let edited = CHECKS
-        .iter()
-        .filter(|check| check.input == CheckInput::Pairs);
-    edited
-        .map(|check| check.name)
-        .collect::<Vec<_>>()
-        .join(" and ")
+    let edited = PairSelection::edited_files().checks().map(PairCheck::name);
+    edited.collect::<Vec<_>>().join(" and ")
 }
 
 fn severity_names() -> String {

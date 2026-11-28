@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 418] = [
+pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 435] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -367,6 +367,102 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 418] = [
     ),
     (
         "messages",
+        "comment_banner",
+        &[],
+        &[Piece::Text(messages::COMMENT_BANNER)],
+    ),
+    (
+        "messages",
+        "comment_doc_section",
+        &["name"],
+        messages::COMMENT_DOC_SECTION.pieces(),
+    ),
+    (
+        "messages",
+        "comment_docstring_section",
+        &["name"],
+        messages::COMMENT_DOCSTRING_SECTION.pieces(),
+    ),
+    (
+        "messages",
+        "comment_evidence",
+        &["rule"],
+        messages::COMMENT_EVIDENCE.pieces(),
+    ),
+    (
+        "messages",
+        "comment_gate_fix",
+        &[],
+        &[Piece::Text(messages::COMMENT_GATE_FIX)],
+    ),
+    (
+        "messages",
+        "comment_gate_rule_banners",
+        &[],
+        &[Piece::Text(messages::COMMENT_GATE_RULE_BANNERS)],
+    ),
+    (
+        "messages",
+        "comment_gate_rule_docstrings",
+        &[],
+        &[Piece::Text(messages::COMMENT_GATE_RULE_DOCSTRINGS)],
+    ),
+    (
+        "messages",
+        "comment_gate_rule_sections",
+        &[],
+        &[Piece::Text(messages::COMMENT_GATE_RULE_SECTIONS)],
+    ),
+    (
+        "messages",
+        "comment_gate_rule_suppressions",
+        &[],
+        &[Piece::Text(messages::COMMENT_GATE_RULE_SUPPRESSIONS)],
+    ),
+    (
+        "messages",
+        "comment_jsdoc_tags",
+        &["listed"],
+        messages::COMMENT_JSDOC_TAGS.pieces(),
+    ),
+    (
+        "messages",
+        "comment_no_rules",
+        &["path", "kind", "language", "reason"],
+        messages::COMMENT_NO_RULES.pieces(),
+    ),
+    (
+        "messages",
+        "comment_private_docstring",
+        &["name"],
+        messages::COMMENT_PRIVATE_DOCSTRING.pieces(),
+    ),
+    (
+        "messages",
+        "comment_private_item_doc",
+        &["name"],
+        messages::COMMENT_PRIVATE_ITEM_DOC.pieces(),
+    ),
+    (
+        "messages",
+        "comment_run",
+        &["count"],
+        messages::COMMENT_RUN.pieces(),
+    ),
+    (
+        "messages",
+        "comment_suppression",
+        &["text"],
+        messages::COMMENT_SUPPRESSION.pieces(),
+    ),
+    (
+        "messages",
+        "comment_trait_impl_doc",
+        &["name"],
+        messages::COMMENT_TRAIT_IMPL_DOC.pieces(),
+    ),
+    (
+        "messages",
         "communities_header",
         &["count", "total", "modularity", "resolution"],
         messages::COMMUNITIES_HEADER.pieces(),
@@ -678,6 +774,12 @@ pub(crate) static CATALOG: [(&str, &str, &[&str], &[Piece]); 418] = [
         "diagram_titles",
         &["count"],
         messages::DIAGRAM_TITLES.pieces(),
+    ),
+    (
+        "messages",
+        "erosion_gate_fix",
+        &[],
+        &[Piece::Text(messages::EROSION_GATE_FIX)],
     ),
     (
         "messages",

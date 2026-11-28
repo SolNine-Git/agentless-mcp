@@ -7,6 +7,7 @@ pub const checks::schema::CC_NEW: &str
 pub const checks::schema::CC_OLD: &str
 pub const checks::schema::CHAIN: &str
 pub const checks::schema::CLONE_INSTANCES: &str
+pub const checks::schema::COMMENT_KEYS: &str
 pub const checks::schema::CONTRACT_KEYS: &str
 pub const checks::schema::END_LINE: &str
 pub const checks::schema::FAMILY: &str
@@ -57,6 +58,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for checks::CalleeTree
 impl core::panic::unwind_safe::UnwindSafe for checks::CalleeTree
 pub enum checks::CheckGap
 pub checks::CheckGap::NoBoundaryGlobs
+pub checks::CheckGap::NoCommentRules(syntax::language::Language, prompts::comment_rule::CommentGroup)
 pub checks::CheckGap::NoRulesForLanguage(syntax::language::Language)
 pub checks::CheckGap::NoTagCache
 impl checks::CheckGap
@@ -98,6 +100,7 @@ impl core::marker::UnsafeUnpin for checks::CloneIndex
 impl core::panic::unwind_safe::RefUnwindSafe for checks::CloneIndex
 impl core::panic::unwind_safe::UnwindSafe for checks::CloneIndex
 pub enum checks::Detail
+pub checks::Detail::Comment(checks::CommentKey)
 pub checks::Detail::Copy(checks::CloneCopy)
 pub checks::Detail::Dodge(checks::ImportDodge)
 pub checks::Detail::Drift(checks::DriftKey)
@@ -452,6 +455,47 @@ impl core::marker::Unpin for checks::CloneState
 impl core::marker::UnsafeUnpin for checks::CloneState
 impl core::panic::unwind_safe::RefUnwindSafe for checks::CloneState
 impl core::panic::unwind_safe::UnwindSafe for checks::CloneState
+pub struct checks::CommentKey
+pub checks::CommentKey::key: alloc::string::String
+pub checks::CommentKey::rule: alloc::string::String
+impl core::clone::Clone for checks::CommentKey
+pub fn checks::CommentKey::clone(&self) -> Self
+impl core::cmp::Eq for checks::CommentKey
+impl core::cmp::PartialEq for checks::CommentKey
+pub fn checks::CommentKey::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::CommentKey
+pub fn checks::CommentKey::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::CommentKey
+impl serde_core::ser::Serialize for checks::CommentKey
+pub fn checks::CommentKey::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::CommentKey
+impl core::marker::Send for checks::CommentKey
+impl core::marker::Sync for checks::CommentKey
+impl core::marker::Unpin for checks::CommentKey
+impl core::marker::UnsafeUnpin for checks::CommentKey
+impl core::panic::unwind_safe::RefUnwindSafe for checks::CommentKey
+impl core::panic::unwind_safe::UnwindSafe for checks::CommentKey
+pub struct checks::CommentState
+pub checks::CommentState::key: alloc::string::String
+pub checks::CommentState::path: alloc::string::String
+pub checks::CommentState::rule: alloc::string::String
+impl core::clone::Clone for checks::CommentState
+pub fn checks::CommentState::clone(&self) -> Self
+impl core::cmp::Eq for checks::CommentState
+impl core::cmp::PartialEq for checks::CommentState
+pub fn checks::CommentState::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::CommentState
+pub fn checks::CommentState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::CommentState
+impl serde_core::ser::Serialize for checks::CommentState
+pub fn checks::CommentState::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::CommentState
+impl core::marker::Send for checks::CommentState
+impl core::marker::Sync for checks::CommentState
+impl core::marker::Unpin for checks::CommentState
+impl core::marker::UnsafeUnpin for checks::CommentState
+impl core::panic::unwind_safe::RefUnwindSafe for checks::CommentState
+impl core::panic::unwind_safe::UnwindSafe for checks::CommentState
 pub struct checks::DriftKey
 pub checks::DriftKey::capture: alloc::string::String
 pub checks::DriftKey::rule: alloc::string::String
@@ -703,6 +747,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for checks::NamedFunction
 impl core::panic::unwind_safe::UnwindSafe for checks::NamedFunction
 pub struct checks::Observed
 pub checks::Observed::clone_instances: core::option::Option<alloc::vec::Vec<checks::CloneState>>
+pub checks::Observed::comment_keys: core::option::Option<alloc::vec::Vec<checks::CommentState>>
 pub checks::Observed::contract_keys: core::option::Option<alloc::vec::Vec<checks::HitState>>
 pub checks::Observed::units_changed: core::option::Option<alloc::vec::Vec<checks::UnitChange>>
 pub checks::Observed::units_over_threshold: core::option::Option<alloc::vec::Vec<checks::UnitState>>
@@ -1020,6 +1065,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for checks::Unparsed
 impl core::panic::unwind_safe::UnwindSafe for checks::Unparsed
 pub const checks::CALLEE_OVERLAP: &str
 pub const checks::CLONE_DELTA: &str
+pub const checks::COMMENT_DELTA: &str
 pub const checks::COMPLEXITY_DELTA: &str
 pub const checks::CONTRACT_DRIFT: &str
 pub const checks::CYCLE_DODGE: &str
@@ -1042,6 +1088,7 @@ pub fn metrics::Unit::rank(&self) -> (core::cmp::Reverse<u32>, u32)
 pub fn checks::callee_overlap(&[&checks::Pair], &checks::CalleeTree) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::clone_delta(&[&checks::Pair], &checks::CloneIndex, &alloc::collections::btree::set::BTreeSet<(alloc::string::String, u32)>) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::clone_index<B, T>(&alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, &alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, B, T) -> core::result::Result<checks::IndexedFiles, checks::Error> where B: core::ops::function::FnMut(&str, &str, syntax::language::Language) -> core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>, T: core::ops::function::FnMut() -> bool
+pub fn checks::comment_delta(&[&checks::Pair]) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::complexity_delta(&[&checks::Pair], u32) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::contract_drift(&[&checks::Pair], &[alloc::string::String]) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::cycle_dodge(&[&checks::Pair], checks::DodgeTree<'_>) -> core::result::Result<checks::Outcome, checks::Error>

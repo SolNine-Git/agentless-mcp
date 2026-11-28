@@ -1,0 +1,209 @@
+{
+  "languages": [
+    {
+      "language": "bash",
+      "runs": {"gap": "follow_up"},
+      "docs": {"gap": "follow_up"},
+      "suppressions": {"gap": "follow_up"}
+    },
+    {
+      "language": "c",
+      "runs": {"gap": "follow_up"},
+      "docs": {"gap": "follow_up"},
+      "suppressions": {"gap": "follow_up"}
+    },
+    {
+      "language": "cpp",
+      "runs": {"gap": "follow_up"},
+      "docs": {"gap": "follow_up"},
+      "suppressions": {"gap": "follow_up"}
+    },
+    {
+      "language": "csharp",
+      "runs": {"gap": "tier_two"},
+      "docs": {"gap": "tier_two"},
+      "suppressions": {"gap": "tier_two"}
+    },
+    {
+      "language": "go",
+      "runs": {"gap": "doc_attachment"},
+      "docs": {"gap": "doc_attachment"},
+      "suppressions": {"gap": "doc_attachment"}
+    },
+    {
+      "language": "hcl",
+      "runs": {"gap": "data_language"},
+      "docs": {"gap": "data_language"},
+      "suppressions": {"gap": "data_language"}
+    },
+    {
+      "language": "java",
+      "runs": {"gap": "follow_up"},
+      "docs": {"gap": "follow_up"},
+      "suppressions": {"gap": "follow_up"}
+    },
+    {
+      "language": "javascript",
+      "runs": {
+        "line": "^//",
+        "block": "^/\\*",
+        "doc": "^/\\*\\*",
+        "head": "first_line",
+        "directive": "^(?:///\\s*<|//\\s*@(?:flow|jsx|jsxImportSource|jsxRuntime|vitest-environment|jest-environment)\\b)",
+        "banner": "^(?://|/\\*)\\s*(?:[-=~*#/]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*(?:\\*/)?\\s*$"
+      },
+      "docs": {
+        "style": "jsdoc",
+        "tags": "(?m)^\\s*\\*?\\s*@(param|arg|argument|returns?|throws)\\b",
+        "aliases": {"arg": "param", "argument": "param", "return": "returns"}
+      },
+      "suppressions": {
+        "on": "comment",
+        "pattern": "^(?://|/\\*)\\s*(?:eslint-disable|@ts-ignore|@ts-nocheck|@ts-expect-error|prettier-ignore|biome-ignore)"
+      }
+    },
+    {
+      "language": "json",
+      "runs": {"gap": "data_language"},
+      "docs": {"gap": "data_language"},
+      "suppressions": {"gap": "data_language"}
+    },
+    {
+      "language": "kotlin",
+      "runs": {"gap": "tier_two"},
+      "docs": {"gap": "tier_two"},
+      "suppressions": {"gap": "tier_two"}
+    },
+    {
+      "language": "lua",
+      "runs": {"gap": "follow_up"},
+      "docs": {"gap": "follow_up"},
+      "suppressions": {"gap": "follow_up"}
+    },
+    {
+      "language": "php",
+      "runs": {"gap": "tier_two"},
+      "docs": {"gap": "tier_two"},
+      "suppressions": {"gap": "tier_two"}
+    },
+    {
+      "language": "python",
+      "runs": {
+        "line": "^#",
+        "block": null,
+        "doc": null,
+        "head": "comment",
+        "directive": "^#\\s*(?:!|-\\*-|type:|pragma:|fmt:|isort:)",
+        "banner": "^#\\s*(?:[-=~*#]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*$"
+      },
+      "docs": {
+        "style": "docstring",
+        "private": "^_",
+        "sections": "(?m)^\\s*(?:Args|Arguments|Parameters|Returns|Yields|Raises):\\s*$"
+      },
+      "suppressions": {
+        "on": "comment",
+        "pattern": "#\\s*(?:noqa\\b|nosec\\b|type:\\s*ignore\\b|(?:pylint|pyright|mypy|ruff):\\s*(?:disable|ignore|noqa))"
+      }
+    },
+    {
+      "language": "ruby",
+      "runs": {"gap": "doc_attachment"},
+      "docs": {"gap": "doc_attachment"},
+      "suppressions": {"gap": "doc_attachment"}
+    },
+    {
+      "language": "rust",
+      "runs": {
+        "line": "^//",
+        "block": "^/\\*",
+        "doc": null,
+        "head": "first_line",
+        "directive": null,
+        "banner": "^(?://[/!]?|/\\*[*!]?)\\s*(?:[-=~*#/]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*(?:\\*/)?\\s*$"
+      },
+      "docs": {
+        "style": "rust_items",
+        "item": "^(?P<visibility>pub\\b(?:\\s*\\([^)]*\\))?)?\\s*(?:(?:default|const|async|unsafe|safe|extern)\\s+)*(?P<kind>fn|struct|enum|union|trait|type|const|static|mod|use|impl|macro_rules!)?\\s*(?P<name>\\$?(?:r#)?\\w+)?",
+        "public": "pub",
+        "export": "macro_export",
+        "facing": "\\bderive\\s*\\([^)]*\\b(?:Parser|Subcommand|Args|ValueEnum|JsonSchema)\\b|#\\[\\s*(?:pyclass|pymethods|pyfunction|pymodule|tool|tool_router)\\b",
+        "sections": "(?m)^\\s*#\\s+(?:Arguments|Args|Parameters|Params|Returns?)\\s*$"
+      },
+      "suppressions": {
+        "on": "attribute",
+        "pattern": "^(?:(?:allow|expect)\\s*\\(|rustfmt::skip\\b|cfg_attr\\s*\\(.*\\b(?:allow|expect)\\s*\\()"
+      }
+    },
+    {
+      "language": "scala",
+      "runs": {"gap": "tier_two"},
+      "docs": {"gap": "tier_two"},
+      "suppressions": {"gap": "tier_two"}
+    },
+    {
+      "language": "sql",
+      "runs": {"gap": "data_language"},
+      "docs": {"gap": "data_language"},
+      "suppressions": {"gap": "data_language"}
+    },
+    {
+      "language": "swift",
+      "runs": {"gap": "tier_two"},
+      "docs": {"gap": "tier_two"},
+      "suppressions": {"gap": "tier_two"}
+    },
+    {
+      "language": "toml",
+      "runs": {"gap": "data_language"},
+      "docs": {"gap": "data_language"},
+      "suppressions": {"gap": "data_language"}
+    },
+    {
+      "language": "tsx",
+      "runs": {
+        "line": "^//",
+        "block": "^/\\*",
+        "doc": "^/\\*\\*",
+        "head": "first_line",
+        "directive": "^(?:///\\s*<|//\\s*@(?:flow|jsx|jsxImportSource|jsxRuntime|vitest-environment|jest-environment)\\b)",
+        "banner": "^(?://|/\\*)\\s*(?:[-=~*#/]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*(?:\\*/)?\\s*$"
+      },
+      "docs": {
+        "style": "jsdoc",
+        "tags": "(?m)^\\s*\\*?\\s*@(param|arg|argument|returns?|throws)\\b",
+        "aliases": {"arg": "param", "argument": "param", "return": "returns"}
+      },
+      "suppressions": {
+        "on": "comment",
+        "pattern": "^(?://|/\\*)\\s*(?:eslint-disable|@ts-ignore|@ts-nocheck|@ts-expect-error|prettier-ignore|biome-ignore)"
+      }
+    },
+    {
+      "language": "typescript",
+      "runs": {
+        "line": "^//",
+        "block": "^/\\*",
+        "doc": "^/\\*\\*",
+        "head": "first_line",
+        "directive": "^(?:///\\s*<|//\\s*@(?:flow|jsx|jsxImportSource|jsxRuntime|vitest-environment|jest-environment)\\b)",
+        "banner": "^(?://|/\\*)\\s*(?:[-=~*#/]{4,}|[-=~*#]{3,}.*[-=~*#]{3,})\\s*(?:\\*/)?\\s*$"
+      },
+      "docs": {
+        "style": "jsdoc",
+        "tags": "(?m)^\\s*\\*?\\s*@(param|arg|argument|returns?|throws)\\b",
+        "aliases": {"arg": "param", "argument": "param", "return": "returns"}
+      },
+      "suppressions": {
+        "on": "comment",
+        "pattern": "^(?://|/\\*)\\s*(?:eslint-disable|@ts-ignore|@ts-nocheck|@ts-expect-error|prettier-ignore|biome-ignore)"
+      }
+    },
+    {
+      "language": "yaml",
+      "runs": {"gap": "data_language"},
+      "docs": {"gap": "data_language"},
+      "suppressions": {"gap": "data_language"}
+    }
+  ]
+}

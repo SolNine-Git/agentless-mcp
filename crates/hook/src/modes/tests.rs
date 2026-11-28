@@ -47,7 +47,11 @@ fn the_active_checks_are_the_ones_not_off_in_config_order() {
     let (modes, _) = resolve(Some(&entries), None);
     assert_eq!(
         modes.active(),
-        [GatedCheck::ContractDrift, GatedCheck::CloneDelta]
+        [
+            GatedCheck::ContractDrift,
+            GatedCheck::CloneDelta,
+            GatedCheck::CommentDelta
+        ]
     );
 }
 
@@ -70,4 +74,24 @@ fn each_gated_check_is_a_pair_check_of_the_same_name_in_the_same_order() {
         ungated,
         ["callee_overlap", "cycle_dodge", "reuse_candidates"]
     );
+}
+
+// The hook finds each check to run through PairCheck::from_name and drops a name it does not find.
+#[test]
+fn each_gated_check_resolves_to_a_pair_check_through_from_name() {
+    for check in GatedCheck::ALL {
+        let pair = app::PairCheck::from_name(check.name());
+        assert_eq!(pair.map(app::PairCheck::name), Some(check.name()));
+    }
+}
+
+#[test]
+fn with_no_entry_and_no_environment_value_each_check_takes_its_built_in_mode() {
+    let (modes, warning) = resolve(None, None);
+    let built_in: Vec<(GatedCheck, GateMode)> = GatedCheck::ALL
+        .into_iter()
+        .map(|check| (check, check.built_in_mode()))
+        .collect();
+    assert_eq!(modes.iter().collect::<Vec<_>>(), built_in);
+    assert_eq!(warning, None);
 }

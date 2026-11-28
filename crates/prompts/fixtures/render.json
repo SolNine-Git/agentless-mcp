@@ -367,6 +367,93 @@
       },
       "text": "src/app/svc.py: Python's tokenizer rejects this file (TokenError: EOF). Clone blocks are indexed only in a file the tokenizer accepts, the same as scb-check. Fix the line the error names, then index the file again."
     },
+    "comment_banner": {
+      "arguments": {},
+      "text": "banner comment"
+    },
+    "comment_doc_section": {
+      "arguments": {
+        "name": "parse"
+      },
+      "text": "# Arguments/# Returns section in doc comment of parse"
+    },
+    "comment_docstring_section": {
+      "arguments": {
+        "name": "parse"
+      },
+      "text": "Args/Returns/Raises section in docstring of parse"
+    },
+    "comment_evidence": {
+      "arguments": {
+        "rule": "run"
+      },
+      "text": "rule run"
+    },
+    "comment_gate_fix": {
+      "arguments": {},
+      "text": "Delete the flagged text, then retry the edit. Do not reword it."
+    },
+    "comment_gate_rule_banners": {
+      "arguments": {},
+      "text": "- No banner comments. Why-comments run 1-2 lines."
+    },
+    "comment_gate_rule_docstrings": {
+      "arguments": {},
+      "text": "- Docstrings on public API only; none on _private or dunder functions, Rust items without pub, or trait impls."
+    },
+    "comment_gate_rule_sections": {
+      "arguments": {},
+      "text": "- No Args/Returns/Raises sections, JSDoc @param/@returns tags or Rust # Arguments/# Returns sections; the typed signature carries them."
+    },
+    "comment_gate_rule_suppressions": {
+      "arguments": {},
+      "text": "- Never silence a linter, formatter or type checker; fix the code it flags."
+    },
+    "comment_jsdoc_tags": {
+      "arguments": {
+        "listed": "@param, @returns"
+      },
+      "text": "JSDoc @param, @returns tags; the typed signature carries them"
+    },
+    "comment_no_rules": {
+      "arguments": {
+        "path": "src/lib.rs",
+        "kind": "docs",
+        "language": "rust",
+        "reason": "follow_up"
+      },
+      "text": "not checked: comment_delta has no docs rules for rust (follow_up), so it did not check src/lib.rs for them."
+    },
+    "comment_private_docstring": {
+      "arguments": {
+        "name": "_helper"
+      },
+      "text": "docstring on non-public function _helper"
+    },
+    "comment_private_item_doc": {
+      "arguments": {
+        "name": "helper"
+      },
+      "text": "doc comment on non-public item helper"
+    },
+    "comment_run": {
+      "arguments": {
+        "count": 3
+      },
+      "text": "3-line comment; why-comments run 1-2 lines"
+    },
+    "comment_suppression": {
+      "arguments": {
+        "text": "# noqa: E501"
+      },
+      "text": "lint suppression: # noqa: E501"
+    },
+    "comment_trait_impl_doc": {
+      "arguments": {
+        "name": "fmt"
+      },
+      "text": "doc comment on trait-impl item fmt; overrides carry no docs"
+    },
     "communities_header": {
       "arguments": {
         "count": 3,
@@ -721,6 +808,10 @@
         "count": 10
       },
       "text": "subgraph titles name whole communities, including the 10 modules the rank bound left out of this diagram"
+    },
+    "erosion_gate_fix": {
+      "arguments": {},
+      "text": "Change the code as each blocking finding says, then retry the edit."
     },
     "expand_batch_shortened": {
       "arguments": {

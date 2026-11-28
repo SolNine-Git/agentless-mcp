@@ -61,6 +61,22 @@ pub const prompts::messages::CLONE_NO_TAG_CACHE: &str
 pub const prompts::messages::CLONE_NO_TAG_CACHE_EVIDENCE: &str
 pub const prompts::messages::CLONE_OLD_NOT_INDEXED: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::CLONE_TOKENIZER_REJECTS: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::COMMENT_BANNER: &str
+pub const prompts::messages::COMMENT_DOCSTRING_SECTION: prompts::Template<prompts::Text>
+pub const prompts::messages::COMMENT_DOC_SECTION: prompts::Template<prompts::Text>
+pub const prompts::messages::COMMENT_EVIDENCE: prompts::Template<prompts::Text>
+pub const prompts::messages::COMMENT_GATE_FIX: &str
+pub const prompts::messages::COMMENT_GATE_RULE_BANNERS: &str
+pub const prompts::messages::COMMENT_GATE_RULE_DOCSTRINGS: &str
+pub const prompts::messages::COMMENT_GATE_RULE_SECTIONS: &str
+pub const prompts::messages::COMMENT_GATE_RULE_SUPPRESSIONS: &str
+pub const prompts::messages::COMMENT_JSDOC_TAGS: prompts::Template<prompts::Text>
+pub const prompts::messages::COMMENT_NO_RULES: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::COMMENT_PRIVATE_DOCSTRING: prompts::Template<prompts::Text>
+pub const prompts::messages::COMMENT_PRIVATE_ITEM_DOC: prompts::Template<prompts::Text>
+pub const prompts::messages::COMMENT_RUN: prompts::Template<prompts::Count>
+pub const prompts::messages::COMMENT_SUPPRESSION: prompts::Template<prompts::Text>
+pub const prompts::messages::COMMENT_TRAIT_IMPL_DOC: prompts::Template<prompts::Text>
 pub const prompts::messages::COMMUNITIES_HEADER: prompts::Template<(prompts::Count, prompts::Count, prompts::Text, prompts::Text)>
 pub const prompts::messages::COMMUNITIES_NOTHING_PARSED: &str
 pub const prompts::messages::COMMUNITIES_NOT_CONVERGED: &str
@@ -111,6 +127,7 @@ pub const prompts::messages::DIAGRAM_SUMMARY_FOCUS: prompts::Template<(prompts::
 pub const prompts::messages::DIAGRAM_SUMMARY_FOCUS_GROUPED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::DIAGRAM_SUMMARY_GROUPED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::DIAGRAM_TITLES: prompts::Template<prompts::Count>
+pub const prompts::messages::EROSION_GATE_FIX: &str
 pub const prompts::messages::EXPAND_BATCH_SHORTENED: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPAND_BODY_TRUNCATED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPAND_NO_ROOM: prompts::Template<(prompts::Count, prompts::Count)>
@@ -497,6 +514,125 @@ pub const prompts::tool_descriptions::RESOLVE_LOCATIONS: &str
 pub const prompts::tool_descriptions::SEARCH: &str
 pub const prompts::tool_descriptions::SYMBOLS: &str
 pub const prompts::tool_descriptions::TRACE: &str
+pub enum prompts::CommentGap
+pub prompts::CommentGap::DataLanguage
+pub prompts::CommentGap::DocAttachment
+pub prompts::CommentGap::FollowUp
+pub prompts::CommentGap::TierTwo
+impl prompts::CommentGap
+pub const fn prompts::CommentGap::name(self) -> &'static str
+impl core::clone::Clone for prompts::CommentGap
+pub fn prompts::CommentGap::clone(&self) -> Self
+impl core::cmp::Eq for prompts::CommentGap
+impl core::cmp::PartialEq for prompts::CommentGap
+pub fn prompts::CommentGap::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::CommentGap
+pub fn prompts::CommentGap::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::CommentGap
+impl core::marker::StructuralPartialEq for prompts::CommentGap
+impl core::marker::Freeze for prompts::CommentGap
+impl core::marker::Send for prompts::CommentGap
+impl core::marker::Sync for prompts::CommentGap
+impl core::marker::Unpin for prompts::CommentGap
+impl core::marker::UnsafeUnpin for prompts::CommentGap
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::CommentGap
+impl core::panic::unwind_safe::UnwindSafe for prompts::CommentGap
+pub enum prompts::CommentGroup
+pub prompts::CommentGroup::Docs
+pub prompts::CommentGroup::Runs
+pub prompts::CommentGroup::Suppressions
+impl prompts::CommentGroup
+pub const prompts::CommentGroup::ALL: [prompts::CommentGroup; 3]
+pub const fn prompts::CommentGroup::name(self) -> &'static str
+impl core::clone::Clone for prompts::CommentGroup
+pub fn prompts::CommentGroup::clone(&self) -> Self
+impl core::cmp::Eq for prompts::CommentGroup
+impl core::cmp::Ord for prompts::CommentGroup
+pub fn prompts::CommentGroup::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for prompts::CommentGroup
+pub fn prompts::CommentGroup::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for prompts::CommentGroup
+pub fn prompts::CommentGroup::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for prompts::CommentGroup
+pub fn prompts::CommentGroup::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for prompts::CommentGroup
+pub fn prompts::CommentGroup::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for prompts::CommentGroup
+impl core::marker::StructuralPartialEq for prompts::CommentGroup
+impl core::marker::Freeze for prompts::CommentGroup
+impl core::marker::Send for prompts::CommentGroup
+impl core::marker::Sync for prompts::CommentGroup
+impl core::marker::Unpin for prompts::CommentGroup
+impl core::marker::UnsafeUnpin for prompts::CommentGroup
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::CommentGroup
+impl core::panic::unwind_safe::UnwindSafe for prompts::CommentGroup
+pub enum prompts::Declared<T>
+pub prompts::Declared::Gap(prompts::CommentGap)
+pub prompts::Declared::Rules(T)
+impl<T: core::clone::Clone> core::clone::Clone for prompts::Declared<T>
+pub fn prompts::Declared<T>::clone(&self) -> Self
+impl<T: core::cmp::Eq> core::cmp::Eq for prompts::Declared<T>
+impl<T: core::cmp::PartialEq> core::cmp::PartialEq for prompts::Declared<T>
+pub fn prompts::Declared<T>::eq(&self, &Self) -> bool
+impl<T: core::cmp::PartialEq> core::marker::StructuralPartialEq for prompts::Declared<T>
+impl<T: core::fmt::Debug> core::fmt::Debug for prompts::Declared<T>
+pub fn prompts::Declared<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T: core::marker::Copy> core::marker::Copy for prompts::Declared<T>
+impl<T> core::marker::Freeze for prompts::Declared<T> where T: core::marker::Freeze
+impl<T> core::marker::Send for prompts::Declared<T> where T: core::marker::Send
+impl<T> core::marker::Sync for prompts::Declared<T> where T: core::marker::Sync
+impl<T> core::marker::Unpin for prompts::Declared<T> where T: core::marker::Unpin
+impl<T> core::marker::UnsafeUnpin for prompts::Declared<T> where T: core::marker::UnsafeUnpin
+impl<T> core::panic::unwind_safe::RefUnwindSafe for prompts::Declared<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for prompts::Declared<T> where T: core::panic::unwind_safe::UnwindSafe
+pub enum prompts::DocRules
+pub prompts::DocRules::Docstring
+pub prompts::DocRules::Docstring::private: &'static str
+pub prompts::DocRules::Docstring::sections: &'static str
+pub prompts::DocRules::Jsdoc
+pub prompts::DocRules::Jsdoc::aliases: &'static [(&'static str, &'static str)]
+pub prompts::DocRules::Jsdoc::tags: &'static str
+pub prompts::DocRules::RustItems
+pub prompts::DocRules::RustItems::export: &'static str
+pub prompts::DocRules::RustItems::facing: &'static str
+pub prompts::DocRules::RustItems::item: &'static str
+pub prompts::DocRules::RustItems::public: &'static str
+pub prompts::DocRules::RustItems::sections: &'static str
+impl core::clone::Clone for prompts::DocRules
+pub fn prompts::DocRules::clone(&self) -> Self
+impl core::cmp::Eq for prompts::DocRules
+impl core::cmp::PartialEq for prompts::DocRules
+pub fn prompts::DocRules::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::DocRules
+pub fn prompts::DocRules::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::DocRules
+impl core::marker::StructuralPartialEq for prompts::DocRules
+impl core::marker::Freeze for prompts::DocRules
+impl core::marker::Send for prompts::DocRules
+impl core::marker::Sync for prompts::DocRules
+impl core::marker::Unpin for prompts::DocRules
+impl core::marker::UnsafeUnpin for prompts::DocRules
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::DocRules
+impl core::panic::unwind_safe::UnwindSafe for prompts::DocRules
+pub enum prompts::Head
+pub prompts::Head::Comment
+pub prompts::Head::FirstLine
+impl core::clone::Clone for prompts::Head
+pub fn prompts::Head::clone(&self) -> Self
+impl core::cmp::Eq for prompts::Head
+impl core::cmp::PartialEq for prompts::Head
+pub fn prompts::Head::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::Head
+pub fn prompts::Head::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::Head
+impl core::marker::StructuralPartialEq for prompts::Head
+impl core::marker::Freeze for prompts::Head
+impl core::marker::Send for prompts::Head
+impl core::marker::Sync for prompts::Head
+impl core::marker::Unpin for prompts::Head
+impl core::marker::UnsafeUnpin for prompts::Head
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::Head
+impl core::panic::unwind_safe::UnwindSafe for prompts::Head
 pub enum prompts::Severity
 pub prompts::Severity::Advisory
 pub prompts::Severity::Warning
@@ -516,6 +652,48 @@ impl core::marker::Unpin for prompts::Severity
 impl core::marker::UnsafeUnpin for prompts::Severity
 impl core::panic::unwind_safe::RefUnwindSafe for prompts::Severity
 impl core::panic::unwind_safe::UnwindSafe for prompts::Severity
+pub enum prompts::Suppressed
+pub prompts::Suppressed::Attribute
+pub prompts::Suppressed::Comment
+impl core::clone::Clone for prompts::Suppressed
+pub fn prompts::Suppressed::clone(&self) -> Self
+impl core::cmp::Eq for prompts::Suppressed
+impl core::cmp::PartialEq for prompts::Suppressed
+pub fn prompts::Suppressed::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::Suppressed
+pub fn prompts::Suppressed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::Suppressed
+impl core::marker::StructuralPartialEq for prompts::Suppressed
+impl core::marker::Freeze for prompts::Suppressed
+impl core::marker::Send for prompts::Suppressed
+impl core::marker::Sync for prompts::Suppressed
+impl core::marker::Unpin for prompts::Suppressed
+impl core::marker::UnsafeUnpin for prompts::Suppressed
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::Suppressed
+impl core::panic::unwind_safe::UnwindSafe for prompts::Suppressed
+pub struct prompts::CommentRules
+pub prompts::CommentRules::docs: prompts::Declared<prompts::DocRules>
+pub prompts::CommentRules::language: &'static str
+pub prompts::CommentRules::runs: prompts::Declared<prompts::RunRules>
+pub prompts::CommentRules::suppressions: prompts::Declared<prompts::SuppressionRules>
+impl prompts::CommentRules
+pub fn prompts::CommentRules::gap(&self, prompts::CommentGroup) -> core::option::Option<prompts::CommentGap>
+impl core::clone::Clone for prompts::CommentRules
+pub fn prompts::CommentRules::clone(&self) -> Self
+impl core::cmp::Eq for prompts::CommentRules
+impl core::cmp::PartialEq for prompts::CommentRules
+pub fn prompts::CommentRules::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::CommentRules
+pub fn prompts::CommentRules::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::CommentRules
+impl core::marker::StructuralPartialEq for prompts::CommentRules
+impl core::marker::Freeze for prompts::CommentRules
+impl core::marker::Send for prompts::CommentRules
+impl core::marker::Sync for prompts::CommentRules
+impl core::marker::Unpin for prompts::CommentRules
+impl core::marker::UnsafeUnpin for prompts::CommentRules
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::CommentRules
+impl core::panic::unwind_safe::UnwindSafe for prompts::CommentRules
 pub struct prompts::ContractRule
 pub prompts::ContractRule::id: &'static str
 pub prompts::ContractRule::language: &'static str
@@ -570,6 +748,48 @@ impl core::marker::Unpin for prompts::Filled
 impl core::marker::UnsafeUnpin for prompts::Filled
 impl core::panic::unwind_safe::RefUnwindSafe for prompts::Filled
 impl core::panic::unwind_safe::UnwindSafe for prompts::Filled
+pub struct prompts::RunRules
+pub prompts::RunRules::banner: &'static str
+pub prompts::RunRules::block: core::option::Option<&'static str>
+pub prompts::RunRules::directive: core::option::Option<&'static str>
+pub prompts::RunRules::doc: core::option::Option<&'static str>
+pub prompts::RunRules::head: prompts::Head
+pub prompts::RunRules::line: &'static str
+impl core::clone::Clone for prompts::RunRules
+pub fn prompts::RunRules::clone(&self) -> Self
+impl core::cmp::Eq for prompts::RunRules
+impl core::cmp::PartialEq for prompts::RunRules
+pub fn prompts::RunRules::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::RunRules
+pub fn prompts::RunRules::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::RunRules
+impl core::marker::StructuralPartialEq for prompts::RunRules
+impl core::marker::Freeze for prompts::RunRules
+impl core::marker::Send for prompts::RunRules
+impl core::marker::Sync for prompts::RunRules
+impl core::marker::Unpin for prompts::RunRules
+impl core::marker::UnsafeUnpin for prompts::RunRules
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::RunRules
+impl core::panic::unwind_safe::UnwindSafe for prompts::RunRules
+pub struct prompts::SuppressionRules
+pub prompts::SuppressionRules::on: prompts::Suppressed
+pub prompts::SuppressionRules::pattern: &'static str
+impl core::clone::Clone for prompts::SuppressionRules
+pub fn prompts::SuppressionRules::clone(&self) -> Self
+impl core::cmp::Eq for prompts::SuppressionRules
+impl core::cmp::PartialEq for prompts::SuppressionRules
+pub fn prompts::SuppressionRules::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::SuppressionRules
+pub fn prompts::SuppressionRules::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::SuppressionRules
+impl core::marker::StructuralPartialEq for prompts::SuppressionRules
+impl core::marker::Freeze for prompts::SuppressionRules
+impl core::marker::Send for prompts::SuppressionRules
+impl core::marker::Sync for prompts::SuppressionRules
+impl core::marker::Unpin for prompts::SuppressionRules
+impl core::marker::UnsafeUnpin for prompts::SuppressionRules
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::SuppressionRules
+impl core::panic::unwind_safe::UnwindSafe for prompts::SuppressionRules
 pub struct prompts::Template<S>
 impl<S: prompts::Signature> prompts::Template<S>
 pub fn prompts::Template<S>::render(&self, <S as prompts::Signature>::Values) -> alloc::string::String
@@ -626,4 +846,5 @@ pub fn (A, B)::filled(Self::Values) -> alloc::vec::Vec<prompts::Filled>
 impl<K: prompts::Kind> prompts::Signature for K
 pub type K::Values<'a> = <K as prompts::Kind>::Value
 pub fn K::filled(Self::Values) -> alloc::vec::Vec<prompts::Filled>
+pub fn prompts::comment_rules() -> &'static [prompts::CommentRules]
 pub fn prompts::contract_rules() -> &'static [prompts::ContractRule]

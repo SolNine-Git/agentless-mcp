@@ -241,7 +241,8 @@ fn candidate(id: &str, judged: Judged) -> LintCandidate {
     let measured = observed.units_over_threshold.is_some()
         || observed.units_changed.is_some()
         || observed.contract_keys.is_some()
-        || observed.clone_instances.is_some();
+        || observed.clone_instances.is_some()
+        || observed.comment_keys.is_some();
     LintCandidate {
         id: id.to_owned(),
         findings: judged.rows,

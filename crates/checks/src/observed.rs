@@ -27,6 +27,8 @@ pub struct Observed {
     pub contract_keys: Option<Vec<HitState>>,
     /// Every new block that `clone_delta` could report.
     pub clone_instances: Option<Vec<CloneState>>,
+    /// The key of every comment finding in the new texts.
+    pub comment_keys: Option<Vec<CommentState>>,
 }
 
 impl Observed {
@@ -38,6 +40,7 @@ impl Observed {
             units_changed: self.units_changed.or(other.units_changed),
             contract_keys: self.contract_keys.or(other.contract_keys),
             clone_instances: self.clone_instances.or(other.clone_instances),
+            comment_keys: self.comment_keys.or(other.comment_keys),
         }
     }
 }
@@ -50,6 +53,7 @@ impl Serialize for Observed {
             self.units_changed.is_some(),
             self.contract_keys.is_some(),
             self.clone_instances.is_some(),
+            self.comment_keys.is_some(),
         ];
         let fields = held.iter().filter(|&&is_held| is_held).count();
         let mut row = serializer.serialize_struct("Observed", fields)?;
@@ -62,6 +66,7 @@ impl Serialize for Observed {
             schema::CLONE_INSTANCES,
             self.clone_instances.as_ref(),
         )?;
+        listed(&mut row, schema::COMMENT_KEYS, self.comment_keys.as_ref())?;
         row.end()
     }
 }
@@ -139,6 +144,17 @@ pub struct CloneState {
     pub end_line: u32,
 }
 
+/// One comment finding of a new text, by its key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommentState {
+    /// The repo-relative path.
+    pub path: String,
+    /// The rule.
+    pub rule: String,
+    /// The text the rule keys on.
+    pub key: String,
+}
+
 keyed! {
     UnitState { PATH: path, UNIT: unit, LINE: line, CC: cc, SLOC: sloc }
     UnitChange {
@@ -153,4 +169,5 @@ keyed! {
     }
     HitState { PATH: path, RULE: rule, UNIT: unit, CAPTURE: capture }
     CloneState { PATH: path, KEY: key, LINE: line, END_LINE: end_line }
+    CommentState { PATH: path, RULE: rule, KEY: key }
 }

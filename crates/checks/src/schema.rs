@@ -9,6 +9,8 @@ pub const UNITS_CHANGED: &str = "units_changed";
 pub const CONTRACT_KEYS: &str = "contract_keys";
 /// The observed blocks that `clone_delta` could report.
 pub const CLONE_INSTANCES: &str = "clone_instances";
+/// The observed keys of the comment findings.
+pub const COMMENT_KEYS: &str = "comment_keys";
 
 /// A repo-relative path.
 pub const PATH: &str = "path";
@@ -34,11 +36,11 @@ pub const SLOC_OLD: &str = "sloc_old";
 pub const SLOC_NEW: &str = "sloc_new";
 /// The complexity threshold of the run.
 pub const THRESHOLD: &str = "threshold";
-/// A contract rule id.
+/// A contract rule id, or a comment rule.
 pub const RULE: &str = "rule";
 /// A contract hit's normalized text.
 pub const CAPTURE: &str = "capture";
-/// A block's Type-2 key.
+/// A block's Type-2 key, or the text a comment finding keys on.
 pub const KEY: &str = "key";
 /// A copied block's first other instances.
 pub const SITES: &str = "sites";

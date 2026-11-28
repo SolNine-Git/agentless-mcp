@@ -339,6 +339,94 @@ pub const CLONE_TOKENIZER_REJECTS: Template<(Text, Text)> = Template::new(&[
     ),
 ]);
 
+/// A text that takes no values.
+pub const COMMENT_BANNER: &str = "banner comment";
+
+/// A template that takes `name`.
+pub const COMMENT_DOC_SECTION: Template<Text> = Template::new(&[
+    Piece::Text("# Arguments/# Returns section in doc comment of "),
+    Piece::Value(0),
+]);
+
+/// A template that takes `name`.
+pub const COMMENT_DOCSTRING_SECTION: Template<Text> = Template::new(&[
+    Piece::Text("Args/Returns/Raises section in docstring of "),
+    Piece::Value(0),
+]);
+
+/// A template that takes `rule`.
+pub const COMMENT_EVIDENCE: Template<Text> =
+    Template::new(&[Piece::Text("rule "), Piece::Value(0)]);
+
+/// A text that takes no values.
+pub const COMMENT_GATE_FIX: &str = "Delete the flagged text, then retry the edit. Do not reword \
+        it.";
+
+/// A text that takes no values.
+pub const COMMENT_GATE_RULE_BANNERS: &str = "- No banner comments. Why-comments run 1-2 lines.";
+
+/// A text that takes no values.
+pub const COMMENT_GATE_RULE_DOCSTRINGS: &str = "- Docstrings on public API only; none on _private \
+        or dunder functions, Rust items without pub, or trait impls.";
+
+/// A text that takes no values.
+pub const COMMENT_GATE_RULE_SECTIONS: &str = "- No Args/Returns/Raises sections, JSDoc \
+        @param/@returns tags or Rust # Arguments/# Returns sections; \
+        the typed signature carries them.";
+
+/// A text that takes no values.
+pub const COMMENT_GATE_RULE_SUPPRESSIONS: &str = "- Never silence a linter, formatter or type \
+        checker; fix the code it flags.";
+
+/// A template that takes `listed`.
+pub const COMMENT_JSDOC_TAGS: Template<Text> = Template::new(&[
+    Piece::Text("JSDoc "),
+    Piece::Value(0),
+    Piece::Text(" tags; the typed signature carries them"),
+]);
+
+/// A template that takes (`path`, `kind`, `language`, `reason`).
+pub const COMMENT_NO_RULES: Template<(Text, Text, Text, Text)> = Template::new(&[
+    Piece::Text("not checked: comment_delta has no "),
+    Piece::Value(1),
+    Piece::Text(" rules for "),
+    Piece::Value(2),
+    Piece::Text(" ("),
+    Piece::Value(3),
+    Piece::Text("), so it did not check "),
+    Piece::Value(0),
+    Piece::Text(" for them."),
+]);
+
+/// A template that takes `name`.
+pub const COMMENT_PRIVATE_DOCSTRING: Template<Text> = Template::new(&[
+    Piece::Text("docstring on non-public function "),
+    Piece::Value(0),
+]);
+
+/// A template that takes `name`.
+pub const COMMENT_PRIVATE_ITEM_DOC: Template<Text> = Template::new(&[
+    Piece::Text("doc comment on non-public item "),
+    Piece::Value(0),
+]);
+
+/// A template that takes `count`.
+pub const COMMENT_RUN: Template<Count> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text("-line comment; why-comments run 1-2 lines"),
+]);
+
+/// A template that takes `text`.
+pub const COMMENT_SUPPRESSION: Template<Text> =
+    Template::new(&[Piece::Text("lint suppression: "), Piece::Value(0)]);
+
+/// A template that takes `name`.
+pub const COMMENT_TRAIT_IMPL_DOC: Template<Text> = Template::new(&[
+    Piece::Text("doc comment on trait-impl item "),
+    Piece::Value(0),
+    Piece::Text("; overrides carry no docs"),
+]);
+
 /// A template that takes (`count`, `total`, `modularity`, `resolution`).
 pub const COMMUNITIES_HEADER: Template<(Count, Count, Text, Text)> = Template::new(&[
     Piece::Value(0),
@@ -873,6 +961,10 @@ pub const DIAGRAM_TITLES: Template<Count> = Template::new(&[
     Piece::Choice(0, "module", "modules"),
     Piece::Text(" the rank bound left out of this diagram"),
 ]);
+
+/// A text that takes no values.
+pub const EROSION_GATE_FIX: &str = "Change the code as each blocking finding says, then retry the \
+        edit.";
 
 /// A template that takes (`shortened`, `total`, `budget`).
 pub const EXPAND_BATCH_SHORTENED: Template<(Count, Count, Count)> = Template::new(&[

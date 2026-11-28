@@ -26,6 +26,22 @@ pub fn literal_within(text: &str, first: usize) -> String {
     format!("\"{}\"", lines.join(CONTINUATION))
 }
 
+/// Returns `text` as a Rust string literal that may break before any visible character.
+pub fn unspaced_literal(text: &str) -> String {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for c in text.chars() {
+        let escaped = escape(c);
+        let visible = !escaped.starts_with(char::is_whitespace);
+        if visible && !line.is_empty() && line.len() + escaped.len() > WIDTH {
+            lines.push(std::mem::take(&mut line));
+        }
+        line.push_str(&escaped);
+    }
+    lines.push(line);
+    format!("\"{}\"", lines.join(CONTINUATION))
+}
+
 // Escaped text cut after each space whose next character is not whitespace: a continuation skips
 // the whitespace that starts the next line.
 fn words(text: &str) -> Vec<String> {
@@ -60,7 +76,7 @@ fn escape(c: char) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{WIDTH, literal};
+    use super::{WIDTH, literal, unspaced_literal};
 
     fn rejoined(made: &str) -> String {
         made.split("\\\n").map(str::trim_start).collect()
@@ -107,6 +123,21 @@ mod tests {
             assert!(first.is_some_and(|c| !c.is_whitespace()), "{made}");
         }
         let escaped = format!("\"{long}  {long}\\n\\t{long} \\u{{a0}}{long}\"");
+        assert_eq!(rejoined(&made), escaped);
+    }
+
+    #[test]
+    fn text_with_no_space_breaks_into_lines_of_at_most_the_width() {
+        let text = format!("{}\\s* {}", "(?:a|b)".repeat(20), "x".repeat(WIDTH));
+        let made = unspaced_literal(&text);
+        let lines: Vec<&str> = made.split("\\\n").collect();
+        assert!(lines.len() > 2, "{made}");
+        assert!(
+            lines
+                .iter()
+                .all(|line| line.trim_start().len() <= WIDTH + 1)
+        );
+        let escaped = format!("\"{}\"", text.replace('\\', "\\\\"));
         assert_eq!(rejoined(&made), escaped);
     }
 }

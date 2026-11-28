@@ -306,7 +306,7 @@ fn a_call_with_no_time_left_for_lint_is_degraded_after_the_digests() {
     let (_, record) = timed(&[MS(0), MS(0), MS(9600)], in_process);
     assert_eq!(record["reason"], "no time left for lint");
     assert!(record["new_sha256"].is_string(), "{record}");
-    assert_eq!(record["checks"].as_array().map(Vec::len), Some(3));
+    assert_eq!(record["checks"].as_array().map(Vec::len), Some(4));
 }
 
 #[test]

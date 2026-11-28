@@ -119,10 +119,12 @@ impl core::panic::unwind_safe::RefUnwindSafe for io::GateWarning
 impl core::panic::unwind_safe::UnwindSafe for io::GateWarning
 pub enum io::GatedCheck
 pub io::GatedCheck::CloneDelta
+pub io::GatedCheck::CommentDelta
 pub io::GatedCheck::ComplexityDelta
 pub io::GatedCheck::ContractDrift
 impl io::GatedCheck
-pub const io::GatedCheck::ALL: [Self; 3]
+pub const io::GatedCheck::ALL: [Self; 4]
+pub fn io::GatedCheck::built_in_mode(self) -> io::GateMode
 pub fn io::GatedCheck::name(self) -> &'static str
 impl core::clone::Clone for io::GatedCheck
 pub fn io::GatedCheck::clone(&self) -> Self
