@@ -1,3 +1,8 @@
 [profile.default]
 # A test that runs past 30 s twice over is killed and fails.
 slow-timeout = { period = "30s", terminate-after = 2 }
+
+# The reference sweeps run worker pools of up to 8 threads, so each takes 8 slots.
+[[profile.default.overrides]]
+filter = 'test(/_gives_the_reference_|answers_as_the_fixture$|as_the_tools_answer_part_|_goldens|warm_equals_cold|resolves_as_the_reference_resolves/)'
+threads-required = 8
