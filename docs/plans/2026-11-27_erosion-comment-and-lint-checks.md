@@ -491,6 +491,15 @@ Done 2026-11-27. The original PB-84 description is saved in the session scratchp
 - A per-file linter row with a measured cost, or a declared gap, for each other tier-1 language.
 - `.pyi`, `.jsx`, `.mts` and `.cts` extensions, with their own retrieval-tier proof.
 
+Later additions from the standards review of 2026-11-27 (agent-ownership PB-118), each with a design,
+a build and a trial sub-task:
+
+- PB-122: a fixed ruff security rule set that agentless enforces in every repo through `linter_delta`.
+  S113 covers httpx `timeout=None`, so the set needs no separate httpx rule.
+- PB-126: `cycle_delta` in the per-edit hook.
+- Declined by the owner: a secret scanner (each diff's security review already scans for secrets) and a
+  `torch.load` check (models load through oMLX).
+
 ## Validation Record (2026-11-27)
 
 Fable orchestration with Sonnet workers and a 3-validator panel. Verdict CONCERNS. The local peer step
