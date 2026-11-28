@@ -429,321 +429,257 @@ fn findings(pairs: &[Pair]) -> Vec<Shown> {
         .collect()
 }
 
-fn run_finding(line: u32, key: &str, message: &str) -> Shown {
-    (line, "run".to_owned(), key.to_owned(), message.to_owned())
+// One per-language case: the path, the old and new text, and the findings the run gives.
+#[derive(Debug)]
+struct ShapeCase {
+    path: &'static str,
+    old: &'static str,
+    new: &'static str,
+    expected: &'static [(u32, &'static str, &'static str, &'static str)],
 }
 
-fn banner_finding(line: u32, key: &str) -> Shown {
-    (
-        line,
-        "banner".to_owned(),
-        key.to_owned(),
-        "banner comment".to_owned(),
-    )
+fn run_cases(table: &[ShapeCase]) {
+    for case in table {
+        let pairs = pairs(case.path, Some(case.old), Some(case.new));
+        let expected: Vec<Shown> = (case.expected)
+            .iter()
+            .map(|&(line, rule, key, message)| {
+                (line, rule.to_owned(), key.to_owned(), message.to_owned())
+            })
+            .collect();
+        assert_eq!(findings(&pairs), expected, "{case:?}");
+    }
+}
+
+const RUN_CASES: &[ShapeCase] = &[
+    ShapeCase {
+        path: "src/a.sh",
+        old: "x=1\n",
+        new: "# one\n# two\n# three\nx=1\n",
+        expected: &[(
+            1,
+            "run",
+            "# one\n# two\n# three",
+            "3-line comment; why-comments run 1-2 lines",
+        )],
+    },
+    ShapeCase {
+        path: "src/a.c",
+        old: "int main(void) { return 0; }\n",
+        new: "// one\n// two\n// three\nint main(void) { return 0; }\n",
+        expected: &[(
+            1,
+            "run",
+            "// one\n// two\n// three",
+            "3-line comment; why-comments run 1-2 lines",
+        )],
+    },
+    ShapeCase {
+        path: "src/a.c",
+        old: "int main(void) { return 0; }\n",
+        new: "/* one\ntwo\nthree */\nint main(void) { return 0; }\n",
+        expected: &[(
+            1,
+            "run",
+            "/* one\ntwo\nthree */",
+            "3-line comment; why-comments run 1-2 lines",
+        )],
+    },
+    ShapeCase {
+        path: "src/a.cpp",
+        old: "int main(void) { return 0; }\n",
+        new: "// one\n// two\n// three\nint main(void) { return 0; }\n",
+        expected: &[(
+            1,
+            "run",
+            "// one\n// two\n// three",
+            "3-line comment; why-comments run 1-2 lines",
+        )],
+    },
+    ShapeCase {
+        path: "src/a.cpp",
+        old: "int main(void) { return 0; }\n",
+        new: "/* one\ntwo\nthree */\nint main(void) { return 0; }\n",
+        expected: &[(
+            1,
+            "run",
+            "/* one\ntwo\nthree */",
+            "3-line comment; why-comments run 1-2 lines",
+        )],
+    },
+    ShapeCase {
+        path: "src/a.java",
+        old: "public class A {}\n",
+        new: "// one\n// two\n// three\npublic class A {}\n",
+        expected: &[(
+            1,
+            "run",
+            "// one\n// two\n// three",
+            "3-line comment; why-comments run 1-2 lines",
+        )],
+    },
+    ShapeCase {
+        path: "src/a.java",
+        old: "public class A {}\n",
+        new: "/* one\ntwo\nthree */\npublic class A {}\n",
+        expected: &[(
+            1,
+            "run",
+            "/* one\ntwo\nthree */",
+            "3-line comment; why-comments run 1-2 lines",
+        )],
+    },
+    ShapeCase {
+        path: "src/a.lua",
+        old: "local x = 1\n",
+        new: "-- one\n-- two\n-- three\nlocal x = 1\n",
+        expected: &[(
+            1,
+            "run",
+            "-- one\n-- two\n-- three",
+            "3-line comment; why-comments run 1-2 lines",
+        )],
+    },
+    ShapeCase {
+        path: "src/a.lua",
+        old: "local x = 1\n",
+        new: "--[[\n-- one\n-- two\n-- three\n]]\nlocal x = 1\n",
+        expected: &[(
+            1,
+            "run",
+            "--[[\n-- one\n-- two\n-- three\n]]",
+            "5-line comment; why-comments run 1-2 lines",
+        )],
+    },
+];
+
+const BANNER_CASES: &[ShapeCase] = &[
+    ShapeCase {
+        path: "src/a.sh",
+        old: "x=1\n",
+        new: "# ====\nx=1\n",
+        expected: &[(1, "banner", "# ====", "banner comment")],
+    },
+    ShapeCase {
+        path: "src/a.c",
+        old: "int main(void) { return 0; }\n",
+        new: "// ====\nint main(void) { return 0; }\n",
+        expected: &[(1, "banner", "// ====", "banner comment")],
+    },
+    ShapeCase {
+        path: "src/a.cpp",
+        old: "int main(void) { return 0; }\n",
+        new: "// ====\nint main(void) { return 0; }\n",
+        expected: &[(1, "banner", "// ====", "banner comment")],
+    },
+    ShapeCase {
+        path: "src/a.java",
+        old: "public class A {}\n",
+        new: "// ====\npublic class A {}\n",
+        expected: &[(1, "banner", "// ====", "banner comment")],
+    },
+    ShapeCase {
+        path: "src/a.lua",
+        old: "local x = 1\n",
+        new: "-- ====\nlocal x = 1\n",
+        expected: &[(1, "banner", "-- ====", "banner comment")],
+    },
+];
+
+const EXEMPT_CASES: &[ShapeCase] = &[
+    ShapeCase {
+        path: "src/a.sh",
+        old: "x=1\n",
+        new: "#!/bin/bash\n# shellcheck source=lib.sh\nx=1\n",
+        expected: &[],
+    },
+    ShapeCase {
+        path: "src/a.c",
+        old: "int main(void) { return 0; }\n",
+        new: "/// one\n/// two\n/// three\nint main(void) { return 0; }\n",
+        expected: &[],
+    },
+    ShapeCase {
+        path: "src/a.c",
+        old: "int main(void) { return 0; }\n",
+        new: "// clang-format off\nint main(void) { return 0; }\n",
+        expected: &[],
+    },
+    ShapeCase {
+        path: "src/a.cpp",
+        old: "int main(void) { return 0; }\n",
+        new: "/// one\n/// two\n/// three\nint main(void) { return 0; }\n",
+        expected: &[],
+    },
+    ShapeCase {
+        path: "src/a.cpp",
+        old: "int main(void) { return 0; }\n",
+        new: "// clang-format on\nint main(void) { return 0; }\n",
+        expected: &[],
+    },
+    ShapeCase {
+        path: "src/a.java",
+        old: "public class A {}\n",
+        new: "/** one\n * two\n * three */\npublic class A {}\n",
+        expected: &[],
+    },
+    ShapeCase {
+        path: "src/a.lua",
+        old: "local x = 1\n",
+        new: "--- one\n--- two\n--- three\nlocal x = 1\n",
+        expected: &[],
+    },
+];
+
+const OLD_RUN_CASES: &[ShapeCase] = &[
+    ShapeCase {
+        path: "src/a.sh",
+        old: "# one\n# two\n# three\nx=1\n",
+        new: "# one\n# two\n# three\nx=1\ny=2\n",
+        expected: &[],
+    },
+    ShapeCase {
+        path: "src/a.c",
+        old: "// one\n// two\n// three\nint main(void) { return 0; }\n",
+        new: "// one\n// two\n// three\nint main(void) { return 0; }\nint y = 1;\n",
+        expected: &[],
+    },
+    ShapeCase {
+        path: "src/a.cpp",
+        old: "// one\n// two\n// three\nint main(void) { return 0; }\n",
+        new: "// one\n// two\n// three\nint main(void) { return 0; }\nint y = 1;\n",
+        expected: &[],
+    },
+    ShapeCase {
+        path: "src/a.java",
+        old: "// one\n// two\n// three\npublic class A {}\n",
+        new: "// one\n// two\n// three\npublic class A {}\npublic class B {}\n",
+        expected: &[],
+    },
+    ShapeCase {
+        path: "src/a.lua",
+        old: "-- one\n-- two\n-- three\nlocal x = 1\n",
+        new: "-- one\n-- two\n-- three\nlocal x = 1\nlocal y = 2\n",
+        expected: &[],
+    },
+];
+
+#[test]
+fn a_long_comment_run_is_found_in_the_new_text() {
+    run_cases(RUN_CASES);
 }
 
 #[test]
-fn bash_line_run() {
-    let pairs = pairs(
-        "src/a.sh",
-        Some("x=1\n"),
-        Some("# one\n# two\n# three\nx=1\n"),
-    );
-    let expected = [run_finding(
-        1,
-        "# one\n# two\n# three",
-        "3-line comment; why-comments run 1-2 lines",
-    )];
-    assert_eq!(findings(&pairs), expected);
+fn a_banner_comment_is_found_in_the_new_text() {
+    run_cases(BANNER_CASES);
 }
 
 #[test]
-fn bash_banner() {
-    let pairs = pairs("src/a.sh", Some("x=1\n"), Some("# ====\nx=1\n"));
-    assert_eq!(findings(&pairs), [banner_finding(1, "# ====")]);
+fn a_directive_or_doc_comment_run_is_exempt() {
+    run_cases(EXEMPT_CASES);
 }
 
 #[test]
-fn bash_directive_is_exempt() {
-    let pairs = pairs(
-        "src/a.sh",
-        Some("x=1\n"),
-        Some("#!/bin/bash\n# shellcheck source=lib.sh\nx=1\n"),
-    );
-    assert_eq!(findings(&pairs), []);
-}
-
-#[test]
-fn bash_old_run_stays() {
-    let old = "# one\n# two\n# three\nx=1\n";
-    let pairs = pairs(
-        "src/a.sh",
-        Some(old),
-        Some("# one\n# two\n# three\nx=1\ny=2\n"),
-    );
-    assert_eq!(findings(&pairs), []);
-}
-
-#[test]
-fn c_line_run() {
-    let pairs = pairs(
-        "src/a.c",
-        Some("int main(void) { return 0; }\n"),
-        Some("// one\n// two\n// three\nint main(void) { return 0; }\n"),
-    );
-    let expected = [run_finding(
-        1,
-        "// one\n// two\n// three",
-        "3-line comment; why-comments run 1-2 lines",
-    )];
-    assert_eq!(findings(&pairs), expected);
-}
-
-#[test]
-fn c_doc_run_is_exempt() {
-    let pairs = pairs(
-        "src/a.c",
-        Some("int main(void) { return 0; }\n"),
-        Some("/// one\n/// two\n/// three\nint main(void) { return 0; }\n"),
-    );
-    assert_eq!(findings(&pairs), []);
-}
-
-#[test]
-fn c_block_run() {
-    let pairs = pairs(
-        "src/a.c",
-        Some("int main(void) { return 0; }\n"),
-        Some("/* one\ntwo\nthree */\nint main(void) { return 0; }\n"),
-    );
-    let expected = [run_finding(
-        1,
-        "/* one\ntwo\nthree */",
-        "3-line comment; why-comments run 1-2 lines",
-    )];
-    assert_eq!(findings(&pairs), expected);
-}
-
-#[test]
-fn c_banner() {
-    let pairs = pairs(
-        "src/a.c",
-        Some("int main(void) { return 0; }\n"),
-        Some("// ====\nint main(void) { return 0; }\n"),
-    );
-    assert_eq!(findings(&pairs), [banner_finding(1, "// ====")]);
-}
-
-#[test]
-fn c_directive_is_exempt() {
-    let pairs = pairs(
-        "src/a.c",
-        Some("int main(void) { return 0; }\n"),
-        Some("// clang-format off\nint main(void) { return 0; }\n"),
-    );
-    assert_eq!(findings(&pairs), []);
-}
-
-#[test]
-fn c_old_run_stays() {
-    let old = "// one\n// two\n// three\nint main(void) { return 0; }\n";
-    let pairs = pairs(
-        "src/a.c",
-        Some(old),
-        Some("// one\n// two\n// three\nint main(void) { return 0; }\nint y = 1;\n"),
-    );
-    assert_eq!(findings(&pairs), []);
-}
-
-#[test]
-fn cpp_line_run() {
-    let pairs = pairs(
-        "src/a.cpp",
-        Some("int main(void) { return 0; }\n"),
-        Some("// one\n// two\n// three\nint main(void) { return 0; }\n"),
-    );
-    let expected = [run_finding(
-        1,
-        "// one\n// two\n// three",
-        "3-line comment; why-comments run 1-2 lines",
-    )];
-    assert_eq!(findings(&pairs), expected);
-}
-
-#[test]
-fn cpp_doc_run_is_exempt() {
-    let pairs = pairs(
-        "src/a.cpp",
-        Some("int main(void) { return 0; }\n"),
-        Some("/// one\n/// two\n/// three\nint main(void) { return 0; }\n"),
-    );
-    assert_eq!(findings(&pairs), []);
-}
-
-#[test]
-fn cpp_block_run() {
-    let pairs = pairs(
-        "src/a.cpp",
-        Some("int main(void) { return 0; }\n"),
-        Some("/* one\ntwo\nthree */\nint main(void) { return 0; }\n"),
-    );
-    let expected = [run_finding(
-        1,
-        "/* one\ntwo\nthree */",
-        "3-line comment; why-comments run 1-2 lines",
-    )];
-    assert_eq!(findings(&pairs), expected);
-}
-
-#[test]
-fn cpp_banner() {
-    let pairs = pairs(
-        "src/a.cpp",
-        Some("int main(void) { return 0; }\n"),
-        Some("// ====\nint main(void) { return 0; }\n"),
-    );
-    assert_eq!(findings(&pairs), [banner_finding(1, "// ====")]);
-}
-
-#[test]
-fn cpp_directive_is_exempt() {
-    let pairs = pairs(
-        "src/a.cpp",
-        Some("int main(void) { return 0; }\n"),
-        Some("// clang-format on\nint main(void) { return 0; }\n"),
-    );
-    assert_eq!(findings(&pairs), []);
-}
-
-#[test]
-fn cpp_old_run_stays() {
-    let old = "// one\n// two\n// three\nint main(void) { return 0; }\n";
-    let pairs = pairs(
-        "src/a.cpp",
-        Some(old),
-        Some("// one\n// two\n// three\nint main(void) { return 0; }\nint y = 1;\n"),
-    );
-    assert_eq!(findings(&pairs), []);
-}
-
-#[test]
-fn java_line_run() {
-    let pairs = pairs(
-        "src/a.java",
-        Some("public class A {}\n"),
-        Some("// one\n// two\n// three\npublic class A {}\n"),
-    );
-    let expected = [run_finding(
-        1,
-        "// one\n// two\n// three",
-        "3-line comment; why-comments run 1-2 lines",
-    )];
-    assert_eq!(findings(&pairs), expected);
-}
-
-#[test]
-fn java_doc_block_is_exempt() {
-    let pairs = pairs(
-        "src/a.java",
-        Some("public class A {}\n"),
-        Some("/** one\n * two\n * three */\npublic class A {}\n"),
-    );
-    assert_eq!(findings(&pairs), []);
-}
-
-#[test]
-fn java_block_run() {
-    let pairs = pairs(
-        "src/a.java",
-        Some("public class A {}\n"),
-        Some("/* one\ntwo\nthree */\npublic class A {}\n"),
-    );
-    let expected = [run_finding(
-        1,
-        "/* one\ntwo\nthree */",
-        "3-line comment; why-comments run 1-2 lines",
-    )];
-    assert_eq!(findings(&pairs), expected);
-}
-
-#[test]
-fn java_banner() {
-    let pairs = pairs(
-        "src/a.java",
-        Some("public class A {}\n"),
-        Some("// ====\npublic class A {}\n"),
-    );
-    assert_eq!(findings(&pairs), [banner_finding(1, "// ====")]);
-}
-
-#[test]
-fn java_old_run_stays() {
-    let old = "// one\n// two\n// three\npublic class A {}\n";
-    let pairs = pairs(
-        "src/a.java",
-        Some(old),
-        Some("// one\n// two\n// three\npublic class A {}\npublic class B {}\n"),
-    );
-    assert_eq!(findings(&pairs), []);
-}
-
-#[test]
-fn lua_line_run() {
-    let pairs = pairs(
-        "src/a.lua",
-        Some("local x = 1\n"),
-        Some("-- one\n-- two\n-- three\nlocal x = 1\n"),
-    );
-    let expected = [run_finding(
-        1,
-        "-- one\n-- two\n-- three",
-        "3-line comment; why-comments run 1-2 lines",
-    )];
-    assert_eq!(findings(&pairs), expected);
-}
-
-#[test]
-fn lua_doc_run_is_exempt() {
-    let pairs = pairs(
-        "src/a.lua",
-        Some("local x = 1\n"),
-        Some("--- one\n--- two\n--- three\nlocal x = 1\n"),
-    );
-    assert_eq!(findings(&pairs), []);
-}
-
-#[test]
-fn lua_block_run() {
-    let pairs = pairs(
-        "src/a.lua",
-        Some("local x = 1\n"),
-        Some("--[[\n-- one\n-- two\n-- three\n]]\nlocal x = 1\n"),
-    );
-    let expected = [run_finding(
-        1,
-        "--[[\n-- one\n-- two\n-- three\n]]",
-        "5-line comment; why-comments run 1-2 lines",
-    )];
-    assert_eq!(findings(&pairs), expected);
-}
-
-#[test]
-fn lua_banner() {
-    let pairs = pairs(
-        "src/a.lua",
-        Some("local x = 1\n"),
-        Some("-- ====\nlocal x = 1\n"),
-    );
-    assert_eq!(findings(&pairs), [banner_finding(1, "-- ====")]);
-}
-
-#[test]
-fn lua_old_run_stays() {
-    let old = "-- one\n-- two\n-- three\nlocal x = 1\n";
-    let pairs = pairs(
-        "src/a.lua",
-        Some(old),
-        Some("-- one\n-- two\n-- three\nlocal x = 1\nlocal y = 2\n"),
-    );
-    assert_eq!(findings(&pairs), []);
+fn an_old_run_stays() {
+    run_cases(OLD_RUN_CASES);
 }
